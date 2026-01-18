@@ -20,7 +20,7 @@ class SupplierResource extends Resource
     protected static ?string $model = Supplier::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
     protected static ?string $navigationLabel = 'Vendors';
-    protected static ?string $navigationGroup = 'Inventory';
+    protected static ?string $navigationGroup = 'Vendors';
     protected static ?string $modelLabel = 'Supplier';
     protected static ?string $pluralModelLabel = 'Suppliers';
 

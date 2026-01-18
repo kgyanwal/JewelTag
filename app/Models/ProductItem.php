@@ -47,7 +47,10 @@ protected $fillable = [
     {
         return $this->belongsTo(ProductTemplate::class);
     }
-
+public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);

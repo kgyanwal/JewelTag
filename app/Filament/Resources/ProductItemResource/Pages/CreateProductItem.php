@@ -52,31 +52,40 @@ class CreateProductItem extends CreateRecord
         ];
     }
 
-    protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
+ protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
 {
     $qty = (int) ($data['qty'] ?? 1);
+    
+    // 1. Get the store ID from the form
+    $storeId = $data['store_id'];
+
     unset($data['qty'], $data['options'], $data['creation_mode']);
+
+    // 2. SAFETY: If no store exists (New PC), create one so the DB doesn't crash
+    if (!$storeId) {
+        $storeId = \App\Models\Store::firstOrCreate(
+            ['name' => 'Main Branch'],
+            ['location' => 'Default Location']
+        )->id;
+    }
 
     $firstRecord = null;
 
-    // 1. Find the highest existing "G" number in the database
+    // 3. Robust Barcode Logic (Checks existing G-numbers to avoid duplicates)
     $lastBarcode = \App\Models\ProductItem::where('barcode', 'LIKE', 'G%')
         ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
         ->value('barcode');
 
-    // 2. Extract the number part (e.g., "1008" from "G1008") or start at 1000
     $lastNumber = $lastBarcode ? (int) substr($lastBarcode, 1) : 1000;
 
     for ($i = 0; $i < $qty; $i++) {
         $itemData = $data;
-        $itemData['store_id'] = 1; 
+        $itemData['store_id'] = $storeId; // 🔹 Dynamic Store ID
 
-        // 3. Increment correctly for each item in the loop
         $nextNumber = $lastNumber + $i + 1;
         $itemData['barcode'] = 'G' . $nextNumber;
         
         $record = static::getModel()::create($itemData);
-        
         if ($i === 0) $firstRecord = $record;
     }
 
