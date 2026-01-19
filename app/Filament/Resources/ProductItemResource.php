@@ -138,7 +138,14 @@ class ProductItemResource extends Resource
                     ->label('RFID')
                     ->getStateUsing(fn ($record) => !empty($record->rfid_epc) ? 'Yes' : 'No')
                     ->colors(['success' => 'Yes', 'gray' => 'No']),
-                Tables\Columns\TextColumn::make('status')->badge()->color(fn($state) => $state === 'in_stock' ? 'success' : 'gray'),
+                Tables\Columns\TextColumn::make('status')
+    ->badge()
+    ->color(fn (string $state): string => match ($state) {
+        'in_stock' => 'success',
+        'sold' => 'danger',
+        'out_of_stock' => 'warning',
+        default => 'gray',
+    }),
             ])
             ->actions([
                 ActionGroup::make([

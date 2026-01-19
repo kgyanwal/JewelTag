@@ -10,6 +10,8 @@ use Filament\Actions;
 use Filament\Forms\Components\FileUpload;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ListProductItems extends ListRecords
 {
@@ -30,65 +32,73 @@ class ListProductItems extends ListRecords
                         ->directory('invoices')
                         ->required()
                 ])
-               // Inside ListProductItems.php -> bulk_scan action
-->action(function (array $data, GeminiInvoiceService $service) {
-    // 🔹 Ensure we get the correct path from the 'public' disk
-    $filePath = storage_path('app/public/' . $data['invoice_file']);
-    
-    \Illuminate\Support\Facades\Log::info("Starting Bulk Scan for file: " . $filePath);
+                ->action(function (array $data, GeminiInvoiceService $service) {
+                    $filePath = storage_path('app/public/' . $data['invoice_file']);
+                    
+                    Log::info("Starting Bulk Scan for file: " . $filePath);
 
-    $extracted = $service->process($filePath);
+                    $extracted = $service->process($filePath);
 
-    if (!$extracted) {
-        Notification::make()
-            ->title('Scanning failed')
-            ->body('Check storage/logs/laravel.log for details.')
-            ->danger()
-            ->send();
-        return;
-    }
+                    if (!$extracted || empty($extracted['items'])) {
+                        Notification::make()->title('Scanning failed or no items found')->danger()->send();
+                        return;
+                    }
 
-    if (!isset($extracted['items']) || count($extracted['items']) === 0) {
-        Notification::make()
-            ->title('No items found')
-            ->body('The AI could not find any jewelry items in this image.')
-            ->warning()
-            ->send();
-        return;
-    }
+                    // 1. Get the Supplier first to check against their specific codes
+                    $supplier = Supplier::firstOrCreate(['company_name' => $extracted['vendor_name']]);
 
-    $supplier = \App\Models\Supplier::firstOrCreate(['company_name' => $extracted['vendor_name']]);
-    
-    // Logic for Unique sequential Stock Numbers (G1001, G1002...)
-    $lastItem = \App\Models\ProductItem::where('barcode', 'LIKE', 'G%')
-                ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
-                ->first();
-                
-    $nextNumber = $lastItem ? ((int) preg_replace('/[^0-9]/', '', $lastItem->barcode)) + 1 : 1001;
+                    // 2. DUPLICATE CHECK: Check if the FIRST item's style code already exists for this supplier
+                    // This is a "No Migration" way to see if the invoice was already scanned
+                    $firstItemCode = $extracted['items'][0]['style_code'] ?? null;
+                    
+                    if ($firstItemCode) {
+                        $duplicateExists = ProductItem::where('supplier_id', $supplier->id)
+                            ->where('supplier_code', $firstItemCode)
+                            ->exists();
 
-    foreach ($extracted['items'] as $item) {
-        \App\Models\ProductItem::create([
-            'store_id' => auth()->user()->store_id ?? 1,
-            'supplier_id' => $supplier->id,
-            'barcode' => 'G' . $nextNumber,
-            'custom_description' => $item['description'] ?? 'Scanned Item',
-            'qty' => $item['quantity'] ?? 1,
-            'cost_price' => $item['cost_price'] ?? 0,
-            'retail_price' => ($item['cost_price'] ?? 0) * 2.5,
-            'metal_type' => $item['metal_type'] ?? 'General',
-            'metal_weight' => $item['metal_weight'] ?? 0,
-            'supplier_code' => $item['style_code'] ?? null,
-            'status' => 'in_stock',
-        ]);
-        $nextNumber++;
-    }
+                        if ($duplicateExists) {
+                            Notification::make()
+                                ->title('Potential Duplicate Detected')
+                                ->body("An item with style code '{$firstItemCode}' already exists for {$supplier->company_name}. Scan aborted to prevent duplicates.")
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+                    }
 
-    Notification::make()
-        ->title('Bulk Scan Success')
-        ->body("Imported " . count($extracted['items']) . " items.")
-        ->success()
-        ->send();
-})
+                    // 3. DATABASE TRANSACTION
+                    DB::transaction(function () use ($extracted, $supplier) {
+                        // Logic for Unique sequential Stock Numbers
+                        $lastItem = ProductItem::where('barcode', 'LIKE', 'G%')
+                                    ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
+                                    ->first();
+                                    
+                        $nextNumber = $lastItem ? ((int) preg_replace('/[^0-9]/', '', $lastItem->barcode)) + 1 : 1001;
+
+                        foreach ($extracted['items'] as $item) {
+                            ProductItem::create([
+                                'store_id' => auth()->user()->store_id ?? 1,
+                                'supplier_id' => $supplier->id,
+                                'barcode' => 'G' . $nextNumber,
+                                'custom_description' => $item['description'] ?? 'Scanned Item',
+                                'qty' => $item['quantity'] ?? 1,
+                                'cost_price' => $item['cost_price'] ?? 0,
+                                'retail_price' => ($item['cost_price'] ?? 0) * 2.5,
+                                'metal_type' => $item['metal_type'] ?? 'General',
+                                'metal_weight' => $item['metal_weight'] ?? 0,
+                                'supplier_code' => $item['style_code'] ?? null, // Uses existing column
+                                'status' => 'in_stock',
+                            ]);
+                            $nextNumber++;
+                        }
+                    });
+
+                    Notification::make()
+                        ->title('Bulk Scan Success')
+                        ->body("Imported " . count($extracted['items']) . " items.")
+                        ->success()
+                        ->send();
+                })
         ];
     }
 }

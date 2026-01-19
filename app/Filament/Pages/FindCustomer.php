@@ -22,7 +22,7 @@ class FindCustomer extends Page implements HasTable
     use InteractsWithTable;
 
     protected static ?string $navigationIcon = 'heroicon-o-magnifying-glass';
-    protected static ?string $navigationGroup = 'CRM';
+    protected static ?string $navigationGroup = 'Customer';
     protected static ?string $title = 'Find Customer';
     protected static string $view = 'filament.pages.find-customer';
 
