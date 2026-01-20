@@ -176,7 +176,7 @@ HTML
             /* ───────── NAV GROUPS (FIXED: Removed icons to avoid crash) ───────── */
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
-                NavigationGroup::make()->label('CRM'),
+                NavigationGroup::make()->label('Customer'),
                 NavigationGroup::make()->label('Reports'),
             ]);
     }

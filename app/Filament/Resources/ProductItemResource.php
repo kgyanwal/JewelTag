@@ -61,7 +61,6 @@ class ProductItemResource extends Resource
                             })
                             ->columnSpan(4),
 
-                        // RFID Options
                         CheckboxList::make('print_options')
                             ->options([
                                 'print_tag' => 'Print Barcode Tag',
@@ -69,21 +68,20 @@ class ProductItemResource extends Resource
                                 'encode_rfid' => 'Encode RFID Data'
                             ])
                             ->columns(3)
-                            ->columnSpan(12)
-                            ->dehydrated(false),
+                            ->columnSpan(12), // Logic: Now persists to DB
 
                         Toggle::make('enable_rfid_tracking')
                             ->label('Enable RFID Tracking')
                             ->onColor('success')
                             ->offColor('gray')
                             ->inline(false)
-                            ->columnSpan(6)
-                            ->dehydrated(false),
+                            ->columnSpan(6), // Logic: Now persists to DB
 
                         TextInput::make('rfid_epc')
                             ->label('RFID EPC Code')
                             ->placeholder('Auto-generated')
                             ->disabled()
+                            ->dehydrated()
                             ->columnSpan(6),
 
                         TextInput::make('supplier_code')
@@ -119,7 +117,7 @@ class ProductItemResource extends Resource
 
                         Textarea::make('custom_description')->columnSpan(12)->rows(3),
 
-                        TextInput::make('barcode')->label('Stock Number')->placeholder('G-Auto Generate')->disabled()->columnSpan(4),
+                        TextInput::make('barcode')->label('Stock Number')->placeholder('G-Auto Generate')->disabled()->dehydrated()->columnSpan(4),
                         TextInput::make('serial_number')->columnSpan(4),
                         TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
                     ]),
@@ -145,68 +143,30 @@ class ProductItemResource extends Resource
                     EditAction::make(),
                     ViewAction::make()->color('info'),
                     
-                    // Standard Barcode Print
                     Action::make('print_tag')
                         ->label('Print Barcode Tag')
                         ->icon('heroicon-o-printer')
                         ->color('info')
-                        ->action(function ($record, ZebraPrinterService $service) {
-                            if ($service->printJewelryTag($record, false)) {
-                                Notification::make()
-                                    ->title('Success')
-                                    ->body('Barcode tag sent to printer.')
-                                    ->success()
-                                    ->send();
-                            } else {
-                                Notification::make()
-                                    ->title('Printer Error')
-                                    ->danger()
-                                    ->send();
-                            }
-                        }),
+                        ->requiresConfirmation()
+                        ->action(fn ($record, ZebraPrinterService $service) => $service->printJewelryTag($record, false)),
                     
-                    // RFID Tag Print
                     Action::make('print_rfid_tag')
                         ->label('Print RFID Tag')
                         ->icon('heroicon-o-identification')
                         ->color('warning')
-                        ->action(function ($record, ZebraPrinterService $service) {
-                            if ($service->printJewelryTag($record, true)) {
-                                Notification::make()
-                                    ->title('Success')
-                                    ->body('RFID tag printed and encoded.')
-                                    ->success()
-                                    ->send();
-                            } else {
-                                Notification::make()
-                                    ->title('RFID Printer Error')
-                                    ->body('Make sure RFID printer is connected and has tags loaded.')
-                                    ->danger()
-                                    ->send();
-                            }
-                        }),
+                        ->requiresConfirmation()
+                        ->action(fn ($record, ZebraPrinterService $service) => $service->printJewelryTag($record, true)),
                     
-                    // Test RFID Printer
                     Action::make('test_rfid_printer')
-                        ->label('Test RFID Printer')
+                        ->label('Check Printer Status')
                         ->icon('heroicon-o-wrench')
                         ->color('gray')
                         ->action(function (ZebraPrinterService $service) {
                             $status = $service->checkRFIDPrinterStatus();
-                            
-                            if ($status['connected']) {
-                                Notification::make()
-                                    ->title('RFID Printer Status')
-                                    ->body('Connected: ' . ($status['rfid_supported'] ? 'RFID Supported' : 'No RFID'))
-                                    ->success()
-                                    ->send();
-                            } else {
-                                Notification::make()
-                                    ->title('Printer Not Connected')
-                                    ->body('Error: ' . ($status['error'] ?? 'Unknown error'))
-                                    ->danger()
-                                    ->send();
-                            }
+                            Notification::make()
+                                ->title($status['connected'] ? 'Printer Online' : 'Printer Offline')
+                                ->status($status['connected'] ? 'success' : 'danger')
+                                ->send();
                         }),
                 ]),
             ]);
