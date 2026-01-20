@@ -55,4 +55,14 @@ public function store(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
     }
+    protected static function booted()
+{
+    static::saving(function ($item) {
+        if ($item->qty <= 0) {
+            $item->status = 'sold';
+            $item->qty = 0;
+        }
+    });
+}
+
 }

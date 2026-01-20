@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('customers', function (Blueprint $table) {
         $table->id();
         $table->string('name');
-        $table->string('phone')->unique(); // Vital for jewelry CRM
+        $table->string('phone')->unique(); // Vital for jewelry Customer
         $table->string('email')->nullable();
         $table->date('dob')->nullable(); // For Birthday Reports (CR009)
         $table->date('wedding_anniversary')->nullable(); // For Anniversary Reports (CR010)
