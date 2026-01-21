@@ -14,7 +14,7 @@ class StoreResource extends Resource
 {
     protected static ?string $model = Store::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
-    protected static ?string $navigationGroup = 'Head Office';
+    protected static ?string $navigationGroup = 'Store';
 
   public static function form(Form $form): Form
 {
@@ -59,7 +59,11 @@ public static function table(Table $table): Table
             ]),
         ]);
 }
-
+public static function canAccess(): bool
+{
+    // 🔹 Only allow users with the 'super_admin' role to access Store management
+    return auth()->user()->hasRole('Superadmin');
+}
     public static function getPages(): array
     {
         return [

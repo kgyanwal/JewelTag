@@ -3,55 +3,58 @@
 namespace App\Services;
 
 use App\Models\ProductItem;
+use Illuminate\Support\Facades\Log;
 
 class ZebraPrinterService
 {
-    protected string $printerIp = '192.168.1.50'; 
+    protected string $printerIp = '192.168.1.60'; 
 
-    public function printJewelryTag(ProductItem $record): bool
+    public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool
     {
         try {
-            // Prepare Dynamic Data
-            $stockNo = $record->barcode ?? 'N/A';
-            $price = '$' . number_format($record->retail_price, 2);
-            $metal = $record->metal_type ?? '10K Gold';
-            $size = $record->size ? 'SZ' . $record->size : '';
-            $weight = $record->metal_weight ? $record->metal_weight . ' CTW' : '';
-            $desc = strtoupper(substr($record->custom_description ?? 'DIAMOND', 0, 15));
+            $stockNo = (string)($record->barcode ?? 'N/A');
+            $price   = '$' . number_format($record->retail_price, 2);
+            $desc    = strtoupper(substr($record->custom_description ?? 'JEWELRY', 0, 20));
+            $epcHex  = $record->rfid_epc ?: strtoupper(str_pad(dechex($record->id), 24, '0', STR_PAD_LEFT));
 
-            /**
-             * ZPL for Butterfly Tag (Dual Side)
-             * ^FO(X,Y) -> X is horizontal, Y is vertical
-             * Side 1 (Left): Stock No, Metal, Barcode
-             * Side 2 (Right): Price, Specs (Size/Weight), Description
-             */
-            $zpl = "^XA
-                ^CI28
-                
-                -- SIDE 1 (LEFT PART OF TAG) --
-                ^FO50,30^A0N,35,35^FD{$stockNo}^FS
-                ^FO50,75^A0N,35,35^FD{$metal}^FS
-                ^FO30,120^BY2,3,60^BCN,60,N,N,N^FD{$stockNo}^FS
-                
-                -- SIDE 2 (RIGHT PART OF TAG) --
-                ^FO450,30^A0N,45,45^FD{$price}^FS
-                ^FO450,85^A0N,35,35^FD{$metal} {$size} {$weight}^FS
-                ^FO450,135^A0N,35,35^FD{$desc}^FS
-                
-                ^XZ";
-
-            $socket = @fsockopen($this->printerIp, 9100, $errno, $errstr, 3);
-            if (!$socket) {
-                return false;
+            $zpl = "^XA^CI28^MMT^MTT^MD30^PW450^LL250^LS0";
+            if ($useRFID) {
+                $zpl .= "\n^RS8,,,1,N^FS"; 
+                $zpl .= "\n^RFW,H,1,0,12^FD{$epcHex}^FS"; 
             }
 
-            fwrite($socket, $zpl);
-            fclose($socket);
+            $zpl .= "\n^FO65,5^A0N,3,3^FD{$stockNo}^FS";
+            $zpl .= "\n^FO65,8^A0N,2,2^FD{$desc}^FS";
+            $zpl .= "\n^FO65,10^A0N,2,2^FD{$price}+barcode^FS";
 
-            return true;
+            $zpl .= "\n^FO65,18^A0N,3,3^FD{$price}+1P^FS";
+            $zpl .= "\n^FO65,21^A0N,2,2^FD{$price}+2P^FS";
+            $zpl .= "\n^FO65,23^A0N,2,2^FD{$desc}+3P^FS";
+
+
+            $zpl .= "\n^PQ1,0,1,Y\n^XZ";
+
+            Log::info("Sending ZPL to Zebra: " . $zpl);
+
+            return $this->sendToPrinter($zpl);
         } catch (\Exception $e) {
-            \Log::error("Zebra Print Error: " . $e->getMessage());
+            Log::error("Zebra Error: " . $e->getMessage());
             return false;
         }
+    }
+
+    private function sendToPrinter(string $zpl): bool
+    {
+        $socket = @fsockopen($this->printerIp, 9100, $errno, $errstr, 3);
+        if (!$socket) return false;
+        fwrite($socket, $zpl . "\n");
+        fclose($socket);
+        return true;
+    }
+
+    public function checkRFIDPrinterStatus(): array
+    {
+        $socket = @fsockopen($this->printerIp, 9100, $errno, $errstr, 2);
+        return ['connected' => (bool)$socket];
     }
 }

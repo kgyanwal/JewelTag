@@ -10,6 +10,7 @@ class Sale extends Model
 {
     protected $guarded = [];
     protected $casts = ['sales_person_list' => 'array'];
+    
 
     // 🔹 FIX: This must match the name used in SaleResource relationship('customer', ...)
     public function customer(): BelongsTo 

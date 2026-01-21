@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasRoles, Notifiable;
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    use HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'name',
@@ -22,11 +28,21 @@ class User extends Authenticatable
         'pin_code',
     ];
 
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
@@ -67,11 +83,12 @@ class User extends Authenticatable
         return $this->roles->first()->name ?? 'No Role';
     }
 
+    /**
+     * Check if user has any of the given roles.
+     * * Note: Fixed recursion in your original version
+     */
     public function hasAnyRole($roles)
     {
-        if (is_array($roles)) {
-            return $this->hasAnyRole($roles);
-        }
         return $this->hasRole($roles);
     }
 }
