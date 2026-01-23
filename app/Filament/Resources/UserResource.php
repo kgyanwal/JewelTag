@@ -61,16 +61,16 @@ class UserResource extends Resource
                                 
                                 Section::make('Security')
                                     ->schema([
-                                        Forms\Components\TextInput::make('password')
-                                            ->label('Password')
-                                            ->password()
-                                            ->revealable()
-                                            ->required(fn ($operation) => $operation === 'create')
-                                            ->rule(Password::default())
-                                            ->dehydrated(fn ($state) => filled($state))
-                                            ->dehydrateStateUsing(fn ($state) => 
-                                                Hash::make($state)
-                                            ),
+                                        // Forms\Components\TextInput::make('password')
+                                        //     ->label('Password')
+                                        //     ->password()
+                                        //     ->revealable()
+                                        //     ->required(fn ($operation) => $operation === 'create')
+                                        //     ->rule(Password::default())
+                                        //     ->dehydrated(fn ($state) => filled($state))
+                                        //     ->dehydrateStateUsing(fn ($state) => 
+                                        //         Hash::make($state)
+                                        //     ),
                                         
                                         Forms\Components\TextInput::make('pin_code')
                                             ->label('POS PIN Code')

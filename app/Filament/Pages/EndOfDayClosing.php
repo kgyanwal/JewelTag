@@ -3,10 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Models\Sale;
+use App\Models\DailyClosing;
 use Filament\Pages\Page;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Url;
 
 class EndOfDayClosing extends Page
 {
@@ -15,17 +17,35 @@ class EndOfDayClosing extends Page
     protected static ?string $navigationLabel = 'End of Day';
     protected static string $view = 'filament.pages.end-of-day-closing';
 
+    #[Url]
+    public $date; 
+
     public $actualTotals = [];
     public $expectedTotals = [];
+    public $isClosed = false;
 
     public function mount()
     {
-        $this->calculateTotals();
+        // Force today's date for non-admins
+        if (!auth()->user()->hasRole('Superadmin')) {
+            $this->date = today()->format('Y-m-d');
+        } else {
+            $this->date ??= today()->format('Y-m-d');
+        }
+
+        $this->loadData();
     }
 
-    public function calculateTotals()
+    public function updatedDate()
     {
-        // Define all payment methods from your SaleResource
+        if (!auth()->user()->hasRole('Superadmin')) {
+            $this->date = today()->format('Y-m-d');
+        }
+        $this->loadData();
+    }
+
+    public function loadData()
+    {
         $methods = [
             'visa' => 'Visa',
             'cash' => 'Cash',
@@ -33,18 +53,35 @@ class EndOfDayClosing extends Page
             'katapult' => 'Katapult',
             'kafene' => 'Kafene',
             'acima_finance' => 'Acima Finance',
-            // Add others as needed...
         ];
 
-        $todaySales = Sale::whereDate('created_at', today())
-            ->where('status', 'completed')
-            ->select('payment_method', DB::raw('SUM(final_total) as total'))
-            ->groupBy('payment_method')
-            ->pluck('total', 'payment_method');
+        $record = DailyClosing::whereDate('closing_date', $this->date)->first();
 
-        foreach ($methods as $key => $label) {
-            $this->expectedTotals[$key] = $todaySales->get($key, 0);
-            $this->actualTotals[$key] = $this->expectedTotals[$key]; // Default actual to expected
+        if ($record) {
+            // Once locked, everyone sees the truth for audit
+            $this->expectedTotals = $record->expected_data;
+            $this->actualTotals = $record->actual_data;
+            $this->isClosed = true;
+        } else {
+            $this->isClosed = false;
+            
+            // Fetch live totals for calculation
+            $sales = Sale::whereDate('created_at', $this->date)
+                ->where('status', 'completed')
+                ->select('payment_method', DB::raw('SUM(final_total) as total'))
+                ->groupBy('payment_method')
+                ->pluck('total', 'payment_method');
+
+            foreach ($methods as $key => $label) {
+                // 🔹 BLIND LOGIC: Show 0.00 to Sales Assistant
+                if (auth()->user()->hasRole('Superadmin')) {
+                    $this->expectedTotals[$key] = (float)$sales->get($key, 0);
+                    $this->actualTotals[$key] = $this->expectedTotals[$key];
+                } else {
+                    $this->expectedTotals[$key] = 0.00; 
+                    $this->actualTotals[$key] = 0; // 🔹 This ensures the input is empty/zero
+                }
+            }
         }
     }
 
@@ -52,15 +89,34 @@ class EndOfDayClosing extends Page
     {
         return [
             Action::make('post_closing')
-                ->label('POST')
+                ->label('POST CLOSING')
                 ->color('success')
                 ->requiresConfirmation()
+                ->hidden(fn () => $this->isClosed)
                 ->action(function () {
-                    // Logic to lock these sales or save a ClosingRecord model
-                    Notification::make()
-                        ->title('Daily Totals Posted')
-                        ->success()
-                        ->send();
+                    // Recalculate true system totals in background for the database
+                    $realSales = Sale::whereDate('created_at', $this->date)
+                        ->where('status', 'completed')
+                        ->select('payment_method', DB::raw('SUM(final_total) as total'))
+                        ->groupBy('payment_method')
+                        ->pluck('total', 'payment_method');
+
+                    $finalExpected = [];
+                    foreach ($this->actualTotals as $key => $val) {
+                        $finalExpected[$key] = (float)$realSales->get($key, 0);
+                    }
+
+                    DailyClosing::create([
+                        'closing_date' => $this->date,
+                        'expected_data' => $finalExpected,
+                        'actual_data' => $this->actualTotals,
+                        'total_expected' => array_sum($finalExpected),
+                        'total_actual' => array_sum($this->actualTotals),
+                        'user_id' => auth()->id(),
+                    ]);
+
+                    Notification::make()->title('Day Closed Successfully')->success()->send();
+                    $this->loadData(); // Refresh to lock UI
                 }),
         ];
     }
