@@ -206,7 +206,8 @@ HTML
             ])
             ->authMiddleware([
                 Authenticate::class,
-                
+                 \App\Http\Middleware\EnsureUserIsAdmin::class, 
+                \App\Http\Middleware\VerifyPinCode::class,
             ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
