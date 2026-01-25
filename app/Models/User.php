@@ -91,4 +91,10 @@ class User extends Authenticatable
     {
         return $this->hasRole($roles);
     }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // Check if the user is active and has one of the approved roles
+        return $this->is_active && $this->hasAnyRole(['Superadmin', 'Admin', 'Manager']);
+    }
 }

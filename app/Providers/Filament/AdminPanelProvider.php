@@ -172,6 +172,7 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
+                \App\Filament\Resources\TicketResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
