@@ -9,61 +9,55 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class StatsOverview extends BaseWidget
 {
+    protected ?string $heading = 'Dashboard Overview';
+
     protected function getStats(): array
     {
+        // Base card style for all stats
+        $baseStyle = '
+            border-radius: 20px !important;
+            padding: 24px !important;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.4) !important;
+            color: #ffffff !important;
+        ';
+
+        // Gradient backgrounds for each stat card
+        $blueStyle   = "background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important; " . $baseStyle;
+        $greenStyle  = "background: linear-gradient(135deg, #059669 0%, #064e3b 100%) !important; " . $baseStyle;
+        $purpleStyle = "background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%) !important; " . $baseStyle;
+
         return [
-            Stat::make('Total Inventory Value', '$' . number_format(ProductItem::where('status', 'in_stock')->sum('retail_price'), 2))
-                ->description('Combined retail price of all items in stock')
+            Stat::make(
+                'Inventory Value',
+                '$' . number_format(ProductItem::where('status', 'in_stock')->sum('retail_price'), 2)
+            )
+                ->description('Total retail value of stock')
                 ->descriptionIcon('heroicon-m-banknotes')
-                ->color('success')
-                ->icon('heroicon-m-banknotes')
                 ->extraAttributes([
-                    'style' => '
-                        background: linear-gradient(145deg, #1e3a8a 0%, #2563eb 100%) !important;
-                        border-radius: 16px !important;
-                        border: none !important;
-                        padding: 28px !important;
-                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
-                        transition: all 0.3s ease !important;
-                        overflow: hidden !important;
-                        position: relative !important;
-                    ',
+                    'style' => $blueStyle,
+                    'class' => 'hover:scale-[1.02] transition-transform duration-300',
                 ]),
 
-            Stat::make('Active Stock Items', ProductItem::where('status', 'in_stock')->count())
-                ->description('Total serialized items currently on shelf')
+            Stat::make(
+                'Items in Stock',
+                ProductItem::where('status', 'in_stock')->count() . ' Units'
+            )
+                ->description('Active units on shelf')
                 ->descriptionIcon('heroicon-m-archive-box')
-                ->color('success')
-                ->icon('heroicon-m-archive-box')
                 ->extraAttributes([
-                    'style' => '
-                        background: linear-gradient(145deg, #7c3aed 0%, #8b5cf6 100%) !important;
-                        border-radius: 16px !important;
-                        border: none !important;
-                        padding: 28px !important;
-                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
-                        transition: all 0.3s ease !important;
-                        overflow: hidden !important;
-                        position: relative !important;
-                    ',
+                    'style' => $greenStyle,
+                    'class' => 'hover:scale-[1.02] transition-transform duration-300',
                 ]),
 
-            Stat::make('Monthly Revenue', '$' . number_format(Sale::whereMonth('created_at', now()->month)->sum('final_total'), 2))
-                ->description('Total sales for ' . now()->format('F'))
-                ->descriptionIcon('heroicon-m-presentation-chart-line')
-                ->color('success')
-                ->icon('heroicon-m-presentation-chart-line')
+            Stat::make(
+                'Monthly Revenue',
+                '$' . number_format(Sale::whereMonth('created_at', now()->month)->sum('final_total'), 2)
+            )
+                ->description('Sales for ' . now()->format('F'))
+                ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->extraAttributes([
-                    'style' => '
-                        background: linear-gradient(145deg, #059669 0%, #10b981 100%) !important;
-                        border-radius: 16px !important;
-                        border: none !important;
-                        padding: 28px !important;
-                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
-                        transition: all 0.3s ease !important;
-                        overflow: hidden !important;
-                        position: relative !important;
-                    ',
+                    'style' => $purpleStyle,
+                    'class' => 'hover:scale-[1.02] transition-transform duration-300',
                 ]),
         ];
     }

@@ -53,13 +53,22 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div class="space-y-2">
                         <span class="text-[9px] text-gray-600 font-bold">X-COORDINATE</span>
-                        <input type="number" x-model.number="fields[active + '_x']" 
-                               class="w-full bg-[#212327] border-gray-800 text-white rounded-xl focus:ring-blue-500 py-3 text-lg font-mono">
+                        <input
+    type="number"
+    x-model.number="fields[active + '_x']"
+    class="w-full rounded-xl py-3 px-4"
+/>
+
                     </div>
                     <div class="space-y-2">
                         <span class="text-[9px] text-gray-600 font-bold">Y-COORDINATE</span>
-                        <input type="number" x-model.number="fields[active + '_y']" min="5" max="50"
-                               class="w-full bg-[#212327] border-gray-800 text-white rounded-xl focus:ring-blue-500 py-3 text-lg font-mono">
+                       <input
+    type="number"
+    x-model.number="fields[active + '_y']"
+    min="5" max="50"
+    class="w-full rounded-xl py-3 px-4"
+/>
+
                     </div>
                 </div>
             </div>
@@ -85,6 +94,8 @@
     function setupDesigner() {
         const scale = 20;
         interact('.draggable').draggable({
+    inertia: true,
+
             listeners: {
                 start(event) {
                     const type = event.target.getAttribute('data-target');

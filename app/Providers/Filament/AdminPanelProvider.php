@@ -412,16 +412,82 @@ body, .fi-layout {
     padding: 1.5rem !important;
 }
 
-/* Properties Inspector Text */
-.fi-page-label-designer .fi-section:last-child {
-    background-color: #f8fafc !important;
+.draggable {
+    cursor: grab;
+    user-select: none;
 }
 
-.fi-page-label-designer .fi-label {
-    color: var(--text-primary) !important;
+.draggable:active {
+    cursor: grabbing;
+}
+
+.draggable * {
+    pointer-events: none;
+}
+.fi-breadcrumbs-item-label {
+    color: rgba(255, 255, 255, 0.9) !important; /* Make "List" white/bright */
     font-weight: 600 !important;
 }
 
+.fi-breadcrumbs-item-label:hover {
+    color: var(--primary-light) !important;
+}
+
+/* Fix for the "Product Items" part (the linked part of breadcrumb) */
+.fi-breadcrumbs-item-link {
+    color: rgba(255, 255, 255, 0.7) !important;
+    font-weight: 500 !important;
+}
+
+.fi-breadcrumbs-item-link:hover {
+    color: #ffffff !important;
+    text-decoration: underline !important;
+}
+/* ───────── BREADCRUMB CONTRAST FIX ───────── */
+.fi-breadcrumbs-item-label {
+    color: #ffffff !important; /* Force "List" to white */
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+.fi-breadcrumbs-item-link {
+    color: rgba(255, 255, 255, 0.7) !important; /* Linked part slightly dimmer */
+    font-weight: 500 !important;
+}
+
+.fi-breadcrumbs-item-separator {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+/* Fix for the separator arrow ( > ) */
+.fi-breadcrumbs-item-separator {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+/* ───────── LABEL DESIGNER INPUT FIX (FINAL) ───────── */
+.fi-page-label-designer input,
+.fi-page-label-designer input[type="number"],
+.fi-page-label-designer input[type="text"] {
+    background-color: #020617 !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    opacity: 1 !important;
+    caret-color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 1.25rem !important;
+    border: 1px solid #475569 !important;
+}
+/* Stats widget text */
+.fi-wi-stats-overview-stat-value {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 2rem !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.fi-wi-stats-overview-stat-label,
+.fi-wi-stats-overview-stat-description {
+    color: #f0f9ff !important;
+    font-weight: 600 !important;
+}
 /* ───────── RESPONSIVE FIXES ───────── */
 @media (max-width: 768px) {
     .fi-main {

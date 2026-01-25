@@ -24,6 +24,7 @@ protected $fillable = [
     'form_type',
     'department',
     'category',
+    'rfid_code',
     'metal_type',
     'size',          // 🔹 Add this
     'metal_weight',  // 🔹 Add this

@@ -71,7 +71,7 @@ class CreateProductItem extends CreateRecord
             $itemData['barcode'] = 'G' . ($lastNumber + $i + 1);
             
             if ($trackingEnabled) {
-                $itemData['rfid_epc'] = strtoupper(substr(md5(uniqid() . $i), 0, 24));
+                $itemData['rfid_code'] = strtoupper(substr(md5(uniqid() . $i), 0, 24));
             }
 
             $record = static::getModel()::create($itemData);

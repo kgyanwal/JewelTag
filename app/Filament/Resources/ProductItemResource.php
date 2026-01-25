@@ -77,7 +77,7 @@ class ProductItemResource extends Resource
                             ->inline(false)
                             ->columnSpan(6), // Logic: Now persists to DB
 
-                        TextInput::make('rfid_epc')
+                        TextInput::make('rfid_code')
                             ->label('RFID EPC Code')
                             ->placeholder('Auto-generated')
                             ->disabled()
@@ -132,10 +132,17 @@ class ProductItemResource extends Resource
                 Tables\Columns\TextColumn::make('custom_description')->label('DESCRIPTION')->limit(40),
                 Tables\Columns\TextColumn::make('metal_weight')->label('WEIGHT')->suffix('g'),
                 Tables\Columns\TextColumn::make('retail_price')->label('PRICE')->money('USD')->color('success'),
-                Tables\Columns\BadgeColumn::make('has_rfid')
-                    ->label('RFID')
-                    ->getStateUsing(fn ($record) => !empty($record->rfid_epc) ? 'Yes' : 'No')
-                    ->colors(['success' => 'Yes', 'gray' => 'No']),
+                Tables\Columns\TextColumn::make('rfid_code')
+                ->label('RFID NUMBER')
+                ->fontFamily('mono')
+                ->placeholder('Not Printed')
+                ->searchable()
+                ->copyable(),
+
+            Tables\Columns\BadgeColumn::make('has_rfid')
+                ->label('RFID STATUS')
+                ->getStateUsing(fn ($record) => !empty($record->rfid_code) ? 'Yes' : 'No')
+                ->colors(['success' => 'Yes', 'gray' => 'No']),
                 Tables\Columns\TextColumn::make('status')
     ->badge()
     ->color(fn (string $state): string => match ($state) {
