@@ -5,22 +5,18 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Auth;
 
 class EnsureUserIsAdmin
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Check if user is logged in
-        if (! auth()->check()) {
-            return redirect()->route('filament.admin.auth.login');
-        }
-
+        /** @var \App\Models\User $user */
         $user = auth()->user();
 
-        // 2. Check if user has the correct Role
-        // We added 'Superadmin' to match your database role
-        if (! $user || ! $user->hasAnyRole(['Superadmin', 'Admin', 'Manager', 'User'])) {
-            abort(403, 'You do not have permission to access this panel.');
+        // The dd() statement has been removed.
+        if (! auth()->check() || ! ($user && $user->hasAnyRole(['Superadmin', 'User']))) {
+            abort(403);
         }
 
         return $next($request);

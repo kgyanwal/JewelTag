@@ -12,46 +12,58 @@ class StatsOverview extends BaseWidget
     protected function getStats(): array
     {
         return [
-            Stat::make(
-                'Total Inventory Value',
-                '$' . number_format(
-                    ProductItem::where('status', 'in_stock')->sum('retail_price'),
-                    2
-                )
-            )
+            Stat::make('Total Inventory Value', '$' . number_format(ProductItem::where('status', 'in_stock')->sum('retail_price'), 2))
                 ->description('Combined retail price of all items in stock')
-                ->icon('heroicon-m-banknotes')
+                ->descriptionIcon('heroicon-m-banknotes')
                 ->color('success')
+                ->icon('heroicon-m-banknotes')
                 ->extraAttributes([
-                    'class' => 'custom-stat-card',
-                    'style' => 'background: linear-gradient(135deg, #2D3E50 0%, #1a2530 100%) !important; color: white !important; border: none !important;',
+                    'style' => '
+                        background: linear-gradient(145deg, #1e3a8a 0%, #2563eb 100%) !important;
+                        border-radius: 16px !important;
+                        border: none !important;
+                        padding: 28px !important;
+                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+                        transition: all 0.3s ease !important;
+                        overflow: hidden !important;
+                        position: relative !important;
+                    ',
                 ]),
 
-            Stat::make(
-                'Active Stock Items',
-                ProductItem::where('status', 'in_stock')->count()
-            )
+            Stat::make('Active Stock Items', ProductItem::where('status', 'in_stock')->count())
                 ->description('Total serialized items currently on shelf')
+                ->descriptionIcon('heroicon-m-archive-box')
+                ->color('success')
                 ->icon('heroicon-m-archive-box')
-                ->color('info')
                 ->extraAttributes([
-                    'class' => 'custom-stat-card',
-                    'style' => 'background: linear-gradient(135deg, #4A5568 0%, #2D3748 100%) !important; color: white !important; border: none !important;',
+                    'style' => '
+                        background: linear-gradient(145deg, #7c3aed 0%, #8b5cf6 100%) !important;
+                        border-radius: 16px !important;
+                        border: none !important;
+                        padding: 28px !important;
+                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+                        transition: all 0.3s ease !important;
+                        overflow: hidden !important;
+                        position: relative !important;
+                    ',
                 ]),
 
-            Stat::make(
-                'Monthly Revenue',
-                '$' . number_format(
-                    Sale::whereMonth('created_at', now()->month)->sum('final_total'),
-                    2
-                )
-            )
+            Stat::make('Monthly Revenue', '$' . number_format(Sale::whereMonth('created_at', now()->month)->sum('final_total'), 2))
                 ->description('Total sales for ' . now()->format('F'))
+                ->descriptionIcon('heroicon-m-presentation-chart-line')
+                ->color('success')
                 ->icon('heroicon-m-presentation-chart-line')
-                ->color('warning')
                 ->extraAttributes([
-                    'class' => 'custom-stat-card',
-                    'style' => 'background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: white !important; border: none !important;',
+                    'style' => '
+                        background: linear-gradient(145deg, #059669 0%, #10b981 100%) !important;
+                        border-radius: 16px !important;
+                        border: none !important;
+                        padding: 28px !important;
+                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+                        transition: all 0.3s ease !important;
+                        overflow: hidden !important;
+                        position: relative !important;
+                    ',
                 ]),
         ];
     }
