@@ -34,24 +34,17 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogo(asset('jeweltaglogo.png'))
             ->brandLogoHeight('2.5rem')
             ->favicon(asset('jeweltaglogo.png'))
-
-            /* ───────── LIGHT MODE ONLY ───────── */
             ->darkMode(false, false)
-
-            /* ───────── IMPROVED BRAND COLORS ───────── */
             ->colors([
-                'primary' => Color::hex('#0d9488'), // Darker Teal for better contrast
-                'gray' => Color::hex('#4b5563'),    // Better contrast gray
+                'primary' => Color::hex('#0d9488'),
+                'gray' => Color::hex('#4b5563'),
                 'info' => Color::hex('#0284c7'),
                 'success' => Color::hex('#059669'),
                 'warning' => Color::hex('#d97706'),
                 'danger' => Color::hex('#dc2626'),
             ])
             ->font('Inter')
-            
             ->maxContentWidth(MaxWidth::Full)
-
-            /* ───────── COMPLETE UI OVERHAUL FOR TEXT VISIBILITY ───────── */
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn() => <<<'HTML'
@@ -62,6 +55,7 @@ class AdminPanelProvider extends PanelProvider
 </script>
 
 <style>
+/* ───────── LUXURY SEA THEME SYSTEM ───────── */
 /* ───────── COMPREHENSIVE COLOR SYSTEM ───────── */
 :root {
     /* Primary Colors */
@@ -105,10 +99,7 @@ body, .fi-layout {
     color: var(--text-body) !important;
 }
 
-/* Ensure ALL text has proper color */
-* {
-    color: inherit;
-}
+
 
 /* ───────── MAIN CONTENT AREA ───────── */
 .fi-main {
@@ -121,436 +112,116 @@ body, .fi-layout {
     max-width: 100% !important;
 }
 
-/* ───────── TOPBAR WITH VISIBLE TEXT ───────── */
+/* 1. LOGIN / REGISTER REFINEMENT (FIXES THE FADED LOOK) */
+.fi-simple-main-ctn {
+    background-color: var(--body-bg) !important;
+}
+
+.fi-simple-main {
+    background-color: #ffffff !important;
+    border-radius: 24px !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    padding: 2.5rem !important;
+}
+
+/* Fix Input Text & Labels in Auth Pages */
+.fi-simple-main input {
+    background-color: #f8fafc !important;
+    color: #111827 !important;
+    border: 2px solid #cbd5e1 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+.fi-simple-main label {
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+/* 2. TOP NAVIGATION (CLEAN GLASS LOOK) */
 .fi-topbar {
-    background: var(--nav-bg) !important;
-    border-bottom: 2px solid var(--border-primary) !important;
-    box-shadow: var(--shadow) !important;
-    height: 75px !important;
+    background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important;
+    border-bottom: 2px solid #5eead4 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
 
-/* Navigation Items - FIXED TEXT VISIBILITY */
-.fi-topbar-item-button {
-    color: var(--text-secondary) !important;
-    font-weight: 600 !important;
-    font-size: 0.9375rem !important;
+.fi-topbar * {
+    color: #0f172a !important; /* Force dark text on light nav */
+    opacity: 1 !important;
 }
 
-.fi-topbar-item-button:hover {
-    background-color: rgba(14, 116, 144, 0.1) !important;
-    color: var(--text-primary) !important;
-}
-
-.fi-topbar-item-active .fi-topbar-item-button {
-    background-color: var(--content-bg) !important;
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-    border: 2px solid var(--border-primary) !important;
-    border-radius: 10px !important;
-    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2) !important;
-}
-
-/* Logo and Brand */
-.fi-logo {
-    filter: drop-shadow(0 2px 4px rgba(14, 116, 144, 0.2)) !important;
-}
-
-/* ───────── PAGE HEADINGS - WHITE ON DARK BG ───────── */
-.fi-header-heading,
-.fi-page-header-heading {
-    color: var(--text-white) !important;
-    font-weight: 800 !important;
-    font-size: 2rem !important;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    margin-bottom: 1.5rem !important;
-}
-
-.fi-header-description,
-.fi-page-header-subheading {
-    color: rgba(255, 255, 255, 0.9) !important;
-    font-weight: 500 !important;
-    font-size: 1rem !important;
-}
-
-/* ───────── BUTTONS - FIXED TEXT VISIBILITY ───────── */
-.fi-btn {
-    font-weight: 600 !important;
-    border-radius: 10px !important;
-    transition: all 0.2s ease !important;
-    font-family: 'Inter', sans-serif !important;
-}
-
-/* PRIMARY BUTTONS - White text on colored background */
-.fi-btn-primary,
-.fi-ac-action-primary {
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%) !important;
-    border: none !important;
-    color: var(--text-button) !important; /* WHITE TEXT */
-    font-weight: 700 !important;
-    padding: 0.625rem 1.5rem !important;
-}
-
-.fi-btn-primary:hover,
-.fi-ac-action-primary:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3) !important;
-    color: var(--text-button) !important; /* Keep white on hover */
-}
-
-/* SECONDARY BUTTONS - Dark text on light background */
-.fi-btn-secondary,
-.fi-btn-outline,
-.fi-ac-action-secondary {
-    background-color: white !important;
-    border: 2px solid var(--border-color) !important;
-    color: var(--text-primary) !important; /* DARK TEXT */
-    font-weight: 600 !important;
-}
-
-.fi-btn-secondary:hover,
-.fi-btn-outline:hover,
-.fi-ac-action-secondary:hover {
-    background-color: #f8fafc !important;
-    border-color: var(--primary-light) !important;
-    color: var(--text-primary) !important;
-}
-
-/* DANGER BUTTONS */
-.fi-btn-danger {
-    background-color: #dc2626 !important;
-    color: white !important;
-    border: none !important;
-}
-
-.fi-btn-danger:hover {
-    background-color: #b91c1c !important;
-    color: white !important;
-}
-
-/* ACTION BUTTONS IN TABLES */
-.fi-ta-action {
-    color: var(--primary-color) !important;
-    font-weight: 500 !important;
-}
-
-.fi-ta-action:hover {
-    color: var(--primary-dark) !important;
-}
-
-/* ───────── CARDS & TABLES - HIGH VISIBILITY TEXT ───────── */
-.fi-section,
-.fi-ta-ctn,
-.fi-card,
-.fi-form,
-.fi-fo-component-ctn {
-    background-color: var(--content-bg) !important;
-    border: 1px solid var(--border-light) !important;
-    border-radius: 16px !important;
-    box-shadow: var(--shadow-lg) !important;
-    overflow: hidden !important;
-    margin-bottom: 1.5rem !important;
-}
-
-/* Card Headings */
-.fi-section-header,
-.fi-card-header,
-.fi-form-header {
-    background-color: #f8fafc !important;
-    border-bottom: 1px solid var(--border-light) !important;
-    padding: 1.25rem 1.5rem !important;
-}
-
-.fi-section-header-heading,
-.fi-card-header-heading,
-.fi-form-header-heading {
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-    font-size: 1.25rem !important;
-}
-
-/* Table Headers - HIGH VISIBILITY */
-.fi-ta-header {
-    background-color: #f1f5f9 !important;
-}
-
-.fi-ta-header-cell {
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-    font-size: 0.8125rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    padding: 1rem !important;
-    border-bottom: 2px solid var(--border-color) !important;
-}
-
-/* Table Cells - HIGH VISIBILITY */
-.fi-ta-cell {
-    color: var(--text-body) !important;
-    font-weight: 500 !important;
-    font-size: 0.9375rem !important;
-    padding: 1rem !important;
-    border-bottom: 1px solid var(--border-light) !important;
-}
-
-.fi-ta-row:hover {
-    background-color: #f0fdf4 !important;
-}
-
-/* ───────── FORM ELEMENTS - VISIBLE TEXT ───────── */
-.fi-input,
-.fi-select,
-.fi-textarea {
-    background-color: white !important;
-    border: 2px solid var(--border-color) !important;
-    border-radius: 10px !important;
-    color: var(--text-body) !important;
-    font-weight: 500 !important;
-    font-size: 0.9375rem !important;
-}
-
-.fi-input:focus,
-.fi-select:focus,
-.fi-textarea:focus {
-    border-color: var(--primary-light) !important;
-    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1) !important;
-    color: var(--text-body) !important;
-}
-
-.fi-input::placeholder {
-    color: var(--text-muted) !important;
-    font-weight: 400 !important;
-}
-
-/* Labels - HIGH VISIBILITY */
-.fi-label {
-    color: var(--text-primary) !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
-    margin-bottom: 0.5rem !important;
-}
-
-.fi-hint {
-    color: var(--text-muted) !important;
-    font-weight: 400 !important;
-    font-size: 0.8125rem !important;
-}
-
-/* ───────── DASHBOARD WIDGETS ───────── */
-.fi-wi-stats-overview-stat {
-    background-color: var(--card-bg) !important;
-    border: 1px solid var(--border-light) !important;
-    border-radius: 12px !important;
-    box-shadow: var(--shadow) !important;
-}
-
-.fi-wi-stats-overview-stat-value {
-    color: var(--text-primary) !important;
-    font-weight: 800 !important;
-    font-size: 2rem !important;
-}
-
-.fi-wi-stats-overview-stat-label {
-    color: var(--text-secondary) !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
-}
-
-.fi-wi-header-heading {
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-    font-size: 1.125rem !important;
-}
-
-/* ───────── BADGES & TAGS ───────── */
-.fi-badge {
-    font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    border-radius: 9999px !important;
-    padding: 0.25rem 0.75rem !important;
-}
-
-.fi-badge-primary {
-    background-color: rgba(13, 148, 136, 0.1) !important;
-    color: var(--primary-dark) !important;
-    border: 1px solid rgba(13, 148, 136, 0.2) !important;
-}
-
-/* ───────── PAGINATION ───────── */
-.fi-pagination-item {
-    color: var(--text-secondary) !important;
-    font-weight: 600 !important;
-    border: 1px solid var(--border-color) !important;
-}
-
-.fi-pagination-item-active {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-    border-color: var(--primary-color) !important;
-}
-
-/* ───────── SEARCH & FILTERS ───────── */
-.fi-global-search-field input {
-    color: var(--text-body) !important;
-    font-weight: 500 !important;
-}
-
-.fi-global-search-field input::placeholder {
-    color: var(--text-muted) !important;
-}
-
-/* ───────── USER MENU ───────── */
-.fi-user-menu button {
-    color: var(--text-secondary) !important;
-    font-weight: 600 !important;
-}
-
-/* ───────── SPECIFIC PAGE FIXES ───────── */
-/* Label Designer Page */
-.fi-page-label-designer {
-    background-color: white !important;
-    border-radius: 16px !important;
-    padding: 1.5rem !important;
-}
-
-.draggable {
-    cursor: grab;
-    user-select: none;
-}
-
-.draggable:active {
-    cursor: grabbing;
-}
-
-.draggable * {
-    pointer-events: none;
-}
+/* 3. BREADCRUMBS (STOP FADING) */
 .fi-breadcrumbs-item-label {
-    color: rgba(255, 255, 255, 0.9) !important; /* Make "List" white/bright */
-    font-weight: 600 !important;
-}
-
-.fi-breadcrumbs-item-label:hover {
-    color: var(--primary-light) !important;
-}
-
-/* Fix for the "Product Items" part (the linked part of breadcrumb) */
-.fi-breadcrumbs-item-link {
-    color: rgba(255, 255, 255, 0.7) !important;
-    font-weight: 500 !important;
-}
-
-.fi-breadcrumbs-item-link:hover {
-    color: #ffffff !important;
-    text-decoration: underline !important;
-}
-/* ───────── BREADCRUMB CONTRAST FIX ───────── */
-.fi-breadcrumbs-item-label {
-    color: #ffffff !important; /* Force "List" to white */
+    color: #ffffff !important; 
     font-weight: 700 !important;
     opacity: 1 !important;
 }
 
 .fi-breadcrumbs-item-link {
-    color: rgba(255, 255, 255, 0.7) !important; /* Linked part slightly dimmer */
-    font-weight: 500 !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    opacity: 1 !important;
 }
 
-.fi-breadcrumbs-item-separator {
-    color: rgba(255, 255, 255, 0.5) !important;
-}
-/* Fix for the separator arrow ( > ) */
-.fi-breadcrumbs-item-separator {
-    color: rgba(255, 255, 255, 0.5) !important;
-}
-/* ───────── LABEL DESIGNER INPUT FIX (FINAL) ───────── */
-.fi-page-label-designer input,
-.fi-page-label-designer input[type="number"],
-.fi-page-label-designer input[type="text"] {
-    background-color: #020617 !important;
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-    opacity: 1 !important;
-    caret-color: #ffffff !important;
-    font-weight: 700 !important;
-    font-size: 1.25rem !important;
-    border: 1px solid #475569 !important;
-}
-/* Stats widget text */
+/* 4. DASHBOARD WIDGETS TEXT FIX */
 .fi-wi-stats-overview-stat-value {
     color: #ffffff !important;
     font-weight: 800 !important;
-    font-size: 2rem !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
 }
 
-.fi-wi-stats-overview-stat-label,
+.fi-wi-stats-overview-stat-label, 
 .fi-wi-stats-overview-stat-description {
     color: #f0f9ff !important;
     font-weight: 600 !important;
-}
-/* ───────── RESPONSIVE FIXES ───────── */
-@media (max-width: 768px) {
-    .fi-main {
-        padding: 1rem !important;
-    }
-    
-    .fi-header-heading {
-        font-size: 1.5rem !important;
-    }
-    
-    .fi-topbar-item-button {
-        font-size: 0.875rem !important;
-        padding: 0.375rem 0.75rem !important;
-    }
-    
-    .fi-btn {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-    }
+    opacity: 1 !important;
 }
 
-/* ───────── SCROLLBAR STYLING ───────── */
-::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+/* 5. TABLE & CARD CONTRAST */
+.fi-section, .fi-ta-ctn {
+    background-color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important;
+    opacity: 1 !important;
 }
 
-::-webkit-scrollbar-track {
-    background: #f1f5f9;
+.fi-section-header-heading, .fi-ta-header-cell-label {
+    color: #0f172a !important;
+    font-weight: 800 !important;
 }
 
-::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 5px;
+/* 6. BUTTON VISIBILITY */
+.fi-btn-primary {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    opacity: 1 !important;
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+/* Fix for standard inputs being invisible */
+.fi-input-wrp {
+    background-color: white !important;
+    opacity: 1 !important;
 }
 
-/* ───────── UTILITY CLASSES FOR TEXT VISIBILITY ───────── */
-.text-primary { color: var(--text-primary) !important; }
-.text-secondary { color: var(--text-secondary) !important; }
-.text-body { color: var(--text-body) !important; }
-.text-white { color: var(--text-white) !important; }
-.text-muted { color: var(--text-muted) !important; }
-
-.bg-white { background-color: white !important; }
-.bg-card { background-color: var(--card-bg) !important; }
-
-/* Force white text on any element that might be invisible */
-.fi-btn[class*="primary"],
-.fi-badge[class*="primary"],
-.fi-ac-action[class*="primary"] {
-    color: white !important;
+/* PEARL BLUE TABLE */
+.fi-ta-ctn,
+.fi-ta-header,
+.fi-ta-header-cell,
+.fi-ta-row,
+.fi-ta-empty-state,
+.fi-ta-footer {
+    background-color: #eef2f7 !important;
 }
 
-/* Fix for any remaining invisible text */
-.fi-text-gray-600,
-.fi-text-gray-700,
-.fi-text-gray-800 {
-    color: var(--text-body) !important;
+.fi-ta-row:hover {
+    background-color: #e0e7ef !important;
 }
+
+.fi-ta-cell {
+    color: #000000 !important;
+}
+
 </style>
 HTML
             )
@@ -563,7 +234,6 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
-                \App\Filament\Resources\TicketResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -596,7 +266,6 @@ HTML
             ])
             ->authMiddleware([
                 Authenticate::class,
-                \App\Http\Middleware\EnsureUserIsAdmin::class, 
                 \App\Http\Middleware\VerifyPinCode::class,
             ])
             ->navigationGroups([

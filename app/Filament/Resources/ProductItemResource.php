@@ -90,30 +90,50 @@ class ProductItemResource extends Resource
                             ->columnSpan(3),
 
                         Select::make('form_type')
-                            ->options(['Ring' => 'Ring', 'Watch' => 'Watch', 'Earring' => 'Earring', 'General' => 'General'])
+                            ->options(['Diamond' => 'Diamond', 'Gold' => 'Gold', 'Silver' => 'Silver', 'Watch' => 'Watch'])
                             ->default('General')->columnSpan(3),
 
                         Select::make('department')
-                            ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+    ->label('Department')
+    ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select department')
+ 
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Categories to add new departments')
+    ->columnSpan(2),
 
-                        Select::make('category')
-                            ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+Select::make('category')
+    ->label('Category')
+    ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select category')
+  
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Categories to add new categories')
+    ->columnSpan(2),
 
-                        Select::make('metal_type')
-                            ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+Select::make('metal_type')
+    ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select metal type')
+  
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Metal Types to add new options')
+    ->columnSpan(2),
 
                         TextInput::make('size')->columnSpan(6),
                         TextInput::make('metal_weight')->numeric()->columnSpan(6),
 
-                        TextInput::make('qty')->numeric()->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
+                        TextInput::make('qty')->numeric()->required()->dehydrated(true)->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
 
                         TextInput::make('cost_price')->prefix('$')->numeric()->columnSpan(2),
                         TextInput::make('retail_price')->prefix('$')->numeric()->columnSpan(3)->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
                         TextInput::make('web_price')->prefix('$')->numeric()->columnSpan(3),
-                        TextInput::make('discount_percent')->suffix('%')->numeric()->columnSpan(2),
+                        TextInput::make('discount_percent')->default(0)->suffix('%')->numeric()->columnSpan(2),
 
                         Textarea::make('custom_description')->columnSpan(12)->rows(3),
 
