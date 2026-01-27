@@ -85,7 +85,7 @@ class ProductItemResource extends Resource
                             ->columnSpan(6),
 
                         TextInput::make('supplier_code')
-                            ->label('Supplier Code')
+                            ->label('Vendor Code')
                             ->placeholder('Auto-fills from last invoice')
                             ->columnSpan(3),
 
@@ -176,7 +176,11 @@ Select::make('metal_type')
                 ActionGroup::make([
                     EditAction::make(),
                     ViewAction::make()->color('info'),
-                    
+                    Tables\Actions\DeleteAction::make()
+                    ->label('Delete Item')
+                    ->modalHeading('Delete Jewelry Item')
+                    ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
+                    ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])), // Restricted access
                     Action::make('print_tag')
                         ->label('Print Barcode Tag')
                         ->icon('heroicon-o-printer')

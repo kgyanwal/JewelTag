@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
@@ -7,8 +6,9 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\TagsInput;
-use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Grid;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Cache;
@@ -21,14 +21,15 @@ class InventorySettings extends Page implements HasForms
     protected static ?string $navigationGroup = 'Inventory';
     protected static string $view = 'filament.pages.inventory-settings';
 
-    public ?array $data = []; 
+    public ?array $data = [];
 
     public function mount(): void
     {
+        // We transform the flat array from Cache into a format the Repeater understands
         $this->form->fill([
-            'departments' => Cache::get('inventory_departments', []),
-            'categories' => Cache::get('inventory_categories', []),
-            'metal_types' => Cache::get('inventory_metal_types', []),
+            'departments' => collect(Cache::get('inventory_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
+            'categories' => collect(Cache::get('inventory_categories', []))->map(fn($item) => ['name' => $item])->toArray(),
+            'metal_types' => collect(Cache::get('inventory_metal_types', []))->map(fn($item) => ['name' => $item])->toArray(),
         ]);
     }
 
@@ -36,40 +37,49 @@ class InventorySettings extends Page implements HasForms
     {
         return $form
             ->schema([
-                Section::make('Global Inventory Options')
-                    ->description('Manage your dropdown lists. To delete, click the (x). To add, type and press Enter.')
+                Grid::make(3) // Three columns for side-by-side tables
                     ->schema([
-                        TagsInput::make('departments')
-                            ->label('Departments List')
-                            ->placeholder('New Department...')
-                            ->helperText('Current: ' . implode(', ', Cache::get('inventory_departments', [])))
-                            ->required(),
-
-                        TagsInput::make('categories')
-                            ->label('Categories List')
-                            ->placeholder('New Category...')
-                            ->helperText('Current: ' . implode(', ', Cache::get('inventory_categories', [])))
-                            ->required(),
-
-                        TagsInput::make('metal_types')
-                            ->label('Metal Types List')
-                            ->placeholder('New Metal Type...')
-                            ->helperText('Current: ' . implode(', ', Cache::get('inventory_metal_types', [])))
-                            ->required(),
-                    ])->columns(1), // Stacked for better visibility of long lists
+                        $this->getTableSection('departments', 'Departments'),
+                        $this->getTableSection('categories', 'Categories'),
+                        $this->getTableSection('metal_types', 'Metal Types'),
+                    ]),
             ])
-            ->statePath('data'); 
+            ->statePath('data');
+    }
+
+    /**
+     * Helper to create the tabular Repeater section
+     */
+    protected function getTableSection(string $key, string $label): Section
+    {
+        return Section::make($label)
+            ->compact()
+            ->schema([
+                Repeater::make($key)
+                    ->label('')
+                    ->schema([
+                        TextInput::make('name')
+                            ->label('Option Name')
+                            ->required()
+                            ->distinct() // Prevents duplicate names in the same list
+                            ->disableLabel(),
+                    ])
+                    ->reorderableWithButtons() // Allows moving items up/down
+                    ->addActionLabel("Add New $label")
+                    ->collapsible()
+                    ->defaultItems(0),
+            ])->columnSpan(1);
     }
 
     protected function getFormActions(): array
     {
         return [
             Action::make('save')
-                ->label('Update Lists')
+                ->label('Save Changes')
                 ->submit('save')
                 ->color('success')
                 ->icon('heroicon-m-check-circle'),
-                
+
             Action::make('clear')
                 ->label('Reset All')
                 ->color('danger')
@@ -87,14 +97,15 @@ class InventorySettings extends Page implements HasForms
     public function save(): void
     {
         $state = $this->form->getState();
-        
-        Cache::forever('inventory_departments', $state['departments']);
-        Cache::forever('inventory_categories', $state['categories']);
-        Cache::forever('inventory_metal_types', $state['metal_types']);
+
+        // Convert the Repeater arrays back into flat lists for the rest of the app to use
+        Cache::forever('inventory_departments', collect($state['departments'])->pluck('name')->filter()->toArray());
+        Cache::forever('inventory_categories', collect($state['categories'])->pluck('name')->filter()->toArray());
+        Cache::forever('inventory_metal_types', collect($state['metal_types'])->pluck('name')->filter()->toArray());
 
         Notification::make()
-            ->title('Inventory Lists Updated')
-            ->body('Changes are now live in the Assemble Stock dropdowns.')
+            ->title('Settings Saved')
+            ->body('Tabular lists have been updated.')
             ->success()
             ->send();
     }
