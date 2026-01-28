@@ -21,8 +21,8 @@ class SupplierResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
     protected static ?string $navigationLabel = 'Vendors';
     protected static ?string $navigationGroup = 'Vendors';
-    protected static ?string $modelLabel = 'Supplier';
-    protected static ?string $pluralModelLabel = 'Suppliers';
+    protected static ?string $modelLabel = 'Vendors';
+    protected static ?string $pluralModelLabel = 'Vendors';
 
     public static function form(Form $form): Form
     {
@@ -33,7 +33,7 @@ class SupplierResource extends Resource
                         Tabs\Tab::make('Basic Information')
                             ->icon('heroicon-o-information-circle')
                             ->schema([
-                                Section::make('Supplier Identity')
+                                Section::make('Vendors Identity')
                                     ->schema([
                                         Grid::make(2)->schema([
                                             Forms\Components\TextInput::make('company_name')

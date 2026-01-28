@@ -33,133 +33,195 @@ class AdminPanelProvider extends PanelProvider
             ->topNavigation()
             ->brandLogo(asset('jeweltaglogo.png'))
             ->brandLogoHeight('2.5rem')
-
-            /* ───────── LIGHT MODE ONLY ───────── */
+            ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
-
-            /* ───────── YOUR BRAND COLORS ───────── */
             ->colors([
-                'primary' => Color::hex('#10b981'), // Your Emerald Green
-                'gray' => Color::Slate,
-                'info' => Color::hex('#0ea5e9'),
-                'success' => Color::hex('#10b981'),
-                'warning' => Color::hex('#f59e0b'),
-                'danger' => Color::hex('#ef4444'),
+                'primary' => Color::hex('#0d9488'),
+                'gray' => Color::hex('#4b5563'),
+                'info' => Color::hex('#0284c7'),
+                'success' => Color::hex('#059669'),
+                'warning' => Color::hex('#d97706'),
+                'danger' => Color::hex('#dc2626'),
             ])
             ->font('Inter')
-            
-            /* FIX 1: CHANGE MAX WIDTH TO FULL TO REMOVE THE HUGE GAPS */
-            ->maxContentWidth(MaxWidth::Full) 
-
-            /* ───────── PROFESSIONAL UI OVERRIDE ───────── */
+            ->maxContentWidth(MaxWidth::Full)
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn() => <<<HTML
+                fn() => <<<'HTML'
 <script>
     document.documentElement.classList.add('light');
     document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
 </script>
 
 <style>
-/* ───────── RESTORED SEA THEME SYSTEM ───────── */
+/* ───────── LUXURY SEA THEME SYSTEM ───────── */
+/* ───────── COMPREHENSIVE COLOR SYSTEM ───────── */
 :root {
-    --sea-bg: #e0f2fe; 
-    --sea-body: #0e7490; /* YOUR DEEP TEAL BODY COLOR */
-    --sea-nav-gradient: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%);
-    --sea-border: #99f6e4;
-    --sea-text: #0e7490;
+    /* Primary Colors */
+    --primary-color: #0d9488;
+    --primary-light: #2dd4bf;
+    --primary-dark: #0f766e;
+    
+    /* Background Colors */
+    --body-bg: #0e7490;
+    --nav-bg: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%);
+    --content-bg: #ffffff;
+    --card-bg: #ffffff;
+    --sidebar-bg: #f8fafc;
+    
+    /* Text Colors - HIGH CONTRAST */
+    --text-primary: #164e63;      /* Dark Teal for Headings */
+    --text-secondary: #0e7490;    /* Medium Teal */
+    --text-body: #1e293b;         /* Dark Gray for Body Text - HIGH VISIBILITY */
+    --text-muted: #64748b;        /* Gray for Labels */
+    --text-white: #ffffff;        /* White text for dark backgrounds */
+    --text-button: #ffffff;       /* White text for buttons */
+    
+    /* UI Elements */
+    --border-color: #cbd5e1;
+    --border-light: #e2e8f0;
+    --border-primary: #2dd4bf;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
-/* FIX 2: ALIGNMENT & SPACE REMOVAL */
+/* ───────── LOAD INTER FONT ───────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* ───────── GLOBAL TEXT FIXES ───────── */
 body, .fi-layout {
-    background-color: var(--sea-body) !important;
+    background-color: var(--body-bg) !important;
+    color: var(--text-body) !important;
 }
 
+
+
+/* ───────── MAIN CONTENT AREA ───────── */
 .fi-main {
-    background-color: var(--sea-body) !important;
-    padding-left: 1.5rem !important;
-    padding-right: 1.5rem !important;
+    background-color: var(--body-bg) !important;
+    padding: 1.5rem !important;
+    min-height: calc(100vh - 75px) !important;
 }
 
-/* Ensure the container takes full width and isn't squeezed */
 .fi-main > div {
     max-width: 100% !important;
 }
 
-/* 3. MODERNIZED TOPBAR (VISIBLE & ALIGNED) */
-.fi-topbar nav,
-.fi-topbar-with-navigation nav {
-    background: var(--sea-nav-gradient) !important;
-    background-color: var(--sea-bg) !important;
-    border-bottom: 2px solid var(--sea-border) !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
-    height: 75px !important;
+/* 1. LOGIN / REGISTER REFINEMENT (FIXES THE FADED LOOK) */
+.fi-simple-main-ctn {
+    background-color: var(--body-bg) !important;
 }
 
-.fi-topbar-item-button {
-    color: var(--sea-text) !important;
-    font-weight: 700 !important;
+.fi-simple-main {
+    background-color: #ffffff !important;
+    border-radius: 24px !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    padding: 2.5rem !important;
 }
 
-.fi-topbar-item-active .fi-topbar-item-button {
-    background-color: white !important;
-    border: 1px solid var(--sea-border) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2) !important;
+/* Fix Input Text & Labels in Auth Pages */
+.fi-simple-main input {
+    background-color: #f8fafc !important;
+    color: #111827 !important;
+    border: 2px solid #cbd5e1 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
 }
 
-/* 4. LUXURY TABLE & CARD STYLING */
-.fi-section, .fi-ta-ctn {
-    background-color: white !important;
-    border: none !important;
-    border-radius: 20px !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2) !important;
-    overflow: hidden !important;
-}
-
-/* Table Header (Making text highly visible) */
-.fi-ta-header-cell {
-    background-color: #f1f5f9 !important;
+.fi-simple-main label {
     color: #1e293b !important;
-    font-weight: 800 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
 }
 
-/* Table Rows */
-.fi-ta-row {
-    border-bottom: 1px solid #f1f5f9 !important;
+/* 2. TOP NAVIGATION (CLEAN GLASS LOOK) */
+.fi-topbar {
+    background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important;
+    border-bottom: 2px solid #5eead4 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.fi-topbar * {
+    color: #0f172a !important; /* Force dark text on light nav */
+    opacity: 1 !important;
+}
+
+/* 3. BREADCRUMBS (STOP FADING) */
+.fi-breadcrumbs-item-label {
+    color: #ffffff !important; 
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+.fi-breadcrumbs-item-link {
+    color: rgba(255, 255, 255, 0.8) !important;
+    opacity: 1 !important;
+}
+
+/* 4. DASHBOARD WIDGETS TEXT FIX */
+.fi-wi-stats-overview-stat-value {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+}
+
+.fi-wi-stats-overview-stat-label, 
+.fi-wi-stats-overview-stat-description {
+    color: #f0f9ff !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* 5. TABLE & CARD CONTRAST */
+.fi-section, .fi-ta-ctn {
+    background-color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important;
+    opacity: 1 !important;
+}
+
+.fi-section-header-heading, .fi-ta-header-cell-label {
+    color: #0f172a !important;
+    font-weight: 800 !important;
+}
+
+/* 6. BUTTON VISIBILITY */
+.fi-btn-primary {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    opacity: 1 !important;
+}
+
+/* Fix for standard inputs being invisible */
+.fi-input-wrp {
+    background-color: white !important;
+    opacity: 1 !important;
+}
+
+/* PEARL BLUE TABLE */
+.fi-ta-ctn,
+.fi-ta-header,
+.fi-ta-header-cell,
+.fi-ta-row,
+.fi-ta-empty-state,
+.fi-ta-footer {
+    background-color: #eef2f7 !important;
 }
 
 .fi-ta-row:hover {
-    background-color: #f0fdf4 !important; /* Soft Emerald tint on hover */
+    background-color: #e0e7ef !important;
 }
 
-/* 5. FIXING THE TEXT VISIBILITY */
-.fi-header-heading {
-    color: white !important; /* Since body is dark teal, headings should be white */
-    font-weight: 800 !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+.fi-ta-cell {
+    color: #000000 !important;
 }
 
-.fi-ta-text-item-label {
-    color: #334155 !important;
-    font-weight: 500 !important;
-}
-
-/* 6. BUTTONS */
-.fi-btn-primary, .fi-ac-action {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    transition: transform 0.2s ease !important;
-}
-
-.fi-btn-primary:hover {
-    transform: translateY(-2px) !important;
-}
 </style>
 HTML
             )
@@ -187,7 +249,6 @@ HTML
             ])
             ->widgets([
                 \App\Filament\Widgets\StatsOverview::class,
-                
                 \App\Filament\Widgets\LatestSales::class,
                 \App\Filament\Widgets\FastestSellingItems::class,
                 \App\Filament\Widgets\DepartmentChart::class,

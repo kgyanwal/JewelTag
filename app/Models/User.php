@@ -2,20 +2,24 @@
 
 namespace App\Models;
 
+// 🔹 CRITICAL IMPORTS for Filament and Roles
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable
+// 🔹 Must "implements FilamentUser" to allow panel access
+class User extends Authenticatable implements FilamentUser
 {
+    use HasFactory, HasRoles, Notifiable;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
-    use HasFactory, HasRoles, Notifiable;
-
     protected $fillable = [
         'name',
         'email',
@@ -50,13 +54,25 @@ class User extends Authenticatable
         'base_commission_rate' => 'decimal:2',
     ];
 
-    // Relationships
+    /**
+     * 🔹 FILAMENT ACCESS CONTROL
+     * This method is required by the FilamentUser interface.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // Grants access only if user is active and has the 'Superadmin' role
+        return $this->is_active && $this->hasRole('Superadmin');
+    }
+
+    // --- Relationships ---
+
     public function store()
     {
         return $this->belongsTo(Store::class);
     }
 
-    // Scopes
+    // --- Scopes ---
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -67,7 +83,8 @@ class User extends Authenticatable
         return $query->where('store_id', $storeId);
     }
 
-    // Attributes
+    // --- Attributes ---
+
     public function getFullNameAttribute()
     {
         return $this->name;
@@ -85,7 +102,6 @@ class User extends Authenticatable
 
     /**
      * Check if user has any of the given roles.
-     * * Note: Fixed recursion in your original version
      */
     public function hasAnyRole($roles)
     {

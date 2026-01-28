@@ -77,7 +77,7 @@ class ProductItemResource extends Resource
                             ->inline(false)
                             ->columnSpan(6), // Logic: Now persists to DB
 
-                        TextInput::make('rfid_epc')
+                        TextInput::make('rfid_code')
                             ->label('RFID EPC Code')
                             ->placeholder('Auto-generated')
                             ->disabled()
@@ -85,35 +85,55 @@ class ProductItemResource extends Resource
                             ->columnSpan(6),
 
                         TextInput::make('supplier_code')
-                            ->label('Supplier Code')
+                            ->label('Vendor Code')
                             ->placeholder('Auto-fills from last invoice')
                             ->columnSpan(3),
 
                         Select::make('form_type')
-                            ->options(['Ring' => 'Ring', 'Watch' => 'Watch', 'Earring' => 'Earring', 'General' => 'General'])
+                            ->options(['Diamond' => 'Diamond', 'Gold' => 'Gold', 'Silver' => 'Silver', 'Watch' => 'Watch'])
                             ->default('General')->columnSpan(3),
 
                         Select::make('department')
-                            ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+    ->label('Department')
+    ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select department')
+ 
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Categories to add new departments')
+    ->columnSpan(2),
 
-                        Select::make('category')
-                            ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+Select::make('category')
+    ->label('Category')
+    ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select category')
+  
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Categories to add new categories')
+    ->columnSpan(2),
 
-                        Select::make('metal_type')
-                            ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()->columnSpan(2),
+Select::make('metal_type')
+    ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
+    ->searchable()
+    ->placeholder('Select metal type')
+  
+    ->hintIcon('heroicon-o-information-circle')
+    ->hintColor('primary')
+    ->hintIconTooltip('Go to Inventory Settings → Metal Types to add new options')
+    ->columnSpan(2),
 
                         TextInput::make('size')->columnSpan(6),
                         TextInput::make('metal_weight')->numeric()->columnSpan(6),
 
-                        TextInput::make('qty')->numeric()->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
+                        TextInput::make('qty')->numeric()->required()->dehydrated(true)->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
 
                         TextInput::make('cost_price')->prefix('$')->numeric()->columnSpan(2),
                         TextInput::make('retail_price')->prefix('$')->numeric()->columnSpan(3)->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
                         TextInput::make('web_price')->prefix('$')->numeric()->columnSpan(3),
-                        TextInput::make('discount_percent')->suffix('%')->numeric()->columnSpan(2),
+                        TextInput::make('discount_percent')->default(0)->suffix('%')->numeric()->columnSpan(2),
 
                         Textarea::make('custom_description')->columnSpan(12)->rows(3),
 
@@ -132,10 +152,17 @@ class ProductItemResource extends Resource
                 Tables\Columns\TextColumn::make('custom_description')->label('DESCRIPTION')->limit(40),
                 Tables\Columns\TextColumn::make('metal_weight')->label('WEIGHT')->suffix('g'),
                 Tables\Columns\TextColumn::make('retail_price')->label('PRICE')->money('USD')->color('success'),
-                Tables\Columns\BadgeColumn::make('has_rfid')
-                    ->label('RFID')
-                    ->getStateUsing(fn ($record) => !empty($record->rfid_epc) ? 'Yes' : 'No')
-                    ->colors(['success' => 'Yes', 'gray' => 'No']),
+                Tables\Columns\TextColumn::make('rfid_code')
+                ->label('RFID NUMBER')
+                ->fontFamily('mono')
+                ->placeholder('Not Printed')
+                ->searchable()
+                ->copyable(),
+
+            Tables\Columns\BadgeColumn::make('has_rfid')
+                ->label('RFID STATUS')
+                ->getStateUsing(fn ($record) => !empty($record->rfid_code) ? 'Yes' : 'No')
+                ->colors(['success' => 'Yes', 'gray' => 'No']),
                 Tables\Columns\TextColumn::make('status')
     ->badge()
     ->color(fn (string $state): string => match ($state) {
@@ -149,7 +176,11 @@ class ProductItemResource extends Resource
                 ActionGroup::make([
                     EditAction::make(),
                     ViewAction::make()->color('info'),
-                    
+                    Tables\Actions\DeleteAction::make()
+                    ->label('Delete Item')
+                    ->modalHeading('Delete Jewelry Item')
+                    ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
+                    ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])), // Restricted access
                     Action::make('print_tag')
                         ->label('Print Barcode Tag')
                         ->icon('heroicon-o-printer')

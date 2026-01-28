@@ -18,12 +18,14 @@ class ProductItem extends Model
 
 protected $fillable = [
     'barcode',
+    'qty',
     'supplier_id',
     'store_id',
     'supplier_code',
     'form_type',
     'department',
     'category',
+    'rfid_code',
     'metal_type',
     'size',          // 🔹 Add this
     'metal_weight',  // 🔹 Add this
@@ -38,10 +40,10 @@ protected $fillable = [
 ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty
-    public function getStatusAttribute($value)
-    {
-        return $this->qty > 0 ? self::STATUS_IN_STOCK : self::STATUS_SOLD;
-    }
+    // public function getStatusAttribute($value)
+    // {
+    //     return $this->qty > 0 ? self::STATUS_IN_STOCK : self::STATUS_SOLD;
+    // }
 
     public function productTemplate(): BelongsTo
     {
@@ -55,14 +57,14 @@ public function store(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
     }
-    protected static function booted()
-{
-    static::saving(function ($item) {
-        if ($item->qty <= 0) {
-            $item->status = 'sold';
-            $item->qty = 0;
-        }
-    });
-}
+//     protected static function booted()
+// {
+//     static::saving(function ($item) {
+//         if ($item->qty <= 0) {
+//             $item->status = 'sold';
+//             $item->qty = 0;
+//         }
+//     });
+// }
 
 }

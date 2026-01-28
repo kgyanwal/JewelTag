@@ -51,41 +51,36 @@ class CreateProductItem extends CreateRecord
     }
 
     protected function handleRecordCreation(array $data): Model
-    {
-        $qty = (int) ($data['qty'] ?? 1);
-        $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
-        $printOptions = $data['print_options'] ?? [];
-        $trackingEnabled = $data['enable_rfid_tracking'] ?? false;
+{
+    $qty = (int) ($data['qty'] ?? 1);
+    $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
+    $trackingEnabled = $data['enable_rfid_tracking'] ?? false;
 
-        unset($data['qty'], $data['print_options'], $data['creation_mode']);
+    // We keep 'qty' in $data so it SAVES to the database
+    unset($data['print_options'], $data['creation_mode']);
 
-        $firstRecord = null;
-        $lastBarcode = \App\Models\ProductItem::where('barcode', 'LIKE', 'G%')
-            ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
-            ->value('barcode');
-        $lastNumber = $lastBarcode ? (int) substr($lastBarcode, 1) : 1000;
+    $firstRecord = null;
+    $lastBarcode = \App\Models\ProductItem::where('barcode', 'LIKE', 'G%')
+        ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
+        ->value('barcode');
+    $lastNumber = $lastBarcode ? (int) substr($lastBarcode, 1) : 1000;
 
-        for ($i = 0; $i < $qty; $i++) {
-            $itemData = $data;
-            $itemData['store_id'] = $storeId;
-            $itemData['barcode'] = 'G' . ($lastNumber + $i + 1);
-            
-            if ($trackingEnabled) {
-                $itemData['rfid_epc'] = strtoupper(substr(md5(uniqid() . $i), 0, 24));
-            }
-
-            $record = static::getModel()::create($itemData);
-
-            $printer = app(ZebraPrinterService::class);
-            if (in_array('print_rfid', $printOptions)) {
-                $printer->printJewelryTag($record, true);
-            } elseif (in_array('print_tag', $printOptions)) {
-                $printer->printJewelryTag($record, false);
-            }
-
-            if ($i === 0) $firstRecord = $record;
+    for ($i = 0; $i < $qty; $i++) {
+        $itemData = $data;
+        $itemData['store_id'] = $storeId;
+        $itemData['barcode'] = 'G' . ($lastNumber + $i + 1);
+        
+        if ($trackingEnabled) {
+            $itemData['rfid_code'] = strtoupper(substr(md5(uniqid() . $i), 0, 24));
         }
 
-        return $firstRecord;
+        // 🔹 This now saves the 'qty' you entered into the DB column
+        $record = static::getModel()::create($itemData);
+
+        // ... (Printing logic)
+        if ($i === 0) $firstRecord = $record;
     }
+
+    return $firstRecord;
+}
 }

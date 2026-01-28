@@ -17,8 +17,11 @@ class ZebraPrinterService
             $stockNo = (string)($record->barcode ?? 'N/A');
             $price   = '$' . number_format($record->retail_price, 2);
             $desc    = strtoupper(substr($record->custom_description ?? 'JEWELRY', 0, 15));
-            $epcHex  = $record->rfid_epc ?: strtoupper(str_pad(dechex($record->id), 24, '0', STR_PAD_LEFT));
+            $epcHex  = $record->rfid_code ?: strtoupper(str_pad(dechex($record->id), 24, '0', STR_PAD_LEFT));
 
+            if (empty($record->rfid_code)) {
+            $record->update(['rfid_code' => $epcHex]);
+        }
             $getPos = fn($id, $defX, $defY) => [
                 'x' => (int)($layouts->get($id)->x_pos ?? $defX),
                 'y' => (int)($layouts->get($id)->y_pos ?? $defY)
