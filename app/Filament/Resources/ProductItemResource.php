@@ -100,7 +100,6 @@ class ProductItemResource extends Resource
                             ->placeholder('Select department')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
-                            ->hintIconTooltip('Go to Inventory Settings → Categories to add new departments')
                             ->columnSpan(2),
 
                         Select::make('category')
@@ -110,7 +109,6 @@ class ProductItemResource extends Resource
                             ->placeholder('Select category')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
-                            ->hintIconTooltip('Go to Inventory Settings → Categories to add new categories')
                             ->columnSpan(2),
 
                         Select::make('metal_type')
@@ -119,37 +117,21 @@ class ProductItemResource extends Resource
                             ->placeholder('Select metal type')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
-                            ->hintIconTooltip('Go to Inventory Settings → Metal Types to add new options')
                             ->columnSpan(2),
 
                         TextInput::make('size')->columnSpan(6),
                         TextInput::make('metal_weight')->numeric()->columnSpan(6),
 
-                        TextInput::make('qty')
-                            ->numeric()
-                            ->required()
-                            ->dehydrated(true)
-                            ->default(1)
-                            ->columnSpan(2)
-                            ->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
+                        TextInput::make('qty')->numeric()->required()->dehydrated(true)->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
 
                         TextInput::make('cost_price')->prefix('$')->numeric()->columnSpan(2),
-                        TextInput::make('retail_price')
-                            ->prefix('$')
-                            ->numeric()
-                            ->columnSpan(3)
-                            ->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
+                        TextInput::make('retail_price')->prefix('$')->numeric()->columnSpan(3)->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
                         TextInput::make('web_price')->prefix('$')->numeric()->columnSpan(3),
                         TextInput::make('discount_percent')->default(0)->suffix('%')->numeric()->columnSpan(2),
 
                         Textarea::make('custom_description')->columnSpan(12)->rows(3),
 
-                        TextInput::make('barcode')
-                            ->label('Stock Number')
-                            ->placeholder('G-Auto Generate')
-                            ->disabled()
-                            ->dehydrated()
-                            ->columnSpan(4),
+                        TextInput::make('barcode')->label('Stock Number')->placeholder('G-Auto Generate')->disabled()->dehydrated()->columnSpan(4),
                         TextInput::make('serial_number')->columnSpan(4),
                         TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
                     ]),
@@ -192,7 +174,6 @@ class ProductItemResource extends Resource
                     Tables\Actions\DeleteAction::make()
                         ->label('Delete Item')
                         ->modalHeading('Delete Jewelry Item')
-                        ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
                         ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
                     
                     /* ───────── FIXED PRINTING ACTIONS ───────── */
@@ -201,16 +182,15 @@ class ProductItemResource extends Resource
                         ->icon('heroicon-o-printer')
                         ->color('info')
                         ->requiresConfirmation()
-                        ->action(function ($record, ZebraPrinterService $service) {
-                            // 1. Generate ZPL on the server
+                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
+                            // 1. Generate ZPL string on server
                             $zpl = $service->generateZpl($record, false);
 
-                            // 2. Dispatch to the browser (handled by zebra-print.js)
-                            $this->dispatch('trigger-zebra-print', zpl: $zpl);
+                            // 2. Dispatch to browser using $livewire instance
+                            $livewire->dispatch('trigger-zebra-print', zpl: $zpl);
 
                             Notification::make()
                                 ->title('ZPL Data Generated')
-                                ->body('Sending to local printer...')
                                 ->success()
                                 ->send();
                         }),
@@ -220,12 +200,11 @@ class ProductItemResource extends Resource
                         ->icon('heroicon-o-identification')
                         ->color('warning')
                         ->requiresConfirmation()
-                        ->action(function ($record, ZebraPrinterService $service) {
-                            // 1. Generate RFID ZPL
+                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
                             $zpl = $service->generateZpl($record, true);
 
-                            // 2. Dispatch to browser
-                            $this->dispatch('trigger-zebra-print', zpl: $zpl);
+                            // Dispatch to browser using $livewire instance
+                            $livewire->dispatch('trigger-zebra-print', zpl: $zpl);
 
                             Notification::make()
                                 ->title('RFID Data Generated')
@@ -237,7 +216,7 @@ class ProductItemResource extends Resource
                         ->label('Check Printer Status')
                         ->icon('heroicon-o-wrench')
                         ->color('gray')
-                        ->action(fn() => $this->dispatch('trigger-zebra-status-check')),
+                        ->action(fn($livewire) => $livewire->dispatch('trigger-zebra-status-check')),
                 ]),
             ]);
     }
