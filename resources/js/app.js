@@ -1,36 +1,39 @@
 import './bootstrap';
 
 window.addEventListener('trigger-zebra-print', event => {
-    // Filament v3 uses event.detail[0].zpl or event.detail.zpl depending on how it's dispatched
-    // This check handles both
+    // 1. Force BrowserPrint to use HTTPS and Port 9101 for your secure domain
+    if (typeof BrowserPrint !== 'undefined') {
+        BrowserPrint.Configuration.PROTOCOL = "https";
+        BrowserPrint.Configuration.PORT = 9101;
+    } else {
+        alert('Zebra Library (BrowserPrint) is missing. Check AdminPanelProvider.');
+        return;
+    }
+
+    // 2. Extract ZPL from Filament event
     const zplData = event.detail.zpl || (event.detail[0] && event.detail[0].zpl);
 
     if (!zplData) {
-        console.error('No ZPL data found in event:', event.detail);
-        alert('Error: No ZPL data received.');
+        console.error('No ZPL data received');
         return;
     }
 
-    // Check if the Zebra library is actually loaded on the page
-    if (typeof BrowserPrint === 'undefined') {
-        alert('Zebra BrowserPrint library not loaded. Please add the script tag to your layout.');
-        return;
-    }
-
-    // Connect to the local Zebra Browser Print service
+    // 3. Try to find the printer
     BrowserPrint.getDefaultDevice("printer", function(device) {
         if (device && device.connection !== undefined) {
-            // Send the ZPL directly to the printer via local USB/Network
+            // 4. Send the ZPL string
             device.send(zplData, function(success) {
-                console.log("Print Successful");
+                console.log("Print sent successfully to: " + device.name);
             }, function(error) {
-                alert("Printing Error: " + error);
+                alert("Printer Error: " + error);
             });
         } else {
-            alert("Printer not found. \n1. Ensure Zebra Browser Print app is running on your Mac. \n2. Visit https://localhost:9101/ssl_support and click 'Proceed' to trust the connection.");
+            // This usually means the SSL is accepted, but the "Accepted Hosts" popup was missed
+            alert("Printer not found. Please look for the Zebra permission popup on your Mac screen and click YES.");
         }
     }, function(error) {
-        console.error("Browser Print Service Error:", error);
-        alert("Cannot communicate with Zebra Browser Print app. Is it running?");
+        // This usually means the browser is blocking localhost:9101
+        console.error("Communication Error:", error);
+        alert("Cannot communicate with Zebra App.\n\nFix:\n1. Open https://localhost:9101/ssl_support\n2. Click 'Advanced' -> 'Proceed to localhost'.\n3. Keep that tab open and try again.");
     });
 });
