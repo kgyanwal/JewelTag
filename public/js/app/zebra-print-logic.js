@@ -1,5 +1,3 @@
-import './bootstrap';
-
 window.addEventListener('trigger-zebra-print', event => {
     // 1. Force Secure Protocol and Port for thedsq.jeweltag.us
     if (typeof BrowserPrint !== 'undefined') {
