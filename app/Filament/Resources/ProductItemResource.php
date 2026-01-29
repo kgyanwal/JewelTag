@@ -68,7 +68,7 @@ class ProductItemResource extends Resource
                                 'encode_rfid' => 'Encode RFID Data'
                             ])
                             ->columns(3)
-                            ->columnSpan(12),
+                            ->columnSpan(12), 
 
                         Toggle::make('enable_rfid_tracking')
                             ->label('Enable RFID Tracking')
@@ -100,6 +100,7 @@ class ProductItemResource extends Resource
                             ->placeholder('Select department')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
+                            ->hintIconTooltip('Go to Inventory Settings → Categories to add new departments')
                             ->columnSpan(2),
 
                         Select::make('category')
@@ -109,6 +110,7 @@ class ProductItemResource extends Resource
                             ->placeholder('Select category')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
+                            ->hintIconTooltip('Go to Inventory Settings → Categories to add new categories')
                             ->columnSpan(2),
 
                         Select::make('metal_type')
@@ -117,21 +119,37 @@ class ProductItemResource extends Resource
                             ->placeholder('Select metal type')
                             ->hintIcon('heroicon-o-information-circle')
                             ->hintColor('primary')
+                            ->hintIconTooltip('Go to Inventory Settings → Metal Types to add new options')
                             ->columnSpan(2),
 
                         TextInput::make('size')->columnSpan(6),
                         TextInput::make('metal_weight')->numeric()->columnSpan(6),
 
-                        TextInput::make('qty')->numeric()->required()->dehydrated(true)->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
+                        TextInput::make('qty')
+                            ->numeric()
+                            ->required()
+                            ->dehydrated(true)
+                            ->default(1)
+                            ->columnSpan(2)
+                            ->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
 
                         TextInput::make('cost_price')->prefix('$')->numeric()->columnSpan(2),
-                        TextInput::make('retail_price')->prefix('$')->numeric()->columnSpan(3)->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
+                        TextInput::make('retail_price')
+                            ->prefix('$')
+                            ->numeric()
+                            ->columnSpan(3)
+                            ->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
                         TextInput::make('web_price')->prefix('$')->numeric()->columnSpan(3),
                         TextInput::make('discount_percent')->default(0)->suffix('%')->numeric()->columnSpan(2),
 
                         Textarea::make('custom_description')->columnSpan(12)->rows(3),
 
-                        TextInput::make('barcode')->label('Stock Number')->placeholder('G-Auto Generate')->disabled()->dehydrated()->columnSpan(4),
+                        TextInput::make('barcode')
+                            ->label('Stock Number')
+                            ->placeholder('G-Auto Generate')
+                            ->disabled()
+                            ->dehydrated()
+                            ->columnSpan(4),
                         TextInput::make('serial_number')->columnSpan(4),
                         TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
                     ]),
@@ -177,17 +195,22 @@ class ProductItemResource extends Resource
                         ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
                         ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
                     
+                    /* ───────── FIXED PRINTING ACTIONS ───────── */
                     Action::make('print_tag')
                         ->label('Print Barcode Tag')
                         ->icon('heroicon-o-printer')
                         ->color('info')
                         ->requiresConfirmation()
                         ->action(function ($record, ZebraPrinterService $service) {
+                            // 1. Generate ZPL on the server
                             $zpl = $service->generateZpl($record, false);
+
+                            // 2. Dispatch to the browser (handled by zebra-print.js)
                             $this->dispatch('trigger-zebra-print', zpl: $zpl);
-                            
+
                             Notification::make()
-                                ->title('ZPL Sent to Browser')
+                                ->title('ZPL Data Generated')
+                                ->body('Sending to local printer...')
                                 ->success()
                                 ->send();
                         }),
@@ -198,11 +221,14 @@ class ProductItemResource extends Resource
                         ->color('warning')
                         ->requiresConfirmation()
                         ->action(function ($record, ZebraPrinterService $service) {
+                            // 1. Generate RFID ZPL
                             $zpl = $service->generateZpl($record, true);
+
+                            // 2. Dispatch to browser
                             $this->dispatch('trigger-zebra-print', zpl: $zpl);
 
                             Notification::make()
-                                ->title('RFID ZPL Sent to Browser')
+                                ->title('RFID Data Generated')
                                 ->success()
                                 ->send();
                         }),

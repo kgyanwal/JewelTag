@@ -9,13 +9,15 @@ use Illuminate\Support\Facades\Log;
 class ZebraPrinterService
 {
     /**
-     * CHANGED: This now returns a STRING (the ZPL) instead of a BOOL.
-     * This is required for the $this->dispatch() in your Resource.
+     * Generates the ZPL string for the browser to handle.
+     * Removed fsockopen because the cloud server cannot see local IPs.
      */
     public function generateZpl(ProductItem $record, bool $useRFID = true): string
     {
         try {
+            // Fetch layouts from DB
             $layouts = LabelLayout::all()->keyBy('field_id');
+            
             $stockNo = (string)($record->barcode ?? 'N/A');
             $price   = '$' . number_format($record->retail_price, 2);
             $desc    = strtoupper(substr($record->custom_description ?? 'JEWELRY', 0, 15));
@@ -27,7 +29,7 @@ class ZebraPrinterService
                 $record->update(['rfid_code' => $epcHex]);
             }
 
-            // Layout positioning logic (Kept from your original)
+            // Positioning Logic
             $getPos = fn($id, $defX, $defY) => [
                 'x' => (int)($layouts->get($id)->x_pos ?? $defX),
                 'y' => (int)($layouts->get($id)->y_pos ?? $defY)
@@ -40,7 +42,7 @@ class ZebraPrinterService
             $pC2    = $getPos('custom2', 65, 24);
             $pC3    = $getPos('custom3', 65, 26);
 
-            // Build ZPL String
+            // Start ZPL String
             $zpl = "^XA^CI28^MMT^MTT^MD30^PW450^LL400^LS0^PR2";
             
             if ($useRFID) { 
@@ -60,15 +62,12 @@ class ZebraPrinterService
 
         } catch (\Exception $e) { 
             Log::error("Zebra ZPL Generation Error: " . $e->getMessage()); 
-            return "^XA^FO50,50^A0N,50,50^FDEROR^FS^XZ"; 
+            return "^XA^FO50,50^A0N,40,40^FDError Generating ZPL^FS^XZ"; 
         }
     }
 
-    /**
-     * This is no longer used for printing from cloud, but we'll leave it 
-     * as a placeholder to prevent errors in other parts of the app.
-     */
-    public function checkRFIDPrinterStatus(): array {
+    public function checkRFIDPrinterStatus(): array 
+    {
         return ['connected' => true];
     }
 }
