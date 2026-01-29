@@ -19,6 +19,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Navigation\NavigationGroup;
 use Filament\View\PanelsRenderHook;
+use Filament\Support\Assets\Js; // Added for Zebra Assets
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -45,6 +46,16 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Inter')
             ->maxContentWidth(MaxWidth::Full)
+            /* |--------------------------------------------------------------------------
+            | Zebra Browser Print Assets
+            |--------------------------------------------------------------------------
+            */
+            ->assets([
+                // Load the Zebra Library from public/js/zebra-lib.js
+                Js::make('zebra-library', asset('js/zebra-lib.js')),
+                // Load your compiled app.js logic
+                Js::make('zebra-print-logic', resource_path('js/app.js'))->module(),
+            ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn() => <<<'HTML'
