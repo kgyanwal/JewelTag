@@ -68,14 +68,14 @@ class ProductItemResource extends Resource
                                 'encode_rfid' => 'Encode RFID Data'
                             ])
                             ->columns(3)
-                            ->columnSpan(12), // Logic: Now persists to DB
+                            ->columnSpan(12),
 
                         Toggle::make('enable_rfid_tracking')
                             ->label('Enable RFID Tracking')
                             ->onColor('success')
                             ->offColor('gray')
                             ->inline(false)
-                            ->columnSpan(6), // Logic: Now persists to DB
+                            ->columnSpan(6),
 
                         TextInput::make('rfid_code')
                             ->label('RFID EPC Code')
@@ -94,36 +94,30 @@ class ProductItemResource extends Resource
                             ->default('General')->columnSpan(3),
 
                         Select::make('department')
-    ->label('Department')
-    ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
-    ->searchable()
-    ->placeholder('Select department')
- 
-    ->hintIcon('heroicon-o-information-circle')
-    ->hintColor('primary')
-    ->hintIconTooltip('Go to Inventory Settings → Categories to add new departments')
-    ->columnSpan(2),
+                            ->label('Department')
+                            ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
+                            ->searchable()
+                            ->placeholder('Select department')
+                            ->hintIcon('heroicon-o-information-circle')
+                            ->hintColor('primary')
+                            ->columnSpan(2),
 
-Select::make('category')
-    ->label('Category')
-    ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
-    ->searchable()
-    ->placeholder('Select category')
-  
-    ->hintIcon('heroicon-o-information-circle')
-    ->hintColor('primary')
-    ->hintIconTooltip('Go to Inventory Settings → Categories to add new categories')
-    ->columnSpan(2),
+                        Select::make('category')
+                            ->label('Category')
+                            ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
+                            ->searchable()
+                            ->placeholder('Select category')
+                            ->hintIcon('heroicon-o-information-circle')
+                            ->hintColor('primary')
+                            ->columnSpan(2),
 
-Select::make('metal_type')
-    ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
-    ->searchable()
-    ->placeholder('Select metal type')
-  
-    ->hintIcon('heroicon-o-information-circle')
-    ->hintColor('primary')
-    ->hintIconTooltip('Go to Inventory Settings → Metal Types to add new options')
-    ->columnSpan(2),
+                        Select::make('metal_type')
+                            ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
+                            ->searchable()
+                            ->placeholder('Select metal type')
+                            ->hintIcon('heroicon-o-information-circle')
+                            ->hintColor('primary')
+                            ->columnSpan(2),
 
                         TextInput::make('size')->columnSpan(6),
                         TextInput::make('metal_weight')->numeric()->columnSpan(6),
@@ -153,59 +147,71 @@ Select::make('metal_type')
                 Tables\Columns\TextColumn::make('metal_weight')->label('WEIGHT')->suffix('g'),
                 Tables\Columns\TextColumn::make('retail_price')->label('PRICE')->money('USD')->color('success'),
                 Tables\Columns\TextColumn::make('rfid_code')
-                ->label('RFID NUMBER')
-                ->fontFamily('mono')
-                ->placeholder('Not Printed')
-                ->searchable()
-                ->copyable(),
+                    ->label('RFID NUMBER')
+                    ->fontFamily('mono')
+                    ->placeholder('Not Printed')
+                    ->searchable()
+                    ->copyable(),
 
-            Tables\Columns\BadgeColumn::make('has_rfid')
-                ->label('RFID STATUS')
-                ->getStateUsing(fn ($record) => !empty($record->rfid_code) ? 'Yes' : 'No')
-                ->colors(['success' => 'Yes', 'gray' => 'No']),
+                Tables\Columns\BadgeColumn::make('has_rfid')
+                    ->label('RFID STATUS')
+                    ->getStateUsing(fn ($record) => !empty($record->rfid_code) ? 'Yes' : 'No')
+                    ->colors(['success' => 'Yes', 'gray' => 'No']),
+                    
                 Tables\Columns\TextColumn::make('status')
-    ->badge()
-    ->color(fn (string $state): string => match ($state) {
-        'in_stock' => 'success',
-        'sold' => 'danger',
-        'out_of_stock' => 'warning',
-        default => 'gray',
-    }),
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'in_stock' => 'success',
+                        'sold' => 'danger',
+                        'out_of_stock' => 'warning',
+                        default => 'gray',
+                    }),
             ])
             ->actions([
                 ActionGroup::make([
                     EditAction::make(),
                     ViewAction::make()->color('info'),
                     Tables\Actions\DeleteAction::make()
-                    ->label('Delete Item')
-                    ->modalHeading('Delete Jewelry Item')
-                    ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
-                    ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])), // Restricted access
+                        ->label('Delete Item')
+                        ->modalHeading('Delete Jewelry Item')
+                        ->modalDescription('Are you sure you want to delete this stock item? This action cannot be undone.')
+                        ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
+                    
                     Action::make('print_tag')
                         ->label('Print Barcode Tag')
                         ->icon('heroicon-o-printer')
                         ->color('info')
                         ->requiresConfirmation()
-                        ->action(fn ($record, ZebraPrinterService $service) => $service->printJewelryTag($record, false)),
+                        ->action(function ($record, ZebraPrinterService $service) {
+                            $zpl = $service->generateZpl($record, false);
+                            $this->dispatch('trigger-zebra-print', zpl: $zpl);
+                            
+                            Notification::make()
+                                ->title('ZPL Sent to Browser')
+                                ->success()
+                                ->send();
+                        }),
                     
                     Action::make('print_rfid_tag')
                         ->label('Print RFID Tag')
                         ->icon('heroicon-o-identification')
                         ->color('warning')
                         ->requiresConfirmation()
-                        ->action(fn ($record, ZebraPrinterService $service) => $service->printJewelryTag($record, true)),
+                        ->action(function ($record, ZebraPrinterService $service) {
+                            $zpl = $service->generateZpl($record, true);
+                            $this->dispatch('trigger-zebra-print', zpl: $zpl);
+
+                            Notification::make()
+                                ->title('RFID ZPL Sent to Browser')
+                                ->success()
+                                ->send();
+                        }),
                     
                     Action::make('test_rfid_printer')
                         ->label('Check Printer Status')
                         ->icon('heroicon-o-wrench')
                         ->color('gray')
-                        ->action(function (ZebraPrinterService $service) {
-                            $status = $service->checkRFIDPrinterStatus();
-                            Notification::make()
-                                ->title($status['connected'] ? 'Printer Online' : 'Printer Offline')
-                                ->status($status['connected'] ? 'success' : 'danger')
-                                ->send();
-                        }),
+                        ->action(fn() => $this->dispatch('trigger-zebra-status-check')),
                 ]),
             ]);
     }
