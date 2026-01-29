@@ -54,7 +54,7 @@ class AdminPanelProvider extends PanelProvider
                 // Load the Zebra Library from public/js/zebra-lib.js
                 Js::make('zebra-library', asset('js/zebra-lib.js')),
                 // Load your compiled app.js logic
-                Js::make('zebra-print-logic', resource_path('js/app.js'))->module(),
+                Js::make('zebra-print-logic', asset('js/custom/zebra-print.js')),
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
