@@ -23,7 +23,7 @@ class SoldItemsReport extends Page implements HasForms, HasTable
 
     protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
     protected static ?string $navigationGroup = 'Reports';
-    protected static ?string $navigationLabel = 'SAL003: Items Sold';
+    protected static ?string $navigationLabel = 'SALES: Items Sold';
     protected static string $view = 'filament.pages.sold-items-report';
 
     public ?array $data = [];

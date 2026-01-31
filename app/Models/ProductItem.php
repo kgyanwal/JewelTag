@@ -29,6 +29,7 @@ protected $fillable = [
     'metal_type',
     'size',          // 🔹 Add this
     'metal_weight',  // 🔹 Add this
+    'diamond_weight',
     'cost_price',
     'retail_price',
     'web_price',
@@ -37,6 +38,8 @@ protected $fillable = [
     'serial_number',
     'component_qty',
     'status',
+    'is_trade_in',         // 🔹 MUST BE HERE
+    'original_trade_in_no', // 🔹 MUST BE HERE
 ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty

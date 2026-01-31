@@ -8,18 +8,26 @@ class SaleItem extends Model
 {
     protected $guarded = [];
 
-    public function productItem() { return $this->belongsTo(ProductItem::class); }
+    // 🔹 FIX: This was missing and caused your error
+    public function sale() 
+    { 
+        return $this->belongsTo(Sale::class); 
+    }
 
-    // MAGIC: When a SaleItem is created, mark the Ring as SOLD
+    public function productItem() 
+    { 
+        return $this->belongsTo(ProductItem::class); 
+    }
+
     protected static function booted()
     {
         static::created(function ($saleItem) {
-            $saleItem->productItem->update(['status' => ProductItem::STATUS_SOLD]);
+            // Ensure ProductItem constants are defined in ProductItem model
+            $saleItem->productItem->update(['status' => 'sold']);
         });
         
-        // If we delete the sale, mark Ring as IN STOCK again
         static::deleted(function ($saleItem) {
-            $saleItem->productItem->update(['status' => ProductItem::STATUS_IN_STOCK]);
+            $saleItem->productItem->update(['status' => 'in_stock']);
         });
     }
 }

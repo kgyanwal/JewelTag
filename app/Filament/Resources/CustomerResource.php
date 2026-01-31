@@ -64,13 +64,16 @@ class CustomerResource extends Resource
                                         ]),
                                         Grid::make(2)->schema([
                                             Select::make('sales_person')
-                                                ->options([
-                                                    'Aaron' => 'Aaron',
-                                                    'Ben' => 'Ben',
-                                                    'Simon' => 'Simon',
-                                                    'Priscilla' => 'Priscilla',
-                                                ])->searchable(),
-                                            TextInput::make('tax_number')->label('Tax Number'),
+    ->label('Sales Person')
+    // 🔹 Dynamically pull users who have specific roles
+    ->options(function () {
+        return \App\Models\User::role(['Superadmin', 'Administration', 'Manager', 'Sales Associate'])
+            ->pluck('name', 'name'); // Stores name, displays name
+    })
+    ->searchable()
+    ->preload()
+    ->placeholder('Select a sales person'),
+                                            // TextInput::make('tax_number')->label('Tax Number'),
                                         ]),
                                         Section::make('Address')
                                             ->columns(2)->collapsible()

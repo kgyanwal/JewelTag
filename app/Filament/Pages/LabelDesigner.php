@@ -29,6 +29,8 @@ class LabelDesigner extends Page implements HasForms
         $this->form->fill([
             'stock_no_x' => $settings->get('stock_no')->x_pos ?? 65,
             'stock_no_y' => $settings->get('stock_no')->y_pos ?? 6,
+             'barcode_x'  => $settings->get('barcode')->x_pos ?? 65,
+    'barcode_y'  => $settings->get('barcode')->y_pos ?? 14,
             'desc_x'     => $settings->get('desc')->x_pos ?? 65,
             'desc_y'     => $settings->get('desc')->y_pos ?? 12,
             'price_x'    => $settings->get('price')->x_pos ?? 65,
@@ -46,7 +48,7 @@ class LabelDesigner extends Page implements HasForms
     {
         // Explicitly get state from the form to ensure it is valid
         $state = $this->form->getState();
-        $fields = ['stock_no', 'desc', 'price', 'custom1', 'custom2', 'custom3'];
+        $fields = ['stock_no', 'barcode', 'desc', 'price', 'custom1', 'custom2', 'custom3'];
 
         foreach ($fields as $id) {
             LabelLayout::updateOrCreate(

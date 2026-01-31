@@ -20,7 +20,8 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Navigation\NavigationGroup;
 use Filament\View\PanelsRenderHook;
 use Filament\Support\Assets\Js;
-
+use App\Filament\Pages\ManageSettings;
+use Filament\Navigation\MenuItem;
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -99,7 +100,18 @@ body, .fi-layout { background-color: var(--body-bg) !important; color: var(--tex
 .fi-topbar { background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important; border-bottom: 2px solid #5eead4 !important; }
 .fi-topbar * { color: #0f172a !important; }
 .fi-breadcrumbs-item-label { color: #ffffff !important; font-weight: 700 !important; }
-.fi-wi-stats-overview-stat-value { color: #ffffff !important; font-weight: 800 !important; }
+.fi-wi-stats-overview-stat-label {
+    color: #0f172a !important;   /* dark black/gray */
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+.fi-wi-stats-overview-stat-description,
+.fi-wi-stats-overview-stat-icon {
+    opacity: 1 !important;
+    color: #ffffff !important;   /* white works best on gradients */
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+}
 .fi-section, .fi-ta-ctn { background-color: #ffffff !important; border: none !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important; }
 .fi-btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; font-weight: 800 !important; }
 .fi-input-wrp { background-color: white !important; }
@@ -114,9 +126,11 @@ HTML
                 \App\Filament\Resources\ProductItemResource::class,
                 \App\Filament\Resources\CustomerResource::class,
                 \App\Filament\Resources\SaleResource::class,
+                \App\Filament\Resources\LaybuyResource::class, 
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
+                
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -128,7 +142,9 @@ HTML
                 \App\Filament\Pages\InventorySettings::class,
                 \App\Filament\Pages\EndOfDayClosing::class,
                 \App\Filament\Pages\PinCodeAuth::class,
-                \App\Filament\Pages\LabelDesigner::class
+                \App\Filament\Pages\LabelDesigner::class,
+                \App\Filament\Pages\ManageSettings::class,
+                \App\Filament\Pages\TradeInCheck::class
             ])
             ->widgets([
                 \App\Filament\Widgets\StatsOverview::class,
@@ -151,11 +167,19 @@ HTML
                 Authenticate::class,
                 \App\Http\Middleware\VerifyPinCode::class,
             ])
+            
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
                 NavigationGroup::make()->label('Customer'),
                 NavigationGroup::make()->label('Reports'),
                 NavigationGroup::make()->label('Inventory'),
-            ]);
+            ])
+            ->userMenuItems([
+            'settings' => MenuItem::make()
+                ->label('Store Settings')
+                ->url(fn (): string => ManageSettings::getUrl())
+                ->icon('heroicon-o-adjustments-horizontal'),
+        ]);
+            
     }
 }

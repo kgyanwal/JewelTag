@@ -34,4 +34,12 @@ class Sale extends Model
             }
         });
     }
+    // Sale.php
+public function getCustomerNameAttribute(): string
+{
+    return $this->customer
+        ? "{$this->customer->first_name} {$this->customer->last_name}"
+        : 'Walk-in';
+}
+
 }

@@ -13,19 +13,33 @@
              class="relative bg-white shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-lg overflow-hidden border-[1px] border-gray-400" 
              style="width: 450px; height: 1000px; background-image: radial-gradient(#d1d5db 1px, transparent 1px); background-size: 20px 20px;">
             
-            <template x-for="type in ['stock_no', 'desc', 'price', 'custom1', 'custom2', 'custom3']">
-                <div @click="active = type" 
-                     class="draggable absolute cursor-move select-none px-2 py-1 rounded transition-all duration-75"
-                     :class="active === type ? 'ring-2 ring-blue-500 bg-blue-50/50 shadow-xl z-50' : 'hover:bg-gray-100/50 z-10'"
-                     :style="`left: ${fields[type + '_x']}px; top: ${fields[type + '_y'] * scale}px;`" 
-                     :data-target="type">
-                    
-                    <span x-show="type === 'stock_no'" class="text-[20px] font-black leading-none text-black uppercase">G13532</span>
-                    <span x-show="type === 'desc'" class="text-[12px] font-bold leading-tight text-gray-800 block w-[200px]">10K GOLD DIAMOND JESUS</span>
-                    <span x-show="type === 'price'" class="text-[18px] font-black text-green-600 leading-none">$11,909.99</span>
-                    <span x-show="type.startsWith('custom')" class="text-[12px] font-bold text-purple-600 border border-purple-200 bg-purple-50 px-1 rounded uppercase" x-text="'FIELD: ' + type.toUpperCase()"></span>
-                </div>
-            </template>
+           <template x-for="type in ['stock_no', 'barcode', 'desc', 'price', 'custom1', 'custom2', 'custom3']" :key="type">
+    <div @click="active = type" 
+         class="draggable absolute cursor-move select-none px-2 py-1 rounded transition-all duration-75"
+         :class="active === type ? 'ring-2 ring-blue-500 bg-blue-50/50 shadow-xl z-50' : 'hover:bg-gray-100/50 z-10'"
+         :style="`left: ${fields[type + '_x']}px; top: ${fields[type + '_y'] * scale}px;`" 
+         :data-target="type">
+
+        <!-- Stock Number -->
+        <span x-show="type === 'stock_no'" class="text-[20px] font-black leading-none text-black uppercase">G13532</span>
+
+        <!-- Description -->
+        <span x-show="type === 'desc'" class="text-[12px] font-bold leading-tight text-gray-800 block w-[200px]">10K GOLD DIAMOND JESUS</span>
+
+        <!-- Price -->
+        <span x-show="type === 'price'" class="text-[18px] font-black text-green-600 leading-none">$11,909.99</span>
+
+        <!-- Barcode -->
+        <template x-if="type === 'barcode'">
+            <img src="https://barcode.tec-it.com/barcode.ashx?data=123456&code=Code128" alt="Barcode" class="h-12 w-auto"/>
+        </template>
+
+        <!-- Custom Fields -->
+        <span x-show="type.startsWith('custom')" class="text-[12px] font-bold text-purple-600 border border-purple-200 bg-purple-50 px-1 rounded uppercase" x-text="'FIELD: ' + type.toUpperCase()"></span>
+
+    </div>
+</template>
+
 
             <div class="absolute inset-x-0 top-0 h-10 border-b border-red-500/20 pointer-events-none px-4 flex items-center">
                 <span class="text-[9px] text-red-500 font-bold uppercase">Safe Start (5)</span>

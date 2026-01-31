@@ -11,13 +11,14 @@ use App\Models\Store;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox};
+use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, Toggle};
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 
 class SaleResource extends Resource
@@ -82,7 +83,36 @@ class SaleResource extends Resource
                                     }),
                             ]),
                         ]),
+                        Section::make('Trade-In Details')
+    ->schema([
+        // 🔹 Use Select instead of Toggle to force a choice
+        Select::make('has_trade_in')
+            ->label('Is there a Trade-In?')
+            ->options([
+                1 => 'Yes',
+                0 => 'No',
+            ])
+            ->required() // 🔹 Forces the salesperson to select an option
+            ->live()
+            ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
 
+        Grid::make(2)
+            ->visible(fn (Get $get) => $get('has_trade_in') == 1)
+            ->schema([
+                TextInput::make('trade_in_value')
+                    ->label('Trade-In Value (Deduction)')
+                    ->numeric()
+                    ->prefix('$')
+                    ->required(fn (Get $get) => $get('has_trade_in') == 1)
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+                
+                TextInput::make('trade_in_receipt_no')
+                    ->label('Trade-In Tracking #')
+                    ->default(fn () => 'TRD-' . date('Ymd-His'))
+                    ->readOnly(),
+            ]),
+    ]),
                         Section::make('Current Bill Items')->schema([
                             // 🔹 FIX: Re-added relationship() because your model has public function items()
                             Repeater::make('items')
@@ -130,9 +160,13 @@ class SaleResource extends Resource
                     Group::make()->columnSpan(4)->schema([
                         Section::make('Customer & Personnel')->schema([
                             Select::make('customer_id')
-                                ->relationship('customer', 'id')
-                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->first_name} {$record->last_name}")
-                                ->searchable()->preload()->required()->live(),
+                                ->label('Customer')
+                                ->relationship('customer', 'name') // 🔹 Use 'name' to match your Migration
+                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name}") // 🔹 Show the full name
+                                ->searchable(['name', 'phone']) // 🔹 Search by the name column
+                                ->preload()
+                                ->required()
+                                ->live(),
 
                             Placeholder::make('cust_info')
                                 ->label('')
@@ -146,10 +180,12 @@ class SaleResource extends Resource
                                     return new HtmlString("<div class='text-sm border-t pt-2'><strong>Address:</strong> {$customer->address}<br><strong>Phone:</strong> {$phone}</div>");
                                 }),
 
-                            Select::make('sales_person_list')
+                            TextInput::make('sales_person_list')
                                 ->label('Sales Person')
-                                ->options(fn() => User::pluck('name', 'name'))
-                                ->searchable()->preload()->required(),
+                                ->default(fn() => auth()->user()->name) // 🔹 Auto-fills with logged-in user's name
+                                ->readOnly() // 🔹 Prevents other users from changing the name
+                                ->required()
+                                ->dehydrated(), // 🔹 Ensures the name is still sent to the database
                         ]),
 
                         Section::make('Payment & Status')->schema([
@@ -158,6 +194,7 @@ class SaleResource extends Resource
                                 ->options(
                                     [
                                         'cash' => 'CASH',
+                                        'laybuy' => 'LAYBUY (Installment Plan)',
                                         'visa' => 'VISA',
                                         'comenity' => 'COMENITY',
                                         'debit_card' => 'DEBIT CARD',
@@ -207,7 +244,8 @@ class SaleResource extends Resource
                 Hidden::make('subtotal'),
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
-                Hidden::make('invoice_number')->default(fn() => 'INV-' . date('Ymd-His')),
+                Hidden::make('invoice_number')
+                    ->dehydrated(true),
             ]);
     }
 
@@ -215,31 +253,81 @@ class SaleResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('invoice_number')->label('Invoice #')->searchable()->sortable(),
+                TextColumn::make('invoice_number')
+                    ->label('Invoice #')
+                    ->searchable()
+                    ->sortable(),
+
                 TextColumn::make('customer.first_name')
                     ->label('Customer')
-                    ->formatStateUsing(fn($record) => $record->customer ? "{$record->customer->first_name} {$record->customer->last_name}" : 'Walk-in'),
-                TextColumn::make('sales_person_list')->label('Sales Person'),
-                TextColumn::make('final_total')->label('Total')->money('USD'),
-                TextColumn::make('created_at')->label('Date')->dateTime()->sortable(),
-            ])->defaultSort('created_at', 'desc');
+                    ->searchable(['customer.first_name', 'customer.last_name'])
+                    ->formatStateUsing(
+                        fn($record) =>
+                        $record->customer
+                            ? "{$record->customer->first_name} {$record->customer->last_name}"
+                            : 'Walk-in'
+                    ),
+
+                TextColumn::make('sales_person_list')
+                    ->label('Sales Person'),
+
+                TextColumn::make('final_total')
+                    ->label('Total')
+                    ->money('USD'),
+
+                TextColumn::make('created_at')
+                    ->label('Date')
+                    ->dateTime()
+                    ->sortable(),
+            ])
+
+            // 🔹 ACTIONS GO HERE — NOT IN COLUMNS
+            ->actions([
+                Tables\Actions\Action::make('printReceipt')
+                    ->label('Print Receipt')
+                    ->icon('heroicon-o-printer')
+                    ->color('info')
+                    ->url(fn(Sale $record): string => route('sales.receipt', $record))
+                    ->visible(
+                        fn(Sale $record) =>
+                        $record->payment_method !== 'laybuy' || $record->status === 'completed'
+                    ),
+            ])
+
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function updateTotals(Get $get, Set $set)
-    {
-        $items = $get('items') ?? [];
-        $shipping = floatval($get('shipping_charges') ?? 0);
-        $subtotal = 0;
-        foreach ($items as $item) {
-            $price = floatval($item['sold_price'] ?? 0);
-            $qty = intval($item['qty'] ?? 1);
-            $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
-        }
-        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * 0.0825;
-        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-        $set('tax_amount', number_format($tax, 2, '.', ''));
-        $set('final_total', number_format($subtotal + $shipping + $tax, 2, '.', ''));
+{
+    $items = $get('items') ?? [];
+    $shipping = floatval($get('shipping_charges') ?? 0);
+    $subtotal = 0;
+
+    // 1. Calculate items total
+    foreach ($items as $item) {
+        $price = floatval($item['sold_price'] ?? 0);
+        $qty = intval($item['qty'] ?? 1);
+        $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
     }
+
+    // 2. Fetch dynamic tax
+    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 8.25;
+    $taxMultiplier = floatval($dbTax) / 100;
+
+    // 3. Calculate Tax
+    $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
+
+    // 4. Handle Trade-In Deduction
+    // Only subtract if has_trade_in is explicitly set to 1 (Yes)
+    $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+
+    $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
+
+    // 5. Update the form state
+    $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
+    $set('tax_amount', number_format($tax, 2, '.', ''));
+    $set('final_total', number_format($finalTotal, 2, '.', ''));
+}
 
     protected static function totalRow($label, $field)
     {

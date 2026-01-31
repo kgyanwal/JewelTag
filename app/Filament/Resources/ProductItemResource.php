@@ -10,8 +10,27 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{Section, Grid, Select, TextInput, CheckboxList, Hidden, Textarea, Radio, Toggle};
-use Filament\Tables\Actions\{Action, EditAction, ViewAction, ActionGroup};
+use Filament\Forms\Components\Actions\Action as FormAction;
+
+use Filament\Forms\Components\{
+    Section,
+    Grid,
+    Select,
+    TextInput,
+    CheckboxList,
+    Hidden,
+    Placeholder,
+    Textarea,
+    Radio,
+    Toggle
+};
+use Filament\Forms\Get;
+use Filament\Tables\Actions\{
+    Action,
+    EditAction,
+    ViewAction,
+    ActionGroup
+};
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Cache;
 
@@ -24,202 +43,345 @@ class ProductItemResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form
-            ->schema([
-                Section::make('Assemble New Stock Item')
-                    ->columns(12)
-                    ->schema([
-                        Forms\Components\Select::make('store_id')
-                            ->label('Target Store')
-                            ->relationship('store', 'name')
-                            ->required()
-                            ->searchable()
-                            ->preload()
-                            ->default(fn () => auth()->user()->store_id ?? \App\Models\Store::first()?->id)
-                            ->disabled(fn () => !auth()->user()->hasRole('super_admin'))
-                            ->dehydrated() 
-                            ->columnSpan(4),
+        return $form->schema([
+            Section::make('Assemble New Stock Item')
+                ->columns(12)
+                ->schema([
 
-                        Radio::make('creation_mode')
-                            ->label('')
-                            ->options(['new' => 'Assemble New Stock Item', 'copy' => 'Copy Existing Item'])
-                            ->default('new')->inline()->columnSpan(12)->dehydrated(false),
+                    /* ───────── STORE ───────── */
+                    Select::make('store_id')
+                        ->label('Target Store')
+                        ->relationship('store', 'name')
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->default(fn () => auth()->user()->store_id ?? \App\Models\Store::first()?->id)
+                        ->disabled(fn () => ! auth()->user()->hasRole('super_admin'))
+                        ->columnSpan(4),
 
-                        Select::make('supplier_id')
-                            ->relationship('supplier', 'company_name')
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->live()
-                            ->afterStateUpdated(function (callable $set, $state) {
-                                if ($state) {
-                                    $latestCode = \App\Models\ProductItem::where('supplier_id', $state)
-                                        ->latest()
-                                        ->value('supplier_code');
-                                    $set('supplier_code', $latestCode);
-                                }
-                            })
-                            ->columnSpan(4),
+                    /* ───────── ASSEMBLY MODE ───────── */
+                    Section::make('Assembly Mode')
+                        ->schema([
+                            Grid::make(12)->schema([
 
-                        CheckboxList::make('print_options')
-                            ->options([
-                                'print_tag' => 'Print Barcode Tag',
-                                'print_rfid' => 'Print RFID Tag',
-                                'encode_rfid' => 'Encode RFID Data'
-                            ])
-                            ->columns(3)
-                            ->columnSpan(12), 
+                                Radio::make('creation_mode')
+                                    ->label('Stock Type')
+                                    ->options([
+                                        'new' => 'New Stock',
+                                        'trade_in' => 'Trade-In',
+                                    ])
+                                    ->default(fn ($record) => $record?->is_trade_in ? 'trade_in' : 'new')
+                                    ->required()
+                                    ->inline()
+                                    ->live()
+                                    ->dehydrated(false)
+                                    ->columnSpan(4),
 
-                        Toggle::make('enable_rfid_tracking')
-                            ->label('Enable RFID Tracking')
-                            ->onColor('success')
-                            ->offColor('gray')
-                            ->inline(false)
-                            ->columnSpan(6),
+                                Select::make('original_trade_in_no')
+                                    ->label('Tracking #')
+                                    ->placeholder('Search TRD-...')
+                                    ->options(function () {
+                                        $used = \App\Models\ProductItem::whereNotNull('original_trade_in_no')
+                                            ->pluck('original_trade_in_no')
+                                            ->toArray();
 
-                        TextInput::make('rfid_code')
-                            ->label('RFID EPC Code')
-                            ->placeholder('Auto-generated')
-                            ->disabled()
-                            ->dehydrated()
-                            ->columnSpan(6),
+                                        return \App\Models\Sale::where('has_trade_in', 1)
+                                            ->whereNotIn('trade_in_receipt_no', $used)
+                                            ->latest()
+                                            ->pluck('trade_in_receipt_no', 'trade_in_receipt_no');
+                                    })
+                                    ->visible(fn (Get $get) => $get('creation_mode') === 'trade_in')
+                                    ->required(fn (Get $get) => $get('creation_mode') === 'trade_in')
+                                    ->searchable()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                        if ($state) {
+                                            $tradeValue = \App\Models\Sale::where('trade_in_receipt_no', $state)
+                                                ->value('trade_in_value');
 
-                        TextInput::make('supplier_code')
-                            ->label('Vendor Code')
-                            ->placeholder('Auto-fills from last invoice')
-                            ->columnSpan(3),
+                                            $set('cost_price', $tradeValue);
+                                            $set('supplier_id', null);
+                                            $set('is_trade_in', true);
+                                        } else {
+                                            $set('is_trade_in', false);
+                                        }
+                                    })
+                                    ->columnSpan(8),
+                            ]),
 
-                        Select::make('form_type')
-                            ->options(['Diamond' => 'Diamond', 'Gold' => 'Gold', 'Silver' => 'Silver', 'Watch' => 'Watch'])
-                            ->default('General')->columnSpan(3),
+                            Placeholder::make('trade_in_check')
+                                ->content(function (Get $get) {
+                                    if (! $get('original_trade_in_no')) {
+                                        return 'Select a tracking number to verify the item.';
+                                    }
 
-                        Select::make('department')
-                            ->label('Department')
-                            ->options(fn() => collect(Cache::get('inventory_departments', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()
-                            ->placeholder('Select department')
-                            ->hintIcon('heroicon-o-information-circle')
-                            ->hintColor('primary')
-                            ->columnSpan(2),
+                                    $sale = \App\Models\Sale::where(
+                                        'trade_in_receipt_no',
+                                        $get('original_trade_in_no')
+                                    )->first();
 
-                        Select::make('category')
-                            ->label('Category')
-                            ->options(fn() => collect(Cache::get('inventory_categories', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()
-                            ->placeholder('Select category')
-                            ->hintIcon('heroicon-o-information-circle')
-                            ->hintColor('primary')
-                            ->columnSpan(2),
+                                    return new \Illuminate\Support\HtmlString(
+                                        "<div class='p-2 bg-blue-50 border border-blue-200 rounded text-blue-700 text-sm font-medium'>
+                                            ✓ Verified Trade-In Value:
+                                            <strong>$" . number_format($sale->trade_in_value ?? 0, 2) . "</strong>
+                                        </div>"
+                                    );
+                                })
+                                ->visible(fn (Get $get) =>
+                                    $get('creation_mode') === 'trade_in'
+                                    && $get('original_trade_in_no')
+                                )
+                                ->columnSpanFull(),
+                        ]),
 
-                        Select::make('metal_type')
-                            ->options(fn() => collect(Cache::get('inventory_metal_types', []))->mapWithKeys(fn($val) => [$val => $val]))
-                            ->searchable()
-                            ->placeholder('Select metal type')
-                            ->hintIcon('heroicon-o-information-circle')
-                            ->hintColor('primary')
-                            ->columnSpan(2),
+                    /* ───────── SUPPLIER ───────── */
+                    Select::make('supplier_id')
+                        ->relationship('supplier', 'company_name')
+                        ->searchable()
+                        ->preload()
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (callable $set, $state) {
+                            if ($state) {
+                                $latestCode = ProductItem::where('supplier_id', $state)
+                                    ->latest()
+                                    ->value('supplier_code');
+                                $set('supplier_code', $latestCode);
+                            }
+                        })
+                        ->columnSpan(4),
 
-                        TextInput::make('size')->columnSpan(6),
-                        TextInput::make('metal_weight')->numeric()->columnSpan(6),
+                    CheckboxList::make('print_options')
+                        ->options([
+                            'print_tag' => 'Print Barcode Tag',
+                            'print_rfid' => 'Print RFID Tag',
+                            'encode_rfid' => 'Encode RFID Data',
+                        ])
+                        ->columns(3)
+                        ->columnSpan(12),
 
-                        TextInput::make('qty')->numeric()->required()->dehydrated(true)->default(1)->columnSpan(2)->extraInputAttributes(['class' => 'bg-yellow-50 text-center font-bold']),
+                    Toggle::make('enable_rfid_tracking')
+                        ->label('Enable RFID Tracking')
+                        ->columnSpan(6),
 
-                        TextInput::make('cost_price')->prefix('$')->numeric()->columnSpan(2),
-                        TextInput::make('retail_price')->prefix('$')->numeric()->columnSpan(3)->extraInputAttributes(['class' => 'bg-green-50 font-bold text-green-700']),
-                        TextInput::make('web_price')->prefix('$')->numeric()->columnSpan(3),
-                        TextInput::make('discount_percent')->default(0)->suffix('%')->numeric()->columnSpan(2),
+                    TextInput::make('rfid_code')
+                        ->label('RFID EPC Code')
+                        ->disabled()
+                        ->columnSpan(6),
 
-                        Textarea::make('custom_description')->columnSpan(12)->rows(3),
+                    TextInput::make('supplier_code')
+                        ->label('Vendor Code')
+                        ->columnSpan(3),
 
-                        TextInput::make('barcode')->label('Stock Number')->placeholder('G-Auto Generate')->disabled()->dehydrated()->columnSpan(4),
-                        TextInput::make('serial_number')->columnSpan(4),
-                        TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
-                    ]),
-            ]);
+                Select::make('department')
+    ->label('Department')
+    ->options(Cache::get('inventory_departments', []))
+    ->hintAction(
+        FormAction::make('departmentHelp')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure departments')
+    )
+    ->searchable()
+    ->columnSpan(3),
+
+
+
+                    Select::make('sub_department')
+                        ->options(Cache::get('inventory_sub_departments', []))
+                        ->hintAction(
+        FormAction::make('Help')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure Sub-departments')
+    )
+                        ->searchable()
+                        ->columnSpan(3),
+
+                    Select::make('category')
+                        ->options(Cache::get('inventory_categories', []))
+                        ->hintAction(
+        FormAction::make('Help')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure Category')
+    )
+                        ->searchable()
+                        ->columnSpan(2),
+
+                    Select::make('metal_type')
+                        ->label('Metal Karat')
+                        ->hintAction(
+        FormAction::make('Help')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
+    )
+                        ->options(Cache::get('inventory_metal_types', []))
+                        ->searchable()
+                        ->columnSpan(2),
+
+                    TextInput::make('size')->columnSpan(2),
+
+                    TextInput::make('metal_weight')
+                        ->label('Metal Weight')
+                        ->columnSpan(2),
+
+                    TextInput::make('diamond_weight')
+                        ->label('Diamond Weight (CTW)')
+                        ->placeholder('1.25 CTW')
+                        ->columnSpan(6),
+
+                    /* ───────── PRICING ───────── */
+                    TextInput::make('qty')
+                        ->numeric()
+                        ->default(1)
+                        ->columnSpan(2),
+
+                    TextInput::make('cost_price')
+                        ->prefix('$')
+                        ->numeric()
+                        ->columnSpan(2),
+
+                    TextInput::make('retail_price')
+                        ->prefix('$')
+                        ->numeric()
+                        ->columnSpan(3),
+
+                    TextInput::make('web_price')
+                        ->prefix('$')
+                        ->numeric()
+                        ->columnSpan(3),
+
+                    TextInput::make('discount_percent')
+                        ->suffix('%')
+                        ->default(0)
+                        ->numeric()
+                        ->columnSpan(2),
+
+                    Textarea::make('custom_description')
+                        ->rows(3)
+                        ->columnSpan(12),
+
+                    TextInput::make('barcode')
+                        ->label('Stock Number')
+                        ->disabled()
+                        ->columnSpan(4),
+
+                    TextInput::make('serial_number')->columnSpan(4),
+
+                    TextInput::make('component_qty')
+                        ->numeric()
+                        ->default(1)
+                        ->columnSpan(4),
+                ]),
+        ]);
     }
+
+    /* ───────────────────────── TABLE ───────────────────────── */
 
     public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('barcode')->label('STOCK NO.')->searchable()->weight('bold'),
-                Tables\Columns\TextColumn::make('custom_description')->label('DESCRIPTION')->limit(40),
-                Tables\Columns\TextColumn::make('metal_weight')->label('WEIGHT')->suffix('g'),
-                Tables\Columns\TextColumn::make('retail_price')->label('PRICE')->money('USD')->color('success'),
-                Tables\Columns\TextColumn::make('rfid_code')
-                    ->label('RFID NUMBER')
-                    ->fontFamily('mono')
-                    ->placeholder('Not Printed')
-                    ->searchable()
-                    ->copyable(),
+{
+    return $table
+        ->columns([
 
-                Tables\Columns\BadgeColumn::make('has_rfid')
-                    ->label('RFID STATUS')
-                    ->getStateUsing(fn ($record) => !empty($record->rfid_code) ? 'Yes' : 'No')
-                    ->colors(['success' => 'Yes', 'gray' => 'No']),
-                    
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'in_stock' => 'success',
-                        'sold' => 'danger',
-                        'out_of_stock' => 'warning',
-                        default => 'gray',
-                    }),
-            ])
-            ->actions([
-                ActionGroup::make([
-                    EditAction::make(),
-                    ViewAction::make()->color('info'),
-                    Tables\Actions\DeleteAction::make()
-                        ->label('Delete Item')
-                        ->modalHeading('Delete Jewelry Item')
-                        ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
-                    
-                    /* ───────── FIXED PRINTING ACTIONS ───────── */
-                    Action::make('print_tag')
-                        ->label('Print Barcode Tag')
-                        ->icon('heroicon-o-printer')
-                        ->color('info')
-                        ->requiresConfirmation()
-                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
-                            // 1. Generate ZPL string on server
-                            $zpl = $service->generateZpl($record, false);
+            Tables\Columns\TextColumn::make('barcode')
+                ->label('STOCK NO.')
+                ->searchable()
+                ->weight('bold'),
 
-                            // 2. Dispatch to browser using $livewire instance
-                            $livewire->dispatch('trigger-zebra-print', zpl: $zpl);
+            Tables\Columns\IconColumn::make('is_trade_in')
+                ->label('SOURCE')
+                ->boolean()
+                ->trueIcon('heroicon-o-user-group')
+                ->falseIcon('heroicon-o-building-office')
+                ->trueColor('primary')
+                ->falseColor('gray')
+                ->alignCenter()
+                ->tooltip(fn ($record) =>
+                    $record->is_trade_in ? 'Customer Trade-In' : 'Vendor Purchase'
+                ),
 
-                            Notification::make()
-                                ->title('ZPL Data Generated')
-                                ->success()
-                                ->send();
-                        }),
-                    
-                    Action::make('print_rfid_tag')
-                        ->label('Print RFID Tag')
-                        ->icon('heroicon-o-identification')
-                        ->color('warning')
-                        ->requiresConfirmation()
-                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
-                            $zpl = $service->generateZpl($record, true);
+            Tables\Columns\TextColumn::make('custom_description')
+                ->label('DESCRIPTION')
+                ->limit(40)
+                ->wrap(),
 
-                            // Dispatch to browser using $livewire instance
-                            $livewire->dispatch('trigger-zebra-print', zpl: $zpl);
+            Tables\Columns\TextColumn::make('metal_weight')
+                ->label('WEIGHT')
+                ->suffix(' g')
+                ->alignCenter(),
 
-                            Notification::make()
-                                ->title('RFID Data Generated')
-                                ->success()
-                                ->send();
-                        }),
-                    
-                    Action::make('test_rfid_printer')
-                        ->label('Check Printer Status')
-                        ->icon('heroicon-o-wrench')
-                        ->color('gray')
-                        ->action(fn($livewire) => $livewire->dispatch('trigger-zebra-status-check')),
+            Tables\Columns\TextColumn::make('retail_price')
+                ->label('PRICE')
+                ->money('USD')
+                ->alignRight()
+                ->color('success'),
+
+            /* ✅ RFID NUMBER COLUMN */
+            Tables\Columns\TextColumn::make('rfid_code')
+                ->label('RFID NUMBER')
+                ->fontFamily('mono')
+                ->placeholder('Not Printed')
+                ->searchable()
+                ->copyable(),
+
+            /* ✅ RFID STATUS BADGE */
+            Tables\Columns\BadgeColumn::make('rfid_status')
+                ->label('RFID')
+                ->getStateUsing(fn ($record) =>
+                    filled($record->rfid_code) ? 'Encoded' : 'Missing'
+                )
+                ->colors([
+                    'success' => 'Encoded',
+                    'gray' => 'Missing',
+                ])
+                ->icons([
+                    'heroicon-o-check-circle' => 'Encoded',
+                    'heroicon-o-x-circle' => 'Missing',
                 ]),
-            ]);
-    }
+
+            Tables\Columns\TextColumn::make('status')
+                ->badge()
+                ->alignCenter()
+                ->color(fn (string $state) => match ($state) {
+                    'in_stock' => 'success',
+                    'sold' => 'danger',
+                    'on_hold' => 'warning',
+                    default => 'gray',
+                }),
+        ])
+
+        ->actions([
+            ActionGroup::make([
+                EditAction::make(),
+                ViewAction::make(),
+
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn () =>
+                        auth()->user()->hasAnyRole(['Superadmin', 'Admin'])
+                    ),
+
+                Action::make('print_barcode')
+                    ->label('Print Barcode')
+                    ->icon('heroicon-o-printer')
+                    ->action(fn ($record, ZebraPrinterService $service, $livewire) =>
+                        $livewire->dispatch(
+                            'trigger-zebra-print',
+                            zpl: $service->generateZpl($record, false)
+                        )
+                    ),
+
+                Action::make('print_rfid')
+                    ->label('Print RFID')
+                    ->icon('heroicon-o-identification')
+                    ->color('warning')
+                    ->action(fn ($record, ZebraPrinterService $service, $livewire) =>
+                        $livewire->dispatch(
+                            'trigger-zebra-print',
+                            zpl: $service->generateZpl($record, true)
+                        )
+                    ),
+            ]),
+        ]);
+}
+
 
     public static function getPages(): array
     {

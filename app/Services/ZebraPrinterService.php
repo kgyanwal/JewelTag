@@ -36,11 +36,12 @@ class ZebraPrinterService
             ];
 
             $pStock = $getPos('stock_no', 65, 6);
-            $pDesc  = $getPos('desc', 65, 12);
+            $pDesc  = $getPos('desc', 65, 9);
+            $pBarcode = $getPos('barcode', 65, 12);
             $pPrice = $getPos('price', 65, 20);
-            $pC1    = $getPos('custom1', 65, 22);
+            $pC1    = $getPos('diamond_weight', 65, 22);
             $pC2    = $getPos('custom2', 65, 24);
-            $pC3    = $getPos('custom3', 65, 26);
+            $pC3    = $getPos('rfid_code', 65, 26);
 
             // Start ZPL String
             $zpl = "^XA^CI28^MMT^MTT^MD30^PW450^LL400^LS0^PR2";
@@ -52,6 +53,7 @@ class ZebraPrinterService
             $zpl .= "\n^FO{$pStock['x']},{$pStock['y']}^A0N,3,3^FD{$stockNo}^FS";
             $zpl .= "\n^FO{$pDesc['x']},{$pDesc['y']}^A0N,2,2^FD{$desc}^FS";
             $zpl .= "\n^FO{$pPrice['x']},{$pPrice['y']}^A0N,3,3^FD{$price}^FS";
+             $zpl .= "\n^FO{$pBarcode['x']},{$pBarcode['y']}^BY2^BCN,50,Y,N,N^FD{$stockNo}^FS"; // <-- Added barcode
             $zpl .= "\n^FO{$pC1['x']},{$pC1['y']}^A0N,2,2^FDLINE 4^FS";
             $zpl .= "\n^FO{$pC2['x']},{$pC2['y']}^A0N,2,2^FDLINE 5^FS";
             $zpl .= "\n^FO{$pC3['x']},{$pC3['y']}^A0N,2,2^FDLINE 6^FS";
