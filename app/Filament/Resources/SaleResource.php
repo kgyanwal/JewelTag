@@ -18,6 +18,7 @@ use Filament\Forms\Set;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 
@@ -48,7 +49,6 @@ class SaleResource extends Resource
                                                 $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
                                             ])
                                     )
-
                                     ->live()
                                     ->dehydrated(false)
                                     ->afterStateUpdated(function ($state, Set $set) {
@@ -62,12 +62,19 @@ class SaleResource extends Resource
                             Forms\Components\Actions::make([
                                 Action::make('add_item')
                                     ->label('ADD TO BILL')
-                                    ->color('primary')->button()->extraAttributes(['class' => 'w-full'])
+                                    ->color('primary')
+                                    ->button()
+                                    ->extraAttributes(['class' => 'w-full'])
                                     ->action(function (Get $get, Set $set) {
                                         $item = ProductItem::find($get('current_item_search'));
                                         if (!$item) return;
 
-                                        $currentItems = $get('items') ?? [];
+                                        // 🔹 FILTER: Ensure we only keep items that actually have a product ID
+                                        $currentItems = collect($get('items') ?? [])
+                                            ->filter(fn($row) => !empty($row['product_item_id']))
+                                            ->toArray();
+
+                                        // 🔹 ADD: Push the new item into the array
                                         $currentItems[] = [
                                             'product_item_id' => $item->id,
                                             'stock_no_display' => $item->barcode,
@@ -78,71 +85,68 @@ class SaleResource extends Resource
                                         ];
 
                                         $set('items', $currentItems);
+                                        
+                                        // Reset Search
                                         $set('current_item_search', null);
+                                        $set('current_qty', 1);
+
                                         self::updateTotals($get, $set);
                                     }),
                             ]),
                         ]),
                         Section::make('Trade-In Details')
-    ->schema([
-        // 🔹 Use Select instead of Toggle to force a choice
-        Select::make('has_trade_in')
-            ->label('Is there a Trade-In?')
-            ->options([
-                1 => 'Yes',
-                0 => 'No',
-            ])
-            ->required() // 🔹 Forces the salesperson to select an option
-            ->live()
-            ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
+                            ->schema([
+                                Select::make('has_trade_in')
+                                    ->label('Is there a Trade-In?')
+                                    ->options([
+                                        1 => 'Yes',
+                                        0 => 'No',
+                                    ])
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-        Grid::make(2)
-            ->visible(fn (Get $get) => $get('has_trade_in') == 1)
-            ->schema([
-                TextInput::make('trade_in_value')
-                    ->label('Trade-In Value (Deduction)')
-                    ->numeric()
-                    ->prefix('$')
-                    ->required(fn (Get $get) => $get('has_trade_in') == 1)
-                    ->live()
-                    ->afterStateUpdated(fn (Get $get, Set $set) => self::updateTotals($get, $set)),
-                
-                TextInput::make('trade_in_receipt_no')
-                    ->label('Trade-In Tracking #')
-                    ->default(fn () => 'TRD-' . date('Ymd-His'))
-                    ->readOnly(),
-            ]),
-    ]),
+                                Grid::make(2)
+                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                    ->schema([
+                                        TextInput::make('trade_in_value')
+                                            ->label('Trade-In Value (Deduction)')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                        TextInput::make('trade_in_receipt_no')
+                                            ->label('Trade-In Tracking #')
+                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                            ->readOnly(),
+                                    ]),
+                            ]),
                         Section::make('Current Bill Items')->schema([
-                            // 🔹 FIX: Re-added relationship() because your model has public function items()
                             Repeater::make('items')
                                 ->relationship('items')
-                                ->columns(12)
-                                ->addable(false)
-                                ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                                 ->schema([
-                                    // 🔹 Hidden but dehydrated to ensure ID is sent to the SaleItem record
                                     Hidden::make('product_item_id')->dehydrated(),
                                     TextInput::make('stock_no_display')->label('Item')->readOnly()->dehydrated(false)->columnSpan(2),
                                     TextInput::make('custom_description')->label('Description')->columnSpan(4),
-                                    TextInput::make('qty')
-                                        ->numeric()
-                                        ->default(1)
-                                        ->required()
-                                        ->dehydrated(true)
-                                        ->rules(['required', 'integer', 'min:1'])
-                                        ->live()
+                                    TextInput::make('qty')->numeric()->default(1)->required()->live()
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                             $productItem = ProductItem::find($get('product_item_id'));
-
                                             if ($productItem && $state > $productItem->qty) {
                                                 $set('qty', $productItem->qty);
                                             }
                                         }),
                                     TextInput::make('sold_price')->label('Price')->numeric()->live()->columnSpan(2),
                                     TextInput::make('discount')->label('Disc $')->numeric()->live()->columnSpan(2),
-                                ]),
+                                ])
+                                ->columns(12)
+                                ->addable(false)
+                                ->deletable(true)
+                                ->reorderable(false)
+                                ->default([])
+                                ->live()
+                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
                         Section::make('Shipping & Handling')->schema([
@@ -161,9 +165,9 @@ class SaleResource extends Resource
                         Section::make('Customer & Personnel')->schema([
                             Select::make('customer_id')
                                 ->label('Customer')
-                                ->relationship('customer', 'name') // 🔹 Use 'name' to match your Migration
-                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name}") // 🔹 Show the full name
-                                ->searchable(['name', 'phone']) // 🔹 Search by the name column
+                                ->relationship('customer', 'name')
+                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name}")
+                                ->searchable(['name', 'phone'])
                                 ->preload()
                                 ->required()
                                 ->live(),
@@ -182,40 +186,38 @@ class SaleResource extends Resource
 
                             TextInput::make('sales_person_list')
                                 ->label('Sales Person')
-                                ->default(fn() => auth()->user()->name) // 🔹 Auto-fills with logged-in user's name
-                                ->readOnly() // 🔹 Prevents other users from changing the name
+                                ->default(fn() => auth()->user()->name)
+                                ->readOnly()
                                 ->required()
-                                ->dehydrated(), // 🔹 Ensures the name is still sent to the database
+                                ->dehydrated(),
                         ]),
 
                         Section::make('Payment & Status')->schema([
                             Select::make('payment_method')
                                 ->label('Payment Method')
-                                ->options(
-                                    [
-                                        'cash' => 'CASH',
-                                        'laybuy' => 'LAYBUY (Installment Plan)',
-                                        'visa' => 'VISA',
-                                        'comenity' => 'COMENITY',
-                                        'debit_card' => 'DEBIT CARD',
-                                        'snap_finance' => 'SNAP FINANCE',
-                                        'katapult' => 'KATAPULT',
-                                        'acima_finance' => 'ACIMA FINANCE',
-                                        'kefene' => 'KEFENE',
-                                        'american_express' => 'AMERICAN EXPRESS',
-                                        'mastercard' => 'MASTERCARD',
-                                        'wells_fargo' => 'WELLS FARGO',
-                                        'synchrony' => 'SYNCHRONY',
-                                        'cheque' => 'CHEQUE',
-                                        'afterpay' => 'AFTERPAY',
-                                        'affirm' => 'AFFIRM',
-                                        'website_payments' => 'WEBSITE PAYMENTS',
-                                        'discover' => 'DISCOVER',
-                                        'terrance_finance' => 'TERRANCE FINANCE',
-                                        'others' => 'OTHERS',
-                                        'progressive_leasing' => 'PROGRESSIVE LEASING',
-                                    ]
-                                )
+                                ->options([
+                                    'cash' => 'CASH',
+                                    'laybuy' => 'LAYBUY (Installment Plan)',
+                                    'visa' => 'VISA',
+                                    'comenity' => 'COMENITY',
+                                    'debit_card' => 'DEBIT CARD',
+                                    'snap_finance' => 'SNAP FINANCE',
+                                    'katapult' => 'KATAPULT',
+                                    'acima_finance' => 'ACIMA FINANCE',
+                                    'kefene' => 'KEFENE',
+                                    'american_express' => 'AMERICAN EXPRESS',
+                                    'mastercard' => 'MASTERCARD',
+                                    'wells_fargo' => 'WELLS FARGO',
+                                    'synchrony' => 'SYNCHRONY',
+                                    'cheque' => 'CHEQUE',
+                                    'afterpay' => 'AFTERPAY',
+                                    'affirm' => 'AFFIRM',
+                                    'website_payments' => 'WEBSITE PAYMENTS',
+                                    'discover' => 'DISCOVER',
+                                    'terrance_finance' => 'TERRANCE FINANCE',
+                                    'others' => 'OTHERS',
+                                    'progressive_leasing' => 'PROGRESSIVE LEASING',
+                                ])
                                 ->default('cash')->required(),
                             Select::make('status')
                                 ->label('Sale Status')
@@ -244,8 +246,7 @@ class SaleResource extends Resource
                 Hidden::make('subtotal'),
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
-                Hidden::make('invoice_number')
-                    ->dehydrated(true),
+                Hidden::make('invoice_number')->dehydrated(true),
             ]);
     }
 
@@ -254,80 +255,110 @@ class SaleResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('invoice_number')
-                    ->label('Invoice #')
+                    ->label('Inv #')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->grow(false),
 
-                TextColumn::make('customer.first_name')
+                TextColumn::make('customer.name')
                     ->label('Customer')
-                    ->searchable(['customer.first_name', 'customer.last_name'])
+                    ->searchable(['name', 'phone'])
+                    ->sortable()
                     ->formatStateUsing(
-                        fn($record) =>
-                        $record->customer
-                            ? "{$record->customer->first_name} {$record->customer->last_name}"
-                            : 'Walk-in'
+                        fn($record) => $record->customer ? $record->customer->name : 'Walk-in'
                     ),
 
-                TextColumn::make('sales_person_list')
-                    ->label('Sales Person'),
+                TextColumn::make('items.custom_description')
+                    ->label('Description')
+                    ->listWithLineBreaks()
+                    ->bulleted()
+                    ->limitList(1)
+                    ->expandableLimitedList()
+                    ->searchable()
+                    ->color('gray')
+                    ->size('xs'),
+
+                TextColumn::make('payment_method')
+                    ->label('Method')
+                    ->formatStateUsing(fn (string $state): string => strtoupper(str_replace('_', ' ', $state)))
+                    ->badge()
+                    ->color('gray')
+                    ->grow(false),
 
                 TextColumn::make('final_total')
                     ->label('Total')
-                    ->money('USD'),
+                    ->money('USD')
+                    ->weight('bold')
+                    ->color('success')
+                    ->alignRight(),
 
                 TextColumn::make('created_at')
                     ->label('Date')
-                    ->dateTime()
-                    ->sortable(),
+                    ->dateTime('M d, y')
+                    ->sortable()
+                    ->grow(false),
             ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Type')
+                    ->options([
+                        'cash' => 'CASH',
+                        'laybuy' => 'LAYBUY (Installment Plan)',
+                        'visa' => 'VISA',
+                        'comenity' => 'COMENITY',
+                    ]),
 
-            // 🔹 ACTIONS GO HERE — NOT IN COLUMNS
+                Tables\Filters\TernaryFilter::make('has_trade_in')
+                    ->label('Trade-Ins')
+                    ->placeholder('All Sales')
+                    ->trueLabel('With Trade-In')
+                    ->falseLabel('Without Trade-In')
+                    ->queries(
+                        true: fn ($query) => $query->where('has_trade_in', 1),
+                        false: fn ($query) => $query->where('has_trade_in', 0),
+                    )
+            ])
             ->actions([
                 Tables\Actions\Action::make('printReceipt')
-                    ->label('Print Receipt')
+                    ->label('Receipt')
                     ->icon('heroicon-o-printer')
                     ->color('info')
                     ->url(fn(Sale $record): string => route('sales.receipt', $record))
+                    ->openUrlInNewTab()
                     ->visible(
                         fn(Sale $record) =>
-                        $record->payment_method !== 'laybuy' || $record->status === 'completed'
+                        $record->payment_method !== 'laybuy' ||
+                            in_array($record->status, ['completed', 'pending', 'inprogress'])
                     ),
             ])
-
             ->defaultSort('created_at', 'desc');
     }
 
     public static function updateTotals(Get $get, Set $set)
-{
-    $items = $get('items') ?? [];
-    $shipping = floatval($get('shipping_charges') ?? 0);
-    $subtotal = 0;
+    {
+        $items = $get('items') ?? [];
+        $shipping = floatval($get('shipping_charges') ?? 0);
+        $subtotal = 0;
 
-    // 1. Calculate items total
-    foreach ($items as $item) {
-        $price = floatval($item['sold_price'] ?? 0);
-        $qty = intval($item['qty'] ?? 1);
-        $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
+        foreach ($items as $item) {
+            $price = floatval($item['sold_price'] ?? 0);
+            $qty = intval($item['qty'] ?? 1);
+            $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
+        }
+
+        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 8.25;
+        $taxMultiplier = floatval($dbTax) / 100;
+
+        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
+
+        $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+
+        $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
+
+        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
+        $set('tax_amount', number_format($tax, 2, '.', ''));
+        $set('final_total', number_format($finalTotal, 2, '.', ''));
     }
-
-    // 2. Fetch dynamic tax
-    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 8.25;
-    $taxMultiplier = floatval($dbTax) / 100;
-
-    // 3. Calculate Tax
-    $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
-
-    // 4. Handle Trade-In Deduction
-    // Only subtract if has_trade_in is explicitly set to 1 (Yes)
-    $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-
-    $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
-
-    // 5. Update the form state
-    $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-    $set('tax_amount', number_format($tax, 2, '.', ''));
-    $set('final_total', number_format($finalTotal, 2, '.', ''));
-}
 
     protected static function totalRow($label, $field)
     {

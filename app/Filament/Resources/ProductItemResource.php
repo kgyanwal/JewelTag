@@ -137,6 +137,7 @@ class ProductItemResource extends Resource
                     /* ───────── SUPPLIER ───────── */
                     Select::make('supplier_id')
                         ->relationship('supplier', 'company_name')
+                        ->label('Vendor')
                         ->searchable()
                         ->preload()
                         ->required()

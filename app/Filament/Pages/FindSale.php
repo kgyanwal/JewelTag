@@ -56,7 +56,34 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->label('Phone Number')
                                 ->tel()
                                 ->prefix('+1'), // 🔹 Persistent +1
-                            
+                            Select::make('payment_method')
+    ->label('Payment Method')
+    ->options([
+        'cash' => 'CASH',
+        'laybuy' => 'LAYBUY (Installment Plan)',
+        'visa' => 'VISA',
+        'comenity' => 'COMENITY',
+        'debit_card' => 'DEBIT CARD',
+        'snap_finance' => 'SNAP FINANCE',
+        'katapult' => 'KATAPULT',
+        'acima_finance' => 'ACIMA FINANCE',
+        'kefene' => 'KEFENE',
+        'american_express' => 'AMERICAN EXPRESS',
+        'mastercard' => 'MASTERCARD',
+        'wells_fargo' => 'WELLS FARGO',
+        'synchrony' => 'SYNCHRONY',
+        'cheque' => 'CHEQUE',
+        'afterpay' => 'AFTERPAY',
+        'affirm' => 'AFFIRM',
+        'website_payments' => 'WEBSITE PAYMENTS',
+        'discover' => 'DISCOVER',
+        'terrance_finance' => 'TERRANCE FINANCE',
+        'others' => 'OTHERS',
+        'progressive_leasing' => 'PROGRESSIVE LEASING',
+    ])
+    ->searchable()
+    ->placeholder('All Methods'),
+
                             Select::make('sales_person')
                                 ->options(SalesAssistant::pluck('name', 'name'))
                                 ->searchable(),
@@ -77,6 +104,8 @@ class FindSale extends Page implements HasForms, HasTable
                 ->when($this->data['phone'] ?? null, fn ($q, $v) => $q->whereHas('customer', fn($sq) => $sq->where('phone', 'like', "%{$v}%")))
                 ->when($this->data['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
                 ->when($this->data['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+                ->when($this->data['payment_method'] ?? null, fn ($q, $v) => $q->where('payment_method', $v))
+
                 ->latest()
             )
             ->columns([
@@ -117,8 +146,10 @@ class FindSale extends Page implements HasForms, HasTable
             ]);
     }
 
-    public function updatedData(): void
-    {
-        $this->resetTable();
-    }
+public function refreshTable(): void
+{
+    $this->resetTable();
+}
+
+
 }

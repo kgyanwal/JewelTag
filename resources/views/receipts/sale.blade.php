@@ -501,38 +501,41 @@
 
         <!-- Customer & Payment Info -->
         <div class="info-grid">
-            <div class="info-card">
-                <div class="card-title">
-                    <i class="fas fa-user-circle"></i> Customer Information
-                </div>
-                <div class="customer-name">
-                    @if($sale->customer && ($sale->customer->first_name || $sale->customer->last_name))
-                        {{ $sale->customer->first_name ?? '' }} {{ $sale->customer->last_name ?? '' }}
-                    @else
-                        Walk-in Customer
-                    @endif
-                </div>
-                <div class="customer-details">
-                    @if($sale->customer)
-                        @if($sale->customer->street)
-                            <div><i class="fas fa-map-marker-alt"></i> {{ $sale->customer->street }}</div>
-                        @endif
-                        @if($sale->customer->city || $sale->customer->state || $sale->customer->postcode)
-                            <div><i class="fas fa-city"></i> {{ $sale->customer->city ?? '' }} 
-                            {{ $sale->customer->state ?? '' }} 
-                            {{ $sale->customer->postcode ?? '' }}</div>
-                        @endif
-                        @if($sale->customer->phone)
-                            <div><i class="fas fa-mobile-alt"></i> {{ $sale->customer->phone }}</div>
-                        @endif
-                        @if($sale->customer->email)
-                            <div><i class="fas fa-envelope"></i> {{ $sale->customer->email }}</div>
-                        @endif
-                    @else
-                        <div><i class="fas fa-info-circle"></i> Walk-in transaction</div>
-                    @endif
-                </div>
-            </div>
+          <div class="info-card">
+    <div class="card-title">
+        <i class="fas fa-credit-card"></i> Payment Information
+    </div>
+    <ul class="payment-details">
+        <li>
+            <span>Payment Method:</span>
+            <span style="font-weight: 600; color: var(--primary);">
+                <i class="fas fa-wallet"></i> {{ strtoupper(str_replace('_', ' ', $sale->payment_method)) }}
+            </span>
+        </li>
+        <li>
+            <span>Invoice Status:</span>
+            @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
+                <span style="font-weight: 600; color: #f59e0b;">
+                    <i class="fas fa-clock"></i>LAYBY PENDING
+                </span>
+            @else
+                <span style="font-weight: 600; color: var(--success);">
+                    <i class="fas fa-check-circle"></i> PAID IN FULL
+                </span>
+            @endif
+        </li>
+    </ul>
+    
+    @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
+        <div class="status-badge" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+            <i class="fas fa-hourglass-half"></i> Installment Plan Active
+        </div>
+    @else
+        <div class="status-badge">
+            <i class="fas fa-check"></i> Payment Completed
+        </div>
+    @endif
+</div>
 
             <div class="info-card">
                 <div class="card-title">
@@ -618,34 +621,42 @@
         </table>
 
         <!-- Totals Section -->
-        <div class="totals-container">
-            <div class="totals-card">
-                <div class="total-row">
-                    <span><i class="fas fa-receipt"></i> Subtotal</span>
-                    <span>${{ number_format($sale->subtotal, 2) }}</span>
-                </div>
-                <div class="total-row">
-                    <span><i class="fas fa-percentage"></i> Sales Tax (8.25%)</span>
-                    <span>${{ number_format($sale->tax_amount, 2) }}</span>
-                </div>
-                @if($sale->shipping_charges && $sale->shipping_charges > 0)
-                <div class="total-row">
-                    <span><i class="fas fa-shipping-fast"></i> Shipping & Handling</span>
-                    <span>${{ number_format($sale->shipping_charges, 2) }}</span>
-                </div>
-                @endif
-                @if($sale->discount_total && $sale->discount_total > 0)
-                <div class="total-row">
-                    <span><i class="fas fa-tag"></i> Total Discount</span>
-                    <span>-${{ number_format($sale->discount_total, 2) }}</span>
-                </div>
-                @endif
-                <div class="grand-total-row">
-                    <span><i class="fas fa-crown"></i> GRAND TOTAL</span>
-                    <span>${{ number_format($sale->final_total, 2) }}</span>
-                </div>
-            </div>
+      <div class="totals-container">
+    <div class="totals-card">
+        <div class="total-row">
+            <span><i class="fas fa-receipt"></i> Subtotal</span>
+            <span>${{ number_format($sale->subtotal, 2) }}</span>
         </div>
+        <div class="total-row">
+            <span><i class="fas fa-percentage"></i> Sales Tax</span>
+            <span>${{ number_format($sale->tax_amount, 2) }}</span>
+        </div>
+        
+        @if($sale->has_trade_in)
+        <div class="total-row" style="color: #ffeb3b;">
+            <span><i class="fas fa-exchange-alt"></i> Trade-In Credit</span>
+            <span>-${{ number_format($sale->trade_in_value, 2) }}</span>
+        </div>
+        @endif
+
+        <div class="grand-total-row">
+            <span><i class="fas fa-crown"></i> GRAND TOTAL</span>
+            <span>${{ number_format($sale->final_total, 2) }}</span>
+        </div>
+
+        <div class="grand-total-row" style="border-top: 1px dashed rgba(255,255,255,0.5); margin-top: 5px; background: rgba(0,0,0,0.1); border-radius: 0 0 8px 8px;">
+    <span><i class="fas fa-hand-holding-usd"></i> REMAINING BALANCE</span>
+    <span>
+        @if($sale->payment_method === 'laybuy')
+            {{-- If Laybuy exists, show the balance; otherwise show the full total as pending --}}
+            ${{ number_format($sale->laybuy->balance_due ?? $sale->final_total, 2) }}
+        @else
+            $0.00
+        @endif
+    </span>
+</div>
+    </div>
+</div>
 
         <!-- Footer -->
         <div class="footer">

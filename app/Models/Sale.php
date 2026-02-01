@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Sale extends Model
 {
+    use LogsActivity;
     protected $guarded = [];
     protected $casts = ['sales_person_list' => 'array'];
     
@@ -41,5 +43,8 @@ public function getCustomerNameAttribute(): string
         ? "{$this->customer->first_name} {$this->customer->last_name}"
         : 'Walk-in';
 }
-
+public function laybuy()
+{
+    return $this->hasOne(Laybuy::class, 'sale_id');
+}
 }

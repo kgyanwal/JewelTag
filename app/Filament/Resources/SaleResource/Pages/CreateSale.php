@@ -90,11 +90,11 @@ protected function afterCreate(): void
             
             // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
             // so the receipt button remains hidden.
-            $sale->update(['status' => 'inprogress']);
+            $sale->update(['status' => 'pending']);
             
             \Filament\Notifications\Notification::make()
                 ->title('Stock Reserved')
-                ->body('Items are now ON HOLD. Receipt disabled until full payment.')
+                ->body('Items are now ON HOLD. Initial agreement ready.')
                 ->warning()
                 ->send();
         }

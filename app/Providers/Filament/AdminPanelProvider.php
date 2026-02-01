@@ -22,6 +22,7 @@ use Filament\View\PanelsRenderHook;
 use Filament\Support\Assets\Js;
 use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
+use App\Filament\Resources\ActivityLogResource;
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -130,6 +131,7 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
+                 \App\Filament\Resources\ActivityLogResource::class,
                 
             ])
             ->pages([
@@ -175,11 +177,19 @@ HTML
                 NavigationGroup::make()->label('Inventory'),
             ])
             ->userMenuItems([
-            'settings' => MenuItem::make()
-                ->label('Store Settings')
-                ->url(fn (): string => ManageSettings::getUrl())
-                ->icon('heroicon-o-adjustments-horizontal'),
-        ]);
+    'settings' => MenuItem::make()
+        ->label('Store Settings')
+        ->url(fn (): string => ManageSettings::getUrl())
+        ->icon('heroicon-o-adjustments-horizontal'),
+
+    // 🔹 NEW: Activity Logs Menu Item
+    'activity_logs' => MenuItem::make()
+        ->label('Activity Logs')
+        ->icon('heroicon-o-finger-print')
+        ->url(fn (): string => ActivityLogResource::getUrl())
+        // 🔹 Only visible to Superadmins and Admins
+        ->visible(fn (): bool => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
+]);
             
     }
 }
