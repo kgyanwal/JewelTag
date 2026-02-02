@@ -1,40 +1,51 @@
 <x-filament-panels::page>
     <div class="space-y-6">
-        <form wire:submit.prevent="runAction('preview')">
+        {{-- Intelligence Hub Cards --}}
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <x-filament::section class="border-t-4 border-t-primary-600">
+                <p class="text-xs text-gray-500 uppercase font-bold tracking-widest">Total Revenue</p>
+                <h2 class="text-3xl font-black text-primary-600">${{ $intelligence['revenue'] }}</h2>
+                <p class="text-[10px] text-gray-400">Avg Ticket: ${{ $intelligence['avg_ticket'] }}</p>
+            </x-filament::section>
+
+            <x-filament::section class="border-t-4 border-t-success-600">
+                <p class="text-xs text-gray-500 uppercase font-bold tracking-widest">Net Profit</p>
+                <h2 class="text-3xl font-black text-success-600">${{ $intelligence['profit'] }}</h2>
+                <p class="text-[10px] text-gray-400">Yield Margin: {{ $intelligence['margin'] }}%</p>
+            </x-filament::section>
+
+            <x-filament::section class="border-t-4 border-t-amber-600">
+                <p class="text-xs text-gray-500 uppercase font-bold tracking-widest">Quantity Sold</p>
+                <h2 class="text-3xl font-black text-gray-800">{{ $intelligence['count'] }}</h2>
+                <p class="text-[10px] text-gray-400">Inventory Turnover Count</p>
+            </x-filament::section>
+
+            <x-filament::section class="border-t-4 border-t-purple-600">
+                <p class="text-xs text-gray-500 uppercase font-bold tracking-widest">Best Volume Day</p>
+                <h2 class="text-xl font-bold text-purple-700 mt-2">{{ $intelligence['best_day'] }}</h2>
+                <p class="text-[10px] text-gray-400">Top Performance Date</p>
+            </x-filament::section>
+        </div>
+
+        {{-- Parameter Selection --}}
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
             {{ $this->form }}
-
-            <div class="flex justify-end gap-2 mt-4">
-                <button type="button" wire:click="runAction('print')" class="blue-erp-btn">PRINT</button>
-                <button type="button" wire:click="runAction('export')" class="blue-erp-btn">EXPORT</button>
-                <button type="submit" class="blue-erp-btn">PREVIEW</button>
+            <div class="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
+                <x-filament::button wire:click="runAction('preview')" icon="heroicon-m-magnifying-glass">
+                    Apply Intelligence Filters
+                </x-filament::button>
             </div>
-        </form>
+        </div>
 
-        <hr class="border-gray-200">
-
+        {{-- Report Table --}}
         @if($showTable)
-            <div class="bg-white border border-gray-200 rounded-sm shadow-sm p-4">
-                <h3 class="text-sm font-bold text-gray-700 mb-4 uppercase">Report Preview</h3>
+            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-2">
                 {{ $this->table }}
             </div>
         @else
-            <div class="p-10 border-2 border-dashed border-gray-200 text-center text-gray-400 rounded-lg">
-                Click "PREVIEW" to load data based on selected filters.
+            <div class="p-20 border-2 border-dashed border-gray-200 text-center rounded-2xl">
+                <p class="text-gray-400">Select parameters and click preview to begin analysis.</p>
             </div>
         @endif
     </div>
-
-    <style>
-        .blue-erp-btn {
-            background-color: #89cff0;
-            color: white;
-            font-weight: 800;
-            padding: 8px 30px;
-            border-radius: 2px;
-            font-size: 12px;
-            transition: 0.2s;
-        }
-        .blue-erp-btn:hover { background-color: #6fbce2; }
-        .fi-ta-header-ctn { display: none !important; } /* Compact look */
-    </style>
 </x-filament-panels::page>

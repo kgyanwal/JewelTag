@@ -268,15 +268,27 @@ class SaleResource extends Resource
                         fn($record) => $record->customer ? $record->customer->name : 'Walk-in'
                     ),
 
-                TextColumn::make('items.custom_description')
-                    ->label('Description')
-                    ->listWithLineBreaks()
-                    ->bulleted()
-                    ->limitList(1)
-                    ->expandableLimitedList()
-                    ->searchable()
-                    ->color('gray')
-                    ->size('xs'),
+                TextColumn::make('items')
+    ->label('Sold Items')
+    ->listWithLineBreaks()
+    ->getStateUsing(function ($record) {
+        return $record->items
+            ->map(function ($item) {
+                if (! $item->productItem) {
+                    return $item->custom_description;
+                }
+
+                return $item->productItem->barcode
+                    . ' — '
+                    . ($item->productItem->custom_description ?? 'Item');
+            })
+            ->toArray();
+    })
+    ->limitList(1)
+    ->expandableLimitedList()
+    ->size('xs')
+    ->color('gray'),
+
 
                 TextColumn::make('payment_method')
                     ->label('Method')

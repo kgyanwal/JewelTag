@@ -132,6 +132,7 @@ HTML
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
                  \App\Filament\Resources\ActivityLogResource::class,
+                 \App\Filament\Resources\DeletionRequestResource::class,
                 
             ])
             ->pages([
@@ -146,7 +147,8 @@ HTML
                 \App\Filament\Pages\PinCodeAuth::class,
                 \App\Filament\Pages\LabelDesigner::class,
                 \App\Filament\Pages\ManageSettings::class,
-                \App\Filament\Pages\TradeInCheck::class
+                \App\Filament\Pages\TradeInCheck::class,
+                \App\Filament\Pages\MemoInventory::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\StatsOverview::class,

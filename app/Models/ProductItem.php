@@ -42,6 +42,9 @@ protected $fillable = [
     'status',
     'is_trade_in',         // 🔹 MUST BE HERE
     'original_trade_in_no', // 🔹 MUST BE HERE
+    'is_memo',
+    'memo_vendor_id',
+    'memo_status',
 ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty
@@ -62,6 +65,10 @@ public function store(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
     }
+
+    public function memoVendor() {
+    return $this->belongsTo(Supplier::class, 'memo_vendor_id');
+}
 //     protected static function booted()
 // {
 //     static::saving(function ($item) {
