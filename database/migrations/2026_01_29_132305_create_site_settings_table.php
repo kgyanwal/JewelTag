@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('site_settings', function (Blueprint $table) {
         $table->id();
         $table->string('key')->unique(); // e.g., 'tax_rate'
-        $table->string('value');          // e.g., '8.25'
+        $table->string('value');          // e.g., '7.63'
         $table->timestamps();
     });
 }

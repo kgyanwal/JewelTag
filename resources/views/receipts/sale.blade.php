@@ -188,7 +188,7 @@
                 </div>
             </div>
 
-            <div class="signature-box">Authorized Signature</div>
+            <div class="signature-box">Your Trusted Jewelry Store In Town</div>
         </div>
 
         <div class="totals-area">

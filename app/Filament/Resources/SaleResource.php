@@ -358,7 +358,7 @@ class SaleResource extends Resource
             $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
         }
 
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 8.25;
+        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxMultiplier = floatval($dbTax) / 100;
 
         $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
