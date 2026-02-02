@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Tax Invoice: {{ $sale->invoice_number }} | Finest Gem LLC</title>
+    <title>Tax Invoice: {{ $sale->invoice_number }} | Diamond Square</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&family=Source+Code+Pro:wght@400;500&display=swap');
         
@@ -478,13 +478,13 @@
         <!-- Header -->
         <div class="header">
             <div class="store-info">
-                <h1>Finest Gem LLC</h1>
+                <h1>Diamond Square</h1>
                 <div class="store-tagline">Premium Jewelry & Luxury Timepieces</div>
                 <div class="store-details">
                     <div><i class="fas fa-map-marker-alt"></i> 6600 Menaul Blvd NE #6508</div>
                     <div><i class="fas fa-city"></i> Albuquerque, NM 87110 USA</div>
                     <div><i class="fas fa-phone"></i> 505-810-7222</div>
-                    <div><i class="fas fa-envelope"></i> finestgem@email.com</div>
+                    <div><i class="fas fa-envelope"></i> info@thedsq.com</div>
                 </div>
             </div>
             <div class="invoice-header">
@@ -664,7 +664,7 @@
                 <i class="fas fa-gem"></i> Thank You For Your Business
             </div>
             <div class="footer-text">
-                Thank you for choosing Finest Gem LLC. All items are certified authentic and undergo rigorous quality inspection. 
+                Thank you for choosing Diamond Square. All items are certified authentic and undergo rigorous quality inspection. 
                 Returns accepted within 14 days with original receipt and packaging. All sales are subject to store terms and conditions.
             </div>
             <div class="footer-badges">
