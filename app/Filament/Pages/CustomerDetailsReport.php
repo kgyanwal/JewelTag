@@ -23,11 +23,11 @@ class CustomerDetailsReport extends Page implements HasForms, HasTable
    protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
     
     // 🔹 Level 1: The Main Group
-    protected static ?string $navigationGroup = 'Reports'; 
+    protected static ?string $navigationGroup = 'Analytics & Reports'; 
     
     // 🔹 Level 2 & 3: Hierarchical Labeling
     // This makes it appear as "Customer > CR007 - Details"
-    protected static ?string $navigationLabel = 'Customer > Details List';
+    protected static ?string $navigationLabel = 'Customer_Details List';
     
     protected static ?int $navigationSort = 1;
 

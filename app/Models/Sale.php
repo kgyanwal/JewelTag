@@ -24,7 +24,10 @@ class Sale extends Model
     { 
         return $this->hasMany(SaleItem::class); 
     }
-
+public function productItem()
+{
+    return $this->belongsTo(ProductItem::class);
+}
     protected static function booted()
     {
         static::creating(function ($sale) {
@@ -46,5 +49,25 @@ public function getCustomerNameAttribute(): string
 public function laybuy()
 {
     return $this->hasOne(Laybuy::class, 'sale_id');
+}
+
+public static function getGloballySearchableAttributes(): array
+{
+    // Allows searching by invoice or customer name from the top bar
+    return ['invoice_number', 'customer.name'];
+}
+
+public function getGlobalSearchResultTitle(): string
+{
+    // Displays the title in the search results dropdown
+    return "Invoice: " . $this->invoice_number;
+}
+
+public function getGlobalSearchResultDetails(): array
+{
+    // Adds extra info (Customer name) to the search result
+    return [
+        'Customer' => $this->customer?->name ?? 'Walk-in',
+    ];
 }
 }

@@ -23,15 +23,7 @@ class InventorySettings extends Page implements HasForms
 
     public ?array $data = [];
 
-    public function mount(): void
-    {
-        $this->form->fill([
-            'departments' => collect(Cache::get('inventory_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
-            'sub_departments' => collect(Cache::get('inventory_sub_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
-            'categories' => collect(Cache::get('inventory_categories', []))->map(fn($item) => ['name' => $item])->toArray(),
-            'metal_types' => collect(Cache::get('inventory_metal_types', []))->map(fn($item) => ['name' => $item])->toArray(),
-        ]);
-    }
+    
 
     public function form(Form $form): Form
     {
@@ -68,18 +60,38 @@ class InventorySettings extends Page implements HasForms
             ])->columnSpan(1);
     }
 
-    public function save(): void
-    {
-        $state = $this->form->getState();
+    // Inside app/Filament/Pages/InventorySettings.php
 
-        Cache::forever('inventory_departments', collect($state['departments'])->pluck('name')->filter()->toArray());
-        Cache::forever('inventory_sub_departments', collect($state['sub_departments'])->pluck('name')->filter()->toArray());
-        Cache::forever('inventory_categories', collect($state['categories'])->pluck('name')->filter()->toArray());
-        Cache::forever('inventory_metal_types', collect($state['metal_types'])->pluck('name')->filter()->toArray());
+public function mount(): void
+{
+    $settings = \App\Models\InventorySetting::pluck('value', 'key');
 
-        Notification::make()->title('Settings Saved')->success()->send();
+    $this->form->fill([
+        'departments' => collect($settings->get('departments', []))->map(fn($item) => ['name' => $item])->toArray(),
+        'sub_departments' => collect($settings->get('sub_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
+        'categories' => collect($settings->get('categories', []))->map(fn($item) => ['name' => $item])->toArray(),
+        'metal_types' => collect($settings->get('metal_types', []))->map(fn($item) => ['name' => $item])->toArray(),
+    ]);
+}
+
+public function save(): void
+{
+    $state = $this->form->getState();
+
+    $keys = ['departments', 'sub_departments', 'categories', 'metal_types'];
+
+    foreach ($keys as $key) {
+        \App\Models\InventorySetting::updateOrCreate(
+            ['key' => $key],
+            ['value' => collect($state[$key])->pluck('name')->filter()->toArray()]
+        );
     }
 
+    // Optional: Keep cache for performance, but database is now the source of truth
+    Cache::forget('inventory_departments'); 
+    
+    Notification::make()->title('Settings Saved to Database')->success()->send();
+}
     protected function getFormActions(): array
 {
     return [

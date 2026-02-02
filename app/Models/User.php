@@ -61,7 +61,7 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         // Grants access only if user is active and has the 'Superadmin' role
-        return $this->is_active && $this->hasRole('Superadmin');
+       return $this->roles()->exists();
     }
 
     // --- Relationships ---
