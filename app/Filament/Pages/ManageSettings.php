@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Helpers\Staff;
 use Filament\Pages\Page;
 use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
@@ -26,6 +27,14 @@ class ManageSettings extends Page
         $this->form->fill([
             'tax_rate' => $taxRate,
         ]);
+    }
+public static function shouldRegisterNavigation(): bool
+    {
+        // Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = Staff::user();
+
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
     }
 
     public function form(Form $form): Form

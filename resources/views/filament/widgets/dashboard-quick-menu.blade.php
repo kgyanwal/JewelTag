@@ -1,14 +1,15 @@
 <x-filament-widgets::widget>
 <div class="luxury-terminal-wrapper">
-    @if($storeLogo)
-        <div class="flex justify-center mb-10">
-            <div class="dynamic-logo-pill">
-                <img src="{{ asset('storage/' . $storeLogo) }}" 
-                     alt="Store Logo" 
-                     class="h-20 w-auto object-contain">
-            </div>
-        </div>
-    @endif
+   
+       <div class="flex justify-center ">
+    <div class="dynamic-logo-pill" style="height: 100px; width: 200px">
+        <img src="{{ asset('pngdiamondsquare.png') }}" 
+             alt="Store Logo" 
+              height="80px">
+    </div>
+</div>
+
+    
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 p-4">
         
         <div class="lg:col-span-8 space-y-8">
@@ -31,7 +32,7 @@
                             <h3>New Sale</h3>
                             <p>Standard Invoice</p>
                         </div>
-                        <div class="shortcut-tag">CTRL + S</div>
+                       
                     </a>
 
                     <a href="/admin/sales/create" class="action-card sale-quick">
