@@ -9,11 +9,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
-
+use Illuminate\Database\Eloquent\SoftDeletes;
 // 🔹 Must "implements FilamentUser" to allow panel access
 class User extends Authenticatable implements FilamentUser
 {
-    use HasFactory, HasRoles, Notifiable;
+    use HasFactory, HasRoles, Notifiable,SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -66,10 +66,11 @@ class User extends Authenticatable implements FilamentUser
 
     // --- Relationships ---
 
-    public function store()
-    {
-        return $this->belongsTo(Store::class);
-    }
+   public function store()
+{
+    // Adjust 'store_id' if your foreign key column has a different name
+    return $this->belongsTo(Store::class, 'store_id');
+}
 
     // --- Scopes ---
 

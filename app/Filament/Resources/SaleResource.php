@@ -85,7 +85,7 @@ class SaleResource extends Resource
                                         ];
 
                                         $set('items', $currentItems);
-                                        
+
                                         // Reset Search
                                         $set('current_item_search', null);
                                         $set('current_qty', 1);
@@ -269,30 +269,30 @@ class SaleResource extends Resource
                     ),
 
                 TextColumn::make('items')
-    ->label('Sold Items')
-    ->listWithLineBreaks()
-    ->getStateUsing(function ($record) {
-        return $record->items
-            ->map(function ($item) {
-                if (! $item->productItem) {
-                    return $item->custom_description;
-                }
+                    ->label('Sold Items')
+                    ->listWithLineBreaks()
+                    ->getStateUsing(function ($record) {
+                        return $record->items
+                            ->map(function ($item) {
+                                if (! $item->productItem) {
+                                    return $item->custom_description;
+                                }
 
-                return $item->productItem->barcode
-                    . ' — '
-                    . ($item->productItem->custom_description ?? 'Item');
-            })
-            ->toArray();
-    })
-    ->limitList(1)
-    ->expandableLimitedList()
-    ->size('xs')
-    ->color('gray'),
+                                return $item->productItem->barcode
+                                    . ' — '
+                                    . ($item->productItem->custom_description ?? 'Item');
+                            })
+                            ->toArray();
+                    })
+                    ->limitList(1)
+                    ->expandableLimitedList()
+                    ->size('xs')
+                    ->color('gray'),
 
 
                 TextColumn::make('payment_method')
                     ->label('Method')
-                    ->formatStateUsing(fn (string $state): string => strtoupper(str_replace('_', ' ', $state)))
+                    ->formatStateUsing(fn(string $state): string => strtoupper(str_replace('_', ' ', $state)))
                     ->badge()
                     ->color('gray')
                     ->grow(false),
@@ -326,11 +326,15 @@ class SaleResource extends Resource
                     ->trueLabel('With Trade-In')
                     ->falseLabel('Without Trade-In')
                     ->queries(
-                        true: fn ($query) => $query->where('has_trade_in', 1),
-                        false: fn ($query) => $query->where('has_trade_in', 0),
+                        true: fn($query) => $query->where('has_trade_in', 1),
+                        false: fn($query) => $query->where('has_trade_in', 0),
                     )
             ])
             ->actions([
+                Tables\Actions\ViewAction::make()
+                ->label('View')
+                ->icon('heroicon-o-eye') 
+                ->color('info'),
                 Tables\Actions\Action::make('printReceipt')
                     ->label('Receipt')
                     ->icon('heroicon-o-printer')
@@ -383,6 +387,7 @@ class SaleResource extends Resource
             'index' => Pages\ListSales::route('/'),
             'create' => Pages\CreateSale::route('/create'),
             'edit' => Pages\EditSale::route('/{record}/edit'),
+            'view' => Pages\ViewSale::route('/{record}'),
         ];
     }
 }

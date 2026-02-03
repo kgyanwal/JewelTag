@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ActivityLogResource\Pages;
+use App\Helpers\Staff;
 use App\Models\ActivityLog;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -14,10 +15,13 @@ class ActivityLogResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-finger-print';
     protected static ?string $navigationGroup = 'Administration';
 
-    public static function canViewAny(): bool
+   public static function shouldRegisterNavigation(): bool
     {
-        // 🔹 Only allow high-level roles
-        return auth()->user()->hasAnyRole(['Superadmin', 'Admin']);
+        // Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = Staff::user();
+
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
     }
 
     public static function table(Table $table): Table

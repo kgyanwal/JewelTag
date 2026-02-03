@@ -34,8 +34,16 @@ class AdminPanelProvider extends PanelProvider
             ->registration()
             ->login()
             ->topNavigation()
-            ->brandLogo(asset('jeweltaglogo.png'))
-            ->brandLogoHeight('2.5rem')
+           ->brandLogo(null)
+->brandName('')
+
+        ->topNavigation()
+        // 🔹 Inject the logo to the right of the User Menu
+        ->renderHook(
+                PanelsRenderHook::USER_MENU_AFTER,
+                fn (): string => view('filament.hooks.custom-logo')->render(),
+            )
+
             ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
             ->colors([
@@ -106,6 +114,18 @@ body, .fi-layout { background-color: var(--body-bg) !important; color: var(--tex
     font-weight: 700 !important;
     opacity: 1 !important;
 }
+.fi-topbar-content {
+    display: flex !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+}
+
+/* Ensure the user menu and new logo stay grouped on the right */
+.fi-user-menu {
+    display: flex !important;
+    align-items: center !important;
+    gap: 1rem !important;
+}
 .fi-wi-stats-overview-stat-description,
 .fi-wi-stats-overview-stat-icon {
     opacity: 1 !important;
@@ -149,12 +169,12 @@ HTML
                 \App\Filament\Pages\ManageSettings::class,
                 \App\Filament\Pages\TradeInCheck::class,
                 \App\Filament\Pages\MemoInventory::class,
+                \App\Filament\Pages\Analytics::class,
+               
             ])
             ->widgets([
-                \App\Filament\Widgets\StatsOverview::class,
-                \App\Filament\Widgets\LatestSales::class,
-                \App\Filament\Widgets\FastestSellingItems::class,
-                \App\Filament\Widgets\DepartmentChart::class,
+            \App\Filament\Widgets\DashboardQuickMenu::class,
+            
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -169,7 +189,8 @@ HTML
             ])
             ->authMiddleware([
                 Authenticate::class,
-                \App\Http\Middleware\VerifyPinCode::class,
+              
+                \App\Http\Middleware\EnsureStaffSession::class,
             ])
             
             ->navigationGroups([

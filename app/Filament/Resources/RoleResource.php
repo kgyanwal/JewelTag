@@ -232,6 +232,15 @@ class RoleResource extends Resource
     // Only show this resource in the sidebar if the user can view users
     return auth()->user()->hasPermissionTo('view.users');
 }
+   public static function shouldRegisterNavigation(): bool
+{
+    // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
+    $staff = \App\Helpers\Staff::user();
+
+    // Only allow specific roles to see the Administration menu
+    return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+}
+
     // TEMPORARY: Allow access to everyone to prevent lockout during setup
     
 }

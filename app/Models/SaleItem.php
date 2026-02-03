@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SaleItem extends Model
 {
@@ -14,10 +15,10 @@ class SaleItem extends Model
         return $this->belongsTo(Sale::class); 
     }
 
-    public function productItem() 
-    { 
-        return $this->belongsTo(ProductItem::class); 
-    }
+   public function productItem(): BelongsTo
+{
+    return $this->belongsTo(ProductItem::class, 'product_item_id');
+}
 
     protected static function booted()
     {

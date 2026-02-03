@@ -3,54 +3,56 @@
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
-use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Form;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Hash;
+use App\Models\User;
 use Filament\Notifications\Notification;
 
-class PinCodeAuth extends Page implements HasForms
+class PinCodeAuth extends Page
 {
     use InteractsWithForms;
 
     protected static string $view = 'filament.pages.pin-code-auth';
-    protected static bool $shouldRegisterNavigation = false;
-    protected static ?string $slug = 'pin-code-auth';
-    
-    protected static ?string $navigationIcon = null;
 
-    public $pin_code;
+    public $pin_code = '';
 
     public function mount()
     {
-        // Check if PIN is already verified
-        if (session()->get('pin_verified')) {
-            return redirect(request('next', '/admin'));
+        if (Session::has('active_staff_id')) {
+            return redirect()->to('/admin');
         }
     }
-
+public static function shouldRegisterNavigation(): bool
+{
+    // This page should be hit via middleware redirect, not the menu
+    return false; 
+}
     public function verify()
     {
-        // Validate PIN
-        $userPin = auth()->user()->pin_code;
-        
-        // Check if PIN matches
-        if ($this->pin_code == $userPin) {
-            session(['pin_verified' => true]);
-            return redirect(request('next', '/admin'));
+        $staff = User::where('pin_code', $this->pin_code)->first();
+
+        if (!$staff) {
+            Notification::make()->title('Invalid PIN')->danger()->send();
+            return;
         }
 
-        // Send error notification
-        Notification::make()
-            ->title('Invalid PIN')
-            ->body('Please enter the correct 4-digit PIN')
-            ->danger()
-            ->send();
-            
-        // Clear the PIN field
-        $this->pin_code = '';
-        
-        // Don't redirect - stay on page
-        return null;
+        Session::put([
+            'active_staff_id' => $staff->id,
+            'active_staff_name' => $staff->name,
+            'active_staff_role' => $staff->roles->pluck('name')->first(),
+        ]);
+
+        Notification::make()->title("Welcome {$staff->name}")->success()->send();
+
+        return redirect()->intended(url('/admin'));
+    }
+
+    public function logoutMaster()
+    {
+        auth()->logout();
+        Session::flush();
+        return redirect()->to(filament()->getLoginUrl());
     }
 }

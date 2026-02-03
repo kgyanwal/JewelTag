@@ -7,6 +7,7 @@ use Filament\Widgets\ChartWidget;
 
 class DepartmentChart extends ChartWidget
 {
+    protected static ?string $componentName = 'department-chart';
     protected static ?string $heading = '📊 Stock by Department';
     protected static ?int $sort = 2;
     protected int|string|array $columnSpan = 'full';
