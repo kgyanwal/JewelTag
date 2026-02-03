@@ -199,19 +199,19 @@ HTML
                 NavigationGroup::make()->label('Reports'),
                 NavigationGroup::make()->label('Inventory'),
             ])
-            ->userMenuItems([
+           ->userMenuItems([
     'settings' => MenuItem::make()
         ->label('Store Settings')
         ->url(fn (): string => ManageSettings::getUrl())
-        ->icon('heroicon-o-adjustments-horizontal'),
+        ->icon('heroicon-o-adjustments-horizontal')
+         ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
-    // 🔹 NEW: Activity Logs Menu Item
     'activity_logs' => MenuItem::make()
         ->label('Activity Logs')
         ->icon('heroicon-o-finger-print')
         ->url(fn (): string => ActivityLogResource::getUrl())
-        // 🔹 Only visible to Superadmins and Admins
-        ->visible(fn (): bool => auth()->user()->hasAnyRole(['Superadmin', 'Admin'])),
+        // 🔹 USE STAFF HELPER: Checks the PIN-authenticated user's role
+        ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 ]);
             
     }

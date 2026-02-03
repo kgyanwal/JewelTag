@@ -331,6 +331,12 @@ class SaleResource extends Resource
                     )
             ])
             ->actions([
+                Tables\Actions\EditAction::make()
+        ->label('Edit')
+        // Only visible if NOT completed OR user is Superadmin
+        ->visible(fn ($record) => 
+            $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')
+        ),
                 Tables\Actions\ViewAction::make()
                 ->label('View')
                 ->icon('heroicon-o-eye') 

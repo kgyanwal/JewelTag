@@ -6,42 +6,36 @@ use App\Filament\Resources\SaleResource;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Actions;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Auth;
 
 class EditSale extends EditRecord
 {
     protected static string $resource = SaleResource::class;
 
     /**
-     * Runs when page loads
+     * 🔹 mount() is now cleaned to allow entry.
      */
     public function mount($record): void
     {
         parent::mount($record);
 
-        // If sale already completed → block editing
-        if ($this->record->status === 'completed') {
-
+        // We only show a warning now instead of redirecting, 
+        // or you can remove this block entirely to stop the notification.
+        if ($this->record->status === 'completed' && !Auth::user()->hasRole('Superadmin')) {
             Notification::make()
-                ->title('Sale Locked')
-                ->body('This sale is already completed and cannot be edited.')
-                ->danger()
-                ->persistent() // stays visible
+                ->title('Editing Completed Sale')
+                ->body('Warning: You are editing a sale that is already marked as completed.')
+                ->warning()
                 ->send();
-
-            // Redirect back to list page
-            $this->redirect(SaleResource::getUrl('index'));
         }
     }
 
     /**
-     * Disable form fields if completed
+     * 🔹 mutateFormDataBeforeFill() updated to keep fields enabled.
      */
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        if ($this->record->status === 'completed') {
-            $this->form->disabled();
-        }
-
+        // By removing $this->form->disabled(), all fields remain interactive.
         return $data;
     }
 
@@ -51,8 +45,9 @@ class EditSale extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            // Delete is now visible to everyone, or keep the Superadmin restriction if preferred.
             Actions\DeleteAction::make()
-                ->visible(fn () => $this->record->status !== 'completed'),
+                ->visible(fn () => Auth::user()->hasRole('Superadmin') || $this->record->status !== 'completed'),
         ];
     }
 }
