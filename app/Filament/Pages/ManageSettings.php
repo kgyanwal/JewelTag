@@ -20,8 +20,8 @@ class ManageSettings extends Page
 
     public function mount(): void
     {
-        // Load existing tax rate from DB or use 8.25 as default
-        $taxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? '8.25';
+        // Load existing tax rate from DB or use 7.63 as default
+        $taxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? '7.63';
         
         $this->form->fill([
             'tax_rate' => $taxRate,
