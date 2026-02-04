@@ -11,12 +11,7 @@ use Illuminate\Support\Facades\DB;
 class CreateSale extends CreateRecord
 {
     protected static string $resource = SaleResource::class;
-protected function mutateFormDataBeforeCreate(array $data): array
-    {
-        $data['invoice_number'] = 'INV-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(3)));
-        
-        return $data;
-    }
+
 protected function beforeCreate(): void
 {
     $items = $this->data['items'] ?? [];

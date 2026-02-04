@@ -40,7 +40,7 @@ class AdminPanelProvider extends PanelProvider
         ->topNavigation()
         // 🔹 Inject the logo to the right of the User Menu
         ->renderHook(
-                PanelsRenderHook::USER_MENU_AFTER,
+                PanelsRenderHook::GLOBAL_SEARCH_END,
                 fn (): string => view('filament.hooks.custom-logo')->render(),
             )
 
@@ -114,17 +114,33 @@ body, .fi-layout { background-color: var(--body-bg) !important; color: var(--tex
     font-weight: 700 !important;
     opacity: 1 !important;
 }
+/* 1. Make the topbar content container full width */
+/* 1. Make the topbar container a controllable flexbox */
 .fi-topbar-content {
-    display: flex !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-}
-
-/* Ensure the user menu and new logo stay grouped on the right */
-.fi-user-menu {
     display: flex !important;
     align-items: center !important;
     gap: 1rem !important;
+}
+
+/* 2. FORCE THE PROFILE (NS) TO THE ABSOLUTE LEFT */
+.fi-user-menu {
+    order: -10 !important; /* 🔹 Negative order pulls it to the start */
+    margin-right: 0 !important;
+}
+
+/* 3. Ensure Navigation (Dashboard, Sales, etc.) comes after the Profile */
+.fi-topbar-nav {
+    order: -5 !important;
+    flex: 1 !important; /* 🔹 Pushes everything else to the right */
+}
+
+/* 4. Keep Search and Logo on the far right */
+.fi-main-search {
+    order: 1 !important;
+}
+
+.fi-topbar-content > div:last-child {
+    order: 2 !important; /* 🔹 Your JewelTag Logo */
 }
 .fi-wi-stats-overview-stat-description,
 .fi-wi-stats-overview-stat-icon {
@@ -153,6 +169,7 @@ HTML
                 \App\Filament\Resources\PermissionResource::class,
                  \App\Filament\Resources\ActivityLogResource::class,
                  \App\Filament\Resources\DeletionRequestResource::class,
+                  \App\Filament\Resources\SaleEditRequestResource::class,
                 
             ])
             ->pages([

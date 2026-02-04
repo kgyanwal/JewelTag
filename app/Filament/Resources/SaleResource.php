@@ -81,7 +81,7 @@ class SaleResource extends Resource
                                             'custom_description' => $get('current_desc'),
                                             'qty' => $get('current_qty') ?? 1,
                                             'sold_price' => $get('current_price'),
-                                            'discount' => 0,
+                                            'discount_percent' => $item->discount_percent ?? 0,
                                         ];
 
                                         $set('items', $currentItems);
@@ -138,7 +138,7 @@ class SaleResource extends Resource
                                             }
                                         }),
                                     TextInput::make('sold_price')->label('Price')->numeric()->live()->columnSpan(2),
-                                    TextInput::make('discount')->label('Disc $')->numeric()->live()->columnSpan(2),
+                                    TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->live()->columnSpan(2),
                                 ])
                                 ->columns(12)
                                 ->addable(false)
@@ -356,31 +356,36 @@ class SaleResource extends Resource
             ->defaultSort('created_at', 'desc');
     }
 
-    public static function updateTotals(Get $get, Set $set)
-    {
-        $items = $get('items') ?? [];
-        $shipping = floatval($get('shipping_charges') ?? 0);
-        $subtotal = 0;
+  public static function updateTotals(Get $get, Set $set)
+{
+    $items = $get('items') ?? [];
+    $shipping = floatval($get('shipping_charges') ?? 0);
+    $subtotal = 0;
 
-        foreach ($items as $item) {
-            $price = floatval($item['sold_price'] ?? 0);
-            $qty = intval($item['qty'] ?? 1);
-            $subtotal += ($price * $qty) - floatval($item['discount'] ?? 0);
-        }
+    foreach ($items as $item) {
+        $price = floatval($item['sold_price'] ?? 0);
+        $qty = intval($item['qty'] ?? 1);
+        
+        // 🔹 This now matches the Repeater field name 'discount_percent'
+        $percent = floatval($item['discount_percent'] ?? 0); 
 
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxMultiplier = floatval($dbTax) / 100;
-
-        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
-
-        $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-
-        $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
-
-        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-        $set('tax_amount', number_format($tax, 2, '.', ''));
-        $set('final_total', number_format($finalTotal, 2, '.', ''));
+        $rowTotal = $price * $qty;
+        $discountAmount = $rowTotal * ($percent / 100);
+        
+        $subtotal += ($rowTotal - $discountAmount);
     }
+
+    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxMultiplier = floatval($dbTax) / 100;
+
+    $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
+    $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+    $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
+
+    $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
+    $set('tax_amount', number_format($tax, 2, '.', ''));
+    $set('final_total', number_format($finalTotal, 2, '.', ''));
+}
 
     protected static function totalRow($label, $field)
     {

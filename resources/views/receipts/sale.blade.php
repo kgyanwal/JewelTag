@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    @php
+    $totalSavings = 0;
+    foreach($sale->items as $item) {
+        if($item->discount_percent > 0) {
+            // Calculate what the price would have been without the discount
+            $originalPrice = $item->sold_price / (1 - ($item->discount_percent / 100));
+            $totalSavings += ($originalPrice - $item->sold_price) * $item->qty;
+        }
+    }
+@endphp
     <meta charset="utf-8">
     <title>Tax Invoice: {{ $sale->invoice_number }} | Diamond Square</title>
     <style>
@@ -152,6 +162,7 @@
                 <th style="width: 15%">Stock #</th>
                 <th>Item Description</th>
                 <th style="text-align: center; width: 10%">Qty</th>
+                <th style="text-align: center; width: 10%">Disc %</th>
                 <th style="text-align: right; width: 20%">Price</th>
             </tr>
         </thead>
@@ -161,6 +172,13 @@
                 <td><span class="stock-badge">{{ $item->productItem->barcode ?? 'N/A' }}</span></td>
                 <td><div style="font-weight: 700; color: var(--text-dark); font-size: 14px;">{{ $item->custom_description }}</div></td>
                 <td style="text-align: center; font-weight: 700;">{{ $item->qty }}</td>
+                <td style="text-align: center;">
+            @if($item->discount_percent > 0)
+                <span style="color: var(--success); font-weight: 700;">{{ number_format($item->discount_percent, 0) }}%</span>
+            @else
+                <span style="color: var(--text-medium);">-</span>
+            @endif
+        </td>
                 <td style="text-align: right; font-weight: 700; color: var(--primary);">
                     ${{ number_format($item->sold_price * $item->qty, 2) }}
                 </td>
@@ -197,6 +215,12 @@
                     <span>Subtotal</span>
                     <span>${{ number_format($sale->subtotal, 2) }}</span>
                 </div>
+                @if($totalSavings > 0)
+<div class="total-row" style="color: #4ade80; font-weight: 600;">
+    <span>Total Savings</span>
+    <span>-${{ number_format($totalSavings, 2) }}</span>
+</div>
+@endif
                 <div class="total-row">
                     <span>Sales Tax</span>
                     <span>${{ number_format($sale->tax_amount, 2) }}</span>

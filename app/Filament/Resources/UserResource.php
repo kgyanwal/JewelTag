@@ -22,20 +22,45 @@ class UserResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Staff Profile')
-                ->description('Identity is mapped via PIN. Universal Login is managed by the Superadmin.')
-                ->schema([
-                    Forms\Components\TextInput::make('name')->label('Staff Full Name')->required()->maxLength(255),
-                    Forms\Components\TextInput::make('pin_code')
-                        ->label('Terminal PIN')
-                        ->password()->revealable()->numeric()->length(4)
-                        ->required()->unique(ignoreRecord: true)
-                        ->helperText('4-digit code to identify this user after universal login.'),
-                    Forms\Components\Select::make('roles')
-                        ->relationship('roles', 'name')->multiple()->preload()
-                        ->label('Assign Access Role'),
-                    Forms\Components\Toggle::make('is_active')->label('Account Enabled')->default(true),
-                ])->columns(2),
+           Forms\Components\Section::make('Staff Profile')
+    ->description('Identity is mapped via PIN. Universal Login is managed by the Superadmin.')
+    ->schema([
+        Forms\Components\TextInput::make('name')
+            ->label('Staff Full Name')
+            ->required()
+            ->maxLength(255),
+            
+        Forms\Components\TextInput::make('pin_code')
+            ->label('Terminal PIN')
+            ->password()
+            ->revealable()
+            ->numeric()
+            ->length(4)
+            ->required()
+            ->unique(ignoreRecord: true)
+            ->helperText('4-digit code to identify this user after universal login.'),
+            
+        Forms\Components\TextInput::make('password')
+            ->label('Account Password')
+            ->password()
+            ->revealable()
+            ->placeholder('Leave blank to keep current password')
+            ->helperText('Enter new password to change, leave blank to keep current')
+            ->dehydrated(fn ($state) => filled($state))
+            ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
+            ->rule('nullable')
+            ->maxLength(255),
+            
+        Forms\Components\Select::make('roles')
+            ->relationship('roles', 'name')
+            ->multiple()
+            ->preload()
+            ->label('Assign Access Role'),
+            
+        Forms\Components\Toggle::make('is_active')
+            ->label('Account Enabled')
+            ->default(true),
+    ])->columns(2),
         ]);
     }
 

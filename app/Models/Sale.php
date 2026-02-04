@@ -29,16 +29,20 @@ public function productItem()
     return $this->belongsTo(ProductItem::class);
 }
     protected static function booted()
-    {
-        static::creating(function ($sale) {
-            $sale->store_id = $sale->store_id ?? 1; 
+{
+    static::creating(function ($sale) {
+        $sale->store_id = $sale->store_id ?? 1; 
 
-            if (empty($sale->invoice_number)) {
-                $latest = self::latest('id')->first();
-                $sale->invoice_number = 'INV-' . date('Y') . '-' . str_pad(($latest->id ?? 0) + 1, 4, '0', STR_PAD_LEFT);
-            }
-        });
-    }
+        if (empty($sale->invoice_number)) {
+            // Get the ID of the last record created
+            $latest = self::latest('id')->first();
+            $nextId = ($latest->id ?? 0) + 1;
+
+            // Format: DS + 3-digit padded number
+            $sale->invoice_number = 'DS' . str_pad($nextId, 3, '0', STR_PAD_LEFT);
+        }
+    });
+}
     // Sale.php
 public function getCustomerNameAttribute(): string
 {

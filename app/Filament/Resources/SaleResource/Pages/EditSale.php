@@ -3,51 +3,56 @@
 namespace App\Filament\Resources\SaleResource\Pages;
 
 use App\Filament\Resources\SaleResource;
+use App\Models\SaleEditRequest;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Actions;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Model;
 
 class EditSale extends EditRecord
 {
     protected static string $resource = SaleResource::class;
 
-    /**
-     * 🔹 mount() is now cleaned to allow entry.
-     */
-    public function mount($record): void
-    {
-        parent::mount($record);
-
-        // We only show a warning now instead of redirecting, 
-        // or you can remove this block entirely to stop the notification.
-        if ($this->record->status === 'completed' && !Auth::user()->hasRole('Superadmin')) {
-            Notification::make()
-                ->title('Editing Completed Sale')
-                ->body('Warning: You are editing a sale that is already marked as completed.')
-                ->warning()
-                ->send();
-        }
-    }
-
-    /**
-     * 🔹 mutateFormDataBeforeFill() updated to keep fields enabled.
-     */
-    protected function mutateFormDataBeforeFill(array $data): array
-    {
-        // By removing $this->form->disabled(), all fields remain interactive.
-        return $data;
-    }
-
-    /**
-     * Header actions (Delete button)
-     */
     protected function getHeaderActions(): array
     {
         return [
-            // Delete is now visible to everyone, or keep the Superadmin restriction if preferred.
             Actions\DeleteAction::make()
-                ->visible(fn () => Auth::user()->hasRole('Superadmin') || $this->record->status !== 'completed'),
+                ->visible(fn () => \App\Helpers\Staff::user()?->hasRole('Superadmin') || $this->record->status !== 'completed'),
         ];
+    }
+
+    /**
+     * 🔹 Use handleRecordUpdate to intercept the save process
+     */
+    protected function handleRecordUpdate(Model $record, array $data): Model
+    {
+        $staff = \App\Helpers\Staff::user();
+
+        // If NOT Admin/Superadmin, intercept and create a request
+        if (!$staff?->hasAnyRole(['Superadmin', 'Administration'])) {
+            
+            SaleEditRequest::create([
+                'sale_id' => $record->id,
+                'user_id' => $staff->id,
+                'proposed_changes' => $data, // The validated form data
+                'status' => 'pending',
+            ]);
+
+            Notification::make()
+                ->title('Edit Request Submitted')
+                ->body('Changes are pending administrative approval.')
+                ->warning()
+                ->send();
+
+            $this->redirect($this->getResource()::getUrl('index'));
+
+            // Return the original record without changes to stop the update
+            return $record;
+        }
+
+        // If Admin, proceed with the standard update
+        $record->update($data);
+
+        return $record;
     }
 }
