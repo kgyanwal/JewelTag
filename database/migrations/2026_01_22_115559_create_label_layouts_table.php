@@ -17,6 +17,7 @@ return new class extends Migration
         $table->integer('x_pos')->default(65);
         $table->integer('y_pos')->default(5);
         $table->integer('font_size')->default(3);
+        $table->integer('height')->default(30); // Used for barcode height
         $table->timestamps();
     });
 }
