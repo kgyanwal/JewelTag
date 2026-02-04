@@ -213,7 +213,7 @@ HTML
             ->authMiddleware([
                 Authenticate::class,
               
-                \App\Http\Middleware\EnsureStaffSession::class,
+               
             ])
             
             ->navigationGroups([
