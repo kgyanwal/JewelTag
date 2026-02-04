@@ -1,3 +1,4 @@
+
 <div class="lock-screen-container" x-data="{ 
     idleTime: 0,
     init() {
