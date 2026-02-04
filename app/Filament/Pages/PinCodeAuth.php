@@ -31,31 +31,33 @@ class PinCodeAuth extends Page
     }
 
     public function verify()
-    {
-        // 🔹 Optimization: Only look for active users with this PIN
-        $staff = User::where('pin_code', $this->pin_code)
-            ->where('is_active', true)
-            ->first();
+{
+    // Ensure we only find ACTIVE staff with this PIN
+    $staff = User::where('pin_code', $this->pin_code)
+        ->where('is_active', true)
+        ->first();
 
-        if (!$staff) {
-            Notification::make()->title('Invalid PIN')->danger()->send();
-            $this->pin_code = '';
-            return;
-        }
-
-        // 🔹 Null-safe role fetching to prevent 500 errors
-        $roleName = $staff->roles->first()?->name ?? 'Staff';
-
-        Session::put([
-            'active_staff_id' => $staff->id,
-            'active_staff_name' => $staff->name,
-            'active_staff_role' => $roleName,
-        ]);
-
-        Notification::make()->title("Welcome {$staff->name}")->success()->send();
-
-        return redirect()->intended(url('/admin'));
+    if (!$staff) {
+        Notification::make()->title('Invalid PIN')->danger()->send();
+        $this->pin_code = '';
+        return;
     }
+
+    // 🔹 FIX: Safely get the role name. If no role, default to 'Staff'
+    // This prevents the 500 error if Spatie roles aren't loaded yet.
+    $roleName = optional($staff->roles->first())->name ?? 'Staff';
+
+    Session::put([
+        'active_staff_id' => $staff->id,
+        'active_staff_name' => $staff->name,
+        'active_staff_role' => $roleName,
+    ]);
+
+    Notification::make()->title("Welcome {$staff->name}")->success()->send();
+
+    // Use a hard-coded fallback for the redirect to ensure it works
+    return redirect()->intended(url('/admin'));
+}
 
     public function logoutMaster()
     {
