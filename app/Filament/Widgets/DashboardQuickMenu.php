@@ -9,9 +9,14 @@ use Filament\Widgets\Widget;
 class DashboardQuickMenu extends Widget
 {
     protected static string $view = 'filament.widgets.dashboard-quick-menu';
-
+ protected static ?string $heading = '';
     protected int | array | string $columnSpan = 'full';
 
+
+    public function getHeading(): string
+    {
+        return '';
+    }
     public function getViewData(): array
 {
     $activeStaff = \App\Helpers\Staff::user();

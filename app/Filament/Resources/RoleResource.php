@@ -227,11 +227,7 @@ class RoleResource extends Resource
             'view' => Pages\ViewRole::route('/{record}'),
         ];
     }
-    public static function canViewAny(): bool
-{
-    // Only show this resource in the sidebar if the user can view users
-    return auth()->user()->hasPermissionTo('view.users');
-}
+
    public static function shouldRegisterNavigation(): bool
 {
     // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
