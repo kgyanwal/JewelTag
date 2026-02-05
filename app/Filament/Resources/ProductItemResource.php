@@ -135,75 +135,73 @@ class ProductItemResource extends Resource
                                 ->columnSpanFull(),
                         ]),
 
-                    /* ───────── SUPPLIER ───────── */
                     /* ───────── SUPPLIER / MEMO ───────── */
-/* ───────── SUPPLIER / MEMO ───────── */
-/* ───────── SUPPLIER / MEMO ───────── */
-Grid::make(12)->schema([
-    Select::make('supplier_id')
-        ->relationship('supplier', 'company_name')
-        ->label('Vendor')
-        ->searchable()
-        ->preload()
-        ->required()
-        ->live()
-        ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
-            // Automatically sync the memo_vendor_id if is_memo is toggled
-            if ($get('is_memo')) {
-                $set('memo_vendor_id', $state);
-            }
-            
-            if ($state) {
-                $latestCode = ProductItem::where('supplier_id', $state)
-                    ->latest()
-                    ->value('supplier_code');
-                $set('supplier_code', $latestCode);
-            }
-        })
-        ->columnSpan(4),
+                    Grid::make(12)->schema([
+                        Select::make('supplier_id')
+                            ->relationship('supplier', 'company_name')
+                            ->label('Vendor')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
+                                // Automatically sync the memo_vendor_id if is_memo is toggled
+                                if ($get('is_memo')) {
+                                    $set('memo_vendor_id', $state);
+                                }
+                                
+                                if ($state) {
+                                    $latestCode = ProductItem::where('supplier_id', $state)
+                                        ->latest()
+                                        ->value('supplier_code');
+                                    $set('supplier_code', $latestCode);
+                                }
+                            })
+                            ->columnSpan(4),
 
-    Toggle::make('is_memo')
-        ->label('Is this Memo?')
-        ->inline(false)
-        ->live()
-        ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
-            // When toggled ON, copy supplier_id to memo_vendor_id
-            if ($state) {
-                $set('memo_vendor_id', $get('supplier_id'));
-            } else {
-                $set('memo_vendor_id', null);
-            }
-        })
-        ->columnSpan(2),
+                        Toggle::make('is_memo')
+                            ->label('Is this Memo?')
+                            ->inline(false)
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
+                                // When toggled ON, copy supplier_id to memo_vendor_id
+                                if ($state) {
+                                    $set('memo_vendor_id', $get('supplier_id'));
+                                } else {
+                                    $set('memo_vendor_id', null);
+                                }
+                            })
+                            ->columnSpan(2),
 
-    // Hidden field to ensure memo_vendor_id is saved to the database
-    Hidden::make('memo_vendor_id'),
+                        // Hidden field to ensure memo_vendor_id is saved to the database
+                        Hidden::make('memo_vendor_id'),
 
-    Placeholder::make('memo_vender_label')
-        ->label('Current Inventory Type')
-        ->visible(fn (Get $get) => filled($get('supplier_id'))) 
-        ->content(function (Get $get) {
-            $supplierId = $get('supplier_id');
-            $supplier = \App\Models\Supplier::find($supplierId);
-            $supplierName = $supplier?->company_name ?? 'Vendor';
-            
-            return $get('is_memo') 
-                ? "Consignment: Memo + {$supplierName}" 
-                : "Owned: {$supplierName}";
-        })
-        ->columnSpan(3),
+                        Placeholder::make('memo_vender_label')
+                            ->label('Current Inventory Type')
+                            ->visible(fn (Get $get) => filled($get('supplier_id'))) 
+                            ->content(function (Get $get) {
+                                $supplierId = $get('supplier_id');
+                                $supplier = \App\Models\Supplier::find($supplierId);
+                                $supplierName = $supplier?->company_name ?? 'Vendor';
+                                
+                                return $get('is_memo') 
+                                    ? "Consignment: Memo + {$supplierName}" 
+                                    : "Owned: {$supplierName}";
+                            })
+                            ->columnSpan(3),
 
-    Select::make('memo_status')
-        ->label('Memo Action')
-        ->options([
-            'on_memo' => 'On Memo',
-            'returned' => 'Returned to Vendor',
-        ])
-        ->default('on_memo')
-        ->visible(fn (Get $get) => $get('is_memo')) 
-        ->required(fn (Get $get) => $get('is_memo'))
-        ->columnSpan(3),
-]),
+                        Select::make('memo_status')
+                            ->label('Memo Action')
+                            ->options([
+                                'on_memo' => 'On Memo',
+                                'returned' => 'Returned to Vendor',
+                            ])
+                            ->default('on_memo')
+                            ->visible(fn (Get $get) => $get('is_memo')) 
+                            ->required(fn (Get $get) => $get('is_memo'))
+                            ->columnSpan(3),
+                    ]),
+
                     CheckboxList::make('print_options')
                         ->options([
                             'print_tag' => 'Print Barcode Tag',
@@ -227,26 +225,31 @@ Grid::make(12)->schema([
                         ->columnSpan(3),
 
                    
-Select::make('department')
-    ->label('Department')
-    // Pull the names from our new array structure
-    ->options(function() {
-        $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
-        return collect($depts)->pluck('name', 'name');
-    })
-    ->searchable()
-    ->hintAction(
+                    Select::make('department')
+                        ->label('Department')
+                        ->options(function() {
+                            $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+                            return collect($depts)
+                                ->filter(fn($item) => !empty($item['name'])) // FIX: Prevent null label error
+                                ->pluck('name', 'name');
+                        })
+                        ->searchable()
+                        ->hintAction(
                             FormAction::make('departmentHelp')
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure departments')
                         )
-    ->live()
-    ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
-    ->columnSpan(3),
+                        ->live()
+                        ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+                        ->columnSpan(3),
 
 
                     Select::make('sub_department')
-                        ->options(fn () => \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [])
+                        ->label('Sub-Department')
+                        ->options(function() {
+                            $items = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
+                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                        })
                         ->hintAction(
                             FormAction::make('Help')
                                 ->icon('heroicon-o-information-circle')
@@ -256,7 +259,11 @@ Select::make('department')
                         ->columnSpan(3),
 
                     Select::make('category')
-                        ->options(fn () => \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])
+                        ->label('Category')
+                        ->options(function() {
+                            $items = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
+                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                        })
                         ->hintAction(
                             FormAction::make('Help')
                                 ->icon('heroicon-o-information-circle')
@@ -272,7 +279,10 @@ Select::make('department')
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
                         )
-                        ->options(fn () => \App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])
+                        ->options(function() {
+                            $items = \App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [];
+                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                        })
                         ->searchable()
                         ->columnSpan(2),
 
@@ -294,25 +304,23 @@ Select::make('department')
                         ->columnSpan(2),
 
                     TextInput::make('cost_price')
-    ->prefix('$')
-    ->numeric()
-    // 🔹 ADDED: Make this live so math happens while typing
-    ->live(onBlur: true) 
-    ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
-    ->columnSpan(2),
+                        ->prefix('$')
+                        ->numeric()
+                        ->live(onBlur: true) 
+                        ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+                        ->columnSpan(2),
 
-TextInput::make('retail_price')
-    ->prefix('$')
-    ->numeric()
-    // 🔹 ADDED: Make this live so users can still override manually if needed
-    ->live() 
-    ->columnSpan(3),
+                    TextInput::make('retail_price')
+                        ->prefix('$')
+                        ->numeric()
+                        ->live() 
+                        ->columnSpan(3),
 
-TextInput::make('web_price')
-    ->prefix('$')
-    ->numeric()
-    ->live()
-    ->columnSpan(3),
+                    TextInput::make('web_price')
+                        ->prefix('$')
+                        ->numeric()
+                        ->live()
+                        ->columnSpan(3),
 
                     TextInput::make('discount_percent')
                         ->suffix('%')
@@ -420,16 +428,12 @@ TextInput::make('web_price')
                     EditAction::make(),
                     ViewAction::make(),
 
-                    // 🔹 REPLACED: Custom Deletion Workflow with Approval Chain
-                    // app/Filament/Resources/ProductItemResource.php
-
                     Action::make('delete')
                         ->label('Delete')
                         ->icon('heroicon-o-trash')
                         ->color('danger')
                         ->visible(fn(ProductItem $record) => $record->status !== 'sold')
                         ->action(function (ProductItem $record, array $data): void {
-                            // 🔹 FIX: Changed 'super_admin' to 'Superadmin'
                             if (auth()->user()->hasRole('Superadmin')) {
                                 $record->delete();
                                 Notification::make()->title('Item Deleted Permanently')->success()->send();
@@ -445,7 +449,6 @@ TextInput::make('web_price')
 
                             Notification::make()->title('Deletion Request Submitted')->warning()->send();
                         })
-                        // 🔹 FIX: Changed 'super_admin' to 'Superadmin'
                         ->form(fn() => auth()->user()->hasRole('Superadmin') ? [] : [
                             Forms\Components\Textarea::make('reason')
                                 ->label('Reason for Deletion')
@@ -453,71 +456,58 @@ TextInput::make('web_price')
                         ])
                         ->requiresConfirmation(fn() => auth()->user()->hasRole('Superadmin')),
 
-                    /* ... existing print actions ... */
                     Action::make('print_barcode')
-    ->label('Print Barcode')
-    ->icon('heroicon-o-printer')
-    ->action(function ($record, ZebraPrinterService $service) {
-        // This method generates ZPL and sends it to the printer 
-        // using the 'false' flag to skip RFID encoding
-        $result = $service->printJewelryTag($record, false);
+                        ->label('Print Barcode')
+                        ->icon('heroicon-o-printer')
+                        ->action(function ($record, ZebraPrinterService $service) {
+                            $result = $service->printJewelryTag($record, false);
 
-        if ($result) {
-            Notification::make()->title('Barcode Sent to Printer')->success()->send();
-        } else {
-            Notification::make()->title('Printer Connection Failed')->danger()->send();
-        }
-    }),
+                            if ($result) {
+                                Notification::make()->title('Barcode Sent to Printer')->success()->send();
+                            } else {
+                                Notification::make()->title('Printer Connection Failed')->danger()->send();
+                            }
+                        }),
 
-Action::make('print_rfid')
-    ->label('Print RFID')
-    ->icon('heroicon-o-identification')
-    ->color('warning')
-    ->action(function ($record, ZebraPrinterService $service) {
-        // This method generates ZPL and sends it to the printer 
-        // using the 'true' flag to include RFID encoding
-        $result = $service->printJewelryTag($record, true);
+                    Action::make('print_rfid')
+                        ->label('Print RFID')
+                        ->icon('heroicon-o-identification')
+                        ->color('warning')
+                        ->action(function ($record, ZebraPrinterService $service) {
+                            $result = $service->printJewelryTag($record, true);
 
-        if ($result) {
-            Notification::make()->title('RFID Tag Sent to Printer')->success()->send();
-        } else {
-            Notification::make()->title('Printer Connection Failed')->danger()->send();
-        }
-    }),
+                            if ($result) {
+                                Notification::make()->title('RFID Tag Sent to Printer')->success()->send();
+                            } else {
+                                Notification::make()->title('Printer Connection Failed')->danger()->send();
+                            }
+                        }),
                 ]),
             ]);
     }
-public static function runSmartPricing(Get $get, Forms\Set $set): void
-{
-    $cost = floatval($get('cost_price'));
-    $selectedDept = $get('department');
 
-    // If cost is 0 or no department is selected, do nothing
-    if ($cost <= 0 || !$selectedDept) return;
+    public static function runSmartPricing(Get $get, Forms\Set $set): void
+    {
+        $cost = floatval($get('cost_price'));
+        $selectedDept = $get('department');
 
-    // 1. Fetch the dynamic settings from the database
-    $settings = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
-    
-    // 2. Find the specific department chosen by the user
-    $deptData = collect($settings)->firstWhere('name', $selectedDept);
+        if ($cost <= 0 || !$selectedDept) return;
 
-    // 3. If the department has a multiplier, do the math
-    if ($deptData && isset($deptData['multiplier'])) {
-        $multiplier = floatval($deptData['multiplier']);
-        
-        // Example: $1000 cost * 2x multiplier = $2000 retail
-        $calculatedPrice = $cost * $multiplier;
-        
-        // 4. Update the UI fields automatically
-        $set('retail_price', number_format($calculatedPrice, 2, '.', ''));
-        $set('web_price', number_format($calculatedPrice, 2, '.', ''));
-        
-        // Optional: Auto-generate a description if empty
-        if (blank($get('custom_description'))) {
-            $set('custom_description', "{$selectedDept} - " . ($get('metal_type') ?? 'Jewelry'));
+        $settings = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+        $deptData = collect($settings)->firstWhere('name', $selectedDept);
+
+        if ($deptData && isset($deptData['multiplier'])) {
+            $multiplier = floatval($deptData['multiplier']);
+            $calculatedPrice = $cost * $multiplier;
+            
+            $set('retail_price', number_format($calculatedPrice, 2, '.', ''));
+            $set('web_price', number_format($calculatedPrice, 2, '.', ''));
+            
+            if (blank($get('custom_description'))) {
+                $set('custom_description', "{$selectedDept} - " . ($get('metal_type') ?? 'Jewelry'));
+            }
         }
     }
-}
 
     public static function getPages(): array
     {
