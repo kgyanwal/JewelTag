@@ -23,6 +23,7 @@ use Filament\Support\Assets\Js;
 use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
+
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -34,16 +35,12 @@ class AdminPanelProvider extends PanelProvider
             ->registration()
             ->login()
             ->topNavigation()
-           ->brandLogo(null)
-->brandName('')
-
-        ->topNavigation()
-        // 🔹 Inject the logo to the right of the User Menu
-        ->renderHook(
+            ->brandLogo(null)
+            ->brandName('')
+            ->renderHook(
                 PanelsRenderHook::GLOBAL_SEARCH_END,
                 fn (): string => view('filament.hooks.custom-logo')->render(),
             )
-
             ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
             ->colors([
@@ -70,6 +67,30 @@ class AdminPanelProvider extends PanelProvider
     document.documentElement.classList.add('light');
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
+
+    /* ───────── ZEBRA BROWSER PRINT LISTENER ───────── */
+    window.addEventListener('zebra-print', event => {
+        let zpl = event.detail.zpl;
+        
+        // This connects to the Zebra Browser Print local agent
+        if (typeof BrowserPrint !== 'undefined') {
+            BrowserPrint.getDefaultDevice("printer", function(device) {
+                if (device && device.connection !== undefined) {
+                    device.send(zpl, function(success) {
+                        console.log("Print sent successfully");
+                    }, function(error) {
+                        alert("Printer Error: " + error);
+                    });
+                } else {
+                    alert("No Zebra Printer Found. Please check your Browser Print connection.");
+                }
+            }, function(error) {
+                alert("Zebra API Error: " + error);
+            });
+        } else {
+            alert("Zebra Library not loaded. Please refresh the page.");
+        }
+    });
 </script>
 
 <style>
@@ -114,38 +135,34 @@ body, .fi-layout { background-color: var(--body-bg) !important; color: var(--tex
     font-weight: 700 !important;
     opacity: 1 !important;
 }
-/* 1. Make the topbar content container full width */
-/* 1. Make the topbar container a controllable flexbox */
+
 .fi-topbar-content {
     display: flex !important;
     align-items: center !important;
     gap: 1rem !important;
 }
 
-/* 2. FORCE THE PROFILE (NS) TO THE ABSOLUTE LEFT */
 .fi-user-menu {
-    order: -10 !important; /* 🔹 Negative order pulls it to the start */
+    order: -10 !important; 
     margin-right: 0 !important;
 }
 
-/* 3. Ensure Navigation (Dashboard, Sales, etc.) comes after the Profile */
 .fi-topbar-nav {
     order: -5 !important;
-    flex: 1 !important; /* 🔹 Pushes everything else to the right */
+    flex: 1 !important; 
 }
 
-/* 4. Keep Search and Logo on the far right */
 .fi-main-search {
     order: 1 !important;
 }
 
 .fi-topbar-content > div:last-child {
-    order: 2 !important; /* 🔹 Your JewelTag Logo */
+    order: 2 !important; 
 }
 .fi-wi-stats-overview-stat-description,
 .fi-wi-stats-overview-stat-icon {
     opacity: 1 !important;
-    color: #ffffff !important;   /* white works best on gradients */
+    color: #ffffff !important;   
     fill: #ffffff !important;
     stroke: #ffffff !important;
 }
@@ -167,12 +184,11 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
-                 \App\Filament\Resources\ActivityLogResource::class,
-                 \App\Filament\Resources\DeletionRequestResource::class,
-                  \App\Filament\Resources\SaleEditRequestResource::class,
-                  \App\Filament\Resources\CustomOrderResource::class,
-                   \App\Filament\Resources\RepairResource::class,
-                
+                \App\Filament\Resources\ActivityLogResource::class,
+                \App\Filament\Resources\DeletionRequestResource::class,
+                \App\Filament\Resources\SaleEditRequestResource::class,
+                \App\Filament\Resources\CustomOrderResource::class,
+                \App\Filament\Resources\RepairResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -189,11 +205,9 @@ HTML
                 \App\Filament\Pages\TradeInCheck::class,
                 \App\Filament\Pages\MemoInventory::class,
                 \App\Filament\Pages\Analytics::class,
-               
             ])
             ->widgets([
-            \App\Filament\Widgets\DashboardQuickMenu::class,
-            
+                \App\Filament\Widgets\DashboardQuickMenu::class,
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -208,30 +222,26 @@ HTML
             ])
             ->authMiddleware([
                 Authenticate::class,
-              
                 \App\Http\Middleware\EnsureStaffSession::class,
             ])
-            
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
                 NavigationGroup::make()->label('Customer'),
                 NavigationGroup::make()->label('Reports'),
                 NavigationGroup::make()->label('Inventory'),
             ])
-           ->userMenuItems([
-    'settings' => MenuItem::make()
-        ->label('Store Settings')
-        ->url(fn (): string => ManageSettings::getUrl())
-        ->icon('heroicon-o-adjustments-horizontal')
-         ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+            ->userMenuItems([
+                'settings' => MenuItem::make()
+                    ->label('Store Settings')
+                    ->url(fn (): string => ManageSettings::getUrl())
+                    ->icon('heroicon-o-adjustments-horizontal')
+                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
-    'activity_logs' => MenuItem::make()
-        ->label('Activity Logs')
-        ->icon('heroicon-o-finger-print')
-        ->url(fn (): string => ActivityLogResource::getUrl())
-        // 🔹 USE STAFF HELPER: Checks the PIN-authenticated user's role
-        ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-]);
-            
+                'activity_logs' => MenuItem::make()
+                    ->label('Activity Logs')
+                    ->icon('heroicon-o-finger-print')
+                    ->url(fn (): string => ActivityLogResource::getUrl())
+                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+            ]);
     }
 }

@@ -14,7 +14,7 @@ class ZebraPrinterService
         $this->ZEBRA_PRINTER_IP = config('services.zebra.ip', '192.168.1.60');
     }
 
-    public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool
+    public function getZplCode(ProductItem $record, bool $useRFID = true): string
     {
         try {
             $layouts = LabelLayout::all()->keyBy('field_id');
@@ -26,7 +26,6 @@ class ZebraPrinterService
             $rfidNum = "RFID: " . substr($record->rfid_code, -8);
 
             $getL = fn($id) => $layouts->get($id);
-            // 900x150 dot butterfly layout
             $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2"; 
             
             if ($useRFID && !empty($record->rfid_code)) { 
@@ -56,22 +55,14 @@ class ZebraPrinterService
             $zpl .= "^BCN," . ($b->height ?? 35) . ",N,N,N,A^FD{$stockNo}^FS";
             $zpl .= "\n^PQ1,0,1,Y^XZ";
 
-            return $this->sendToPrinter($zpl);
+            return $zpl;
         } catch (\Exception $e) {
-            Log::error("Zebra Error: " . $e->getMessage());
-            return false;
+            Log::error("Zebra ZPL Gen Error: " . $e->getMessage());
+            return "";
         }
     }
 
-    private function sendToPrinter(string $zpl): bool {
-        $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, 3);
-        if (!$socket) {
-            Log::error("Zebra Connection Failed: [{$errno}] {$errstr} at {$this->ZEBRA_PRINTER_IP}");
-            return false;
-        }
-        fwrite($socket, $zpl . "\n");
-        fflush($socket);
-        fclose($socket);
-        return true;
+    public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool {
+        return false; // Deprecated: Cloud cannot use Sockets
     }
 }

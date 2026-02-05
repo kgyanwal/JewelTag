@@ -224,13 +224,12 @@ class ProductItemResource extends Resource
                         ->label('Vendor Code')
                         ->columnSpan(3),
 
-                   
                     Select::make('department')
                         ->label('Department')
                         ->options(function() {
                             $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
                             return collect($depts)
-                                ->filter(fn($item) => !empty($item['name'])) // FIX: Prevent null label error
+                                ->filter(fn($item) => !empty($item['name']))
                                 ->pluck('name', 'name');
                         })
                         ->searchable()
@@ -243,12 +242,11 @@ class ProductItemResource extends Resource
                         ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
                         ->columnSpan(3),
 
-
                     Select::make('sub_department')
                         ->label('Sub-Department')
                         ->options(function() {
                             $items = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
-                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                            return collect($items)->filter()->toArray();
                         })
                         ->hintAction(
                             FormAction::make('Help')
@@ -262,7 +260,7 @@ class ProductItemResource extends Resource
                         ->label('Category')
                         ->options(function() {
                             $items = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
-                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                            return collect($items)->filter()->toArray();
                         })
                         ->hintAction(
                             FormAction::make('Help')
@@ -281,7 +279,7 @@ class ProductItemResource extends Resource
                         )
                         ->options(function() {
                             $items = \App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [];
-                            return collect($items)->filter()->toArray(); // FIX: Prevent null label error
+                            return collect($items)->filter()->toArray();
                         })
                         ->searchable()
                         ->columnSpan(2),
@@ -460,13 +458,9 @@ class ProductItemResource extends Resource
                         ->label('Print Barcode')
                         ->icon('heroicon-o-printer')
                         ->action(function ($record, ZebraPrinterService $service) {
-                            $result = $service->printJewelryTag($record, false);
-
-                            if ($result) {
-                                Notification::make()->title('Barcode Sent to Printer')->success()->send();
-                            } else {
-                                Notification::make()->title('Printer Connection Failed')->danger()->send();
-                            }
+                            $zpl = $service->getZplCode($record, false);
+                            $this->dispatch('zebra-print', zpl: $zpl);
+                            Notification::make()->title('Sent to Browser Printer')->success()->send();
                         }),
 
                     Action::make('print_rfid')
@@ -474,13 +468,9 @@ class ProductItemResource extends Resource
                         ->icon('heroicon-o-identification')
                         ->color('warning')
                         ->action(function ($record, ZebraPrinterService $service) {
-                            $result = $service->printJewelryTag($record, true);
-
-                            if ($result) {
-                                Notification::make()->title('RFID Tag Sent to Printer')->success()->send();
-                            } else {
-                                Notification::make()->title('Printer Connection Failed')->danger()->send();
-                            }
+                            $zpl = $service->getZplCode($record, true);
+                            $this->dispatch('zebra-print', zpl: $zpl);
+                            Notification::make()->title('Sent to Browser Printer')->success()->send();
                         }),
                 ]),
             ]);
