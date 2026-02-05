@@ -68,28 +68,40 @@ class AdminPanelProvider extends PanelProvider
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
 
-    /* ───────── ZEBRA BROWSER PRINT LISTENER ───────── */
+    /* ───────── ZEBRA BROWSER PRINT ROBUST LISTENER ───────── */
     window.addEventListener('zebra-print', event => {
-        let zpl = event.detail.zpl;
+        const zpl = event.detail.zpl;
         
-        // This connects to the Zebra Browser Print local agent
-        if (typeof BrowserPrint !== 'undefined') {
-            BrowserPrint.getDefaultDevice("printer", function(device) {
-                if (device && device.connection !== undefined) {
-                    device.send(zpl, function(success) {
-                        console.log("Print sent successfully");
-                    }, function(error) {
-                        alert("Printer Error: " + error);
-                    });
-                } else {
-                    alert("No Zebra Printer Found. Please check your Browser Print connection.");
-                }
-            }, function(error) {
-                alert("Zebra API Error: " + error);
-            });
-        } else {
-            alert("Zebra Library not loaded. Please refresh the page.");
+        if (typeof BrowserPrint === 'undefined') {
+            alert("Zebra Browser Print library not found. Please refresh.");
+            return;
         }
+
+        // Try to get the specific network printer or default
+        BrowserPrint.getDefaultDevice("printer", function(device) {
+            if (device && device.connection !== undefined) {
+                // Ensure we are sending to the ZD621R
+                device.send(zpl, function(success) {
+                    console.log("Print Job Sent Successfully");
+                }, function(error) {
+                    // This catches the 'Failed to write to device' error
+                    console.error("Zebra Send Error:", error);
+                    alert("Printer Error: " + error + ". Please ensure the printer is not in an error state (red light) and try again.");
+                });
+            } else {
+                // Fallback: Search specifically for the IP if default fails
+                BrowserPrint.getLocalDevices(function(devices) {
+                    const printer = devices.find(d => d.name.includes('192.168.1.60') || d.uid.includes('192.168.1.60'));
+                    if (printer) {
+                        printer.send(zpl, () => {}, (err) => alert("Connection Error: " + err));
+                    } else {
+                        alert("No Zebra Printer Found. Ensure 'Zebra Browser Print' is running and 192.168.1.60 is connected.");
+                    }
+                }, function(err) { alert("Scanning Error: " + err); }, "printer");
+            }
+        }, function(error) {
+            alert("Zebra API Error: " + error);
+        });
     });
 </script>
 
