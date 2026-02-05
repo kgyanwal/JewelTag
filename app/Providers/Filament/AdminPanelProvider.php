@@ -53,9 +53,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Inter')
             ->maxContentWidth(MaxWidth::Full)
-            /* |--------------------------------------------------------------------------
-            | Zebra Browser Print Assets
-            |-------------------------------------------------------------------------- */
             ->assets([
                 Js::make('zebra-library', asset('js/zebra-lib.js')),
                 Js::make('zebra-print-logic', asset('js/custom/zebra-print.js')),
@@ -68,40 +65,39 @@ class AdminPanelProvider extends PanelProvider
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
 
-    /* ───────── ZEBRA BROWSER PRINT ROBUST LISTENER ───────── */
+    /* ───────── ZEBRA PRINTER HARDENED LOGIC ───────── */
     window.addEventListener('zebra-print', event => {
         const zpl = event.detail.zpl;
-        
+        const targetIp = '192.168.1.60';
+
         if (typeof BrowserPrint === 'undefined') {
-            alert("Zebra Browser Print library not found. Please refresh.");
+            alert("Zebra Software not detected. Please ensure Zebra Browser Print is running.");
             return;
         }
 
-        // Try to get the specific network printer or default
-        BrowserPrint.getDefaultDevice("printer", function(device) {
-            if (device && device.connection !== undefined) {
-                // Ensure we are sending to the ZD621R
-                device.send(zpl, function(success) {
+        // Search for the specific ZD621R printer by IP to bypass "Default" issues
+        BrowserPrint.getLocalDevices(function(devices) {
+            const printer = devices.find(d => d.name.includes(targetIp) || d.uid.includes(targetIp));
+            
+            if (printer) {
+                console.log("Printer Found: " + printer.name);
+                printer.send(zpl, function(success) {
                     console.log("Print Job Sent Successfully");
                 }, function(error) {
-                    // This catches the 'Failed to write to device' error
                     console.error("Zebra Send Error:", error);
-                    alert("Printer Error: " + error + ". Please ensure the printer is not in an error state (red light) and try again.");
+                    alert("Printer Error: " + error + "\n\n1. Check if printer has a RED light.\n2. Ensure 192.168.1.60 is reachable.");
                 });
             } else {
-                // Fallback: Search specifically for the IP if default fails
-                BrowserPrint.getLocalDevices(function(devices) {
-                    const printer = devices.find(d => d.name.includes('192.168.1.60') || d.uid.includes('192.168.1.60'));
-                    if (printer) {
-                        printer.send(zpl, () => {}, (err) => alert("Connection Error: " + err));
+                // If specific search fails, try one last time with Default
+                BrowserPrint.getDefaultDevice("printer", function(device) {
+                    if (device && device.name !== undefined) {
+                        device.send(zpl);
                     } else {
-                        alert("No Zebra Printer Found. Ensure 'Zebra Browser Print' is running and 192.168.1.60 is connected.");
+                        alert("Connection Failed: Unable to find ZD621R at " + targetIp + ". Please restart the Zebra Browser Print app.");
                     }
-                }, function(err) { alert("Scanning Error: " + err); }, "printer");
+                });
             }
-        }, function(error) {
-            alert("Zebra API Error: " + error);
-        });
+        }, function(err) { alert("Zebra Scan Error: " + err); }, "printer");
     });
 </script>
 
@@ -128,60 +124,19 @@ class AdminPanelProvider extends PanelProvider
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-}
-
+body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading { font-family: 'Inter', sans-serif !important; }
 body, .fi-layout { background-color: var(--body-bg) !important; color: var(--text-body) !important; }
 .fi-main { background-color: var(--body-bg) !important; padding: 1.5rem !important; min-height: calc(100vh - 75px) !important; }
-.fi-simple-main-ctn { background-color: var(--body-bg) !important; }
-.fi-simple-main { background-color: #ffffff !important; border-radius: 24px !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important; padding: 2.5rem !important; }
 .fi-topbar { background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important; border-bottom: 2px solid #5eead4 !important; }
-.fi-topbar * { color: #0f172a !important; }
-.fi-breadcrumbs-item-label { color: #ffffff !important; font-weight: 700 !important; }
-.fi-wi-stats-overview-stat-label {
-    color: #0f172a !important;   /* dark black/gray */
-    font-weight: 700 !important;
-    opacity: 1 !important;
-}
-
-.fi-topbar-content {
-    display: flex !important;
-    align-items: center !important;
-    gap: 1rem !important;
-}
-
-.fi-user-menu {
-    order: -10 !important; 
-    margin-right: 0 !important;
-}
-
-.fi-topbar-nav {
-    order: -5 !important;
-    flex: 1 !important; 
-}
-
-.fi-main-search {
-    order: 1 !important;
-}
-
-.fi-topbar-content > div:last-child {
-    order: 2 !important; 
-}
-.fi-wi-stats-overview-stat-description,
-.fi-wi-stats-overview-stat-icon {
-    opacity: 1 !important;
-    color: #ffffff !important;   
-    fill: #ffffff !important;
-    stroke: #ffffff !important;
-}
+.fi-topbar-content { display: flex !important; align-items: center !important; gap: 1rem !important; }
+.fi-user-menu { order: -10 !important; }
+.fi-topbar-nav { order: -5 !important; flex: 1 !important; }
+.fi-main-search { order: 1 !important; }
+.fi-topbar-content > div:last-child { order: 2 !important; }
 .fi-section, .fi-ta-ctn { background-color: #ffffff !important; border: none !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important; }
 .fi-btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; font-weight: 800 !important; }
-.fi-input-wrp { background-color: white !important; }
-.fi-ta-ctn, .fi-ta-header, .fi-ta-header-cell, .fi-ta-row { background-color: #eef2f7 !important; }
+.fi-ta-header, .fi-ta-row { background-color: #eef2f7 !important; }
 .fi-ta-cell { color: #000000 !important; }
 </style>
 HTML
