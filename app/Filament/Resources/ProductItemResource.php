@@ -457,9 +457,9 @@ class ProductItemResource extends Resource
                     Action::make('print_barcode')
                         ->label('Print Barcode')
                         ->icon('heroicon-o-printer')
-                        ->action(function ($record, ZebraPrinterService $service) {
+                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
                             $zpl = $service->getZplCode($record, false);
-                            $this->dispatch('zebra-print', zpl: $zpl);
+                            $livewire->dispatch('zebra-print', zpl: $zpl);
                             Notification::make()->title('Sent to Browser Printer')->success()->send();
                         }),
 
@@ -467,9 +467,9 @@ class ProductItemResource extends Resource
                         ->label('Print RFID')
                         ->icon('heroicon-o-identification')
                         ->color('warning')
-                        ->action(function ($record, ZebraPrinterService $service) {
+                        ->action(function ($record, ZebraPrinterService $service, $livewire) {
                             $zpl = $service->getZplCode($record, true);
-                            $this->dispatch('zebra-print', zpl: $zpl);
+                            $livewire->dispatch('zebra-print', zpl: $zpl);
                             Notification::make()->title('Sent to Browser Printer')->success()->send();
                         }),
                 ]),
