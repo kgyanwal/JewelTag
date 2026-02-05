@@ -29,7 +29,7 @@ return [
     ],
 
     'zebra' => [
-    'ip' => env('printerIp', '192.168.1.60'),
+    'ip' => env('ZEBRA_PRINTER_IP', '192.168.1.60'),
     ],
 
     'slack' => [
