@@ -23,13 +23,11 @@ class InventorySettings extends Page implements HasForms
 
     public ?array $data = [];
 
-    
-
     public function form(Form $form): Form
     {
         return $form
             ->schema([
-                Grid::make(4) // Increased to 4 columns for the new list
+                Grid::make(4)
                     ->schema([
                         $this->getTableSection('departments', 'Departments'),
                         $this->getTableSection('sub_departments', 'Sub-Departments'),
@@ -51,8 +49,18 @@ class InventorySettings extends Page implements HasForms
                         TextInput::make('name')
                             ->required()
                             ->distinct()
+                            ->placeholder('Dept Name')
                             ->disableLabel(),
+                        
+                        TextInput::make('multiplier')
+                            ->label('Markup')
+                            ->numeric()
+                            ->default(7.0)
+                            ->visible($key === 'departments') 
+                            ->placeholder('e.g. 7.0')
+                            ->suffix('x'),
                     ])
+                    ->columns($key === 'departments' ? 2 : 1)
                     ->reorderableWithButtons()
                     ->addActionLabel("Add $label")
                     ->collapsible()
@@ -60,46 +68,48 @@ class InventorySettings extends Page implements HasForms
             ])->columnSpan(1);
     }
 
-    // Inside app/Filament/Pages/InventorySettings.php
+    public function mount(): void
+    {
+        $settings = \App\Models\InventorySetting::pluck('value', 'key');
 
-public function mount(): void
-{
-    $settings = \App\Models\InventorySetting::pluck('value', 'key');
-
-    $this->form->fill([
-        'departments' => collect($settings->get('departments', []))->map(fn($item) => ['name' => $item])->toArray(),
-        'sub_departments' => collect($settings->get('sub_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
-        'categories' => collect($settings->get('categories', []))->map(fn($item) => ['name' => $item])->toArray(),
-        'metal_types' => collect($settings->get('metal_types', []))->map(fn($item) => ['name' => $item])->toArray(),
-    ]);
-}
-
-public function save(): void
-{
-    $state = $this->form->getState();
-
-    $keys = ['departments', 'sub_departments', 'categories', 'metal_types'];
-
-    foreach ($keys as $key) {
-        \App\Models\InventorySetting::updateOrCreate(
-            ['key' => $key],
-            ['value' => collect($state[$key])->pluck('name')->filter()->toArray()]
-        );
+        $this->form->fill([
+            'departments' => $settings->get('departments', []), 
+            'sub_departments' => collect($settings->get('sub_departments', []))->map(fn($item) => ['name' => $item])->toArray(),
+            'categories' => collect($settings->get('categories', []))->map(fn($item) => ['name' => $item])->toArray(),
+            'metal_types' => collect($settings->get('metal_types', []))->map(fn($item) => ['name' => $item])->toArray(),
+        ]);
     }
 
-    // Optional: Keep cache for performance, but database is now the source of truth
-    Cache::forget('inventory_departments'); 
-    
-    Notification::make()->title('Settings Saved to Database')->success()->send();
-}
+    /**
+     * 🔹 FIX: Define the save action so it can be called from the Blade view
+     */
     protected function getFormActions(): array
-{
-    return [
-        Action::make('save')
-            ->label('Save Settings')
-            ->submit('save')
-            ->color('primary'),
-    ];
-}
+    {
+        return [
+            Action::make('save')
+                ->label(__('Save Settings'))
+                ->submit('save'),
+        ];
+    }
 
+    public function save(): void
+    {
+        $state = $this->form->getState();
+
+        \App\Models\InventorySetting::updateOrCreate(
+            ['key' => 'departments'],
+            ['value' => $state['departments']]
+        );
+
+        foreach (['sub_departments', 'categories', 'metal_types'] as $key) {
+            \App\Models\InventorySetting::updateOrCreate(
+                ['key' => $key],
+                ['value' => collect($state[$key])->pluck('name')->filter()->toArray()]
+            );
+        }
+
+        Cache::forget('inventory_departments'); 
+        
+        Notification::make()->title('Pricing & Inventory Settings Saved')->success()->send();
+    }
 }

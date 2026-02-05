@@ -8,6 +8,8 @@ use App\Models\ProductItem;
 use App\Models\Customer;
 use App\Models\User;
 use App\Models\Store;
+use App\Models\Repair;
+use App\Models\CustomOrder;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -69,27 +71,23 @@ class SaleResource extends Resource
                                         $item = ProductItem::find($get('current_item_search'));
                                         if (!$item) return;
 
-                                        // 🔹 FILTER: Ensure we only keep items that actually have a product ID
                                         $currentItems = collect($get('items') ?? [])
-                                            ->filter(fn($row) => !empty($row['product_item_id']))
+                                            ->filter(fn($row) => !empty($row['product_item_id']) || !empty($row['repair_id']))
                                             ->toArray();
 
-                                        // 🔹 ADD: Push the new item into the array
                                         $currentItems[] = [
                                             'product_item_id' => $item->id,
+                                            'repair_id' => null,
                                             'stock_no_display' => $item->barcode,
                                             'custom_description' => $get('current_desc'),
                                             'qty' => $get('current_qty') ?? 1,
                                             'sold_price' => $get('current_price'),
-                                            'discount_percent' => $item->discount_percent ?? 0,
+                                            'discount_percent' => 0,
                                         ];
 
                                         $set('items', $currentItems);
-
-                                        // Reset Search
                                         $set('current_item_search', null);
                                         $set('current_qty', 1);
-
                                         self::updateTotals($get, $set);
                                     }),
                             ]),
@@ -98,10 +96,7 @@ class SaleResource extends Resource
                             ->schema([
                                 Select::make('has_trade_in')
                                     ->label('Is there a Trade-In?')
-                                    ->options([
-                                        1 => 'Yes',
-                                        0 => 'No',
-                                    ])
+                                    ->options([1 => 'Yes', 0 => 'No'])
                                     ->required()
                                     ->live()
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
@@ -128,17 +123,23 @@ class SaleResource extends Resource
                                 ->relationship('items')
                                 ->schema([
                                     Hidden::make('product_item_id')->dehydrated(),
+                                    Hidden::make('repair_id')->dehydrated(),
                                     TextInput::make('stock_no_display')->label('Item')->readOnly()->dehydrated(false)->columnSpan(2),
                                     TextInput::make('custom_description')->label('Description')->columnSpan(4),
                                     TextInput::make('qty')->numeric()->default(1)->required()->live()
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $productItem = ProductItem::find($get('product_item_id'));
-                                            if ($productItem && $state > $productItem->qty) {
-                                                $set('qty', $productItem->qty);
+                                            if ($pid = $get('product_item_id')) {
+                                                $productItem = ProductItem::find($pid);
+                                                if ($productItem && $state > $productItem->qty) {
+                                                    $set('qty', $productItem->qty);
+                                                }
                                             }
+                                            self::updateTotals($get, $set);
                                         }),
-                                    TextInput::make('sold_price')->label('Price')->numeric()->live()->columnSpan(2),
-                                    TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->live()->columnSpan(2),
+                                    TextInput::make('sold_price')->label('Price')->numeric()->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))->columnSpan(2),
+                                    TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))->columnSpan(2),
                                 ])
                                 ->columns(12)
                                 ->addable(false)
@@ -177,10 +178,7 @@ class SaleResource extends Resource
                                 ->content(function (Get $get) {
                                     $customer = Customer::find($get('customer_id'));
                                     if (!$customer) return 'Select customer to view details';
-                                    $phone = $customer->phone;
-                                    if ($phone && !str_starts_with($phone, '+1')) {
-                                        $phone = '+1' . $phone;
-                                    }
+                                    $phone = $customer->phone ?? 'N/A';
                                     return new HtmlString("<div class='text-sm border-t pt-2'><strong>Address:</strong> {$customer->address}<br><strong>Phone:</strong> {$phone}</div>");
                                 }),
 
@@ -201,27 +199,16 @@ class SaleResource extends Resource
                                     'visa' => 'VISA',
                                     'comenity' => 'COMENITY',
                                     'debit_card' => 'DEBIT CARD',
-                                    'snap_finance' => 'SNAP FINANCE',
-                                    'katapult' => 'KATAPULT',
-                                    'acima_finance' => 'ACIMA FINANCE',
-                                    'kefene' => 'KEFENE',
                                     'american_express' => 'AMERICAN EXPRESS',
                                     'mastercard' => 'MASTERCARD',
-                                    'wells_fargo' => 'WELLS FARGO',
                                     'synchrony' => 'SYNCHRONY',
-                                    'cheque' => 'CHEQUE',
-                                    'afterpay' => 'AFTERPAY',
                                     'affirm' => 'AFFIRM',
-                                    'website_payments' => 'WEBSITE PAYMENTS',
-                                    'discover' => 'DISCOVER',
-                                    'terrance_finance' => 'TERRANCE FINANCE',
                                     'others' => 'OTHERS',
-                                    'progressive_leasing' => 'PROGRESSIVE LEASING',
                                 ])
                                 ->default('cash')->required(),
                             Select::make('status')
                                 ->label('Sale Status')
-                                ->options(['completed' => 'Completed', 'pending' => 'Pending'])
+                                ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
                                 ->default('completed')->required(),
                         ]),
 
@@ -247,6 +234,8 @@ class SaleResource extends Resource
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
+                Hidden::make('custom_order_id')->dehydrated(true),
+                Hidden::make('repair_id')->dehydrated(true),
             ]);
     }
 
@@ -254,138 +243,59 @@ class SaleResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('invoice_number')
-                    ->label('Inv #')
-                    ->searchable()
-                    ->sortable()
-                    ->grow(false),
-
-                TextColumn::make('customer.name')
-                    ->label('Customer')
-                    ->searchable(['name', 'phone'])
-                    ->sortable()
-                    ->formatStateUsing(
-                        fn($record) => $record->customer ? $record->customer->name : 'Walk-in'
-                    ),
-
+                TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
+                TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()
                     ->getStateUsing(function ($record) {
-                        return $record->items
-                            ->map(function ($item) {
-                                if (! $item->productItem) {
-                                    return $item->custom_description;
-                                }
-
-                                return $item->productItem->barcode
-                                    . ' — '
-                                    . ($item->productItem->custom_description ?? 'Item');
-                            })
-                            ->toArray();
+                        return $record->items->map(function ($item) {
+                            if ($item->productItem) return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? 'Item');
+                            if ($item->repair_id) return "REPAIR: #" . ($item->repair->repair_no ?? 'SVC');
+                            return $item->custom_description;
+                        })->toArray();
                     })
-                    ->limitList(1)
-                    ->expandableLimitedList()
-                    ->size('xs')
-                    ->color('gray'),
-
-
-                TextColumn::make('payment_method')
-                    ->label('Method')
-                    ->formatStateUsing(fn(string $state): string => strtoupper(str_replace('_', ' ', $state)))
-                    ->badge()
-                    ->color('gray')
-                    ->grow(false),
-
-                TextColumn::make('final_total')
-                    ->label('Total')
-                    ->money('USD')
-                    ->weight('bold')
-                    ->color('success')
-                    ->alignRight(),
-
-                TextColumn::make('created_at')
-                    ->label('Date')
-                    ->dateTime('M d, y')
-                    ->sortable()
-                    ->grow(false),
+                    ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
+                TextColumn::make('payment_method')->label('Method')->badge()->color('gray')->grow(false),
+                TextColumn::make('final_total')->label('Total')->money('USD')->weight('bold')->color('success')->alignRight(),
+                TextColumn::make('created_at')->label('Date')->dateTime('M d, y')->sortable()->grow(false),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('payment_method')
-                    ->label('Payment Type')
-                    ->options([
-                        'cash' => 'CASH',
-                        'laybuy' => 'LAYBUY (Installment Plan)',
-                        'visa' => 'VISA',
-                        'comenity' => 'COMENITY',
-                    ]),
-
-                Tables\Filters\TernaryFilter::make('has_trade_in')
-                    ->label('Trade-Ins')
-                    ->placeholder('All Sales')
-                    ->trueLabel('With Trade-In')
-                    ->falseLabel('Without Trade-In')
-                    ->queries(
-                        true: fn($query) => $query->where('has_trade_in', 1),
-                        false: fn($query) => $query->where('has_trade_in', 0),
-                    )
+                Tables\Filters\SelectFilter::make('payment_method')->label('Payment Type')
+                    ->options(['cash' => 'CASH', 'laybuy' => 'LAYBUY', 'visa' => 'VISA']),
+                Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
             ])
             ->actions([
-                Tables\Actions\EditAction::make()
-        ->label('Edit')
-        // Only visible if NOT completed OR user is Superadmin
-        ->visible(fn ($record) => 
-            $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')
-        ),
-                Tables\Actions\ViewAction::make()
-                ->label('View')
-                ->icon('heroicon-o-eye') 
-                ->color('info'),
-                Tables\Actions\Action::make('printReceipt')
-                    ->label('Receipt')
-                    ->icon('heroicon-o-printer')
-                    ->color('info')
-                    ->url(fn(Sale $record): string => route('sales.receipt', $record))
-                    ->openUrlInNewTab()
-                    ->visible(
-                        fn(Sale $record) =>
-                        $record->payment_method !== 'laybuy' ||
-                            in_array($record->status, ['completed', 'pending', 'inprogress'])
-                    ),
+                Tables\Actions\EditAction::make()->visible(fn ($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
+                Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
+                Tables\Actions\Action::make('printReceipt')->label('Receipt')->icon('heroicon-o-printer')->color('info')
+                    ->url(fn(Sale $record): string => route('sales.receipt', $record))->openUrlInNewTab(),
             ])
             ->defaultSort('created_at', 'desc');
     }
 
-  public static function updateTotals(Get $get, Set $set)
-{
-    $items = $get('items') ?? [];
-    $shipping = floatval($get('shipping_charges') ?? 0);
-    $subtotal = 0;
+    public static function updateTotals(Get $get, Set $set)
+    {
+        $items = $get('items') ?? [];
+        $shipping = floatval($get('shipping_charges') ?? 0);
+        $subtotal = 0;
 
-    foreach ($items as $item) {
-        $price = floatval($item['sold_price'] ?? 0);
-        $qty = intval($item['qty'] ?? 1);
-        
-        // 🔹 This now matches the Repeater field name 'discount_percent'
-        $percent = floatval($item['discount_percent'] ?? 0); 
+        foreach ($items as $item) {
+            $price = floatval($item['sold_price'] ?? 0);
+            $qty = intval($item['qty'] ?? 1);
+            $percent = floatval($item['discount_percent'] ?? 0); 
+            $rowTotal = $price * $qty;
+            $subtotal += ($rowTotal - ($rowTotal * ($percent / 100)));
+        }
 
-        $rowTotal = $price * $qty;
-        $discountAmount = $rowTotal * ($percent / 100);
-        
-        $subtotal += ($rowTotal - $discountAmount);
+        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
+        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+
+        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
+        $set('tax_amount', number_format($tax, 2, '.', ''));
+        $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
     }
-
-    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxMultiplier = floatval($dbTax) / 100;
-
-    $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * $taxMultiplier;
-    $tradeInValue = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-    $finalTotal = ($subtotal + $shipping + $tax) - $tradeInValue;
-
-    $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-    $set('tax_amount', number_format($tax, 2, '.', ''));
-    $set('final_total', number_format($finalTotal, 2, '.', ''));
-}
 
     protected static function totalRow($label, $field)
     {

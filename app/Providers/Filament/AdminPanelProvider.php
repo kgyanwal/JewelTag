@@ -124,20 +124,14 @@ body, .fi-layout { background-color: var(--body-bg) !important; color: var(--tex
 
 /* 2. FORCE THE PROFILE (NS) TO THE ABSOLUTE LEFT */
 .fi-user-menu {
-    order: -10 !important; 
-    margin-right: 1.5rem !important;
+    order: -10 !important; /* 🔹 Negative order pulls it to the start */
+    margin-right: 0 !important;
 }
 
-/* PUSH NAVIGATION LINKS */
+/* 3. Ensure Navigation (Dashboard, Sales, etc.) comes after the Profile */
 .fi-topbar-nav {
     order: -5 !important;
-    flex: 1 !important; 
-}
-
-/* JEWELTAG LOGO ON FAR RIGHT */
-.fi-topbar-content > div:last-child {
-    order: 2 !important;
-    margin-left: auto !important;
+    flex: 1 !important; /* 🔹 Pushes everything else to the right */
 }
 
 /* 4. Keep Search and Logo on the far right */
@@ -176,6 +170,8 @@ HTML
                  \App\Filament\Resources\ActivityLogResource::class,
                  \App\Filament\Resources\DeletionRequestResource::class,
                   \App\Filament\Resources\SaleEditRequestResource::class,
+                  \App\Filament\Resources\CustomOrderResource::class,
+                   \App\Filament\Resources\RepairResource::class,
                 
             ])
             ->pages([

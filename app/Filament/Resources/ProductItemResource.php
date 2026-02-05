@@ -226,17 +226,23 @@ Grid::make(12)->schema([
                         ->label('Vendor Code')
                         ->columnSpan(3),
 
-                    Select::make('department')
-                        ->label('Department')
-                       ->options(fn () => \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])
-                        ->hintAction(
+                   
+Select::make('department')
+    ->label('Department')
+    // Pull the names from our new array structure
+    ->options(function() {
+        $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+        return collect($depts)->pluck('name', 'name');
+    })
+    ->searchable()
+    ->hintAction(
                             FormAction::make('departmentHelp')
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure departments')
                         )
-                        ->searchable()
-                        ->columnSpan(3),
-
+    ->live()
+    ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+    ->columnSpan(3),
 
 
                     Select::make('sub_department')
@@ -288,19 +294,25 @@ Grid::make(12)->schema([
                         ->columnSpan(2),
 
                     TextInput::make('cost_price')
-                        ->prefix('$')
-                        ->numeric()
-                        ->columnSpan(2),
+    ->prefix('$')
+    ->numeric()
+    // 🔹 ADDED: Make this live so math happens while typing
+    ->live(onBlur: true) 
+    ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+    ->columnSpan(2),
 
-                    TextInput::make('retail_price')
-                        ->prefix('$')
-                        ->numeric()
-                        ->columnSpan(3),
+TextInput::make('retail_price')
+    ->prefix('$')
+    ->numeric()
+    // 🔹 ADDED: Make this live so users can still override manually if needed
+    ->live() 
+    ->columnSpan(3),
 
-                    TextInput::make('web_price')
-                        ->prefix('$')
-                        ->numeric()
-                        ->columnSpan(3),
+TextInput::make('web_price')
+    ->prefix('$')
+    ->numeric()
+    ->live()
+    ->columnSpan(3),
 
                     TextInput::make('discount_percent')
                         ->suffix('%')
@@ -443,31 +455,69 @@ Grid::make(12)->schema([
 
                     /* ... existing print actions ... */
                     Action::make('print_barcode')
-                        ->label('Print Barcode')
-                        ->icon('heroicon-o-printer')
-                        ->action(
-                            fn($record, ZebraPrinterService $service, $livewire) =>
-                            $livewire->dispatch(
-                                'trigger-zebra-print',
-                                zpl: $service->generateZpl($record, false)
-                            )
-                        ),
+    ->label('Print Barcode')
+    ->icon('heroicon-o-printer')
+    ->action(function ($record, ZebraPrinterService $service) {
+        // This method generates ZPL and sends it to the printer 
+        // using the 'false' flag to skip RFID encoding
+        $result = $service->printJewelryTag($record, false);
 
-                    Action::make('print_rfid')
-                        ->label('Print RFID')
-                        ->icon('heroicon-o-identification')
-                        ->color('warning')
-                        ->action(
-                            fn($record, ZebraPrinterService $service, $livewire) =>
-                            $livewire->dispatch(
-                                'trigger-zebra-print',
-                                zpl: $service->generateZpl($record, true)
-                            )
-                        ),
+        if ($result) {
+            Notification::make()->title('Barcode Sent to Printer')->success()->send();
+        } else {
+            Notification::make()->title('Printer Connection Failed')->danger()->send();
+        }
+    }),
+
+Action::make('print_rfid')
+    ->label('Print RFID')
+    ->icon('heroicon-o-identification')
+    ->color('warning')
+    ->action(function ($record, ZebraPrinterService $service) {
+        // This method generates ZPL and sends it to the printer 
+        // using the 'true' flag to include RFID encoding
+        $result = $service->printJewelryTag($record, true);
+
+        if ($result) {
+            Notification::make()->title('RFID Tag Sent to Printer')->success()->send();
+        } else {
+            Notification::make()->title('Printer Connection Failed')->danger()->send();
+        }
+    }),
                 ]),
             ]);
     }
+public static function runSmartPricing(Get $get, Forms\Set $set): void
+{
+    $cost = floatval($get('cost_price'));
+    $selectedDept = $get('department');
 
+    // If cost is 0 or no department is selected, do nothing
+    if ($cost <= 0 || !$selectedDept) return;
+
+    // 1. Fetch the dynamic settings from the database
+    $settings = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+    
+    // 2. Find the specific department chosen by the user
+    $deptData = collect($settings)->firstWhere('name', $selectedDept);
+
+    // 3. If the department has a multiplier, do the math
+    if ($deptData && isset($deptData['multiplier'])) {
+        $multiplier = floatval($deptData['multiplier']);
+        
+        // Example: $1000 cost * 2x multiplier = $2000 retail
+        $calculatedPrice = $cost * $multiplier;
+        
+        // 4. Update the UI fields automatically
+        $set('retail_price', number_format($calculatedPrice, 2, '.', ''));
+        $set('web_price', number_format($calculatedPrice, 2, '.', ''));
+        
+        // Optional: Auto-generate a description if empty
+        if (blank($get('custom_description'))) {
+            $set('custom_description', "{$selectedDept} - " . ($get('metal_type') ?? 'Jewelry'));
+        }
+    }
+}
 
     public static function getPages(): array
     {

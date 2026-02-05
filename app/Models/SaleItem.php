@@ -14,21 +14,28 @@ class SaleItem extends Model
     { 
         return $this->belongsTo(Sale::class); 
     }
-
+public function repair(): BelongsTo
+    {
+        return $this->belongsTo(Repair::class);
+    }
    public function productItem(): BelongsTo
 {
     return $this->belongsTo(ProductItem::class, 'product_item_id');
 }
 
-    protected static function booted()
-    {
-        static::created(function ($saleItem) {
-            // Ensure ProductItem constants are defined in ProductItem model
+   protected static function booted()
+{
+    static::created(function ($saleItem) {
+        if ($saleItem->product_item_id && $saleItem->productItem) {
             $saleItem->productItem->update(['status' => 'sold']);
-        });
-        
-        static::deleted(function ($saleItem) {
+        }
+    });
+
+    static::deleted(function ($saleItem) {
+        if ($saleItem->product_item_id && $saleItem->productItem) {
             $saleItem->productItem->update(['status' => 'in_stock']);
-        });
-    }
+        }
+    });
+}
+
 }
