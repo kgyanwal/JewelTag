@@ -65,40 +65,39 @@ class AdminPanelProvider extends PanelProvider
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
 
-    /* ───────── ZEBRA PRINTER HARDENED LOGIC ───────── */
-    window.addEventListener('zebra-print', event => {
-        const zpl = event.detail.zpl;
-        const targetIp = '192.168.1.60';
-
+    /* ───────── ZEBRA STATUS INDICATOR ───────── */
+    function updatePrinterStatus() {
+        const dot = document.getElementById('zebra-status-dot');
+        if (!dot) return;
         if (typeof BrowserPrint === 'undefined') {
-            alert("Zebra Software not detected. Please ensure Zebra Browser Print is running.");
+            dot.style.backgroundColor = '#dc2626';
+            dot.title = 'Zebra App Not Running';
             return;
         }
+        BrowserPrint.getDefaultDevice("printer", function(device) {
+            dot.style.backgroundColor = (device && device.name) ? '#22c55e' : '#eab308';
+            dot.title = (device && device.name) ? 'Printer Online: ' + device.name : 'Zebra App Ready - No Printer Found';
+        }, function() {
+            dot.style.backgroundColor = '#dc2626';
+        });
+    }
 
-        // Search for the specific ZD621R printer by IP to bypass "Default" issues
+    /* ───────── ZEBRA PRINT LISTENER ───────── */
+    window.addEventListener('zebra-print', event => {
+        const zpl = event.detail.zpl;
+        if (typeof BrowserPrint === 'undefined') return alert("Please start Zebra Browser Print software.");
         BrowserPrint.getLocalDevices(function(devices) {
-            const printer = devices.find(d => d.name.includes(targetIp) || d.uid.includes(targetIp));
-            
+            const printer = devices.find(d => d.name.includes('192.168.1.60'));
             if (printer) {
-                console.log("Printer Found: " + printer.name);
-                printer.send(zpl, function(success) {
-                    console.log("Print Job Sent Successfully");
-                }, function(error) {
-                    console.error("Zebra Send Error:", error);
-                    alert("Printer Error: " + error + "\n\n1. Check if printer has a RED light.\n2. Ensure 192.168.1.60 is reachable.");
-                });
+                printer.send(zpl, () => console.log("Sent to ZD621R"), (err) => alert("Printer Error: " + err));
             } else {
-                // If specific search fails, try one last time with Default
-                BrowserPrint.getDefaultDevice("printer", function(device) {
-                    if (device && device.name !== undefined) {
-                        device.send(zpl);
-                    } else {
-                        alert("Connection Failed: Unable to find ZD621R at " + targetIp + ". Please restart the Zebra Browser Print app.");
-                    }
-                });
+                BrowserPrint.getDefaultDevice("printer", (d) => d.send(zpl));
             }
-        }, function(err) { alert("Zebra Scan Error: " + err); }, "printer");
+        }, () => {}, "printer");
     });
+
+    setInterval(updatePrinterStatus, 8000);
+    window.addEventListener('load', updatePrinterStatus);
 </script>
 
 <style>
@@ -109,34 +108,32 @@ class AdminPanelProvider extends PanelProvider
     --primary-dark: #0f766e;
     --body-bg: #0e7490;
     --nav-bg: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%);
-    --content-bg: #ffffff;
-    --card-bg: #ffffff;
-    --sidebar-bg: #f8fafc;
     --text-primary: #164e63;
-    --text-secondary: #0e7490;
     --text-body: #1e293b;
-    --text-muted: #64748b;
-    --text-white: #ffffff;
-    --text-button: #ffffff;
-    --border-color: #cbd5e1;
-    --border-light: #e2e8f0;
-    --border-primary: #2dd4bf;
-    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
 }
+
+#zebra-status-dot { width: 12px; height: 12px; border-radius: 50%; background-color: #94a3b8; border: 2px solid white; display: inline-block; margin-left: 10px; cursor: help; transition: background-color 0.5s ease; }
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading { font-family: 'Inter', sans-serif !important; }
+
+body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading {
+    font-family: 'Inter', -apple-system, sans-serif !important;
+}
+
 body, .fi-layout { background-color: var(--body-bg) !important; color: var(--text-body) !important; }
 .fi-main { background-color: var(--body-bg) !important; padding: 1.5rem !important; min-height: calc(100vh - 75px) !important; }
 .fi-topbar { background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important; border-bottom: 2px solid #5eead4 !important; }
+.fi-topbar * { color: #0f172a !important; }
+
 .fi-topbar-content { display: flex !important; align-items: center !important; gap: 1rem !important; }
-.fi-user-menu { order: -10 !important; }
+.fi-user-menu { order: -10 !important; margin-right: 0 !important; }
 .fi-topbar-nav { order: -5 !important; flex: 1 !important; }
 .fi-main-search { order: 1 !important; }
 .fi-topbar-content > div:last-child { order: 2 !important; }
+
 .fi-section, .fi-ta-ctn { background-color: #ffffff !important; border: none !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important; }
 .fi-btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; font-weight: 800 !important; }
-.fi-ta-header, .fi-ta-row { background-color: #eef2f7 !important; }
+.fi-ta-header, .fi-ta-header-cell, .fi-ta-row { background-color: #eef2f7 !important; }
 .fi-ta-cell { color: #000000 !important; }
 </style>
 HTML
@@ -151,11 +148,11 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
-                \App\Filament\Resources\ActivityLogResource::class,
-                \App\Filament\Resources\DeletionRequestResource::class,
-                \App\Filament\Resources\SaleEditRequestResource::class,
-                \App\Filament\Resources\CustomOrderResource::class,
-                \App\Filament\Resources\RepairResource::class,
+                 \App\Filament\Resources\ActivityLogResource::class,
+                 \App\Filament\Resources\DeletionRequestResource::class,
+                  \App\Filament\Resources\SaleEditRequestResource::class,
+                  \App\Filament\Resources\CustomOrderResource::class,
+                   \App\Filament\Resources\RepairResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -197,18 +194,18 @@ HTML
                 NavigationGroup::make()->label('Reports'),
                 NavigationGroup::make()->label('Inventory'),
             ])
-            ->userMenuItems([
-                'settings' => MenuItem::make()
-                    ->label('Store Settings')
-                    ->url(fn (): string => ManageSettings::getUrl())
-                    ->icon('heroicon-o-adjustments-horizontal')
-                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+           ->userMenuItems([
+    'settings' => MenuItem::make()
+        ->label('Store Settings')
+        ->url(fn (): string => ManageSettings::getUrl())
+        ->icon('heroicon-o-adjustments-horizontal')
+         ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
-                'activity_logs' => MenuItem::make()
-                    ->label('Activity Logs')
-                    ->icon('heroicon-o-finger-print')
-                    ->url(fn (): string => ActivityLogResource::getUrl())
-                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-            ]);
+    'activity_logs' => MenuItem::make()
+        ->label('Activity Logs')
+        ->icon('heroicon-o-finger-print')
+        ->url(fn (): string => ActivityLogResource::getUrl())
+        ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+]);
     }
 }

@@ -45,7 +45,9 @@ class ZebraPrinterService
                 $l = $getL($id);
                 $x = ($data['side'] === 2 ? 450 : 0) + ($l->x_pos ?? 65);
                 $y = ($l->y_pos ?? 30) % 150; 
-                $h = ($l->font_size ?? 2) * 10; 
+                // 🔹 ADJUSTED: Multiplying by 8 instead of 10 to make font 20% smaller
+                // Size 1 now = 8 dots (approx 0.6mm). Size 3 = 24 dots (approx 2mm).
+                $h = round(($l->font_size ?? 1.5) * 8); 
                 $w = ($l->is_bold ?? false) ? ($h + 2) : $h; 
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$h},{$w}^FD{$data['v']}^FS";
             }
@@ -54,15 +56,14 @@ class ZebraPrinterService
             $zpl .= "\n^BY" . ($b->width ?? 1) . ",2.0^FO" . ($b->x_pos ?? 65) . "," . (($b->y_pos ?? 100) % 150);
             $zpl .= "^BCN," . ($b->height ?? 35) . ",N,N,N,A^FD{$stockNo}^FS";
             $zpl .= "\n^PQ1,0,1,Y^XZ";
-
             return $zpl;
         } catch (\Exception $e) {
-            Log::error("Zebra ZPL Gen Error: " . $e->getMessage());
+            Log::error("Zebra ZPL Error: " . $e->getMessage());
             return "";
         }
     }
 
     public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool {
-        return false; // Deprecated: Cloud cannot use Sockets
+        return false; 
     }
 }
