@@ -10,6 +10,8 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "aws/aws-sdk-php": "^3.369",
+        "barryvdh/laravel-dompdf": "^3.1",
         "cdsmths/laravel-ocr-space": "^1.0",
         "filament/filament": "^3.2",
         "google/cloud-vision": "^2.1",

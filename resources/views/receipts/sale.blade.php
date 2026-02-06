@@ -13,6 +13,64 @@
 @endphp
     <meta charset="utf-8">
     <title>Tax Invoice: {{ $sale->invoice_number }} | Diamond Square</title>
+    @if(isset($is_pdf))
+<style>
+    /* 1. Header Table Fix */
+    .header { 
+        display: table !important; 
+        width: 100% !important; 
+        border-bottom: 2px solid #e0e7ee !important;
+        margin-bottom: 20px !important;
+    }
+
+    .store-info { 
+        display: table-cell !important; 
+        width: 60% !important; 
+        vertical-align: middle !important;
+    }
+
+    /* 2. Blue Invoice Card Fix */
+    .invoice-header-card { 
+        display: table-cell !important; 
+        width: 40% !important; 
+        background-color: #1a6b8c !important; /* DomPDF needs solid colors, not gradients */
+        color: #ffffff !important;
+        padding: 20px !important;
+        text-align: right !important;
+        border-radius: 8px !important;
+        vertical-align: middle !important;
+    }
+
+    /* 3. Text Visibility */
+    .invoice-label { 
+        display: block !important;
+        font-size: 10px !important; 
+        color: #ffffff !important; 
+        opacity: 1 !important;
+        text-transform: uppercase !important;
+    }
+
+    .invoice-number { 
+        display: block !important;
+        font-size: 24px !important; 
+        font-weight: bold !important; 
+        color: #ffffff !important;
+        margin: 5px 0 !important;
+    }
+
+    .invoice-meta { 
+        display: block !important;
+        font-size: 11px !important; 
+        color: #ffffff !important;
+        line-height: 1.4 !important;
+    }
+
+    /* 4. Remove Web Elements */
+    .invoice-container::before, .social-qr-card, script { 
+        display: none !important; 
+    }
+</style>
+@endif
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         
@@ -169,7 +227,18 @@
         <tbody>
             @foreach($sale->items as $item)
             <tr>
-                <td><span class="stock-badge">{{ $item->productItem->barcode ?? 'N/A' }}</span></td>
+               <td>
+    <span class="stock-badge">
+        @if ($item->productItem)
+            {{ $item->productItem->barcode }}
+        @elseif ($item->repair)
+            {{ $item->repair->repair_no }}
+        @else
+            N/a
+        @endif
+    </span>
+</td>
+
                 <td><div style="font-weight: 700; color: var(--text-dark); font-size: 14px;">{{ $item->custom_description }}</div></td>
                 <td style="text-align: center; font-weight: 700;">{{ $item->qty }}</td>
                 <td style="text-align: center;">

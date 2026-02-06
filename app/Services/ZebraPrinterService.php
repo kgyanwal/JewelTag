@@ -29,7 +29,15 @@ class ZebraPrinterService
             $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2"; 
             
             if ($useRFID && !empty($record->rfid_code)) { 
-                $zpl .= "\n^RS8,,,1,N^FS\n^RFW,H,1,0,12^FD{$record->rfid_code}^FS"; 
+                $epc = strtoupper(preg_replace('/[^A-F0-9]/', '', $record->rfid_code));
+$epc = str_pad($epc, 24, '0', STR_PAD_RIGHT); // 96-bit EPC
+
+$zpl .= "
+^RS8,,,1,N
+^RFW,E,1,2,12^FD{$epc}^FS
+^RFE,E,1,2^FS
+";
+
             }
 
             $textMap = [

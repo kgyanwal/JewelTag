@@ -85,7 +85,7 @@ protected function afterCreate(): void
             
             // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
             // so the receipt button remains hidden.
-            $sale->update(['status' => 'pending']);
+            $sale->update(['status' => 'pending','sold_again_sale_id' => $sale->id,]);
             
             \Filament\Notifications\Notification::make()
                 ->title('Stock Reserved')
@@ -93,7 +93,40 @@ protected function afterCreate(): void
                 ->warning()
                 ->send();
         }
+        
     });
+}
+public function mount(): void
+{
+    parent::mount();
+
+    $repairId = request()->get('repair_id');
+
+    if (! $repairId) {
+        return;
+    }
+
+    $repair = \App\Models\Repair::find($repairId);
+
+    if (! $repair) {
+        return;
+    }
+
+    // 🔹 Auto-select customer
+    $this->data['customer_id'] = $repair->customer_id;
+
+    // 🔹 Inject repair into POS bill
+    $this->data['items'] = [
+        [
+            'product_item_id' => null,
+            'repair_id' => $repair->id,
+            'stock_no_display' => 'REPAIR #' . $repair->repair_no,
+            'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
+            'qty' => 1,
+            'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
+            'discount_percent' => 0,
+        ],
+    ];
 }
 
     protected function getRedirectUrl(): string

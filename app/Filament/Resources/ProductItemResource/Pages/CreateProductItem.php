@@ -84,7 +84,7 @@ protected function handleRecordCreation(array $data): Model
         $itemData['original_trade_in_no'] = $tradeInNo;
 
         if ($data['enable_rfid_tracking'] ?? false) {
-            $itemData['rfid_code'] = strtoupper(substr(md5(uniqid() . $i), 0, 24));
+            $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(12)));
         }
 
         // Create the record

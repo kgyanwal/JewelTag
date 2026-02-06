@@ -270,6 +270,40 @@ class SaleResource extends Resource
                 Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
                 Tables\Actions\Action::make('printReceipt')->label('Receipt')->icon('heroicon-o-printer')->color('info')
                     ->url(fn(Sale $record): string => route('sales.receipt', $record))->openUrlInNewTab(),
+                    // Inside SaleResource.php table actions
+Tables\Actions\Action::make('emailReceipt')
+    ->label('Email Receipt')
+    ->icon('heroicon-o-envelope')
+    ->color('success')
+    ->requiresConfirmation()
+    ->action(function (Sale $record) {
+        if (!$record->customer || empty($record->customer->email)) {
+            \Filament\Notifications\Notification::make()
+                ->title('Email Missing')
+                ->body('Customer has no email address.')
+                ->danger()
+                ->send();
+            return;
+        }
+
+        // Initialize mailable and call the direct send method
+        $mailable = new \App\Mail\CustomerReceipt($record);
+        $sent = $mailable->sendDirectly();
+
+        if ($sent) {
+            \Filament\Notifications\Notification::make()
+                ->title('Receipt Sent')
+                ->body("Successfully emailed to {$record->customer->email}")
+                ->success()
+                ->send();
+        } else {
+            \Filament\Notifications\Notification::make()
+                ->title('Email Error')
+                ->body('Check Laravel logs for SES details.')
+                ->danger()
+                ->send();
+        }
+    }),
             ])
             ->defaultSort('created_at', 'desc');
     }

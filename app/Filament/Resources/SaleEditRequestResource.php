@@ -14,7 +14,7 @@ class SaleEditRequestResource extends Resource
     protected static ?string $model = SaleEditRequest::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-check-badge';
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Sales';
 
     public static function table(Table $table): Table
     {
