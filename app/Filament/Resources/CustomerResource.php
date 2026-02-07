@@ -43,7 +43,7 @@ class CustomerResource extends Resource
                                         Grid::make(3)->schema([
                                             TextInput::make('customer_no')
                                                 ->label('Customer No.')
-                                                ->default(fn () => 'CUST-' . strtoupper(bin2hex(random_bytes(3))))
+                                                ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3))))
                                                 ->disabled()
                                                 ->dehydrated(),
                                             TextInput::make('name')->label('First Name')->required(),
@@ -63,16 +63,18 @@ class CustomerResource extends Resource
                                             TextInput::make('email')->email(),
                                         ]),
                                         Grid::make(2)->schema([
-                                            Select::make('sales_person')
+                                           Select::make('sales_person')
     ->label('Sales Person')
-    // 🔹 Dynamically pull users who have specific roles
     ->options(function () {
-        return \App\Models\User::role(['Superadmin', 'Administration', 'Manager', 'Sales Associate'])
-            ->pluck('name', 'name'); // Stores name, displays name
+        // 🔹 DEFENSIVE FIX: Only query roles that definitely exist in the DB
+        $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales']; // Changed 'Sales Associate' to 'Sales' to match seeder
+        
+        return \App\Models\User::whereHas('roles', function($q) use ($validRoles) {
+            $q->whereIn('name', $validRoles);
+        })->pluck('name', 'name');
     })
     ->searchable()
     ->preload()
-    ->placeholder('Select a sales person'),
                                             // TextInput::make('tax_number')->label('Tax Number'),
                                         ]),
                                         Section::make('Address')
@@ -154,8 +156,8 @@ class CustomerResource extends Resource
                                 Toggle::make('is_active')->label('Active Customer')->default(true),
                                 Select::make('loyalty_tier')
                                     ->options([
-                                        'standard' => 'Standard', 
-                                        'silver' => 'Silver', 
+                                        'standard' => 'Standard',
+                                        'silver' => 'Silver',
                                         'gold' => 'Gold'
                                     ])
                                     ->default('standard')
@@ -182,13 +184,13 @@ class CustomerResource extends Resource
                 Tables\Columns\TextColumn::make('customer_no')->label('ID')->sortable()->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->label('Customer Name')
-                    ->formatStateUsing(fn ($record) => "{$record->name} {$record->last_name}")
+                    ->formatStateUsing(fn($record) => "{$record->name} {$record->last_name}")
                     ->searchable(['name', 'last_name'])
                     ->sortable(),
                 Tables\Columns\TextColumn::make('phone')->label('Phone')->copyable(),
                 Tables\Columns\TextColumn::make('loyalty_tier')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'gold' => 'warning',
                         'silver' => 'gray',
                         default => 'info',
@@ -228,25 +230,25 @@ class CustomerResource extends Resource
             'edit' => Pages\EditCustomer::route('/{record}/edit'),
         ];
     }
-public static function canDelete($record): bool
-{
-    /** @var \App\Models\User $user */
-    $user = auth()->user();
+    public static function canDelete($record): bool
+    {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-    // 🔹 Null check prevents 500 errors if user is logged out/session expires
-    if (!$user) return false;
+        // 🔹 Null check prevents 500 errors if user is logged out/session expires
+        if (!$user) return false;
 
-    // 🔹 Use hasRole or hasAnyRole with a check to ensure Spatie is loaded
-    return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
-}
+        // 🔹 Use hasRole or hasAnyRole with a check to ensure Spatie is loaded
+        return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
+    }
 
-public static function canDeleteAny(): bool
-{
-    /** @var \App\Models\User $user */
-    $user = auth()->user();
+    public static function canDeleteAny(): bool
+    {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-    if (!$user) return false;
+        if (!$user) return false;
 
-    return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
-}
+        return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
+    }
 }
