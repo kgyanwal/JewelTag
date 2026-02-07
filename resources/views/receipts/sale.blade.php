@@ -5,72 +5,143 @@
     $totalSavings = 0;
     foreach($sale->items as $item) {
         if($item->discount_percent > 0) {
-            // Calculate what the price would have been without the discount
             $originalPrice = $item->sold_price / (1 - ($item->discount_percent / 100));
             $totalSavings += ($originalPrice - $item->sold_price) * $item->qty;
         }
     }
-@endphp
+    @endphp
     <meta charset="utf-8">
     <title>Tax Invoice: {{ $sale->invoice_number }} | Diamond Square</title>
-    @if(isset($is_pdf))
-<style>
-    /* 1. Header Table Fix */
-    .header { 
-        display: table !important; 
-        width: 100% !important; 
-        border-bottom: 2px solid #e0e7ee !important;
-        margin-bottom: 20px !important;
-    }
-
-    .store-info { 
-        display: table-cell !important; 
-        width: 60% !important; 
-        vertical-align: middle !important;
-    }
-
-    /* 2. Blue Invoice Card Fix */
-    .invoice-header-card { 
-        display: table-cell !important; 
-        width: 40% !important; 
-        background-color: #1a6b8c !important; /* DomPDF needs solid colors, not gradients */
-        color: #ffffff !important;
-        padding: 20px !important;
-        text-align: right !important;
-        border-radius: 8px !important;
-        vertical-align: middle !important;
-    }
-
-    /* 3. Text Visibility */
-    .invoice-label { 
-        display: block !important;
-        font-size: 10px !important; 
-        color: #ffffff !important; 
-        opacity: 1 !important;
-        text-transform: uppercase !important;
-    }
-
-    .invoice-number { 
-        display: block !important;
-        font-size: 24px !important; 
-        font-weight: bold !important; 
-        color: #ffffff !important;
-        margin: 5px 0 !important;
-    }
-
-    .invoice-meta { 
-        display: block !important;
-        font-size: 11px !important; 
-        color: #ffffff !important;
-        line-height: 1.4 !important;
-    }
-
-    /* 4. Remove Web Elements */
-    .invoice-container::before, .social-qr-card, script { 
-        display: none !important; 
-    }
-</style>
-@endif
+    
+    <!-- PDF/Email Specific CSS -->
+    @if(isset($is_pdf) || isset($is_email))
+    <style>
+        /* Force table layout for PDF compatibility */
+        .header { 
+            display: table !important; 
+            width: 100% !important; 
+            border-bottom: 2px solid #e0e7ee !important;
+            margin-bottom: 20px !important;
+        }
+        
+        .store-info { 
+            display: table-cell !important; 
+            width: 60% !important; 
+            vertical-align: top !important;
+            padding-right: 20px !important;
+        }
+        
+        .invoice-header-card { 
+            display: table-cell !important; 
+            width: 40% !important; 
+            background-color: #1a6b8c !important;
+            color: #ffffff !important;
+            padding: 20px !important;
+            text-align: right !important;
+            border-radius: 8px !important;
+            vertical-align: top !important;
+        }
+        
+        .invoice-label { 
+            display: block !important;
+            font-size: 10px !important; 
+            color: #ffffff !important; 
+            opacity: 1 !important;
+            text-transform: uppercase !important;
+            font-weight: bold !important;
+        }
+        
+        .invoice-number { 
+            display: block !important;
+            font-size: 24px !important; 
+            font-weight: bold !important; 
+            color: #ffffff !important;
+            margin: 5px 0 !important;
+        }
+        
+        .invoice-meta { 
+            display: block !important;
+            font-size: 11px !important; 
+            color: #ffffff !important;
+            line-height: 1.4 !important;
+            margin-top: 10px !important;
+        }
+        
+        .info-grid { 
+            display: table !important; 
+            width: 100% !important;
+            margin-bottom: 25px !important;
+        }
+        
+        .info-card { 
+            display: table-cell !important;
+            width: 50% !important;
+            vertical-align: top !important;
+            background: #f9fbfc !important;
+            border-radius: 8px !important;
+            padding: 20px !important;
+            border: 1px solid #e0e7ee !important;
+            border-left: 4px solid #2aa3cc !important;
+        }
+        
+        /* Remove problematic elements for PDF */
+        .invoice-container::before { 
+            display: none !important; 
+        }
+        
+        /* Force block display for better PDF rendering */
+        .store-details div { 
+            display: block !important; 
+            margin-bottom: 4px !important;
+        }
+        
+        /* Ensure proper table rendering */
+        .items-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin-bottom: 25px !important;
+        }
+        
+        .items-table th, .items-table td {
+            padding: 12px 8px !important;
+            border: 1px solid #e0e7ee !important;
+        }
+        
+        /* Force solid backgrounds for PDF */
+        .totals-card {
+            background-color: #1a6b8c !important;
+            border-radius: 8px !important;
+            padding: 25px !important;
+            color: white !important;
+        }
+        
+        /* Hide QR/Social for email PDF */
+        .social-qr-card { 
+            display: none !important; 
+        }
+        
+        .footer-layout { 
+            display: table !important; 
+            width: 100% !important;
+        }
+        
+        .terms-area, .totals-area {
+            display: table-cell !important;
+            vertical-align: top !important;
+        }
+        
+        .terms-area { 
+            width: 60% !important; 
+            padding-right: 20px !important;
+        }
+        
+        .totals-area { 
+            width: 40% !important; 
+        }
+    </style>
+    @endif
+    
+    <!-- Regular CSS for web view -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         
@@ -234,11 +305,10 @@
         @elseif ($item->repair)
             {{ $item->repair->repair_no }}
         @else
-            N/a
+            N/A
         @endif
     </span>
 </td>
-
                 <td><div style="font-weight: 700; color: var(--text-dark); font-size: 14px;">{{ $item->custom_description }}</div></td>
                 <td style="text-align: center; font-weight: 700;">{{ $item->qty }}</td>
                 <td style="text-align: center;">
@@ -265,6 +335,7 @@
                 </p>
             </div>
             
+            @if(!isset($is_pdf) && !isset($is_email))
             <div class="social-qr-card">
                 <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://www.thediamondsq.com/" alt="QR">
                 <div class="social-links">
@@ -274,6 +345,7 @@
                     <a href="https://www.instagram.com/thediamondsq/" target="_blank"><i class="fab fa-instagram"></i> thediamondsq</a>
                 </div>
             </div>
+            @endif
 
             <div class="signature-box">Your Trusted Jewelry Store In Town</div>
         </div>
@@ -285,11 +357,11 @@
                     <span>${{ number_format($sale->subtotal, 2) }}</span>
                 </div>
                 @if($totalSavings > 0)
-<div class="total-row" style="color: #4ade80; font-weight: 600;">
-    <span>Total Savings</span>
-    <span>-${{ number_format($totalSavings, 2) }}</span>
-</div>
-@endif
+                <div class="total-row" style="color: #4ade80; font-weight: 600;">
+                    <span>Total Savings</span>
+                    <span>-${{ number_format($totalSavings, 2) }}</span>
+                </div>
+                @endif
                 <div class="total-row">
                     <span>Sales Tax</span>
                     <span>${{ number_format($sale->tax_amount, 2) }}</span>
@@ -319,10 +391,12 @@
     </div>
 </div>
 
+@if(!isset($is_pdf) && !isset($is_email))
 <script>
     window.onload = function() {
         setTimeout(function() { window.print(); }, 1000);
     };
 </script>
+@endif
 </body>
 </html>

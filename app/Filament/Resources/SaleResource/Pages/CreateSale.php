@@ -100,35 +100,51 @@ public function mount(): void
 {
     parent::mount();
 
+    // 1. Check for Repair or Custom Order in the URL
     $repairId = request()->get('repair_id');
+    $customOrderId = request()->get('custom_order_id');
 
-    if (! $repairId) {
-        return;
+    // --- HANDLE REPAIR ---
+    if ($repairId) {
+        $repair = \App\Models\Repair::find($repairId);
+        if ($repair) {
+            $this->data['customer_id'] = $repair->customer_id;
+            $this->data['items'] = [
+                [
+                    'product_item_id' => null,
+                    'repair_id' => $repair->id,
+                    'stock_no_display' => 'REPAIR #' . $repair->repair_no,
+                    'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
+                    'qty' => 1,
+                    'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
+                    'discount_percent' => 0,
+                ],
+            ];
+        }
     }
 
-    $repair = \App\Models\Repair::find($repairId);
+    // --- HANDLE CUSTOM ORDER (NEW LOGIC) ---
+    if ($customOrderId) {
+        $customOrder = \App\Models\CustomOrder::find($customOrderId);
+        if ($customOrder) {
+            // Auto-select the customer
+            $this->data['customer_id'] = $customOrder->customer_id;
 
-    if (! $repair) {
-        return;
+            // Inject the custom order into the POS bill
+            $this->data['items'] = [
+                [
+                    'product_item_id' => null,
+                    'repair_id' => null,
+                    'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
+                    'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? 'No notes'),
+                    'qty' => 1,
+                    'sold_price' => $customOrder->quoted_price ?? 0,
+                    'discount_percent' => 0,
+                ],
+            ];
+        }
     }
-
-    // 🔹 Auto-select customer
-    $this->data['customer_id'] = $repair->customer_id;
-
-    // 🔹 Inject repair into POS bill
-    $this->data['items'] = [
-        [
-            'product_item_id' => null,
-            'repair_id' => $repair->id,
-            'stock_no_display' => 'REPAIR #' . $repair->repair_no,
-            'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
-            'qty' => 1,
-            'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
-            'discount_percent' => 0,
-        ],
-    ];
 }
-
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
