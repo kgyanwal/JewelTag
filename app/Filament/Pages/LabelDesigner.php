@@ -9,6 +9,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\ViewField;
 use Filament\Notifications\Notification;
+use Filament\Actions\Action;
 
 class LabelDesigner extends Page implements HasForms
 {
@@ -23,12 +24,29 @@ class LabelDesigner extends Page implements HasForms
 
     public function mount(): void { $this->loadLayout(); }
 
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('save')
+                ->label('Save Master Layout')
+                ->color('success')
+                ->icon('heroicon-o-check-circle')
+                ->action(fn () => $this->saveMasterLayout()),
+
+            Action::make('reset')
+                ->label('Reset to Default')
+                ->color('danger')
+                ->icon('heroicon-o-arrow-path')
+                ->requiresConfirmation()
+                ->action(fn () => $this->resetToDefault()),
+        ];
+    }
+
     public function loadLayout(): void
     {
         $settings = LabelLayout::all()->keyBy('field_id');
 
         $this->data = [
-            // --- SIDE 1: IDENTITY (Y=30 to Y=150) ---
             'stock_no_x'     => $settings->get('stock_no')->x_pos ?? 60,
             'stock_no_y'     => $settings->get('stock_no')->y_pos ?? 30,
             'stock_no_font'  => $settings->get('stock_no')->font_size ?? 3,
@@ -42,26 +60,25 @@ class LabelDesigner extends Page implements HasForms
             'barcode_x'      => $settings->get('barcode')->x_pos ?? 60,
             'barcode_y'      => $settings->get('barcode')->y_pos ?? 110,
             'barcode_height' => $settings->get('barcode')->height ?? 35,
-            'barcode_width'  => $settings->get('barcode')->font_size ?? 1,
+            'barcode_width'  => $settings->get('barcode')->width ?? 2,
 
-            // --- SIDE 2: SPECS (Y=240 to Y=400) ---
             'price_x'        => $settings->get('price')->x_pos ?? 60,
-            'price_y'        => $settings->get('price')->y_pos ?? 240,
+            'price_y'        => $settings->get('price')->y_pos ?? 30, // Corrected for Side 2
             'price_font'     => $settings->get('price')->font_size ?? 3,
             'price_val'      => '$1,299.00',
 
             'dwmtmk_x'       => $settings->get('dwmtmk')->x_pos ?? 60,
-            'dwmtmk_y'       => $settings->get('dwmtmk')->y_pos ?? 290,
+            'dwmtmk_y'       => $settings->get('dwmtmk')->y_pos ?? 60,
             'dwmtmk_font'    => $settings->get('dwmtmk')->font_size ?? 2,
             'dwmtmk_val'     => '1.38 CTW / 14K',
 
             'deptcat_x'      => $settings->get('deptcat')->x_pos ?? 60,
-            'deptcat_y'      => $settings->get('deptcat')->y_pos ?? 330,
+            'deptcat_y'      => $settings->get('deptcat')->y_pos ?? 90,
             'deptcat_font'   => $settings->get('deptcat')->font_size ?? 2,
             'deptcat_val'    => 'GOLD / CHAIN',
 
             'rfid_x'         => $settings->get('rfid')->x_pos ?? 60,
-            'rfid_y'         => $settings->get('rfid')->y_pos ?? 370,
+            'rfid_y'         => $settings->get('rfid')->y_pos ?? 120,
             'rfid_font'      => $settings->get('rfid')->font_size ?? 2,
             'rfid_val'       => '303405C000',
         ];
@@ -73,8 +90,9 @@ class LabelDesigner extends Page implements HasForms
             LabelLayout::updateOrCreate(['field_id' => $id], [
                 'x_pos'     => (int)($this->data[$id . '_x'] ?? 0),
                 'y_pos'     => (int)($this->data[$id . '_y'] ?? 0),
-                'font_size' => (int)($this->data[$id . '_font'] ?? $this->data[$id . '_width'] ?? 2),
+                'font_size' => (int)($this->data[$id . '_font'] ?? 2),
                 'height'    => (int)($this->data[$id . '_height'] ?? 0),
+                'width'     => (int)($this->data[$id . '_width'] ?? 2),
             ]);
         }
         Notification::make()->title('Master Layout Saved')->success()->send();

@@ -14,8 +14,7 @@ class ZebraPrinterService
         $this->ZEBRA_PRINTER_IP = config('services.zebra.ip', '192.168.1.60');
     }
 
-    public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool
-    {
+    public function printJewelryTag(ProductItem $record, bool $useRFID = true): bool {
         try {
             $zpl = $this->getZplCode($record, $useRFID);
             if (empty($zpl)) return false;
@@ -33,14 +32,12 @@ class ZebraPrinterService
         }
     }
 
-    public function getZplCode(ProductItem $record, bool $useRFID = true): string
-    {
+    public function getZplCode(ProductItem $record, bool $useRFID = true): string {
         try {
             $layouts = LabelLayout::all()->keyBy('field_id');
             $getL = fn($id) => $layouts->get($id);
 
-            // ZPL Header for 3.0" x 0.5" Label
-            $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2"; 
+            $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2";
             
             if ($useRFID && !empty($record->rfid_code)) { 
                 $epc = str_pad(strtoupper(preg_replace('/[^A-F0-9]/', '', $record->rfid_code)), 24, '0', STR_PAD_RIGHT);
@@ -61,7 +58,7 @@ class ZebraPrinterService
                 $x = ($data['side'] === 2 ? 450 : 0) + ($l->x_pos ?? 65);
                 $y = ($l->y_pos ?? 30) % 150; 
                 
-                // 🔹 RESTORED: Font Multiplier for 300 DPI clarity
+                // 🔹 FIXED: Multiplier restored for 300 DPI high-quality print
                 $h = (int)($l->font_size ?? 2) * 10; 
                 $w = ($l->is_bold ?? false) ? (int)($h * 1.2) : $h; 
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$h},{$w}^FD{$data['v']}^FS";
