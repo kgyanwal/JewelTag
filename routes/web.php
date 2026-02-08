@@ -11,3 +11,9 @@ Route::get('/sales/{record}/receipt', function (Sale $record) {
     return view('receipts.sale', ['sale' => $record]);
 })->name('sales.receipt');
 
+// Label layout management routes
+Route::prefix('label-layout')->group(function () {
+    Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);
+    Route::get('/current', [LabelLayoutController::class, 'getLayouts']);
+    Route::put('/update/{fieldId}', [LabelLayoutController::class, 'updateLayout']);
+});

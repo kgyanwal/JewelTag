@@ -79,7 +79,7 @@ class ListProductItems extends ListRecords
                             ProductItem::create([
                                 'store_id' => auth()->user()->store_id ?? 1,
                                 'supplier_id' => $supplier->id,
-                                'barcode' => 'G' . $nextNumber,
+                                'barcode' => 'D' . $nextNumber,
                                 'custom_description' => $item['description'] ?? 'Scanned Item',
                                 'qty' => $item['quantity'] ?? 1,
                                 'cost_price' => $item['cost_price'] ?? 0,
