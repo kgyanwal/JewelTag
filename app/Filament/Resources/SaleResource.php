@@ -124,6 +124,7 @@ class SaleResource extends Resource
                                 ->schema([
                                     Hidden::make('product_item_id')->dehydrated(),
                                     Hidden::make('repair_id')->dehydrated(),
+                                    Hidden::make('custom_order_id')->dehydrated(),
                                     TextInput::make('stock_no_display')->label('Item')->readOnly()->dehydrated(false)->columnSpan(2),
                                     TextInput::make('custom_description')->label('Description')->columnSpan(4),
                                     TextInput::make('qty')->numeric()->default(1)->required()->live()
@@ -234,8 +235,11 @@ class SaleResource extends Resource
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
-                Hidden::make('custom_order_id')->dehydrated(true),
-                Hidden::make('repair_id')->dehydrated(true),
+               Hidden::make('custom_order_id')
+    ->dehydrated(false), // 👈 Add this: tells Filament NOT to insert into 'sales' table
+
+Hidden::make('repair_id')
+    ->dehydrated(false),
             ]);
     }
 

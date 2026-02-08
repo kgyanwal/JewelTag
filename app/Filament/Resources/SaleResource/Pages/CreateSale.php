@@ -18,26 +18,33 @@ protected function beforeCreate(): void
 
     foreach ($items as $item) {
         // 🔹 FIX: Skip empty entries added by the Repeater
-        if (empty($item['product_item_id'])) {
+       if (
+            empty($item['product_item_id']) &&
+            empty($item['repair_id']) &&
+            empty($item['custom_order_id'])
+        ) {
             continue;
         }
 
-        $productItem = ProductItem::lockForUpdate()->find($item['product_item_id']);
+        // 2. ONLY run this block if there is a physical product ID
+        if (!empty($item['product_item_id'])) {
+            $productItem = ProductItem::lockForUpdate()->find($item['product_item_id']);
 
-        if (! $productItem) {
-            throw new \Exception('Product not found.');
-        }
+            if (!$productItem) {
+                throw new \Exception('Product not found in inventory.');
+            }
 
-        if ($productItem->qty < $item['qty']) {
-            throw new \Exception(
-                "Insufficient stock for {$productItem->barcode}. Available: {$productItem->qty}"
-            );
-        }
+            if ($productItem->qty < $item['qty']) {
+                throw new \Exception(
+                    "Insufficient stock for {$productItem->barcode}. Available: {$productItem->qty}"
+                );
+            }
 
-        if ($productItem->status === 'sold') {
-            throw new \Exception(
-                "Item {$productItem->barcode} is already sold."
-            );
+            if ($productItem->status === 'sold') {
+                throw new \Exception(
+                    "Item {$productItem->barcode} is already sold."
+                );
+            }
         }
     }
 }
@@ -131,17 +138,19 @@ public function mount(): void
             $this->data['customer_id'] = $customOrder->customer_id;
 
             // Inject the custom order into the POS bill
-            $this->data['items'] = [
-                [
-                    'product_item_id' => null,
-                    'repair_id' => null,
-                    'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
-                    'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? 'No notes'),
-                    'qty' => 1,
-                    'sold_price' => $customOrder->quoted_price ?? 0,
-                    'discount_percent' => 0,
-                ],
-            ];
+          $this->data['items'] = [
+    [
+        'product_item_id' => null,
+        'repair_id' => null,
+        'custom_order_id' => $customOrder->id, // 🔥 THIS LINE
+        'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
+        'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
+        'qty' => 1,
+        'sold_price' => $customOrder->quoted_price ?? 0,
+        'discount_percent' => 0,
+    ],
+];
+
         }
     }
 }
