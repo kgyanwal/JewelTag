@@ -26,7 +26,13 @@ class UserResource extends Resource
     ->description('Identity is mapped via PIN. Universal Login is managed by the Superadmin.')
     ->schema([
         Forms\Components\TextInput::make('name')
+            ->hintAction(
+                                FormAction::make('Help')
+                                    ->icon('heroicon-o-information-circle')
+                                    ->tooltip('Unique name for Salesperson')
+                            )
             ->label('Username')
+            ->placeholder('Map with sales person name')
             ->required()
             ->maxLength(255),
          
