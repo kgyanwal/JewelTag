@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Filament\Resources;
-
 use App\Filament\Resources\ProductItemResource\Pages;
 use App\Models\ProductItem;
 use App\Services\ZebraPrinterService;
@@ -177,6 +176,11 @@ class ProductItemResource extends Resource
                     TextInput::make('supplier_code')->label('Vendor Code')->columnSpan(3),
 
                     Select::make('department')->label('Department')
+                    ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Department')
+                        )
                         ->options(function() {
                             $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
                             return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
@@ -185,14 +189,29 @@ class ProductItemResource extends Resource
                         ->columnSpan(3),
 
                     Select::make('sub_department')->label('Sub-Department')
+                    ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Sub-Department')
+                        )
                         ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [])->filter()->toArray())
                         ->searchable()->columnSpan(3),
 
                     Select::make('category')->label('Category')
+                     ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Category')
+                        )
                         ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->toArray())
                         ->searchable()->columnSpan(2),
 
                     Select::make('metal_type')->label('Metal Karat')
+                     ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
+                        )
                         ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->toArray())
                         ->searchable()->columnSpan(2),
 
