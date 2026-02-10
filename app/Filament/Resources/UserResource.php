@@ -26,12 +26,12 @@ class UserResource extends Resource
     ->description('Identity is mapped via PIN. Universal Login is managed by the Superadmin.')
     ->schema([
         Forms\Components\TextInput::make('name')
-            ->label('Staff Full Name')
+            ->label('Username')
             ->required()
             ->maxLength(255),
          
-            Forms\Components\TextInput::make('username')
-                    ->label('Unique Username')
+            Forms\Components\TextInput::make('username')// This is fullname, and this is how it is mapped in the DB
+                    ->label('Full Name')
                     ->required()
                     ->unique(ignoreRecord: true) // Prevents duplicates
                     ->maxLength(255),
