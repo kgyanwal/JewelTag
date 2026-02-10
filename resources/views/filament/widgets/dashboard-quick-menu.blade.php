@@ -1,423 +1,534 @@
 <x-filament-widgets::widget>
-<div class="diamond-dashboard">
-    <!-- Premium Header with Metallic Finish -->
+<div class="ultimate-jewel-dashboard">
+    <!-- Premium Metallic Header -->
     <header class="dashboard-header">
-        <div class="header-gradient">
-            <div class="header-content">
-                <div class="brand-container">
-                    <div class="jewel-badge">
-                        <div class="jewel-sparkle"></div>
-                        <div class="jewel-sparkle delay-1"></div>
-                        <div class="jewel-sparkle delay-2"></div>
-                        <img src="{{ asset('pngdiamondsquare.png') }}" alt="Diamond Square" class="jewel-logo">
+        <div class="header-platinum">
+            <div class="header-inner">
+                <div class="brand-display">
+                    <div class="diamond-badge">
+                        <div class="diamond-facet facet-1"></div>
+                        <div class="diamond-facet facet-2"></div>
+                        <div class="diamond-facet facet-3"></div>
+                        <img src="{{ asset('pngdiamondsquare.png') }}" alt="Diamond Square" class="diamond-logo">
                     </div>
-                    <div class="brand-text">
-                        <h1 class="brand-title">DIAMOND SQUARE</h1>
-                        <p class="brand-tagline">Jewellery Management System</p>
+                    <div class="brand-identity">
+                        <h1 class="brand-name">DIAMOND SQUARE</h1>
+                        <p class="brand-tag">Premium Jewelry Management Suite</p>
                     </div>
                 </div>
                 
                 <div class="user-console">
-                    <div class="user-profile">
-                        <div class="profile-avatar">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div class="user-profile-card">
+                        <div class="user-avatar">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                             </svg>
                         </div>
-                        <div class="profile-info">
-                            <span class="profile-name">{{ auth()->user()->name }}</span>
-                            <span class="profile-role">Station {{ auth()->user()->id }}</span>
+                        <div class="user-details">
+                            <span class="user-name">{{ auth()->user()->name }}</span>
+                            <span class="user-station">TERMINAL {{ auth()->user()->id }}</span>
                         </div>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Quick Stats Bar -->
+            <div class="quick-stats-bar">
+                <div class="stat-item">
+                    <span class="stat-value">${{ number_format($todaySales ?? 0, 2) }}</span>
+                    <span class="stat-label">Today's Sales</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ $totalStock ?? '0' }}</span>
+                    <span class="stat-label">Total Stock</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ $activeOrders ?? '0' }}</span>
+                    <span class="stat-label">Active Orders</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ $pendingRepairs ?? '0' }}</span>
+                    <span class="stat-label">Pending Repairs</span>
                 </div>
             </div>
         </div>
     </header>
 
-    <div class="dashboard-layout">
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Sales Intelligence Section -->
-            <section class="dashboard-module">
-                <div class="module-header">
-                    <div class="module-icon">
-                        <div class="icon-wrapper emerald">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
+    <div class="dashboard-body">
+        <!-- Main Operations Grid -->
+        <div class="operations-grid">
+            <!-- Core Operations Column -->
+            <div class="operations-column">
+                <!-- Sales Operations -->
+                <section class="operations-module">
+                    <div class="module-header">
+                        <div class="module-icon">
+                            <div class="icon-frame emerald">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="module-title">
+                            <h2>SALES OPERATIONS</h2>
+                            <p>Transaction Processing & Management</p>
                         </div>
                     </div>
-                    <div class="module-title">
-                        <h2>SALES INTELLIGENCE</h2>
-                        <p>Transaction Processing & POS Controls</p>
-                    </div>
-                    <div class="module-metrics">
-                        <div class="metric-badge">
-                            <span class="metric-value">${{ number_format($todaySales ?? 0, 2) }}</span>
-                            <span class="metric-label">Today's Revenue</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="action-panel">
-                    <a href="/admin/sales/create" class="action-card diamond-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
-                        </div>
-                        <div class="card-icon">
-                            <div class="icon-circle sapphire">
+                    
+                    <div class="operations-grid-inner">
+                        <a href="/admin/sales/create" class="operation-card sapphire-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>New Sale</h3>
-                            <p>Create comprehensive invoice</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Standard</span>
-                        </div>
-                    </a>
+                            <div class="card-content">
+                                <h3>New Sale</h3>
+                                <p>Standard invoice processing</p>
+                            </div>
+                            <div class="card-tag">Primary</div>
+                        </a>
 
-                    <a href="/admin/sales/create?quick=true" class="action-card emerald-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
-                        </div>
-                        <div class="card-icon">
-                            <div class="icon-circle emerald">
+                        <a href="/admin/sales/create?quick=true" class="operation-card emerald-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>Quick Sale</h3>
-                            <p>Express checkout terminal</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Express</span>
-                        </div>
-                    </a>
+                            <div class="card-content">
+                                <h3>Quick Sale</h3>
+                                <p>Express checkout terminal</p>
+                            </div>
+                            <div class="card-tag">Express</div>
+                        </a>
 
-                    <a href="/admin/find-sale" class="action-card amethyst-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
-                        </div>
-                        <div class="card-icon">
-                            <div class="icon-circle amethyst">
+                        <a href="/admin/find-sale" class="operation-card amethyst-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>Find Sale</h3>
-                            <p>Search transaction history</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Archive</span>
-                        </div>
-                    </a>
-                </div>
-            </section>
+                            <div class="card-content">
+                                <h3>Find Sale</h3>
+                                <p>Transaction history archive</p>
+                            </div>
+                            <div class="card-tag">Archive</div>
+                        </a>
 
-            <!-- Inventory Management Section -->
-            <section class="dashboard-module">
-                <div class="module-header">
-                    <div class="module-icon">
-                        <div class="icon-wrapper gold">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                            </svg>
-                        </div>
+                        <a href="/admin/sold-items-report" class="operation-card ruby-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Sold Items</h3>
+                                <p>Sales report & analytics</p>
+                            </div>
+                            <div class="card-tag">Reports</div>
+                        </a>
                     </div>
-                    <div class="module-title">
-                        <h2>INVENTORY MASTER</h2>
-                        <p>Stock Control & Consignment Tracking</p>
-                    </div>
-                    <div class="module-metrics">
-                        <div class="metric-badge gold">
-                            <span class="metric-value">{{ $totalStock ?? '∞' }}</span>
-                            <span class="metric-label">Total Items</span>
-                        </div>
-                    </div>
-                </div>
+                </section>
 
-                <div class="action-panel">
-                    <a href="/admin/product-items/create" class="action-card gold-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
+                <!-- Inventory & Stock Management -->
+                <section class="operations-module">
+                    <div class="module-header">
+                        <div class="module-icon">
+                            <div class="icon-frame gold">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                            </div>
                         </div>
-                        <div class="card-icon">
-                            <div class="icon-circle gold">
+                        <div class="module-title">
+                            <h2>INVENTORY MANAGEMENT</h2>
+                            <p>Stock Control & Catalog Operations</p>
+                        </div>
+                    </div>
+                    
+                    <div class="operations-grid-inner">
+                        <a href="/admin/product-items/create" class="operation-card gold-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>Assemble</h3>
-                            <p>Add new jewelry items</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Create</span>
-                        </div>
-                    </a>
+                            <div class="card-content">
+                                <h3>Assemble</h3>
+                                <p>Create new inventory items</p>
+                            </div>
+                            <div class="card-tag">Create</div>
+                        </a>
 
-                    <a href="/admin/find-stock" class="action-card onyx-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
-                        </div>
-                        <div class="card-icon">
-                            <div class="icon-circle onyx">
+                        <a href="/admin/find-stock" class="operation-card onyx-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>Find Stock</h3>
-                            <p>Advanced catalog search</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Search</span>
-                        </div>
-                    </a>
+                            <div class="card-content">
+                                <h3>Find Stock</h3>
+                                <p>Advanced catalog search</p>
+                            </div>
+                            <div class="card-tag">Search</div>
+                        </a>
 
-                    <a href="/admin/memo-inventory" class="action-card pearl-gradient">
-                        <div class="card-bg">
-                            <div class="bg-pattern"></div>
-                            <div class="bg-glow"></div>
-                        </div>
-                        <div class="card-icon">
-                            <div class="icon-circle pearl">
+                        <a href="/admin/memo-inventory" class="operation-card pearl-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
                                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                                 </svg>
                             </div>
-                        </div>
-                        <div class="card-content">
-                            <h3>Memo</h3>
-                            <p>Consignment management</p>
-                        </div>
-                        <div class="card-action">
-                            <span class="action-hint">Track</span>
-                        </div>
-                    </a>
-                </div>
-            </section>
-        </main>
-
-        <!-- Sidebar -->
-        <aside class="dashboard-sidebar">
-            <!-- Time Display -->
-            <div class="time-widget">
-                <div class="time-header">
-                    <div class="timezone-display">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <span>MST • Albuquerque</span>
+                            <div class="card-content">
+                                <h3>Memo</h3>
+                                <p>Consignment tracking</p>
+                            </div>
+                            <div class="card-tag">Track</div>
+                        </a>
                     </div>
-                </div>
-                <div class="time-body">
-                    <div class="date-display">
-                        {{ now()->setTimezone('America/Denver')->format('l, F d') }}
-                    </div>
-                    <div class="clock-display">
-                        <div class="clock-digits">
-                            <span class="hour">{{ now()->setTimezone('America/Denver')->format('h') }}</span>
-                            <span class="colon">:</span>
-                            <span class="minute">{{ now()->setTimezone('America/Denver')->format('i') }}</span>
-                            <span class="second">{{ now()->setTimezone('America/Denver')->format('s') }}</span>
-                        </div>
-                        <div class="clock-meridiem">
-                            {{ now()->setTimezone('America/Denver')->format('A') }}
-                        </div>
-                    </div>
-                </div>
+                </section>
             </div>
 
-            <!-- Activity Feed -->
-            <div class="activity-widget">
-                <div class="activity-header">
-                    <h3>Recent Activity</h3>
-                    <div class="activity-indicator">
-                        <div class="indicator-dot"></div>
-                        <span>LIVE</span>
-                    </div>
-                </div>
-                <div class="activity-list">
-                    @forelse($recentSales as $sale)
-                    <div class="activity-item">
-                        <div class="activity-icon">
-                            <div class="icon-badge {{ $sale->grand_total > 5000 ? 'premium' : 'standard' }}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <!-- Services & Analytics Column -->
+            <div class="services-column">
+                <!-- Custom Services -->
+                <section class="operations-module">
+                    <div class="module-header">
+                        <div class="module-icon">
+                            <div class="icon-frame aquamarine">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
                             </div>
                         </div>
-                        <div class="activity-content">
-                            <div class="activity-meta">
-                                <span class="receipt">#{{ $sale->receipt_no }}</span>
-                                <span class="time">{{ $sale->created_at->setTimezone('America/Denver')->format('h:i A') }}</span>
-                            </div>
-                            <div class="activity-details">
-                                <span class="customer">{{ $sale->customer_name ?: 'Walk-in Customer' }}</span>
-                                <span class="items">{{ $sale->items_count ?? 1 }} items</span>
-                            </div>
-                        </div>
-                        <div class="activity-amount">
-                            <span class="amount">${{ number_format($sale->grand_total, 2) }}</span>
-                            <span class="ago">{{ $sale->created_at->diffForHumans() }}</span>
+                        <div class="module-title">
+                            <h2>CUSTOM SERVICES</h2>
+                            <p>Special Orders & Repair Management</p>
                         </div>
                     </div>
-                    @empty
-                    <div class="empty-activity">
-                        <div class="empty-icon">
-                            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                        </div>
-                        <p>No recent transactions</p>
-                        <small>Start your first sale today</small>
+                    
+                    <div class="operations-grid-inner">
+                        <a href="/admin/custom-orders" class="operation-card aquamarine-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Custom Orders</h3>
+                                <p>Bespoke jewelry creation</p>
+                            </div>
+                            <div class="card-tag">Bespoke</div>
+                        </a>
+
+                        <a href="/admin/repairs" class="operation-card citrine-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Repairs</h3>
+                                <p>Jewelry repair & restoration</p>
+                            </div>
+                            <div class="card-tag">Service</div>
+                        </a>
                     </div>
-                    @endforelse
-                </div>
-                @if($recentSales->count() > 0)
-                <a href="/admin/sales" class="view-all-btn">
-                    View All Transactions
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                    </svg>
-                </a>
-                @endif
+                </section>
+
+                <!-- Analytics & Reports -->
+                <section class="operations-module">
+                    <div class="module-header">
+                        <div class="module-icon">
+                            <div class="icon-frame peridot">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="module-title">
+                            <h2>ANALYTICS & REPORTS</h2>
+                            <p>Business Intelligence & Insights</p>
+                        </div>
+                    </div>
+                    
+                    <div class="operations-grid-inner">
+                        <a href="/admin/analytics" class="operation-card peridot-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Analytics</h3>
+                                <p>Business performance metrics</p>
+                            </div>
+                            <div class="card-tag">Insights</div>
+                        </a>
+
+                        <a href="/admin/customer-details-report" class="operation-card topaz-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Customer Report</h3>
+                                <p>Customer details & analytics</p>
+                            </div>
+                            <div class="card-tag">Clients</div>
+                        </a>
+
+                        <a href="/admin/customers" class="operation-card pink-sapphire-card">
+                            <div class="card-gem"></div>
+                            <div class="card-icon">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                            </div>
+                            <div class="card-content">
+                                <h3>Customers</h3>
+                                <p>Client database management</p>
+                            </div>
+                            <div class="card-tag">Database</div>
+                        </a>
+                    </div>
+                </section>
             </div>
-        </aside>
+
+            <!-- Dashboard Sidebar -->
+            <div class="dashboard-sidebar">
+                <!-- Time & Status Widget -->
+                <div class="status-widget">
+                    <div class="status-header">
+                        <div class="status-badge">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>MST • NEW MEXICO</span>
+                        </div>
+                    </div>
+                    <div class="status-body">
+                        <div class="date-display">
+                            {{ now()->setTimezone('America/Denver')->format('l, F d, Y') }}
+                        </div>
+                        <div class="clock-display">
+                            <div class="clock-main">
+                                <span class="clock-hour">{{ now()->setTimezone('America/Denver')->format('h') }}</span>
+                                <span class="clock-colon">:</span>
+                                <span class="clock-minute">{{ now()->setTimezone('America/Denver')->format('i') }}</span>
+                                <span class="clock-second">{{ now()->setTimezone('America/Denver')->format('s') }}</span>
+                            </div>
+                            <div class="clock-meridiem">
+                                {{ now()->setTimezone('America/Denver')->format('A') }}
+                            </div>
+                        </div>
+                        <div class="system-status">
+                            <div class="status-indicator active">
+                                <div class="indicator-dot"></div>
+                                <span>SYSTEM ACTIVE</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity Stream -->
+                <div class="activity-stream">
+                    <div class="stream-header">
+                        <h3>LIVE ACTIVITY STREAM</h3>
+                        <div class="stream-indicator">
+                            <div class="pulse-dot"></div>
+                            <span>REALTIME</span>
+                        </div>
+                    </div>
+                    <div class="stream-content">
+                        @forelse($recentSales as $sale)
+                        <div class="stream-item">
+                            <div class="item-icon">
+                                <div class="icon-pulse {{ $sale->grand_total > 5000 ? 'premium' : 'regular' }}">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="item-details">
+                                <div class="item-header">
+                                    <span class="item-code">#{{ $sale->receipt_no }}</span>
+                                    <span class="item-time">{{ $sale->created_at->setTimezone('America/Denver')->format('h:i A') }}</span>
+                                </div>
+                                <div class="item-info">
+                                    <span class="item-customer">{{ $sale->customer_name ?: 'Walk-in Customer' }}</span>
+                                    <span class="item-meta">{{ $sale->items_count ?? 1 }} items • {{ $sale->payment_method ?? 'Cash' }}</span>
+                                </div>
+                            </div>
+                            <div class="item-value">
+                                <span class="value-amount">${{ number_format($sale->grand_total, 2) }}</span>
+                                <span class="value-time">{{ $sale->created_at->diffForHumans() }}</span>
+                            </div>
+                        </div>
+                        @empty
+                        <div class="stream-empty">
+                            <div class="empty-icon">
+                                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <p>No recent activity</p>
+                            <small>Transactions will appear here</small>
+                        </div>
+                        @endforelse
+                    </div>
+                    @if($recentSales->count() > 0)
+                    <a href="/admin/sales" class="stream-view-all">
+                        View Complete History
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                    @endif
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <style>
-/* ===== LUXURY JEWELRY DASHBOARD STYLES ===== */
-.diamond-dashboard {
-    --sapphire: linear-gradient(135deg, #3b82f6, #1d4ed8);
+/* ===== ULTIMATE JEWELRY DASHBOARD ===== */
+.ultimate-jewel-dashboard {
+    --sapphire: linear-gradient(135deg, #2563eb, #1d4ed8);
     --emerald: linear-gradient(135deg, #10b981, #047857);
     --amethyst: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    --diamond: linear-gradient(135deg, #ffffff, #e0e7ff);
+    --ruby: linear-gradient(135deg, #ef4444, #dc2626);
     --gold: linear-gradient(135deg, #fbbf24, #d97706);
     --onyx: linear-gradient(135deg, #1f2937, #111827);
     --pearl: linear-gradient(135deg, #f3f4f6, #d1d5db);
-    --ruby: linear-gradient(135deg, #ef4444, #dc2626);
+    --aquamarine: linear-gradient(135deg, #0ea5e9, #0369a1);
+    --citrine: linear-gradient(135deg, #f59e0b, #b45309);
+    --peridot: linear-gradient(135deg, #84cc16, #4d7c0f);
+    --topaz: linear-gradient(135deg, #f97316, #c2410c);
+    --pink-sapphire: linear-gradient(135deg, #ec4899, #be185d);
     
-    --glass-bg: rgba(255, 255, 255, 0.95);
-    --glass-border: rgba(255, 255, 255, 0.3);
-    --shadow-luxury: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    --shadow-soft: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+    --platinum: linear-gradient(135deg, #e5e7eb, #9ca3af);
+    --diamond: linear-gradient(135deg, #ffffff, #e0e7ff);
+    
+    --glass-bg: rgba(255, 255, 255, 0.98);
+    --glass-border: rgba(255, 255, 255, 0.4);
+    --shadow-ultra: 0 30px 60px -15px rgba(0, 0, 0, 0.3);
+    --shadow-premium: 0 20px 40px -10px rgba(0, 0, 0, 0.2);
+    --radius-2xl: 32px;
     --radius-xl: 28px;
     --radius-lg: 24px;
     --radius-md: 20px;
     --radius-sm: 16px;
     
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
     min-height: 100vh;
 }
 
-/* Header */
+/* Premium Header */
 .dashboard-header {
     margin-bottom: 2rem;
 }
 
-.header-gradient {
+.header-platinum {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-2xl);
     padding: 1.5rem 2.5rem;
-    box-shadow: var(--shadow-luxury);
+    box-shadow: var(--shadow-ultra);
     position: relative;
     overflow: hidden;
 }
 
-.header-gradient::before {
+.header-platinum::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
 }
 
-.header-content {
+.header-inner {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 1.5rem;
 }
 
-.brand-container {
+.brand-display {
     display: flex;
     align-items: center;
     gap: 1.5rem;
 }
 
-.jewel-badge {
+.diamond-badge {
     position: relative;
-    width: 80px;
-    height: 80px;
-    background: var(--glass-bg);
-    border-radius: 24px;
-    padding: 16px;
-    box-shadow: 0 0 40px rgba(59, 130, 246, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
-.jewel-sparkle {
-    position: absolute;
-    width: 12px;
-    height: 12px;
+    width: 72px;
+    height: 72px;
     background: white;
-    border-radius: 50%;
-    filter: blur(2px);
-    animation: sparkle 3s infinite;
+    border-radius: 20px;
+    padding: 14px;
+    box-shadow: 0 0 40px rgba(37, 99, 235, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-.jewel-sparkle:nth-child(1) { top: 10px; left: 10px; }
-.jewel-sparkle:nth-child(2) { top: 10px; right: 10px; animation-delay: 0.5s; }
-.jewel-sparkle:nth-child(3) { bottom: 10px; right: 10px; animation-delay: 1s; }
-
-@keyframes sparkle {
-    0%, 100% { opacity: 0; transform: scale(0.5); }
-    50% { opacity: 1; transform: scale(1); }
+.diamond-facet {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 2px;
+    transform: rotate(45deg);
+    animation: facet-sparkle 4s infinite;
 }
 
-.jewel-logo {
+.facet-1 { top: 10px; left: 10px; animation-delay: 0s; }
+.facet-2 { top: 10px; right: 10px; animation-delay: 1s; }
+.facet-3 { bottom: 10px; right: 10px; animation-delay: 2s; }
+
+@keyframes facet-sparkle {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+.diamond-logo {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
 }
 
-.brand-text {
+.brand-identity {
     display: flex;
     flex-direction: column;
 }
 
-.brand-title {
-    font-size: 2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #ffffff 0%, #c7d2fe 100%);
+.brand-name {
+    font-size: 2.25rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
     letter-spacing: -0.5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.brand-tagline {
+.brand-tag {
     color: #cbd5e1;
     font-size: 0.875rem;
     font-weight: 500;
@@ -429,20 +540,20 @@
     align-items: center;
 }
 
-.user-profile {
+.user-profile-card {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1.5rem;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
     border-radius: var(--radius-md);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-.profile-avatar {
-    width: 40px;
-    height: 40px;
+.user-avatar {
+    width: 36px;
+    height: 36px;
     background: var(--emerald);
     border-radius: 50%;
     display: flex;
@@ -451,199 +562,193 @@
     color: white;
 }
 
-.profile-info {
+.user-details {
     display: flex;
     flex-direction: column;
 }
 
-.profile-name {
+.user-name {
     font-weight: 600;
     color: white;
     font-size: 0.875rem;
 }
 
-.profile-role {
+.user-station {
     font-size: 0.75rem;
     color: #94a3b8;
 }
 
-/* Layout */
-.dashboard-layout {
+/* Quick Stats Bar */
+.quick-stats-bar {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: white;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    font-weight: 500;
+}
+
+/* Dashboard Body */
+.dashboard-body {
+    margin-top: 2rem;
+}
+
+.operations-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 380px;
     gap: 2rem;
 }
 
-/* Main Content */
-.main-content {
+.operations-column, .services-column {
     display: flex;
     flex-direction: column;
     gap: 2rem;
 }
 
-/* Modules */
-.dashboard-module {
+/* Operations Modules */
+.operations-module {
     background: var(--glass-bg);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(24px);
     border-radius: var(--radius-xl);
-    padding: 2.5rem;
-    box-shadow: var(--shadow-luxury);
+    padding: 2rem;
+    box-shadow: var(--shadow-premium);
     border: 1px solid var(--glass-border);
 }
 
 .module-header {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 2.5rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .module-icon {
     flex-shrink: 0;
 }
 
-.icon-wrapper {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
+.icon-frame {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
-.icon-wrapper.emerald { background: var(--emerald); }
-.icon-wrapper.gold { background: var(--gold); }
-.icon-wrapper.sapphire { background: var(--sapphire); }
+.icon-frame.emerald { background: var(--emerald); }
+.icon-frame.gold { background: var(--gold); }
+.icon-frame.aquamarine { background: var(--aquamarine); }
+.icon-frame.peridot { background: var(--peridot); }
 
 .module-title {
     flex: 1;
 }
 
 .module-title h2 {
-    font-size: 1.75rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 800;
     color: #1e293b;
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.375rem 0;
+    letter-spacing: -0.25px;
 }
 
 .module-title p {
     color: #64748b;
     font-size: 0.875rem;
     margin: 0;
+    font-weight: 500;
 }
 
-.module-metrics {
-    flex-shrink: 0;
-}
-
-.metric-badge {
-    background: var(--sapphire);
-    color: white;
-    padding: 1rem 1.5rem;
-    border-radius: var(--radius-md);
-    text-align: center;
-    min-width: 120px;
-}
-
-.metric-badge.gold { background: var(--gold); }
-
-.metric-value {
-    display: block;
-    font-size: 1.75rem;
-    font-weight: 800;
-    line-height: 1;
-}
-
-.metric-label {
-    display: block;
-    font-size: 0.75rem;
-    opacity: 0.9;
-    margin-top: 0.25rem;
-}
-
-/* Action Panel */
-.action-panel {
+/* Operations Grid Inner */
+.operations-grid-inner {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
 }
 
-.action-card {
+/* Operation Cards */
+.operation-card {
     background: white;
     border-radius: var(--radius-lg);
-    padding: 2rem;
+    padding: 1.75rem;
     text-decoration: none !important;
     position: relative;
     overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    height: 100%;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     display: flex;
     flex-direction: column;
+    height: 100%;
 }
 
-.action-card:hover {
-    transform: translateY(-12px);
-    box-shadow: var(--shadow-luxury);
+.operation-card:hover {
+    transform: translateY(-10px) scale(1.02);
+    box-shadow: var(--shadow-ultra);
 }
 
-.card-bg {
+.card-gem {
     position: absolute;
-    inset: 0;
-    overflow: hidden;
-}
-
-.bg-pattern {
-    position: absolute;
-    inset: 0;
+    top: -20px;
+    right: -20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
     opacity: 0.1;
-    background-image: 
-        radial-gradient(circle at 20% 80%, currentColor 1px, transparent 1px),
-        radial-gradient(circle at 80% 20%, currentColor 1px, transparent 1px);
-    background-size: 40px 40px;
+    filter: blur(10px);
+    transition: all 0.4s ease;
 }
 
-.bg-glow {
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-    opacity: 0;
-    transition: opacity 0.4s;
-}
-
-.action-card:hover .bg-glow {
-    opacity: 1;
+.operation-card:hover .card-gem {
+    opacity: 0.2;
+    transform: scale(1.5);
 }
 
 .card-icon {
     position: relative;
     z-index: 2;
-    margin-bottom: 1.5rem;
-}
-
-.icon-circle {
-    width: 64px;
-    height: 64px;
-    border-radius: 20px;
+    margin-bottom: 1.25rem;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
-
-.icon-circle.sapphire { background: var(--sapphire); }
-.icon-circle.emerald { background: var(--emerald); }
-.icon-circle.amethyst { background: var(--amethyst); }
-.icon-circle.gold { background: var(--gold); }
-.icon-circle.onyx { background: var(--onyx); }
-.icon-circle.pearl { background: var(--pearl); }
 
 .card-content {
     position: relative;
@@ -652,10 +757,11 @@
 }
 
 .card-content h3 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: #1e293b;
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.375rem 0;
+    line-height: 1.3;
 }
 
 .card-content p {
@@ -665,86 +771,110 @@
     line-height: 1.5;
 }
 
-.card-action {
+.card-tag {
     position: relative;
     z-index: 2;
-    margin-top: 1.5rem;
-}
-
-.action-hint {
     display: inline-block;
+    margin-top: 1rem;
     padding: 0.375rem 0.75rem;
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.08);
     border-radius: 12px;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: 0.5px;
     color: inherit;
+    text-transform: uppercase;
 }
 
-/* Gradient Backgrounds */
-.diamond-gradient { background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); color: #1e293b; }
-.diamond-gradient .bg-pattern { opacity: 0.05; }
-.diamond-gradient:hover { background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%); }
+/* Card Color Schemes */
+.sapphire-card { background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af; }
+.sapphire-card .card-icon { background: var(--sapphire); }
+.sapphire-card .card-gem { background: #3b82f6; }
 
-.emerald-gradient { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
-.emerald-gradient .bg-pattern { opacity: 0.1; }
-.emerald-gradient:hover { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); }
+.emerald-card { background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; }
+.emerald-card .card-icon { background: var(--emerald); }
+.emerald-card .card-gem { background: #10b981; }
 
-.amethyst-gradient { background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); color: #6d28d9; }
-.amethyst-gradient .bg-pattern { opacity: 0.1; }
-.amethyst-gradient:hover { background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); }
+.amethyst-card { background: linear-gradient(135deg, #f3e8ff, #e9d5ff); color: #6d28d9; }
+.amethyst-card .card-icon { background: var(--amethyst); }
+.amethyst-card .card-gem { background: #8b5cf6; }
 
-.gold-gradient { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #92400e; }
-.gold-gradient .bg-pattern { opacity: 0.1; }
-.gold-gradient:hover { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
+.ruby-card { background: linear-gradient(135deg, #fee2e2, #fecaca); color: #b91c1c; }
+.ruby-card .card-icon { background: var(--ruby); }
+.ruby-card .card-gem { background: #ef4444; }
 
-.onyx-gradient { background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%); color: #111827; }
-.onyx-gradient .bg-pattern { opacity: 0.1; }
-.onyx-gradient:hover { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); }
+.gold-card { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; }
+.gold-card .card-icon { background: var(--gold); }
+.gold-card .card-gem { background: #fbbf24; }
 
-.pearl-gradient { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); color: #374151; }
-.pearl-gradient .bg-pattern { opacity: 0.1; }
-.pearl-gradient:hover { background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%); }
+.onyx-card { background: linear-gradient(135deg, #e5e7eb, #d1d5db); color: #111827; }
+.onyx-card .card-icon { background: var(--onyx); }
+.onyx-card .card-gem { background: #374151; }
 
-/* Sidebar */
+.pearl-card { background: linear-gradient(135deg, #f9fafb, #f3f4f6); color: #374151; }
+.pearl-card .card-icon { background: var(--pearl); color: #4b5563; }
+.pearl-card .card-gem { background: #9ca3af; }
+
+.aquamarine-card { background: linear-gradient(135deg, #e0f2fe, #bae6fd); color: #075985; }
+.aquamarine-card .card-icon { background: var(--aquamarine); }
+.aquamarine-card .card-gem { background: #0ea5e9; }
+
+.citrine-card { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; }
+.citrine-card .card-icon { background: var(--citrine); }
+.citrine-card .card-gem { background: #f59e0b; }
+
+.peridot-card { background: linear-gradient(135deg, #ecfccb, #d9f99d); color: #4d7c0f; }
+.peridot-card .card-icon { background: var(--peridot); }
+.peridot-card .card-gem { background: #84cc16; }
+
+.topaz-card { background: linear-gradient(135deg, #ffedd5, #fed7aa); color: #9a3412; }
+.topaz-card .card-icon { background: var(--topaz); }
+.topaz-card .card-gem { background: #f97316; }
+
+.pink-sapphire-card { background: linear-gradient(135deg, #fce7f3, #fbcfe8); color: #be185d; }
+.pink-sapphire-card .card-icon { background: var(--pink-sapphire); }
+.pink-sapphire-card .card-gem { background: #ec4899; }
+
+/* Dashboard Sidebar */
 .dashboard-sidebar {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
 }
 
-/* Time Widget */
-.time-widget {
+.status-widget {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     border-radius: var(--radius-xl);
     padding: 2rem;
     color: white;
-    box-shadow: var(--shadow-luxury);
+    box-shadow: var(--shadow-premium);
 }
 
-.time-header {
+.status-header {
     margin-bottom: 1.5rem;
 }
 
-.timezone-display {
+.status-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
-.time-body {
+.status-body {
     text-align: center;
 }
 
 .date-display {
-    font-size: 1rem;
+    font-size: 0.875rem;
     color: #cbd5e1;
     margin-bottom: 1rem;
+    font-weight: 500;
 }
 
 .clock-display {
@@ -752,69 +882,56 @@
     align-items: baseline;
     justify-content: center;
     gap: 0.5rem;
+    margin-bottom: 1.5rem;
 }
 
-.clock-digits {
-    font-size: 3.5rem;
-    font-weight: 800;
+.clock-main {
+    font-size: 3rem;
+    font-weight: 900;
     line-height: 1;
     display: flex;
     align-items: baseline;
 }
 
-.colon {
+.clock-colon {
     animation: blink 1s infinite;
 }
 
-.second {
-    font-size: 1.5rem;
+.clock-second {
+    font-size: 1.25rem;
     opacity: 0.7;
     margin-left: 0.25rem;
 }
 
 .clock-meridiem {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     font-weight: 600;
     color: #cbd5e1;
 }
 
-/* Activity Widget */
-.activity-widget {
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    border-radius: var(--radius-xl);
-    padding: 2rem;
-    box-shadow: var(--shadow-luxury);
-    border: 1px solid var(--glass-border);
+.system-status {
+    margin-top: 1rem;
 }
 
-.activity-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.activity-header h3 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0;
-}
-
-.activity-indicator {
-    display: flex;
+.status-indicator {
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(16, 185, 129, 0.2);
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-weight: 600;
     color: #10b981;
 }
 
-.indicator-dot {
-    width: 8px;
-    height: 8px;
+.status-indicator.active .indicator-dot {
     background: #10b981;
+}
+
+.indicator-dot {
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     position: relative;
 }
@@ -829,13 +946,66 @@
     animation: pulse 2s infinite;
 }
 
-.activity-list {
+/* Activity Stream */
+.activity-stream {
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    box-shadow: var(--shadow-premium);
+    border: 1px solid var(--glass-border);
+}
+
+.stream-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.stream-header h3 {
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0;
+    letter-spacing: -0.25px;
+}
+
+.stream-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #ef4444;
+    letter-spacing: 0.5px;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #ef4444;
+    border-radius: 50%;
+    position: relative;
+}
+
+.pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: #ef4444;
+    border-radius: 50%;
+    opacity: 0.5;
+    animation: pulse 1.5s infinite;
+}
+
+.stream-content {
     max-height: 400px;
     overflow-y: auto;
     margin-bottom: 1.5rem;
 }
 
-.activity-item {
+.stream-item {
     display: flex;
     align-items: center;
     padding: 1rem;
@@ -846,82 +1016,84 @@
     border: 1px solid transparent;
 }
 
-.activity-item:hover {
+.stream-item:hover {
     background: white;
     border-color: #e2e8f0;
     transform: translateX(4px);
 }
 
-.activity-icon {
+.item-icon {
     margin-right: 1rem;
 }
 
-.icon-badge {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
+.icon-pulse {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
 }
 
-.icon-badge.standard { background: var(--sapphire); }
-.icon-badge.premium { background: var(--gold); }
+.icon-pulse.regular { background: var(--sapphire); }
+.icon-pulse.premium { background: var(--gold); }
 
-.activity-content {
+.item-details {
     flex: 1;
 }
 
-.activity-meta {
+.item-header {
     display: flex;
     justify-content: space-between;
     margin-bottom: 0.25rem;
 }
 
-.receipt {
-    font-weight: 600;
+.item-code {
+    font-weight: 700;
     color: #1e293b;
     font-size: 0.875rem;
 }
 
-.time {
+.item-time {
     font-size: 0.75rem;
     color: #64748b;
 }
 
-.activity-details {
+.item-info {
     display: flex;
     gap: 0.75rem;
     font-size: 0.75rem;
-    color: #64748b;
 }
 
-.customer {
+.item-customer {
     font-weight: 500;
     color: #334155;
 }
 
-.activity-amount {
+.item-meta {
+    color: #64748b;
+}
+
+.item-value {
     text-align: right;
     margin-left: 1rem;
 }
 
-.amount {
+.value-amount {
     display: block;
-    font-weight: 700;
+    font-weight: 800;
     color: #059669;
     font-size: 1.125rem;
     margin-bottom: 0.125rem;
 }
 
-.ago {
+.value-time {
     font-size: 0.75rem;
     color: #94a3b8;
 }
 
-/* Empty State */
-.empty-activity {
+.stream-empty {
     text-align: center;
     padding: 3rem 1rem;
     color: #64748b;
@@ -932,18 +1104,17 @@
     opacity: 0.3;
 }
 
-.empty-activity p {
+.stream-empty p {
     font-weight: 600;
     margin-bottom: 0.25rem;
 }
 
-.empty-activity small {
+.stream-empty small {
     font-size: 0.875rem;
     opacity: 0.7;
 }
 
-/* View All Button */
-.view-all-btn {
+.stream-view-all {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -954,75 +1125,112 @@
     color: white;
     border-radius: var(--radius-md);
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.875rem;
+    letter-spacing: 0.5px;
     transition: all 0.3s ease;
 }
 
-.view-all-btn:hover {
+.stream-view-all:hover {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-soft);
+    box-shadow: 0 10px 25px rgba(37, 99, 235, 0.3);
+}
+
+/* Animations */
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 0.5; }
+    70% { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Custom Scrollbar */
+.stream-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.stream-content::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+.stream-content::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.stream-content::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 /* Responsive Design */
-@media (max-width: 1400px) {
-    .dashboard-layout {
+@media (max-width: 1600px) {
+    .operations-grid {
+        grid-template-columns: 1fr 380px;
+    }
+    
+    .operations-grid-inner {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 1200px) {
+    .operations-grid {
         grid-template-columns: 1fr;
     }
     
-    .action-panel {
+    .quick-stats-bar {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (max-width: 768px) {
-    .dashboard-layout {
-        gap: 1rem;
+    .header-platinum {
+        padding: 1.25rem;
     }
     
-    .header-content {
+    .header-inner {
         flex-direction: column;
         gap: 1.5rem;
         text-align: center;
     }
     
-    .brand-container {
+    .brand-display {
         flex-direction: column;
         text-align: center;
     }
     
-    .user-profile {
+    .user-profile-card {
         width: 100%;
         justify-content: center;
     }
     
-    .dashboard-module {
+    .operations-module {
         padding: 1.5rem;
     }
     
-    .action-panel {
+    .operations-grid-inner {
         grid-template-columns: 1fr;
     }
     
-    .module-header {
-        flex-direction: column;
-        text-align: center;
+    .quick-stats-bar {
+        grid-template-columns: 1fr;
         gap: 1rem;
     }
     
-    .module-title {
-        text-align: center;
-    }
-    
-    .clock-digits {
+    .clock-main {
         font-size: 2.5rem;
     }
 }
 </style>
 
 <script>
-// Real-time clock update for New Mexico
-function updateNMClock() {
+// Real-time New Mexico Clock
+function updateNMDashboardClock() {
     const now = new Date();
     const nmTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
     
@@ -1032,39 +1240,60 @@ function updateNMClock() {
     const meridiem = hours >= 12 ? 'PM' : 'AM';
     const displayHour = (hours % 12 || 12).toString().padStart(2, '0');
     
-    document.querySelector('.hour').textContent = displayHour;
-    document.querySelector('.minute').textContent = minutes;
-    document.querySelector('.second').textContent = seconds;
+    document.querySelector('.clock-hour').textContent = displayHour;
+    document.querySelector('.clock-minute').textContent = minutes;
+    document.querySelector('.clock-second').textContent = seconds;
     document.querySelector('.clock-meridiem').textContent = meridiem;
     
-    const dateOptions = { weekday: 'long', month: 'long', day: 'numeric' };
+    const dateOptions = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
     const dateString = nmTime.toLocaleDateString('en-US', dateOptions);
     document.querySelector('.date-display').textContent = dateString;
 }
 
-// Initialize clock
-updateNMClock();
-setInterval(updateNMClock, 1000);
+// Initialize and update clock
+updateNMDashboardClock();
+setInterval(updateNMDashboardClock, 1000);
 
-// Add interactive effects
-document.querySelectorAll('.action-card').forEach(card => {
-    card.addEventListener('mouseenter', (e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+// Interactive card effects
+document.querySelectorAll('.operation-card').forEach(card => {
+    card.addEventListener('mouseenter', function(e) {
+        const rect = this.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
         
-        card.style.setProperty('--mouse-x', `${x}px`);
-        card.style.setProperty('--mouse-y', `${y}px`);
+        this.style.setProperty('--mouse-x', `${x}%`);
+        this.style.setProperty('--mouse-y', `${y}%`);
     });
 });
 
-// Smooth scroll for activity feed
-const activityList = document.querySelector('.activity-list');
-if (activityList) {
-    activityList.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        activityList.scrollTop += e.deltaY * 0.5;
+// Smooth scroll for activity stream
+const activityStream = document.querySelector('.stream-content');
+if (activityStream) {
+    activityStream.addEventListener('wheel', function(e) {
+        if (this.scrollHeight > this.clientHeight) {
+            e.preventDefault();
+            this.scrollTop += e.deltaY * 0.5;
+        }
     });
 }
+
+// Add parallax effect to header
+window.addEventListener('scroll', function() {
+    const scrolled = window.pageYOffset;
+    const header = document.querySelector('.header-platinum');
+    if (header) {
+        header.style.transform = `translateY(${scrolled * 0.05}px)`;
+    }
+});
+
+// System status animation
+function updateSystemStatus() {
+    const statusDot = document.querySelector('.indicator-dot');
+    if (statusDot) {
+        statusDot.style.animation = 'pulse 2s infinite';
+    }
+}
+
+updateSystemStatus();
 </script>
 </x-filament-widgets::widget>

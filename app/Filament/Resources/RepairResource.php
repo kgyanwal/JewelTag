@@ -49,7 +49,7 @@ class RepairResource extends Resource
                             ->columnSpanFull(),
 
                         Select::make('original_product_id')
-                            ->label('Search Original Barcode')
+                            ->label('Search Stock No.')
                             ->placeholder('Search sold items...')
                             ->relationship(
                                 name: 'originalProduct', 

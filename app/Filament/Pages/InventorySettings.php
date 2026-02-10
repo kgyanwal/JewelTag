@@ -1,9 +1,14 @@
 <?php
 namespace App\Filament\Pages;
 
+use App\Models\InventorySetting;
 use Filament\Pages\Page;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Tables\Contracts\HasTable; // 🔹 REQUIRED
+use Filament\Tables\Concerns\InteractsWithTable; // 🔹 REQUIRED
+use Filament\Tables\Table; // 🔹 REQUIRED
+use Filament\Tables\Columns\TextColumn;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Repeater;
@@ -13,9 +18,10 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Cache;
 
-class InventorySettings extends Page implements HasForms
+class InventorySettings extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
+    use InteractsWithTable; // 🔹 REQUIRED for table logic
 
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
     protected static ?string $navigationGroup = 'Inventory';
@@ -68,6 +74,34 @@ class InventorySettings extends Page implements HasForms
             ])->columnSpan(1);
     }
 
+    /**
+     * 🔹 THE TABLE PREVIEW
+     */
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(InventorySetting::query())
+            ->columns([
+                TextColumn::make('key')
+                    ->label('Setting Category')
+                    ->formatStateUsing(fn (string $state): string => ucwords(str_replace('_', ' ', $state)))
+                    ->weight('bold'),
+
+                TextColumn::make('value')
+                    ->label('Stored Values')
+                    ->badge()
+                    ->getStateUsing(function (InventorySetting $record) {
+                        if ($record->key === 'departments') {
+                            return collect($record->value)->map(function ($item) {
+                                return $item['name'] . ' (' . ($item['multiplier'] ?? '1') . 'x)';
+                            })->toArray();
+                        }
+                        return $record->value;
+                    }),
+            ])
+            ->paginated(false);
+    }
+
     public function mount(): void
     {
         $settings = \App\Models\InventorySetting::pluck('value', 'key');
@@ -80,9 +114,6 @@ class InventorySettings extends Page implements HasForms
         ]);
     }
 
-    /**
-     * 🔹 FIX: Define the save action so it can be called from the Blade view
-     */
     protected function getFormActions(): array
     {
         return [

@@ -22,6 +22,10 @@ public function repair(): BelongsTo
 {
     return $this->belongsTo(ProductItem::class, 'product_item_id');
 }
+public function customOrder(): BelongsTo
+{
+    return $this->belongsTo(CustomOrder::class, 'custom_order_id');
+}
 
    protected static function booted()
 {
