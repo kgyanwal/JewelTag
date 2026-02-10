@@ -20,29 +20,13 @@ class CreateProductItem extends CreateRecord
     {
         return [
             Action::make('scanInvoice')
-                ->label('Scan Physical Invoice')
-                ->icon('heroicon-o-camera')
-                ->color('info')
-                ->form([
-                    FileUpload::make('invoice_image')
-                        ->label('Upload or Take Photo of Supplier Invoice')
-                        ->image()
-                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/webp'])
-                        ->disk('public')
-                        ->directory('invoice-scans')
-                        ->visibility('public')
-                        ->required(),
-                ])
+                ->label('Scan Physical Invoice')->icon('heroicon-o-camera')->color('info')
+                ->form([FileUpload::make('invoice_image')->image()->disk('public')->directory('invoice-scans')->required()])
                 ->action(function (array $data, InvoiceOcrService $ocrService) {
                     $path = storage_path('app/public/' . $data['invoice_image']);
                     try {
                         $extracted = $ocrService->extractDataFromImage($path);
-                        $this->form->fill([
-                            'supplier_code' => $extracted['supplier_code'] ?? null,
-                            'cost_price' => $extracted['cost_price'] ?? 0,
-                            'custom_description' => $extracted['custom_description'] ?? '',
-                            'qty' => 1,
-                        ]);
+                        $this->form->fill(['supplier_code' => $extracted['supplier_code'] ?? null, 'cost_price' => $extracted['cost_price'] ?? 0, 'custom_description' => $extracted['custom_description'] ?? '', 'qty' => 1]);
                         Notification::make()->title('Invoice Data Retrieved!')->success()->send();
                     } catch (\Exception $e) {
                         Notification::make()->title('OCR Error')->body($e->getMessage())->danger()->send();
@@ -51,48 +35,40 @@ class CreateProductItem extends CreateRecord
         ];
     }
 
-protected function handleRecordCreation(array $data): Model
-{
-    $qty = (int) ($data['qty'] ?? 1);
-    $storeId = $data['store_id'] ?? Store::first()?->id;
-
-    // 🔹 1. Safely check for trade-in status
-    $tradeInNo = $data['original_trade_in_no'] ?? null;
-    $isTradeIn = ($tradeInNo !== null);
-
-    // 🔹 2. Clean up non-database fields
-    unset($data['print_options'], $data['creation_mode']);
-
-    $firstRecord = null;
-    
-    // 🔹 3. UPDATED: Generate the next sequence starting with "D"
-    $lastBarcode = ProductItem::where('barcode', 'LIKE', 'D%')
-        ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
-        ->value('barcode');
+    protected function handleRecordCreation(array $data): Model
+    {
+        // 🔹 1. Check RFID Status BEFORE cleanup
+        $shouldGenerateRfid = $data['enable_rfid_tracking'] ?? false;
         
-    // Start at 1000 if no "D" barcodes exist yet
-    $lastNumber = $lastBarcode ? (int) substr($lastBarcode, 1) : 1000;
-
-    for ($i = 0; $i < $qty; $i++) {
-        $itemData = $data;
-        $itemData['store_id'] = $storeId;
+        $qty = (int) ($data['qty'] ?? 1);
+        $storeId = $data['store_id'] ?? Store::first()?->id;
+        $tradeInNo = $data['original_trade_in_no'] ?? null;
         
-        // 🔹 4. UPDATED: Assign the new "D" prefix barcode
-        $itemData['barcode'] = 'D' . ($lastNumber + $i + 1);
-        
-        $itemData['is_trade_in'] = $isTradeIn;
-        $itemData['original_trade_in_no'] = $tradeInNo;
+        // 🔹 2. Clean up UI fields
+        unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
-        if ($data['enable_rfid_tracking'] ?? false) {
-            $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(12)));
+        $firstRecord = null;
+
+        for ($i = 0; $i < $qty; $i++) {
+            $itemData = $data;
+            $itemData['store_id'] = $storeId;
+            $itemData['is_trade_in'] = ($tradeInNo !== null);
+            $itemData['original_trade_in_no'] = $tradeInNo;
+
+            // 🔹 3. COLLISION FIX: Accounts for soft-deleted D1002
+            $itemData['barcode'] = ProductItemResource::generatePersistentBarcode('D');
+
+            // 🔹 4. GENERATE 8-CHAR RFID
+            if ($shouldGenerateRfid) {
+                $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
+            } else {
+                $itemData['rfid_code'] = null;
+            }
+
+            $record = static::getModel()::create($itemData);
+            if ($i === 0) $firstRecord = $record;
         }
 
-        // Create the record
-        $record = static::getModel()::create($itemData);
-
-        if ($i === 0) $firstRecord = $record;
+        return $firstRecord;
     }
-
-    return $firstRecord;
-}
 }
