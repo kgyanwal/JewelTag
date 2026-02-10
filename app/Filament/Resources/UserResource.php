@@ -12,6 +12,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Facades\Hash;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
+use Filament\Forms\Components\Actions\Action as FormAction;
 
 class UserResource extends Resource
 {
