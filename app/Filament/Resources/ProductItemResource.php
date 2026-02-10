@@ -41,7 +41,7 @@ class ProductItemResource extends Resource
     protected static ?string $navigationGroup = 'Inventory';
 
     /**
-     * Option 2: Converts RFID Hex to a short alphanumeric tag
+     * Converts RFID Hex to a short alphanumeric tag (Option 2)
      */
     public static function generateShortCode(?string $rfid): ?string
     {
@@ -114,8 +114,8 @@ class ProductItemResource extends Resource
                                     ->searchable()->live()
                                     ->afterStateUpdated(function ($state, Forms\Set $set) {
                                         if ($state) {
-                                            $val = \App\Models\Sale::where('trade_in_receipt_no', $state)->value('trade_in_value');
-                                            $set('cost_price', $val);
+                                            $tradeValue = \App\Models\Sale::where('trade_in_receipt_no', $state)->value('trade_in_value');
+                                            $set('cost_price', $tradeValue);
                                             $set('supplier_id', null);
                                             $set('is_trade_in', true);
                                         } else { $set('is_trade_in', false); }
@@ -168,7 +168,7 @@ class ProductItemResource extends Resource
                         ->options(['print_tag' => 'Print Barcode Tag', 'print_rfid' => 'Print RFID Tag', 'encode_rfid' => 'Encode RFID Data'])
                         ->columns(3)->columnSpan(12),
 
-                    Toggle::make('enable_rfid_tracking')->label('Enable RFID Tracking')->live()->columnSpan(6),
+                    Toggle::make('enable_rfid_tracking')->label('Enable RFID Tracking')->default(true)->live()->columnSpan(6),
 
                     TextInput::make('rfid_code')->label('RFID EPC Code')->disabled()->dehydrated()
                         ->helperText(fn (Get $get) => $get('rfid_code') ? "Short ID: " . self::generateShortCode($get('rfid_code')) : null)
@@ -239,12 +239,10 @@ class ProductItemResource extends Resource
                     ViewAction::make(),
                     Action::make('print_barcode')->icon('heroicon-o-printer')->action(function ($record, ZebraPrinterService $service, $livewire) {
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, false));
-                        Notification::make()->title('Sent to Printer')->success()->send();
                     }),
                     Action::make('print_rfid')->icon('heroicon-o-identification')->color('warning')->action(function ($record, ZebraPrinterService $service, $livewire) {
-                        if (!$record->rfid_code) { Notification::make()->title('No RFID')->danger()->send(); return; }
+                        if (!$record->rfid_code) { Notification::make()->title('No RFID Data')->danger()->send(); return; }
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, true));
-                        Notification::make()->title('Sent to RFID Printer')->success()->send();
                     }),
                 ]),
             ]);

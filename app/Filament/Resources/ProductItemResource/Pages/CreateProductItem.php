@@ -37,14 +37,14 @@ class CreateProductItem extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        // 🔹 1. Check RFID Status BEFORE cleanup
-        $shouldGenerateRfid = $data['enable_rfid_tracking'] ?? false;
-        
         $qty = (int) ($data['qty'] ?? 1);
         $storeId = $data['store_id'] ?? Store::first()?->id;
         $tradeInNo = $data['original_trade_in_no'] ?? null;
+        $department = $data['department'] ?? '';
+
+        // 🔹 LOGIC: Should we generate RFID? (Always yes, unless it's a Repair)
+        $isRepair = str_contains(strtolower($department), 'repair');
         
-        // 🔹 2. Clean up UI fields
         unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
         $firstRecord = null;
@@ -55,11 +55,11 @@ class CreateProductItem extends CreateRecord
             $itemData['is_trade_in'] = ($tradeInNo !== null);
             $itemData['original_trade_in_no'] = $tradeInNo;
 
-            // 🔹 3. COLLISION FIX: Accounts for soft-deleted D1002
+            // 🔹 COLLISION FIX: Re-query inside loop
             $itemData['barcode'] = ProductItemResource::generatePersistentBarcode('D');
 
-            // 🔹 4. GENERATE 8-CHAR RFID
-            if ($shouldGenerateRfid) {
+            // 🔹 AUTOMATIC 8-CHARACTER RFID GENERATION
+            if (!$isRepair) {
                 $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
             } else {
                 $itemData['rfid_code'] = null;
