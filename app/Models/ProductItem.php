@@ -26,6 +26,7 @@ protected $fillable = [
     'supplier_code',
     'form_type',
     'department',
+    'sub_department',
     'category',
     'rfid_code',
     'metal_type',

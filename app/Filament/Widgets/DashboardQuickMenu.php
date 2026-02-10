@@ -11,23 +11,24 @@ class DashboardQuickMenu extends Widget
     protected static string $view = 'filament.widgets.dashboard-quick-menu';
  protected static ?string $heading = '';
     protected int | array | string $columnSpan = 'full';
-
+public $store;
 
     public function getHeading(): string
     {
         return '';
     }
-    public function getViewData(): array
+public function getViewData(): array
 {
-    $activeStaff = \App\Helpers\Staff::user();
-    
+    $store = \App\Models\Store::first();
+
     return [
         'recentSales' => \App\Models\Sale::latest()->limit(5)->get(),
-        // This pulls the logo_path from the migration you just created
-        'storeLogo' => $activeStaff?->store?->logo_path, 
+        'store' => $store,
+        // CHANGED: Using 'final_total' instead of 'grand_total'
+        'todaySales' => \App\Models\Sale::whereDate('created_at', today())
+            ->sum('final_total'), 
     ];
 }
-
     public static function canView(): bool
     {
         return true; 

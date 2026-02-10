@@ -153,6 +153,8 @@ HTML
                   \App\Filament\Resources\SaleEditRequestResource::class,
                   \App\Filament\Resources\CustomOrderResource::class,
                    \App\Filament\Resources\RepairResource::class,
+                   \App\Filament\Resources\RefundResource::class,
+                   \App\Filament\Resources\RestockResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,

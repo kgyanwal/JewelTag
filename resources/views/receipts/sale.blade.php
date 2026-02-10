@@ -23,31 +23,34 @@ foreach($sale->items as $item) {
     if($item->custom_order_id || $item->customOrder) $hasCustom = true;
 }
 
-// Determine receipt type
+// Determine receipt type with NEW COLORS
 if ($hasRepair) {
     $receiptType = 'repair';
     $receiptTitle = 'REPAIR RECEIPT';
     $receiptTypeLabel = 'Service/Repair';
-    $receiptColor = '#b45309'; // Amber
-    $receiptDarkColor = '#92400e';
-    $receiptAccent = '#f59e0b';
+    $receiptColor = '#249E94'; // NEW REPAIR COLOR
+    $receiptDarkColor = '#1a7a72';
+    $receiptAccent = '#4fc1b7';
     $receiptBadgeColor = 'bg-repair';
+    $receiptBgLight = '#f0f9f8';
 } elseif ($hasCustom) {
     $receiptType = 'custom';
     $receiptTitle = 'CUSTOM ORDER RECEIPT';
     $receiptTypeLabel = 'Custom Design';
-    $receiptColor = '#6d28d9'; // Purple
-    $receiptDarkColor = '#4c1d95';
-    $receiptAccent = '#c084fc';
+    $receiptColor = '#BB8ED0'; // NEW CUSTOM ORDER COLOR
+    $receiptDarkColor = '#9a6fb3';
+    $receiptAccent = '#d4b3e6';
     $receiptBadgeColor = 'bg-custom';
+    $receiptBgLight = '#f9f5fc';
 } else {
     $receiptType = 'normal';
     $receiptTitle = 'SALES RECEIPT';
     $receiptTypeLabel = 'Product Sale';
-    $receiptColor = '#1a6b8c'; // Blue
+    $receiptColor = '#1a6b8c'; // Original Blue remains same
     $receiptDarkColor = '#12506b';
     $receiptAccent = '#d4af37';
     $receiptBadgeColor = 'bg-normal';
+    $receiptBgLight = '#eff6ff';
 }
 @endphp
     
@@ -192,7 +195,7 @@ if ($hasRepair) {
             text-transform: uppercase !important;
             text-align: center !important;
             letter-spacing: 2px !important;
-            background: {{ $receiptType == 'repair' ? '#fff7ed' : ($receiptType == 'custom' ? '#f5f3ff' : '#eff6ff') }} !important;
+            background: {{ $receiptBgLight }} !important;
             color: {{ $receiptColor }} !important;
             border: 2px solid {{ $receiptColor }} !important;
             display: block !important;
@@ -436,7 +439,7 @@ if ($hasRepair) {
             text-transform: uppercase;
             text-align: center;
             letter-spacing: 2px;
-            background: {{ $receiptType == 'repair' ? '#fff7ed' : ($receiptType == 'custom' ? '#f5f3ff' : '#eff6ff') }};
+            background: {{ $receiptBgLight }};
             color: var(--primary);
             border: 2px solid var(--primary);
         }

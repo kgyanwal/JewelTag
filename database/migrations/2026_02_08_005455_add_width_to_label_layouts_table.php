@@ -36,3 +36,38 @@ return new class extends Migration
             ->update(['height' => 30]);
     }
 };
+
+
+
+
+//  **IF any problem then this migration is okay**s
+// use Illuminate\Database\Migrations\Migration;
+// use Illuminate\Database\Schema\Blueprint;
+// use Illuminate\Support\Facades\Schema;
+
+// return new class extends Migration
+// {
+//     public function up(): void
+//     {
+//         Schema::table('label_layouts', function (Blueprint $table) {
+
+//             if (!Schema::hasColumn('label_layouts', 'height')) {
+//                 $table->decimal('height', 5, 2)->default(0);
+//             }
+
+//             if (!Schema::hasColumn('label_layouts', 'width')) {
+//                 $table->decimal('width', 5, 2)->default(0);
+//             }
+//         });
+//     }
+
+//     public function down(): void
+//     {
+//         Schema::table('label_layouts', function (Blueprint $table) {
+//             if (Schema::hasColumn('label_layouts', 'width')) {
+//                 $table->dropColumn('width');
+//             }
+//             // ❗ Do NOT drop height unless you are 100% sure
+//         });
+//     }
+// };

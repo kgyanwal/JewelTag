@@ -21,6 +21,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 
@@ -235,17 +236,18 @@ class SaleResource extends Resource
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
-               Hidden::make('custom_order_id')
-    ->dehydrated(false), // 👈 Add this: tells Filament NOT to insert into 'sales' table
+                Hidden::make('custom_order_id')
+                    ->dehydrated(false), // 👈 Add this: tells Filament NOT to insert into 'sales' table
 
-Hidden::make('repair_id')
-    ->dehydrated(false),
+                Hidden::make('repair_id')
+                    ->dehydrated(false),
             ]);
     }
 
     public static function table(Table $table): Table
     {
         return $table
+        ->modifyQueryUsing(fn (Builder $query) => $query->where('status', '!=', 'void'))
             ->columns([
                 TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
                 TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
@@ -270,44 +272,53 @@ Hidden::make('repair_id')
                 Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn ($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
+                Tables\Actions\EditAction::make()->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
                 Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
+                Tables\Actions\Action::make('refund')
+    ->label('Refund')
+    ->icon('heroicon-o-arrow-uturn-left')
+    ->color('danger')
+    ->requiresConfirmation()
+    ->visible(fn (Sale $record) => $record->status === 'completed')
+    ->url(fn (Sale $record): string => RefundResource::getUrl('create', [
+        'sale_id' => $record->id,
+    ])),
                 Tables\Actions\Action::make('printReceipt')->label('Receipt')->icon('heroicon-o-printer')->color('info')
                     ->url(fn(Sale $record): string => route('sales.receipt', $record))->openUrlInNewTab(),
-                    // Inside SaleResource.php table actions
-Tables\Actions\Action::make('emailReceipt')
-    ->label('Email Receipt')
-    ->icon('heroicon-o-envelope')
-    ->color('success')
-    ->requiresConfirmation()
-    ->action(function (Sale $record) {
-        if (!$record->customer || empty($record->customer->email)) {
-            \Filament\Notifications\Notification::make()
-                ->title('Email Missing')
-                ->body('Customer has no email address.')
-                ->danger()
-                ->send();
-            return;
-        }
+                // Inside SaleResource.php table actions
+                Tables\Actions\Action::make('emailReceipt')
+                    ->label('Email Receipt')
+                    ->icon('heroicon-o-envelope')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->action(function (Sale $record) {
+                        if (!$record->customer || empty($record->customer->email)) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Email Missing')
+                                ->body('Customer has no email address.')
+                                ->danger()
+                                ->send();
+                            return;
+                        }
 
-        // Initialize mailable and call the direct send method
-        $mailable = new \App\Mail\CustomerReceipt($record);
-        $sent = $mailable->sendDirectly();
+                        // Initialize mailable and call the direct send method
+                        $mailable = new \App\Mail\CustomerReceipt($record);
+                        $sent = $mailable->sendDirectly();
 
-        if ($sent) {
-            \Filament\Notifications\Notification::make()
-                ->title('Receipt Sent')
-                ->body("Successfully emailed to {$record->customer->email}")
-                ->success()
-                ->send();
-        } else {
-            \Filament\Notifications\Notification::make()
-                ->title('Email Error')
-                ->body('Check Laravel logs for SES details.')
-                ->danger()
-                ->send();
-        }
-    }),
+                        if ($sent) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Receipt Sent')
+                                ->body("Successfully emailed to {$record->customer->email}")
+                                ->success()
+                                ->send();
+                        } else {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Email Error')
+                                ->body('Check Laravel logs for SES details.')
+                                ->danger()
+                                ->send();
+                        }
+                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -321,7 +332,7 @@ Tables\Actions\Action::make('emailReceipt')
         foreach ($items as $item) {
             $price = floatval($item['sold_price'] ?? 0);
             $qty = intval($item['qty'] ?? 1);
-            $percent = floatval($item['discount_percent'] ?? 0); 
+            $percent = floatval($item['discount_percent'] ?? 0);
             $rowTotal = $price * $qty;
             $subtotal += ($rowTotal - ($rowTotal * ($percent / 100)));
         }

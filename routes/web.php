@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\LabelLayoutController;
 use Illuminate\Support\Facades\Route;
 use App\Models\Sale;
 
 Route::redirect('/', '/admin');
-
+Route::get('/login', function () {
+    return redirect()->route('filament.admin.auth.login');
+})->name('login');
 Route::get('/sales/{record}/receipt', function (Sale $record) {
     // 🔹 Crucial: Load the customer and items before sending to view
     $record->load(['customer', 'items']);

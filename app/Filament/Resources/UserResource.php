@@ -29,7 +29,23 @@ class UserResource extends Resource
             ->label('Staff Full Name')
             ->required()
             ->maxLength(255),
-            
+         
+            Forms\Components\TextInput::make('username')
+                    ->label('Unique Username')
+                    ->required()
+                    ->unique(ignoreRecord: true) // Prevents duplicates
+                    ->maxLength(255),
+
+                Forms\Components\TextInput::make('email')
+                    ->label('Email Address')
+                    ->email()
+                    ->nullable() // Explicitly nullable
+                    ->unique(ignoreRecord: true),
+
+                Forms\Components\TextInput::make('phone')
+                    ->label('Phone Number')
+                    ->tel()
+                    ->nullable(), // Explicitly nullable
         Forms\Components\TextInput::make('pin_code')
             ->label('Terminal PIN')
             ->password()
