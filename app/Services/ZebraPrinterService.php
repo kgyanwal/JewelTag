@@ -47,98 +47,105 @@ class ZebraPrinterService
                 $zpl .= "\n^RS8,,,1,N^RFW,E,1,2,12^FD{$epc}^FS^RFE,E,1,2^FS";
             }
 
-            // **1. STOCK NUMBER (y=6)**
+            // **DEBUG: Log current database values**
+            Log::info("=== CURRENT DATABASE VALUES ===");
+            foreach (['stock_no', 'desc', 'barcode', 'price', 'dwmtmk', 'deptcat', 'rfid'] as $field) {
+                $layout = $getL($field);
+                if ($layout) {
+                    Log::info("{$field}:", [
+                        'x' => $layout->x_pos,
+                        'y' => $layout->y_pos,
+                        'font_size' => $layout->font_size,
+                        'height' => $layout->height,
+                        'width' => $layout->width,
+                    ]);
+                }
+            }
+
+            // **1. STOCK NUMBER**
             $lStock = $getL('stock_no');
             if ($lStock && !empty($record->barcode)) {
-                $x = $lStock->x_pos ?? 60;
-                $y = $lStock->y_pos ?? 6;
-                $fontH = max(3, ($lStock->font_size ?? 1) + 2);
+                $x = $lStock->x_pos;
+                $y = $lStock->y_pos;
+                $fontH = $lStock->font_size; // Use exact DB value
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$record->barcode}^FS";
             }
 
-            // **2. DESCRIPTION (y=9)**
+            // **2. DESCRIPTION**
             $lDesc = $getL('desc');
             if ($lDesc) {
                 $descValue = substr($record->custom_description ?? 'No Description', 0, 20);
-                $x = $lDesc->x_pos ?? 60;
-                $y = $lDesc->y_pos ?? 9;
-                $fontH = max(2, ($lDesc->font_size ?? 1) + 1);
+                $x = $lDesc->x_pos;
+                $y = $lDesc->y_pos;
+                $fontH = $lDesc->font_size; // Use exact DB value
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$descValue}^FS";
             }
 
-            // **3. BARCODE - FIXED: VERY SMALL HEIGHT**
+            // **3. BARCODE - Use EXACT database values**
             $lBarcode = $getL('barcode');
             if ($lBarcode && !empty($record->barcode)) {
-                $barcodeX = $lBarcode->x_pos ?? 60;
-                $barcodeY = $lBarcode->y_pos ?? 11;
+                $barcodeX = $lBarcode->x_pos;
+                $barcodeY = $lBarcode->y_pos;
                 
-                // **CRITICAL FIX: USE VERY SMALL BARCODE HEIGHT**
-                // Total barcode = bars + text below
-                // For small label, we need TINY barcode
-                $barcodeHeight = 8; // **ONLY 8 DOTS FOR BARS!**
+                // **USE EXACT VALUES FROM DATABASE**
+                $barcodeHeight = $lBarcode->height; // Exact height from DB
+                $moduleWidth = $lBarcode->width;    // Exact width from DB (can be decimal)
                 
-                $moduleWidth = 0.15; // Very narrow
-                
-                // **Option 1: Code 128 with NO human-readable text below**
-                // ^B3 = Code 128, N=normal, N=height, N=no interpretation line, N=no quiet zone
-                $zpl .= "\n^FO{$barcodeX},{$barcodeY}^BY{$moduleWidth},2.0";
-                $zpl .= "^B3N,N,{$barcodeHeight},N,N,N^FD{$record->barcode}^FS";
-                
-                // **Option 2: If Option 1 doesn't work, try this even smaller:**
-                // $zpl .= "^FO{$barcodeX},{$barcodeY}^BY{$moduleWidth},2.0";
-                // $zpl .= "^B3N,N,6,N,N,N^FD{$record->barcode}^FS";
-                
-                Log::info("Barcode settings:", [
+                Log::info("Barcode using DB values:", [
                     'height' => $barcodeHeight,
-                    'position' => "({$barcodeX},{$barcodeY})",
-                    'total_estimated' => $barcodeHeight + 5 // Small text if any
+                    'width' => $moduleWidth,
+                    'position' => "({$barcodeX},{$barcodeY})"
                 ]);
+                
+                // Code 128 with exact values from DB
+                $zpl .= "\n^FO{$barcodeX},{$barcodeY}^BY{$moduleWidth},2.0";
+                $zpl .= "^BCN,{$barcodeHeight},N,N,N,N^FD{$record->barcode}^FS";
             }
 
-            // **4. PRICE (y=18)**
+            // **4. PRICE**
             $lPrice = $getL('price');
             if ($lPrice) {
                 $priceVal = '$' . number_format($record->retail_price ?? 0, 2);
-                $x = $lPrice->x_pos ?? 60;
-                $y = $lPrice->y_pos ?? 18;
-                $fontH = max(3, ($lPrice->font_size ?? 1) + 2);
+                $x = $lPrice->x_pos;
+                $y = $lPrice->y_pos;
+                $fontH = $lPrice->font_size; // Use exact DB value
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$priceVal}^FS";
             }
 
-            // **5. METAL WEIGHT (y=22)**
+            // **5. METAL WEIGHT**
             $lDwmtmk = $getL('dwmtmk');
             if ($lDwmtmk) {
                 $dwValue = ($record->metal_weight ?? '') . 'g ' . ($record->metal_type ?? '');
                 if (!empty(trim($dwValue))) {
-                    $x = $lDwmtmk->x_pos ?? 60;
-                    $y = $lDwmtmk->y_pos ?? 22;
-                    $fontH = max(2, ($lDwmtmk->font_size ?? 1) + 1);
+                    $x = $lDwmtmk->x_pos;
+                    $y = $lDwmtmk->y_pos;
+                    $fontH = $lDwmtmk->font_size; // Use exact DB value
                     $fontW = max(2, (int)($fontH * 0.7));
                     $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$dwValue}^FS";
                 }
             }
 
-            // **6. CATEGORY (y=24)**
+            // **6. CATEGORY**
             $lDeptcat = $getL('deptcat');
             if ($lDeptcat) {
                 $catValue = $record->category ?? 'N/A';
-                $x = $lDeptcat->x_pos ?? 60;
-                $y = $lDeptcat->y_pos ?? 24;
-                $fontH = max(2, ($lDeptcat->font_size ?? 1) + 1);
+                $x = $lDeptcat->x_pos;
+                $y = $lDeptcat->y_pos;
+                $fontH = $lDeptcat->font_size; // Use exact DB value
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$catValue}^FS";
             }
 
-            // **7. RFID (y=26)**
+            // **7. RFID**
             $lRfid = $getL('rfid');
             if ($lRfid && !empty($record->rfid_code)) {
                 $rfidValue = substr($record->rfid_code, -8);
-                $x = $lRfid->x_pos ?? 60;
-                $y = $lRfid->y_pos ?? 26;
-                $fontH = max(2, ($lRfid->font_size ?? 1) + 1);
+                $x = $lRfid->x_pos;
+                $y = $lRfid->y_pos;
+                $fontH = $lRfid->font_size; // Use exact DB value
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$rfidValue}^FS";
             }
@@ -152,10 +159,7 @@ class ZebraPrinterService
         }
     }
     
-    /**
-     * Set default label layout positions
-     */
-    public function setDefaultLayout()
+   public function setDefaultLayout()
     {
         $defaults = [
             'stock_no' => [
@@ -174,14 +178,14 @@ class ZebraPrinterService
             ],
             'barcode' => [
                 'x_pos' => 60,
-                'y_pos' => 11,
-                'height' => 8,  // **CHANGED: Much smaller height for barcode**
-                'width' => 0.15, // **CHANGED: Narrower width**
+                'y_pos' => 12,
+                'height' => 4,      // **MATCHES DATABASE DEFAULT**
+                'width' => 0.2,     // **MATCHES DATABASE DEFAULT**
                 'font_size' => 1,
             ],
             'price' => [
                 'x_pos' => 60,
-                'y_pos' => 18,
+                'y_pos' => 19,
                 'height' => 0,
                 'width' => 0,
                 'font_size' => 1,
@@ -202,7 +206,7 @@ class ZebraPrinterService
             ],
             'rfid' => [
                 'x_pos' => 60,
-                'y_pos' => 26,
+                'y_pos' => 30,
                 'height' => 0,
                 'width' => 0,
                 'font_size' => 1,
@@ -216,7 +220,53 @@ class ZebraPrinterService
             );
         }
         
-        Log::info("Default label layout set successfully with small barcode");
+        Log::info("Default layout set: barcode height=4, width=0.2");
         return true;
+    }
+    /**
+     * Save layout from UI/designer to database
+     */
+    public function saveLayoutFromDesigner($fieldId, $data)
+    {
+        try {
+            $layout = LabelLayout::where('field_id', $fieldId)->first();
+            
+            if (!$layout) {
+                Log::error("Layout field not found: {$fieldId}");
+                return false;
+            }
+            
+            // Update with values from designer
+            $layout->update([
+                'x_pos' => $data['x_pos'] ?? $layout->x_pos,
+                'y_pos' => $data['y_pos'] ?? $layout->y_pos,
+                'font_size' => $data['font_size'] ?? $layout->font_size,
+                'height' => $data['height'] ?? $layout->height,
+                'width' => $data['width'] ?? $layout->width,
+            ]);
+            
+            Log::info("Layout saved for {$fieldId}:", $data);
+            return true;
+            
+        } catch (\Exception $e) {
+            Log::error("Save layout error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Save all layouts at once from designer
+     */
+    public function saveAllLayouts($layoutsData)
+    {
+        try {
+            foreach ($layoutsData as $fieldId => $data) {
+                $this->saveLayoutFromDesigner($fieldId, $data);
+            }
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Save all layouts error: " . $e->getMessage());
+            return false;
+        }
     }
 }

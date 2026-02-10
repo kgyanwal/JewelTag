@@ -24,7 +24,6 @@ class LabelLayoutController extends Controller
             $result = $this->printerService->setDefaultLayout();
             
             if ($result) {
-                // Also return the new layout data
                 $layouts = LabelLayout::all();
                 return response()->json([
                     'success' => true, 
@@ -65,35 +64,67 @@ class LabelLayoutController extends Controller
     }
     
     /**
-     * Update a specific layout field
+     * Update a specific layout field from UI
      */
     public function updateLayout(Request $request, $fieldId)
     {
         try {
             $validated = $request->validate([
-                'x_pos' => 'nullable|numeric',
-                'y_pos' => 'nullable|numeric',
-                'font_size' => 'nullable|integer',
-                'height' => 'nullable|numeric',
-                'width' => 'nullable|numeric',
+                'x_pos' => 'required|numeric',
+                'y_pos' => 'required|numeric',
+                'font_size' => 'required|integer|min:1|max:10',
+                'height' => 'nullable|numeric',  // Can be decimal for barcode
+                'width' => 'nullable|numeric',   // Can be decimal for barcode
             ]);
             
-            $layout = LabelLayout::where('field_id', $fieldId)->first();
+            $result = $this->printerService->saveLayoutFromDesigner($fieldId, $validated);
             
-            if (!$layout) {
+            if ($result) {
+                $layout = LabelLayout::where('field_id', $fieldId)->first();
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Layout updated successfully',
+                    'layout' => $layout
+                ]);
+            } else {
                 return response()->json([
                     'success' => false, 
-                    'message' => 'Layout field not found'
-                ], 404);
+                    'message' => 'Failed to update layout'
+                ], 500);
             }
-            
-            $layout->update($validated);
-            
+        } catch (\Exception $e) {
             return response()->json([
-                'success' => true,
-                'message' => 'Layout updated successfully',
-                'layout' => $layout
+                'success' => false, 
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Save all layouts at once from designer UI
+     */
+    public function saveAllLayouts(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'layouts' => 'required|array',
             ]);
+            
+            $result = $this->printerService->saveAllLayouts($validated['layouts']);
+            
+            if ($result) {
+                $layouts = LabelLayout::all();
+                return response()->json([
+                    'success' => true,
+                    'message' => 'All layouts saved successfully',
+                    'layouts' => $layouts
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false, 
+                    'message' => 'Failed to save layouts'
+                ], 500);
+            }
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false, 
