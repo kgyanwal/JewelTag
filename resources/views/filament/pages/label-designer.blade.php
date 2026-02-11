@@ -5,7 +5,7 @@
             
             <div class="flex items-center justify-between p-6 bg-slate-950 rounded-[2.5rem] border border-slate-800">
                 <div class="px-6">
-                    <h3 class="text-emerald-400 font-black text-xs uppercase tracking-widest leading-none">Jewelry Master Engine</h3>
+                    <h3 class="text-emerald-400 font-black text-xs uppercase tracking-widest leading-none">Jeweltag Master Engine</h3>
                     <p class="text-[10px] text-slate-500 uppercase mt-1">v2.1 Precision dot-mapped</p>
                 </div>
                 <div class="flex gap-4">
