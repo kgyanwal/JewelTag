@@ -45,10 +45,13 @@ class ZebraPrinterService
 
             // 💎 PRODUCTION CALIBRATION: pw900 and ll150 are from your working version
             $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2";
-            
+
             if ($useRFID && !empty($record->rfid_code)) { 
-                // 🚀 RFID EPC: Using STR_PAD_LEFT to fix the VOID issue while keeping your working RS/RFW/RFE sequence
+                // STR_PAD_LEFT is critical for correct antenna alignment on jewelry tags
                 $epc = str_pad(strtoupper(preg_replace('/[^A-F0-9]/', '', $record->rfid_code)), 24, '0', STR_PAD_LEFT);
+                
+                // Simplified write command (Bank 2, Offset 12, Length 1) 
+                // This uses your working RS/RFW/RFE sequence but with fixed padding
                 $zpl .= "\n^RS8,,,1,N^RFW,E,1,2,12^FD{$epc}^FS^RFE,E,1,2^FS";
             }
 

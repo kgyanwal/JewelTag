@@ -169,7 +169,12 @@ class ProductItemResource extends Resource
 
                     Toggle::make('enable_rfid_tracking')->label('Enable RFID Tracking')->default(true)->live()->columnSpan(6),
 
-                    TextInput::make('rfid_code')->label('RFID EPC Code')->disabled()->dehydrated()
+                    TextInput::make('rfid_code')
+                        ->label('RFID EPC Code')
+                        // 🚀 Generates a unique 8-character hex code for the database
+                        ->default(fn () => strtoupper(bin2hex(random_bytes(4)))) 
+                        ->required()
+                        ->dehydrated() // Ensures it saves even if the field is not manually edited
                         ->helperText(fn (Get $get) => $get('rfid_code') ? "Short ID: " . self::generateShortCode($get('rfid_code')) : null)
                         ->columnSpan(6),
 
