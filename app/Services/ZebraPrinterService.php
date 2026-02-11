@@ -43,32 +43,13 @@ class ZebraPrinterService
                 return $layouts->get($id);
             };
 
-            // 💎 PRODUCTION CALIBRATION: pw900 and ll150 are from your working version
+            // 💎 PRODUCTION CALIBRATION
             $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2";
 
             if ($useRFID && !empty($record->rfid_code)) { 
-                // STR_PAD_LEFT is critical for correct antenna alignment on jewelry tags
+                // 🚀 FIXED: Pad the 8-char DB value to 24-char for antenna alignment
                 $epc = str_pad(strtoupper(preg_replace('/[^A-F0-9]/', '', $record->rfid_code)), 24, '0', STR_PAD_LEFT);
-                
-                // Simplified write command (Bank 2, Offset 12, Length 1) 
-                // This uses your working RS/RFW/RFE sequence but with fixed padding
                 $zpl .= "\n^RS8,,,1,N^RFW,E,1,2,12^FD{$epc}^FS^RFE,E,1,2^FS";
-            }
-
-            // **DEBUG: Log current database values**
-            Log::info("=== CURRENT DATABASE VALUES ===");
-            foreach (['stock_no', 'desc', 'barcode', 'price', 'dwmtmk', 'deptcat', 'rfid'] as $field) {
-                $layout = $getL($field);
-                if ($layout) {
-                    Log::info("{$field}:", [
-                        'x' => $layout->x_pos,
-                        'y' => $layout->y_pos,
-                        'font_size' => $layout->font_size,
-                        'height' => $layout->height,
-                        'width' => $layout->width,
-                        'is_bold' => $layout->is_bold ?? false,
-                    ]);
-                }
             }
 
             // **1. STOCK NUMBER (BOLD CAPABLE)**
@@ -77,7 +58,6 @@ class ZebraPrinterService
                 $x = $lStock->x_pos;
                 $y = $lStock->y_pos;
                 $fontH = $lStock->font_size;
-                // 💎 BOLD LOGIC: If price/stock_no or is_bold is true, increase width ratio
                 $ratio = ($lStock->is_bold) ? 0.9 : 0.7;
                 $fontW = max(2, (int)($fontH * $ratio));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$record->barcode}^FS";
@@ -94,7 +74,7 @@ class ZebraPrinterService
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$descValue}^FS";
             }
 
-            // **3. BARCODE - Use EXACT database values**
+            // **3. BARCODE**
             $lBarcode = $getL('barcode');
             if ($lBarcode && !empty($record->barcode)) {
                 $barcodeX = $lBarcode->x_pos;
@@ -118,43 +98,51 @@ class ZebraPrinterService
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$priceVal}^FS";
             }
 
-            // **5. METAL WEIGHT**
+            // **5. METAL WEIGHT / STONE**
             $lDwmtmk = $getL('dwmtmk');
             if ($lDwmtmk) {
-                $dwValue = ($record->metal_weight ?? '') . 'g ' . ($record->metal_type ?? '');
-                if (!empty(trim($dwValue))) {
-                    $x = $lDwmtmk->x_pos;
-                    $y = $lDwmtmk->y_pos;
+                // FIXED: Filter out "0" and ignore extra 'g' if 'gm' exists in DB
+                $weight = ($record->metal_weight !== "0" && filled($record->metal_weight)) ? $record->metal_weight : '';
+                $type = ($record->metal_type !== "0" && filled($record->metal_type)) ? ' ' . $record->metal_type : '';
+                $dwValue = trim($weight . $type);
+                
+                if (filled($dwValue)) {
+                    $x = $lDwmtmk->x_pos; $y = $lDwmtmk->y_pos;
                     $fontH = $lDwmtmk->font_size;
-                    $fontW = max(2, (int)($fontH * 0.7));
+                    $ratio = ($lDwmtmk->is_bold) ? 0.9 : 0.7;
+                    $fontW = max(2, (int)($fontH * $ratio));
                     $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$dwValue}^FS";
                 }
             }
 
-            // **6. CATEGORY**
+            // **6. CATEGORY / DEPARTMENT**
             $lDeptcat = $getL('deptcat');
             if ($lDeptcat) {
-                $catValue = $record->category ?? 'N/A';
-                $x = $lDeptcat->x_pos;
-                $y = $lDeptcat->y_pos;
-                $fontH = $lDeptcat->font_size;
-                $fontW = max(2, (int)($fontH * 0.7));
-                $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$catValue}^FS";
+                // FIXED: Ignore "0" values from database strings
+                $dept = ($record->department !== "0" && filled($record->department)) ? $record->department : '';
+                $cat = ($record->category !== "0" && filled($record->category)) ? $record->category : '';
+                $catValue = trim($dept . ($dept && $cat ? " / " : "") . $cat);
+                
+                if (filled($catValue)) {
+                    $x = $lDeptcat->x_pos; $y = $lDeptcat->y_pos;
+                    $fontH = $lDeptcat->font_size;
+                    $ratio = ($lDeptcat->is_bold) ? 0.9 : 0.7;
+                    $fontW = max(2, (int)($fontH * $ratio));
+                    $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$catValue}^FS";
+                }
             }
 
             // **7. RFID**
             $lRfid = $getL('rfid');
             if ($lRfid && !empty($record->rfid_code)) {
                 $rfidValue = substr($record->rfid_code, -8);
-                $x = $lRfid->x_pos;
-                $y = $lRfid->y_pos;
+                $x = $lRfid->x_pos; $y = $lRfid->y_pos;
                 $fontH = $lRfid->font_size;
                 $fontW = max(2, (int)($fontH * 0.7));
                 $zpl .= "\n^FO{$x},{$y}^A0N,{$fontH},{$fontW}^FD{$rfidValue}^FS";
             }
             
             $zpl .= "\n^PQ1,0,1,Y^XZ";
-            
             return $zpl;
         } catch (\Exception $e) { 
             Log::error("ZPL Generation Error: " . $e->getMessage());
@@ -192,7 +180,7 @@ class ZebraPrinterService
                 'font_size' => $data['font_size'] ?? $layout->font_size,
                 'height'    => $data['height'] ?? $layout->height,
                 'width'     => $data['width'] ?? $layout->width,
-                'is_bold'   => isset($data['is_bold']) ? $data['is_bold'] : $layout->is_bold, // Added Bold Save logic
+                'is_bold'   => isset($data['is_bold']) ? $data['is_bold'] : $layout->is_bold, 
             ]);
             return true;
         } catch (\Exception $e) {
