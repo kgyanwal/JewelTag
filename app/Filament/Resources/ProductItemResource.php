@@ -193,23 +193,29 @@ class ProductItemResource extends Resource
                         ->required()->searchable()->live()->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
                         ->columnSpan(3),
 
-                    Select::make('sub_department')->label('Sub-Department')
-                    ->hintAction(
-                            FormAction::make('Help')
-                                ->icon('heroicon-o-information-circle')
-                                ->tooltip('Go to Inventory Settings → Categories to configure Sub-Department')
-                        )
-                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [])->filter()->toArray())
-                        ->searchable()->columnSpan(3),
+                    // **2. Fix Sub-Department Select**
+                    Select::make('sub_department')
+                        ->label('Sub-Department')
+                        ->options(function() {
+                            $data = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
+                            // Ensure we use the string value as BOTH the key and the label
+                            return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+                        })
+                        ->searchable()
+                        ->dehydrated()
+                        ->columnSpan(3),
 
-                    Select::make('category')->label('Category')
-                     ->hintAction(
-                            FormAction::make('Help')
-                                ->icon('heroicon-o-information-circle')
-                                ->tooltip('Go to Inventory Settings → Categories to configure Category')
-                        )
-                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->toArray())
-                        ->searchable()->columnSpan(2),
+                    // **1. Fix Category Select**
+                    Select::make('category')
+                        ->label('Category')
+                        ->options(function() {
+                            $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
+                            // Ensure we use the string value as BOTH the key and the label
+                            return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+                        })
+                        ->searchable()
+                        ->dehydrated() 
+                        ->columnSpan(2),
 
                     Select::make('metal_type')->label('Metal Karat')
                      ->hintAction(
