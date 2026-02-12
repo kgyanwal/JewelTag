@@ -25,11 +25,12 @@ class CustomerDetailsReport extends Page implements HasForms, HasTable
     // 🔹 Level 1: The Main Group
     protected static ?string $navigationGroup = 'Analytics & Reports'; 
     
+    
     // 🔹 Level 2 & 3: Hierarchical Labeling
     // This makes it appear as "Customer > CR007 - Details"
     protected static ?string $navigationLabel = 'Customer_Details List';
     
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 5; 
 
     protected static string $view = 'filament.pages.customer-details-report';
 

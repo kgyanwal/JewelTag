@@ -26,7 +26,7 @@ class CustomerResource extends Resource
     protected static ?string $model = Customer::class;
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Customer';
-
+protected static ?int $navigationSort = 1;
     public static function form(Form $form): Form
     {
         return $form

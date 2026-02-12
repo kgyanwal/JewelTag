@@ -16,7 +16,7 @@ class StoreResource extends Resource
 {
     protected static ?string $model = Store::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Admin';
 
   public static function form(Form $form): Form
 {

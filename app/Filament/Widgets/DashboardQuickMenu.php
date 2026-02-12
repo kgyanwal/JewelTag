@@ -2,35 +2,24 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Store;
 use App\Models\Sale;
-use App\Helpers\Staff;
 use Filament\Widgets\Widget;
 
 class DashboardQuickMenu extends Widget
 {
     protected static string $view = 'filament.widgets.dashboard-quick-menu';
- protected static ?string $heading = '';
     protected int | array | string $columnSpan = 'full';
-public $store;
 
-    public function getHeading(): string
+    public function getViewData(): array
     {
-        return '';
-    }
-public function getViewData(): array
-{
-    $store = \App\Models\Store::first();
+        // Get the store associated with the logged-in staff, or the first store
+        $store = \App\Helpers\Staff::user()?->store ?? Store::first();
 
-    return [
-        'recentSales' => \App\Models\Sale::latest()->limit(5)->get(),
-        'store' => $store,
-        // CHANGED: Using 'final_total' instead of 'grand_total'
-        'todaySales' => \App\Models\Sale::whereDate('created_at', today())
-            ->sum('final_total'), 
-    ];
-}
-    public static function canView(): bool
-    {
-        return true; 
+        return [
+            'store' => $store,
+            'recentSales' => Sale::latest()->limit(5)->get(),
+            'todaySales' => Sale::whereDate('created_at', today())->sum('final_total'), 
+        ];
     }
 }

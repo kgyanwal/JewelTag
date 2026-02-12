@@ -14,26 +14,26 @@ use Illuminate\Support\Facades\DB;
 class ManageSettings extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Admin';
     protected static string $view = 'filament.pages.manage-settings';
 
     public ?array $data = [];
 
     public function mount(): void
     {
-        // Load existing tax rate from DB or use 7.63 as default
+        // Load existing settings from DB
         $taxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? '7.63';
+        $barcodePrefix = DB::table('site_settings')->where('key', 'barcode_prefix')->value('value') ?? 'D';
         
         $this->form->fill([
             'tax_rate' => $taxRate,
+            'barcode_prefix' => $barcodePrefix,
         ]);
     }
-public static function shouldRegisterNavigation(): bool
-    {
-        // Use your Staff helper to check the identity of the person who entered the PIN
-        $staff = Staff::user();
 
-        // Only allow specific roles to see the Administration menu
+    public static function shouldRegisterNavigation(): bool
+    {
+        $staff = Staff::user();
         return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
     }
 
@@ -41,14 +41,21 @@ public static function shouldRegisterNavigation(): bool
     {
         return $form
             ->schema([
-                Section::make('Financial Configuration')
+                Section::make('Global Configuration')
                     ->schema([
                         TextInput::make('tax_rate')
                             ->label('Default Sales Tax (%)')
                             ->numeric()
                             ->suffix('%')
                             ->required(),
-                    ])
+
+                        TextInput::make('barcode_prefix')
+                            ->label('Stock Number Prefix')
+                            ->placeholder('e.g., D, G, R')
+                            ->maxLength(3)
+                            ->required()
+                            ->helperText('This character will begin all new stock numbers (e.g., D1001).'),
+                    ])->columns(2)
             ])->statePath('data');
     }
 
@@ -66,10 +73,16 @@ public static function shouldRegisterNavigation(): bool
     {
         $state = $this->form->getState();
 
-        // Save to Database
+        // Update Tax Rate
         DB::table('site_settings')->updateOrInsert(
             ['key' => 'tax_rate'],
             ['value' => $state['tax_rate'], 'updated_at' => now()]
+        );
+
+        // Update Barcode Prefix
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'barcode_prefix'],
+            ['value' => strtoupper($state['barcode_prefix']), 'updated_at' => now()]
         );
 
         Notification::make()->title('Settings Updated')->success()->send();

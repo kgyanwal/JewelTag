@@ -13,7 +13,7 @@ class ActivityLogResource extends Resource
 {
     protected static ?string $model = ActivityLog::class;
     protected static ?string $navigationIcon = 'heroicon-o-finger-print';
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Admin';
 
    public static function shouldRegisterNavigation(): bool
     {

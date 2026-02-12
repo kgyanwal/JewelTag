@@ -35,40 +35,43 @@ class CreateProductItem extends CreateRecord
         ];
     }
 
-    protected function handleRecordCreation(array $data): Model
-    {
-        $qty = (int) ($data['qty'] ?? 1);
-        $storeId = $data['store_id'] ?? Store::first()?->id;
-        $tradeInNo = $data['original_trade_in_no'] ?? null;
-        $department = $data['department'] ?? '';
+   protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
+{
+    $qty = (int) ($data['qty'] ?? 1);
+    $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
+    $tradeInNo = $data['original_trade_in_no'] ?? null;
+    $department = $data['department'] ?? '';
 
-        // 🔹 LOGIC: Should we generate RFID? (Always yes, unless it's a Repair)
-        $isRepair = str_contains(strtolower($department), 'repair');
-        
-        unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
+    $isRepair = str_contains(strtolower($department), 'repair');
+    
+    unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
-        $firstRecord = null;
+    // 🔹 Fetch dynamic prefix from settings once before the loop
+    $dynamicPrefix = \Illuminate\Support\Facades\DB::table('site_settings')
+        ->where('key', 'barcode_prefix')
+        ->value('value') ?? 'D';
 
-        for ($i = 0; $i < $qty; $i++) {
-            $itemData = $data;
-            $itemData['store_id'] = $storeId;
-            $itemData['is_trade_in'] = ($tradeInNo !== null);
-            $itemData['original_trade_in_no'] = $tradeInNo;
+    $firstRecord = null;
 
-            // 🔹 COLLISION FIX: Re-query inside loop
-            $itemData['barcode'] = ProductItemResource::generatePersistentBarcode('D');
+    for ($i = 0; $i < $qty; $i++) {
+        $itemData = $data;
+        $itemData['store_id'] = $storeId;
+        $itemData['is_trade_in'] = ($tradeInNo !== null);
+        $itemData['original_trade_in_no'] = $tradeInNo;
 
-            // 🔹 AUTOMATIC 8-CHARACTER RFID GENERATION
-            if (!$isRepair) {
-                $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
-            } else {
-                $itemData['rfid_code'] = null;
-            }
+        // 🔹 Pass the dynamic prefix to the generator
+        $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
 
-            $record = static::getModel()::create($itemData);
-            if ($i === 0) $firstRecord = $record;
+        if (!$isRepair) {
+            $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
+        } else {
+            $itemData['rfid_code'] = null;
         }
 
-        return $firstRecord;
+        $record = static::getModel()::create($itemData);
+        if ($i === 0) $firstRecord = $record;
     }
+
+    return $firstRecord;
+}
 }

@@ -23,11 +23,21 @@ use Filament\Support\Assets\Js;
 use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
+use App\Models\Store;
 
 class AdminPanelProvider extends PanelProvider
 {
+    /**
+     * Configure the Filament Admin Panel.
+     */
     public function panel(Panel $panel): Panel
     {
+        // 1. Dynamically fetch the store logo for the navigation bar
+        $store = Store::first();
+        $logoUrl = ($store && $store->logo_path) 
+            ? asset('storage/' . $store->logo_path) 
+            : asset('jeweltaglogo.png');
+
         return $panel
             ->default()
             ->id('admin')
@@ -35,8 +45,10 @@ class AdminPanelProvider extends PanelProvider
             ->registration()
             ->login()
             ->topNavigation()
-            ->brandLogo(null)
-            ->brandName('')
+            // 2. Set the dynamic brand logo and height to fix the "bad gap"
+            ->brandLogo($logoUrl)
+            ->brandLogoHeight('2.5rem') 
+            ->brandName('JEWELTAG')
             ->renderHook(
                 PanelsRenderHook::GLOBAL_SEARCH_END,
                 fn (): string => view('filament.hooks.custom-logo')->render(),
@@ -44,7 +56,7 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
             ->colors([
-                'primary' => Color::hex('#0d9488'),
+                'primary' => Color::hex('#0d9488'), // Main Teal
                 'gray' => Color::hex('#4b5563'),
                 'info' => Color::hex('#0284c7'),
                 'success' => Color::hex('#059669'),
@@ -61,6 +73,9 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn() => <<<'HTML'
 <script>
+    /**
+     * Force Light Mode and Persistence
+     */
     document.documentElement.classList.add('light');
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
@@ -101,40 +116,129 @@ class AdminPanelProvider extends PanelProvider
 </script>
 
 <style>
-/* ───────── LUXURY SEA THEME SYSTEM ───────── */
+/* ───────── ENHANCED UI SYSTEM ───────── */
 :root {
     --primary-color: #0d9488;
     --primary-light: #2dd4bf;
     --primary-dark: #0f766e;
     --body-bg: #0e7490;
-    --nav-bg: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%);
-    --text-primary: #164e63;
-    --text-body: #1e293b;
+    --nav-bg: linear-gradient(135deg, #f0f9ff 0%, #e6fffa 100%);
+    --card-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 }
 
-#zebra-status-dot { width: 12px; height: 12px; border-radius: 50%; background-color: #94a3b8; border: 2px solid white; display: inline-block; margin-left: 10px; cursor: help; transition: background-color 0.5s ease; }
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-body, .fi-body, .fi-btn, .fi-input, .fi-label, .fi-heading {
-    font-family: 'Inter', -apple-system, sans-serif !important;
+/* Base Layout Adjustments */
+body, .fi-body { 
+    background-color: var(--body-bg) !important; 
+    background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0);
+    background-size: 40px 40px;
 }
 
-body, .fi-layout { background-color: var(--body-bg) !important; color: var(--text-body) !important; }
-.fi-main { background-color: var(--body-bg) !important; padding: 1.5rem !important; min-height: calc(100vh - 75px) !important; }
-.fi-topbar { background: linear-gradient(135deg, #e0f2fe 0%, #ccfbf1 100%) !important; border-bottom: 2px solid #5eead4 !important; }
-.fi-topbar * { color: #0f172a !important; }
+.fi-main { 
+    background-color: transparent !important; 
+     
+}
 
-.fi-topbar-content { display: flex !important; align-items: center !important; gap: 1rem !important; }
-.fi-user-menu { order: -10 !important; margin-right: 0 !important; }
-.fi-topbar-nav { order: -5 !important; flex: 1 !important; }
-.fi-main-search { order: 1 !important; }
-.fi-topbar-content > div:last-child { order: 2 !important; }
+/* Topbar Styling & Logo Alignment */
+.fi-topbar { 
+    background: var(--nav-bg) !important; 
+    border-bottom: 3px solid var(--primary-color) !important;
+    backdrop-filter: blur(8px);
+}
+/* Ensure the logo has clean padding and doesn't look "bad" in the gap */
+.fi-logo {
+    padding: 0.25rem;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+}
 
-.fi-section, .fi-ta-ctn { background-color: #ffffff !important; border: none !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2) !important; }
-.fi-btn-primary { background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important; color: #ffffff !important; font-weight: 800 !important; }
-.fi-ta-header, .fi-ta-header-cell, .fi-ta-row { background-color: #eef2f7 !important; }
-.fi-ta-cell { color: #000000 !important; }
+.fi-topbar * { color: #0f172a !important; font-weight: 600 !important; }
+
+/* ───────── RESOURCE TABLE STYLING ───────── */
+.fi-ta-ctn { 
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    box-shadow: var(--card-shadow) !important;
+    background: white !important;
+}
+
+.fi-ta-header { 
+    background-color: #f8fafc !important; 
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.fi-ta-header-cell { 
+    background-color: #f1f5f9 !important; 
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: #475569 !important;
+}
+
+.fi-ta-row:hover {
+    background-color: #f0fdfa !important;
+    transition: background-color 0.2s ease;
+}
+
+/* ───────── CREATE/EDIT FORM STYLING ───────── */
+.fi-resource-create-form, 
+.fi-resource-edit-form,
+section.fi-section { 
+    background-color: rgba(255, 255, 255, 0.98) !important; 
+    border-radius: 20px !important;
+    padding: 10px !important;
+    border-left: 8px solid var(--primary-color) !important; 
+    box-shadow: var(--card-shadow) !important;
+}
+
+.fi-fo-field-wrp-label label {
+    color: #334155 !important;
+    font-weight: 700 !important;
+}
+
+.fi-input-wrp {
+    border-radius: 8px !important;
+    transition: all 0.2s;
+}
+
+.fi-input-wrp:focus-within {
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.2) !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* Status Indicator */
+#zebra-status-dot { 
+    width: 14px; height: 14px; 
+    border-radius: 50%; 
+    background-color: #94a3b8; 
+    border: 2px solid white; 
+    display: inline-block; 
+    margin-left: 10px; 
+    cursor: help; 
+    transition: all 0.5s ease;
+    box-shadow: 0 0 8px rgba(0,0,0,0.2);
+}
+
+.fi-btn-primary { 
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%) !important; 
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 1.5rem !important;
+    box-shadow: 0 4px 6px -1px rgba(13, 148, 136, 0.3) !important;
+}
+
+.fi-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 15px -3px rgba(13, 148, 136, 0.4) !important;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0e7490; }
+::-webkit-scrollbar-thumb { background: #0d9488; border-radius: 10px; }
+.fi-page-header {
+    padding: 1.25rem 0 0.75rem 0 !important;
+}
+
 </style>
 HTML
             )
@@ -148,13 +252,14 @@ HTML
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
-                 \App\Filament\Resources\ActivityLogResource::class,
-                 \App\Filament\Resources\DeletionRequestResource::class,
-                  \App\Filament\Resources\SaleEditRequestResource::class,
-                  \App\Filament\Resources\CustomOrderResource::class,
-                   \App\Filament\Resources\RepairResource::class,
-                   \App\Filament\Resources\RefundResource::class,
-                   \App\Filament\Resources\RestockResource::class,
+                \App\Filament\Resources\ActivityLogResource::class,
+                \App\Filament\Resources\DeletionRequestResource::class,
+                \App\Filament\Resources\SaleEditRequestResource::class,
+                \App\Filament\Resources\CustomOrderResource::class,
+                \App\Filament\Resources\RepairResource::class,
+                \App\Filament\Resources\RefundResource::class,
+                \App\Filament\Resources\RestockResource::class,
+                \App\Filament\Resources\ArchivedStockResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -171,6 +276,7 @@ HTML
                 \App\Filament\Pages\TradeInCheck::class,
                 \App\Filament\Pages\MemoInventory::class,
                 \App\Filament\Pages\Analytics::class,
+                \App\Filament\Pages\StockAgingReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
@@ -192,22 +298,23 @@ HTML
             ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
-                NavigationGroup::make()->label('Customer'),
-                NavigationGroup::make()->label('Reports'),
+                NavigationGroup::make()->label('Vendors'),
                 NavigationGroup::make()->label('Inventory'),
+                NavigationGroup::make()->label('Administration'),
+                NavigationGroup::make()->label('Analytics & Reports'),
             ])
-           ->userMenuItems([
-    'settings' => MenuItem::make()
-        ->label('Store Settings')
-        ->url(fn (): string => ManageSettings::getUrl())
-        ->icon('heroicon-o-adjustments-horizontal')
-         ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+            ->userMenuItems([
+                'settings' => MenuItem::make()
+                    ->label('Store Settings')
+                    ->url(fn (): string => ManageSettings::getUrl())
+                    ->icon('heroicon-o-adjustments-horizontal')
+                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
-    'activity_logs' => MenuItem::make()
-        ->label('Activity Logs')
-        ->icon('heroicon-o-finger-print')
-        ->url(fn (): string => ActivityLogResource::getUrl())
-        ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-]);
+                'activity_logs' => MenuItem::make()
+                    ->label('Activity Logs')
+                    ->icon('heroicon-o-finger-print')
+                    ->url(fn (): string => ActivityLogResource::getUrl())
+                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+            ]);
     }
 }

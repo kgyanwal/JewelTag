@@ -9,8 +9,9 @@ class Analytics extends Page
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
     protected static ?string $navigationLabel = 'Data Insights';
     protected static ?string $navigationGroup = 'Analytics & Reports';
-    protected static string $view = 'filament.pages.analytics';
     
+    protected static string $view = 'filament.pages.analytics';
+   protected static ?int $navigationSort = 5; 
 
     public function getHeaderWidgets(): array
 {

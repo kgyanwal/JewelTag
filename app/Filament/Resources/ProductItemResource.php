@@ -53,23 +53,31 @@ class ProductItemResource extends Resource
      * COLLISION-PROOF BARCODE GENERATOR
      * Uses withTrashed() to ensure we skip past soft-deleted barcodes like D1002.
      */
-    public static function generatePersistentBarcode($prefix = 'D'): string
-    {
-        $maxInDb = ProductItem::withTrashed()
-            ->where('barcode', 'LIKE', "{$prefix}%")
-            ->selectRaw("MAX(CAST(SUBSTRING(barcode, " . (strlen($prefix) + 1) . ") AS UNSIGNED)) as max_num")
-            ->first();
-
-        $lastNumber = $maxInDb && $maxInDb->max_num ? (int) $maxInDb->max_num : 1000;
-        $nextNumber = $lastNumber + 1;
-
-        \App\Models\InventorySetting::updateOrCreate(
-            ['key' => 'barcode_sequence'],
-            ['value' => $nextNumber + 1]
-        );
-
-        return $prefix . $nextNumber;
+    public static function generatePersistentBarcode(?string $prefix = null): string
+{
+    // If no prefix passed (like in Edit mode or manual calls), fetch from DB
+    if (!$prefix) {
+        $prefix = \Illuminate\Support\Facades\DB::table('site_settings')
+            ->where('key', 'barcode_prefix')
+            ->value('value') ?? 'D';
     }
+
+    $maxInDb = ProductItem::withTrashed()
+        ->where('barcode', 'LIKE', "{$prefix}%")
+        ->selectRaw("MAX(CAST(SUBSTRING(barcode, " . (strlen($prefix) + 1) . ") AS UNSIGNED)) as max_num")
+        ->first();
+
+    $lastNumber = $maxInDb && $maxInDb->max_num ? (int) $maxInDb->max_num : 1000;
+    $nextNumber = $lastNumber + 1;
+
+    // Optional: Keep your sequence tracker updated
+    \App\Models\InventorySetting::updateOrCreate(
+        ['key' => 'barcode_sequence'],
+        ['value' => $nextNumber + 1]
+    );
+
+    return $prefix . $nextNumber;
+}
 
     public static function form(Form $form): Form
     {
@@ -267,6 +275,8 @@ class ProductItemResource extends Resource
                 ActionGroup::make([
                     EditAction::make(),
                     ViewAction::make(),
+                    Tables\Actions\DeleteAction::make()
+            ->label('Archive'),
                     Action::make('print_barcode')->icon('heroicon-o-printer')->action(function ($record, ZebraPrinterService $service, $livewire) {
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, false));
                     }),
@@ -290,6 +300,10 @@ class ProductItemResource extends Resource
             if (blank($get('custom_description'))) $set('custom_description', "{$dept} - " . ($get('metal_type') ?? 'Jewelry'));
         }
     }
-
+public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+{
+    return parent::getEloquentQuery()
+        ->withoutTrashed();
+}
     public static function getPages(): array { return ['index' => Pages\ListProductItems::route('/'), 'create' => Pages\CreateProductItem::route('/create'), 'edit' => Pages\EditProductItem::route('/{record}/edit')]; }
 }
