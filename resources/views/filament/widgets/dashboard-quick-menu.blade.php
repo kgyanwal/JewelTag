@@ -241,7 +241,7 @@
                         </div>
                         <div class="card-content">
                             <h3>Custom Orders</h3>
-                            <p>Bespoke creations</p>
+                            <p>DSQ creations</p>
                         </div>
                         <div class="card-badge">Custom</div>
                     </a>
