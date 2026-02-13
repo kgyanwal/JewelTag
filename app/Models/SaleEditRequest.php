@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 
 class SaleEditRequest extends Model
 {
+     use LogsActivity;
     protected $fillable = ['sale_id', 'user_id', 'proposed_changes', 'status', 'approved_by'];
 
 protected $casts = [

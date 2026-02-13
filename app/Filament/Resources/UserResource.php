@@ -75,11 +75,20 @@ class UserResource extends Resource
                         ->rule('nullable')
                         ->maxLength(255),
 
-                    Forms\Components\Select::make('roles')
-                        ->relationship('roles', 'name')
-                        ->multiple()
-                        ->preload()
-                        ->label('Assign Access Role'),
+                   Forms\Components\Select::make('roles')
+    ->relationship('roles', 'name', function ($query) {
+        // 🔒 SECURITY CHECK: 
+        // If the current user is NOT a Superadmin, 
+        // filter out the 'Superadmin' role from the dropdown.
+        if (! \App\Helpers\Staff::user()?->hasRole('Superadmin')) {
+            return $query->where('name', '!=', 'Superadmin');
+        }
+        return $query;
+    })
+    ->multiple()
+    ->preload()
+    ->label('Assign Access Role')
+    ->required(),
 
                     Forms\Components\Toggle::make('is_active')
                         ->label('Account Enabled')

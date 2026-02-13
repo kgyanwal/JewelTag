@@ -105,7 +105,8 @@ class ProductItemResource extends Resource
                                     ->label('Stock Type')
                                     ->options(['new' => 'New Stock', 'trade_in' => 'Trade-In'])
                                     ->default(fn($record) => $record?->is_trade_in ? 'trade_in' : 'new')
-                                    ->required()
+                                    ->required(fn ($livewire) => $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem)
+
                                     ->inline()->live()->dehydrated(false)
                                     ->columnSpan(4),
 
@@ -117,7 +118,11 @@ class ProductItemResource extends Resource
                                         return \App\Models\Sale::where('has_trade_in', 1)->whereNotIn('trade_in_receipt_no', $used)->latest()->pluck('trade_in_receipt_no', 'trade_in_receipt_no');
                                     })
                                     ->visible(fn(Get $get) => $get('creation_mode') === 'trade_in')
-                                    ->required(fn(Get $get) => $get('creation_mode') === 'trade_in')
+                                    ->required(function (Get $get, $livewire) {
+    return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem
+        && $get('creation_mode') === 'trade_in';
+})
+
                                     ->searchable()->live()
                                     ->afterStateUpdated(function ($state, Forms\Set $set) {
                                         if ($state) {

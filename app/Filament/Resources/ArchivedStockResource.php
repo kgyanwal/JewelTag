@@ -14,7 +14,7 @@ class ArchivedStockResource extends Resource
     protected static ?string $model = ProductItem::class;
     protected static ?string $navigationIcon = 'heroicon-o-archive-box-x-mark';
     protected static ?string $navigationGroup = 'Admin';
-    protected static ?string $navigationLabel = 'Deleted Stock Backup';
+    protected static ?string $navigationLabel = 'Deleted Stocks';
 
     /**
      * Restriction: Only Superadmin can see this page

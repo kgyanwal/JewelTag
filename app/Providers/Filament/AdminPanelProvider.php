@@ -207,12 +207,23 @@ section.fi-section {
 
 /* Status Indicator */
 #zebra-status-dot { 
-    width: 14px; height: 14px; 
+    width: 14px; 
+    height: 14px; 
+    
+    /* 🔹 FIX: Prevent it from disappearing/shrinking */
+    min-width: 14px; 
+    min-height: 14px;
+    flex-shrink: 0; 
+    
+    /* 🔹 FIX: Ensure it sits on top of other layers */
+    z-index: 9999;
+    position: relative;
+
     border-radius: 50%; 
     background-color: #94a3b8; 
     border: 2px solid white; 
     display: inline-block; 
-    margin-left: 10px; 
+    margin-left: 70px; 
     cursor: help; 
     transition: all 0.5s ease;
     box-shadow: 0 0 8px rgba(0,0,0,0.2);
@@ -260,6 +271,7 @@ HTML
                 \App\Filament\Resources\RefundResource::class,
                 \App\Filament\Resources\RestockResource::class,
                 \App\Filament\Resources\ArchivedStockResource::class,
+                \App\Filament\Resources\ArchivedSaleResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -291,6 +303,7 @@ HTML
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+                \App\Http\Middleware\LogPageViews::class,
             ])
             ->authMiddleware([
                 Authenticate::class,
@@ -300,7 +313,7 @@ HTML
                 NavigationGroup::make()->label('Sales'),
                 NavigationGroup::make()->label('Vendors'),
                 NavigationGroup::make()->label('Inventory'),
-                NavigationGroup::make()->label('Administration'),
+                NavigationGroup::make()->label('Admin'),
                 NavigationGroup::make()->label('Analytics & Reports'),
             ])
             ->userMenuItems([

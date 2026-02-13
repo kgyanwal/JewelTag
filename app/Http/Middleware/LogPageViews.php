@@ -13,23 +13,29 @@ class LogPageViews
     {
         $response = $next($request);
 
-        // Only log GET requests (Views) for logged-in users
-        // Your existing Trait already handles Creates/Updates, so we skip POST/PUT here to avoid duplicates.
-        if (Auth::check() && $request->isMethod('GET')) {
+        // 1. Check if user is logged in (using Filament-friendly check)
+        $user = Auth::user();
+
+        if ($user && $request->isMethod('GET')) {
             
-            // Ignore internal Filament assets/updates so we don't spam the log
-            if ($request->is('livewire/*', 'filament-assets/*', '_debugbar/*')) {
+            // 2. Ignore internal noise
+            if ($request->is('livewire/*', 'filament-assets/*', '_debugbar/*', 'sanctum/*')) {
                 return $response;
             }
 
-            ActivityLog::create([
-                'user_id' => Auth::id(),
-                'action' => 'View', // Matches your screenshot action
-                'module' => $this->getModuleName($request),
-                'identifier' => $request->route('record') ?? 'Page Visit',
-                'url' => $request->path(), // Captures "/utilities" or "/sales"
-                'ip_address' => $request->ip(),
-            ]);
+            try {
+                ActivityLog::create([
+                    'user_id' => $user->id,
+                    'action' => 'View',
+                    'module' => $this->getModuleName($request),
+                    // Pull record ID from URL if it exists (e.g., /admin/customers/5/edit)
+                    'identifier' => $request->route('record') ?? $request->route('id'),
+                    'url' => '/' . $request->path(),
+                    'ip_address' => $request->ip(),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Activity Log Failed: ' . $e->getMessage());
+            }
         }
 
         return $response;
@@ -37,8 +43,11 @@ class LogPageViews
 
     private function getModuleName(Request $request)
     {
-        // Converts "admin/sales" to "Sales"
         $segments = $request->segments();
-        return isset($segments[1]) ? ucfirst($segments[1]) : 'General';
+        // Index 0 is 'admin', index 1 is usually the resource (e.g., 'customers')
+        if (isset($segments[1])) {
+            return ucfirst(str_replace('-', ' ', $segments[1]));
+        }
+        return 'Dashboard';
     }
 }

@@ -287,6 +287,12 @@ class SaleResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make()->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
                 Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
+                Tables\Actions\DeleteAction::make()
+    ->label('Delete') // Rename "Delete" to "Archive"
+    ->icon('heroicon-o-archive-box-arrow-down')
+    ->modalHeading('Archive Sale')
+    ->modalDescription('Are you sure? Items will return to stock and this sale will move to Archives.'),
+    // 🔒 Superadmin Only
                 Tables\Actions\Action::make('refund')
     ->label('Refund')
     ->icon('heroicon-o-arrow-uturn-left')

@@ -8,10 +8,13 @@ return [
 
         'source' => [
             'files' => [
+                /* * 🔴 CHANGED: Leave this array EMPTY to skip backing up files.
+                 * This ensures you only get the SQL database dump.
+                 */
                 'include' => [
-                  
-                    storage_path('app/public'),
+                    // storage_path('app/public'), 
                 ],
+
                 'exclude' => [
                     base_path('vendor'),
                     base_path('node_modules'),
@@ -21,6 +24,10 @@ return [
                 'ignore_unreadable_directories' => false,
                 'relative_path' => null,
             ],
+
+            /*
+             * 🟢 This part stays active, so it will still backup your DB.
+             */
             'databases' => [
                 env('DB_CONNECTION', 'mysql'),
             ],
@@ -31,7 +38,7 @@ return [
             'compression_level' => 9,
             'filename_prefix' => 'backup-',
             'disks' => [
-                's3', // 🔹 THIS IS THE CRITICAL LINE
+                's3', 
             ],
             'continue_on_failure' => false,
         ],
@@ -42,14 +49,12 @@ return [
         'tries' => 1,
         'retry_delay' => 0,
 
-        // Required Database Dump Settings
         'database_dump_compressor' => Spatie\DbDumper\Compressors\GzipCompressor::class,
         'database_dump_file_timestamp_format' => 'Y-m-d-H-i-s',
         'database_dump_filename_base' => 'database',
         'database_dump_file_extension' => 'sql',
     ],
 
-    // Required Notifications Section
     'notifications' => [
         'notifications' => [
             \Spatie\Backup\Notifications\Notifications\BackupHasFailedNotification::class => ['mail'],
@@ -65,7 +70,6 @@ return [
         ],
     ],
 
-    // Required Monitor Section
     'monitor_backups' => [
         [
             'name' => env('APP_NAME', 'jewelry-pos'),
@@ -77,7 +81,6 @@ return [
         ],
     ],
 
-    // Required Cleanup Section
     'cleanup' => [
         'strategy' => \Spatie\Backup\Tasks\Cleanup\Strategies\DefaultStrategy::class,
         'default_strategy' => [

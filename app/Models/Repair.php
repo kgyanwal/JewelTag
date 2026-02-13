@@ -1,12 +1,14 @@
 <?php
 namespace App\Models;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Repair extends Model
 {
+    use LogsActivity;
     // 🔹 Ensure this is empty to allow all fields, or explicitly add 'reported_issue' to $fillable
     protected $guarded = []; 
 

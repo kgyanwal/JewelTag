@@ -19,6 +19,7 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\ProductItemResource; 
 
 class FindStock extends Page implements HasForms, HasTable
 {
@@ -189,8 +190,11 @@ class FindStock extends Page implements HasForms, HasTable
                     }),
             ])
             ->actions([
-                \Filament\Tables\Actions\ViewAction::make(),
-                \Filament\Tables\Actions\EditAction::make(),
+              
+          
+                
+                \Filament\Tables\Actions\EditAction::make()
+                    ->url(fn (ProductItem $record): string => ProductItemResource::getUrl('edit', ['record' => $record])),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped();

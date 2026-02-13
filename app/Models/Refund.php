@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Refund extends Model
 {
+     use LogsActivity;
     protected $guarded = [];
 protected $casts = [
     'refunded_items' => 'array', // 🔹 Crucial for the CheckboxList to work
