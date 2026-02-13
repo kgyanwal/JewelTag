@@ -12,3 +12,4 @@ Schedule::command('backup:run')->daily()->at('02:00');
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+Schedule::command('model:prune')->daily();

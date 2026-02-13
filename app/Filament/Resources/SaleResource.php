@@ -193,21 +193,34 @@ class SaleResource extends Resource
                         ]),
 
                         Section::make('Payment & Status')->schema([
-                            Select::make('payment_method')
-                                ->label('Payment Method')
-                                ->options([
-                                    'cash' => 'CASH',
-                                    'laybuy' => 'LAYBUY (Installment Plan)',
-                                    'visa' => 'VISA',
-                                    'comenity' => 'COMENITY',
-                                    'debit_card' => 'DEBIT CARD',
-                                    'american_express' => 'AMERICAN EXPRESS',
-                                    'mastercard' => 'MASTERCARD',
-                                    'synchrony' => 'SYNCHRONY',
-                                    'affirm' => 'AFFIRM',
-                                    'others' => 'OTHERS',
-                                ])
-                                ->default('cash')->required(),
+                           Select::make('payment_method')
+    ->label('Payment Method')
+    ->options(function () {
+        // 1. Fetch from DB
+        $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        
+        // 2. Default fallback if DB is empty
+        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+        
+        $methods = $json ? json_decode($json, true) : $defaultMethods;
+        $options = [];
+
+        foreach ($methods as $method) {
+            // 🛑 CRITICAL: Preserve Laybuy Key
+            // If the user typed "Laybuy", "LAYBUY", or "laybuy" in settings,
+            // we force the key to be 'laybuy' so your installment logic doesn't break.
+            if (strtoupper($method) === 'LAYBUY') {
+                $options['laybuy'] = 'LAYBUY (Installment Plan)'; 
+            } else {
+                // For everything else (Zelle, Cash, Visa), use the name as both Key and Value
+                $options[$method] = $method;
+            }
+        }
+
+        return $options;
+    })
+    ->default('cash')
+    ->required(),
                             Select::make('status')
                                 ->label('Sale Status')
                                 ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])

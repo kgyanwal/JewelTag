@@ -25,25 +25,44 @@ class ActivityLogResource extends Resource
     }
 
     public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('created_at')->label('Time')->dateTime()->sortable(),
-                Tables\Columns\TextColumn::make('user.name')->label('User')->searchable(),
-                Tables\Columns\TextColumn::make('action')
-                    ->badge()
-                    ->color(fn ($state) => match ($state) {
-                        'Created' => 'success',
-                        'Updated' => 'warning',
-                        'Deleted' => 'danger',
-                        default => 'gray',
-                    }),
-                Tables\Columns\TextColumn::make('module')->label('Module'),
-                Tables\Columns\TextColumn::make('identifier')->label('Reference #')->searchable(),
-                Tables\Columns\TextColumn::make('ip_address')->label('IP Address'),
-            ])
-            ->defaultSort('created_at', 'desc');
-    }
+{
+    return $table
+        ->columns([
+            Tables\Columns\TextColumn::make('created_at')
+                ->label('Time')
+                ->dateTime('M d, Y h:i:s A') // 12-hour format like screenshot
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('user.name')
+                ->label('Username')
+                ->searchable(),
+
+            Tables\Columns\TextColumn::make('url') // 🔹 NEW COLUMN
+                ->label('URI') 
+                ->fontFamily('mono')
+                ->color('gray')
+                ->searchable()
+                ->toggleable(),
+
+            Tables\Columns\TextColumn::make('action')
+                ->badge()
+                ->color(fn ($state) => match ($state) {
+                    'Created' => 'success',
+                    'Updated' => 'warning',
+                    'Deleted' => 'danger',
+                    'View' => 'info', // 🔹 Added View color
+                    default => 'gray',
+                }),
+
+            Tables\Columns\TextColumn::make('module')->label('Module'),
+            
+            Tables\Columns\TextColumn::make('identifier')
+                ->label('Reference #')
+                ->searchable(),
+        ])
+        ->defaultSort('created_at', 'desc')
+        ->poll('10s'); // Auto-refresh the log table
+}
     
     public static function getPages(): array
     {

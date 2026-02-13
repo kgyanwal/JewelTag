@@ -92,7 +92,7 @@ protected function afterCreate(): void
             
             // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
             // so the receipt button remains hidden.
-            $sale->update(['status' => 'pending','sold_again_sale_id' => $sale->id,]);
+            $sale->update(['status' => 'pending',]);
             
             \Filament\Notifications\Notification::make()
                 ->title('Stock Reserved')
