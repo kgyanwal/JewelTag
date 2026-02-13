@@ -653,7 +653,7 @@
 
 .stat-value {
     display: block;
-    font-size: 24px;
+    font-size: 14px;
     font-weight: 800;
     color: white;
     line-height: 1.2;
