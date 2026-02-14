@@ -45,6 +45,10 @@ class AdminPanelProvider extends PanelProvider
             ->registration()
             ->login()
             ->topNavigation()
+            // 🚀 AUTO-DISCOVERY ENABLED
+            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
+            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
             ->brandLogo($logoUrl)
             ->brandLogoHeight('2.5rem') 
@@ -253,42 +257,8 @@ section.fi-section {
 </style>
 HTML
             )
-            ->resources([
-                \App\Filament\Resources\StoreResource::class,
-                \App\Filament\Resources\SupplierResource::class,
-                \App\Filament\Resources\ProductItemResource::class,
-                \App\Filament\Resources\CustomerResource::class,
-                \App\Filament\Resources\SaleResource::class,
-                \App\Filament\Resources\LaybuyResource::class, 
-                \App\Filament\Resources\UserResource::class,
-                \App\Filament\Resources\RoleResource::class,
-                \App\Filament\Resources\PermissionResource::class,
-                \App\Filament\Resources\ActivityLogResource::class,
-                \App\Filament\Resources\DeletionRequestResource::class,
-                \App\Filament\Resources\SaleEditRequestResource::class,
-                \App\Filament\Resources\CustomOrderResource::class,
-                \App\Filament\Resources\RepairResource::class,
-                \App\Filament\Resources\RefundResource::class,
-                \App\Filament\Resources\RestockResource::class,
-                \App\Filament\Resources\ArchivedStockResource::class,
-                \App\Filament\Resources\ArchivedSaleResource::class,
-            ])
             ->pages([
                 Pages\Dashboard::class,
-                \App\Filament\Pages\FindStock::class,
-                \App\Filament\Pages\FindCustomer::class,
-                \App\Filament\Pages\FindSale::class,
-                \App\Filament\Pages\CustomerDetailsReport::class,
-                \App\Filament\Pages\SoldItemsReport::class,
-                \App\Filament\Pages\InventorySettings::class,
-                \App\Filament\Pages\EndOfDayClosing::class,
-                \App\Filament\Pages\PinCodeAuth::class,
-                \App\Filament\Pages\LabelDesigner::class,
-                \App\Filament\Pages\ManageSettings::class,
-                \App\Filament\Pages\TradeInCheck::class,
-                \App\Filament\Pages\MemoInventory::class,
-                \App\Filament\Pages\Analytics::class,
-                \App\Filament\Pages\StockAgingReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
