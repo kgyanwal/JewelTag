@@ -20,33 +20,21 @@ class Sale extends Model
         'sales_person_list' => 'array'
     ];
 
-    /**
-     * Relationship to the Customer.
-     */
     public function customer(): BelongsTo 
     { 
         return $this->belongsTo(Customer::class); 
     }
 
-    /**
-     * Relationship to the items within the sale.
-     */
     public function items(): HasMany 
     { 
         return $this->hasMany(SaleItem::class); 
     }
 
-    /**
-     * Legacy reference to productItem if needed.
-     */
     public function productItem()
     {
         return $this->belongsTo(ProductItem::class);
     }
 
-    /**
-     * Relationship to Laybuy if applicable.
-     */
     public function laybuy()
     {
         return $this->hasOne(Laybuy::class, 'sale_id');
@@ -58,38 +46,42 @@ class Sale extends Model
     protected static function booted()
     {
         static::creating(function ($sale) {
-            // Ensure a store ID is assigned
             $sale->store_id = $sale->store_id ?? 1; 
 
             if (empty($sale->invoice_number)) {
-                // 1. Fetch the dynamic prefix from site_settings (e.g., 'D')
+                // 1. Get Prefix from settings (e.g., 'D')
                 $prefix = DB::table('site_settings')
                     ->where('key', 'barcode_prefix')
                     ->value('value') ?? 'D';
 
-                // 2. Find the highest existing invoice number that starts with this prefix
-                // This prevents "Duplicate Entry" errors when records are deleted
-                $latestInvoice = self::where('invoice_number', 'LIKE', "{$prefix}%")
+                // 2. Generate Date String: MMDDYY (e.g., 021326)
+                $datePart = now()->format('mdy');
+
+                // 3. Find the highest sequence number for TODAY ONLY
+                $todayPattern = $prefix . $datePart . '%';
+                
+                $latestToday = self::where('invoice_number', 'LIKE', $todayPattern)
                     ->orderBy('invoice_number', 'desc')
                     ->first();
 
-                if ($latestInvoice) {
-                    // Extract numeric part (e.g., "D001" -> 1)
-                    $currentNumber = (int) preg_replace('/[^0-9]/', '', $latestInvoice->invoice_number);
-                    $nextNumber = $currentNumber + 1;
+                if ($latestToday) {
+                    // Extract all digits following the date part and increment
+                    // This handles 01, 99, or 100+ correctly
+                    $lastInvoice = $latestToday->invoice_number;
+                    $sequencePart = substr($lastInvoice, strlen($prefix . $datePart));
+                    $nextSequence = (int) $sequencePart + 1;
                 } else {
-                    $nextNumber = 1;
+                    // First sale of the day
+                    $nextSequence = 1;
                 }
 
-                // 3. Set the invoice number (e.g., D001, D002)
-                $sale->invoice_number = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+                // 4. Combine: D + 021326 + 001 (padded to 3 digits)
+                // Result: D021326001, D021326100, etc.
+                $sale->invoice_number = $prefix . $datePart . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
             }
         });
     }
 
-    /**
-     * Accessor for Customer Name
-     */
     public function getCustomerNameAttribute(): string
     {
         return $this->customer
@@ -97,9 +89,6 @@ class Sale extends Model
             : 'Walk-in';
     }
 
-    /**
-     * Global Search Configuration
-     */
     public static function getGloballySearchableAttributes(): array
     {
         return ['invoice_number', 'customer.first_name', 'customer.last_name'];

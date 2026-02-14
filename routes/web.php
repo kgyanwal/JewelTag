@@ -3,6 +3,9 @@
 use App\Http\Controllers\LabelLayoutController;
 use Illuminate\Support\Facades\Route;
 use App\Models\Sale;
+use App\Models\InventoryAudit;
+use App\Http\Controllers\Api\InventoryAuditController;
+
 
 Route::redirect('/', '/admin');
 Route::get('/login', function () {
@@ -21,3 +24,12 @@ Route::prefix('label-layout')->group(function () {
     Route::put('/update/{fieldId}', [LabelLayoutController::class, 'updateLayout']);
     Route::post('/save-all', [LabelLayoutController::class, 'saveAllLayouts']);
 });
+
+
+
+Route::post('/inventory/scan', [InventoryAuditController::class, 'recordScan'])
+     ->middleware('auth:sanctum'); // Ensure the scanner is logged in
+// This creates the URL: yourdomain.com/admin/inventory/audit/{id}
+Route::get('/admin/inventory/audit/{audit}', function (InventoryAudit $audit) {
+    return view('admin.inventory.audit', ['audit' => $audit]);
+})->name('inventory.audit')->middleware(['auth']);

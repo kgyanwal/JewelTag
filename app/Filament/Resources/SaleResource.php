@@ -227,6 +227,7 @@ class SaleResource extends Resource
                                 ->default('completed')->required(),
                         ]),
 
+
                         Section::make('Financial Summary')->schema([
                             self::totalRow('TAX TOTAL', 'tax_amount'),
                             self::totalRow('SUBTOTAL', 'subtotal'),
@@ -238,10 +239,30 @@ class SaleResource extends Resource
                             Forms\Components\Actions::make([
                                 Action::make('complete')
                                     ->label('COMPLETE SALE')
-                                    ->color('success')->button()->extraAttributes(['class' => 'w-full'])
-                                    ->action(fn($livewire) => $livewire->create()),
-                            ]),
-                        ]),
+                                    ->color('success')
+                                    ->button()
+                                    ->extraAttributes(['class' => 'w-full'])
+                                    // 1. Hide the button if the record is already completed
+                                    ->hidden(fn ($record) => $record && $record->status === 'completed')
+                                    // 2. Determine whether to call create() or save() based on the page context
+                                    ->action(function ($livewire, $record) {
+                                        if (method_exists($livewire, 'save')) {
+                                            $livewire->save(); // Context: Edit Page
+                                        } else {
+                                            $livewire->create(); // Context: Create Page
+                                        }
+
+                                        \Filament\Notifications\Notification::make()
+                                            ->title('Sale Finalized')
+                                            ->success()
+                                            ->send();
+                        }),
+                ]),
+            ]),
+
+
+
+
                     ]),
                 ]),
                 Hidden::make('final_total'),
