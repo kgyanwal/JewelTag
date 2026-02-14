@@ -115,4 +115,12 @@ class StockAgingReport extends Page implements HasForms
 
         $this->reportData = $query->groupBy('department')->get()->toArray();
     }
+    public static function shouldRegisterNavigation(): bool
+    {
+        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = \App\Helpers\Staff::user();
+
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+    }
 }

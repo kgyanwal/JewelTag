@@ -19,9 +19,13 @@ class ArchivedStockResource extends Resource
     /**
      * Restriction: Only Superadmin can see this page
      */
-    public static function canAccess(): bool
+    public static function shouldRegisterNavigation(): bool
     {
-        return auth()->user()->hasRole('Superadmin');
+        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = \App\Helpers\Staff::user();
+
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin']) ?? false;
     }
 
     public static function table(Table $table): Table
@@ -69,4 +73,5 @@ class ArchivedStockResource extends Resource
             'index' => \App\Filament\Resources\ArchivedStockResource\Pages\ListArchivedStocks::route('/'),
         ];
     }
+   
 }

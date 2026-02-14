@@ -84,6 +84,7 @@ class SaleResource extends Resource
                                             'qty' => $get('current_qty') ?? 1,
                                             'sold_price' => $get('current_price'),
                                             'discount_percent' => 0,
+                                            'discount_amount' => 0,
                                         ];
 
                                         $set('items', $currentItems);
@@ -119,38 +120,116 @@ class SaleResource extends Resource
                                             ->readOnly(),
                                     ]),
                             ]),
-                        Section::make('Current Bill Items')->schema([
-                            Repeater::make('items')
-                                ->relationship('items')
-                                ->schema([
-                                    Hidden::make('product_item_id')->dehydrated(),
-                                    Hidden::make('repair_id')->dehydrated(),
-                                    Hidden::make('custom_order_id')->dehydrated(),
-                                    TextInput::make('stock_no_display')->label('Item')->readOnly()->dehydrated(false)->columnSpan(2),
-                                    TextInput::make('custom_description')->label('Description')->columnSpan(4),
-                                    TextInput::make('qty')->numeric()->default(1)->required()->live()
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            if ($pid = $get('product_item_id')) {
-                                                $productItem = ProductItem::find($pid);
-                                                if ($productItem && $state > $productItem->qty) {
-                                                    $set('qty', $productItem->qty);
-                                                }
-                                            }
-                                            self::updateTotals($get, $set);
-                                        }),
-                                    TextInput::make('sold_price')->label('Price')->numeric()->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))->columnSpan(2),
-                                    TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))->columnSpan(2),
-                                ])
-                                ->columns(12)
-                                ->addable(false)
-                                ->deletable(true)
-                                ->reorderable(false)
-                                ->default([])
-                                ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
-                        ]),
+                       Section::make('Current Bill Items')->schema([
+    Repeater::make('items')
+        ->relationship('items')
+        ->schema([
+            Hidden::make('product_item_id')->dehydrated(),
+            Hidden::make('repair_id')->dehydrated(),
+            Hidden::make('custom_order_id')->dehydrated(),
+
+            TextInput::make('stock_no_display')
+                ->label('Item')
+                ->readOnly()
+                ->dehydrated(false)
+                ->columnSpan(2),
+
+            TextInput::make('custom_description')
+                ->label('Description')
+                ->columnSpan(3), // Adjusted span to fit new field
+
+            // 1. QUANTITY CHANGE: Update Line Total & Discount Amount
+            TextInput::make('qty')
+                ->numeric()
+                ->default(1)
+                ->required()
+                ->live(onBlur: true) // Wait until user leaves field
+                ->columnSpan(1)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    // Logic to limit qty based on stock
+                    if ($pid = $get('product_item_id')) {
+                        $productItem = ProductItem::find($pid);
+                        if ($productItem && $state > $productItem->qty) {
+                            $set('qty', $productItem->qty);
+                            $state = $productItem->qty;
+                        }
+                    }
+
+                    // Recalculate Discount Amount based on existing Percent
+                    $price = floatval($get('sold_price'));
+                    $percent = floatval($get('discount_percent'));
+                    $lineTotal = $price * $state;
+                    $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
+                    
+                    self::updateTotals($get, $set);
+                }),
+
+            // 2. PRICE CHANGE: Update Discount Amount
+            TextInput::make('sold_price')
+                ->label('Price')
+                ->numeric()
+                ->live(onBlur: true)
+                ->columnSpan(2)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    // Recalculate Discount Amount based on existing Percent
+                    $qty = intval($get('qty'));
+                    $percent = floatval($get('discount_percent'));
+                    $lineTotal = floatval($state) * $qty;
+                    $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
+
+                    self::updateTotals($get, $set);
+                }),
+
+            // 3. PERCENT CHANGE: Calculate Amount ($)
+            TextInput::make('discount_percent')
+                ->label('Disc %')
+                ->numeric()
+                ->suffix('%')
+                ->live(onBlur: true)
+                ->columnSpan(2)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    $price = floatval($get('sold_price'));
+                    $qty = intval($get('qty'));
+                    $lineTotal = $price * $qty;
+
+                    // Calculate $ Amount from %
+                    $amount = $lineTotal * (floatval($state) / 100);
+                    $set('discount_amount', number_format($amount, 2, '.', ''));
+
+                    self::updateTotals($get, $set);
+                }),
+
+            // 4. NEW FIELD: AMOUNT CHANGE: Calculate Percent (%)
+            TextInput::make('discount_amount')
+                ->label('Disc $')
+                ->numeric()
+                ->prefix('$')
+                ->live(onBlur: true)
+                ->columnSpan(2)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    $price = floatval($get('sold_price'));
+                    $qty = intval($get('qty'));
+                    $lineTotal = $price * $qty;
+
+                    if ($lineTotal > 0) {
+                        // Calculate % from $ Amount
+                        $percent = (floatval($state) / $lineTotal) * 100;
+                        $set('discount_percent', number_format($percent, 2, '.', ''));
+                    } else {
+                        $set('discount_percent', 0);
+                    }
+
+                    self::updateTotals($get, $set);
+                }),
+        ])
+        ->columns(12)
+        ->addable(false)
+        ->deletable(true)
+        ->reorderable(false)
+        ->default([])
+        ->live()
+        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
+]),
 
                         Section::make('Shipping & Handling')->schema([
                             Grid::make(4)->schema([
@@ -166,14 +245,50 @@ class SaleResource extends Resource
 
                     Group::make()->columnSpan(4)->schema([
                         Section::make('Customer & Personnel')->schema([
-                            Select::make('customer_id')
-                                ->label('Customer')
-                                ->relationship('customer', 'name')
-                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name}")
-                                ->searchable(['name', 'phone'])
-                                ->preload()
-                                ->required()
-                                ->live(),
+                           Select::make('customer_id')
+    ->label('Customer')
+    ->relationship('customer', 'name')
+    // 1. Clean Display: Only show First and Last Name
+    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
+    // 2. Searchable: You can still search by Name OR Phone
+    ->searchable(['name', 'last_name', 'phone'])
+    ->preload()
+    ->required()
+    ->live()
+    
+    // 3. The "Create New" (+) Button Logic
+    ->createOptionForm([
+        Forms\Components\Section::make('New Customer')->schema([
+            Forms\Components\Grid::make(2)->schema([
+                Forms\Components\TextInput::make('name')
+                    ->label('First Name')
+                    ->required(),
+                Forms\Components\TextInput::make('last_name')
+                    ->label('Last Name'),
+                Forms\Components\TextInput::make('phone')
+                    ->label('Mobile Phone')
+                    ->tel()
+                    ->required()
+                    ->unique('customers', 'phone'),
+                Forms\Components\TextInput::make('email')
+                    ->label('Email')
+                    ->email(),
+            ]),
+            Forms\Components\TextInput::make('address')
+                ->label('Address')
+                ->columnSpanFull(),
+            // Auto-generate a customer number in the background
+            Forms\Components\Hidden::make('customer_no')
+                ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
+        ])
+    ])
+    ->createOptionUsing(function (array $data) {
+        // Save the new customer
+        $customer = \App\Models\Customer::create($data);
+        
+        // Return their ID so they are immediately selected in the dropdown
+        return $customer->id;
+    }),
 
                             Placeholder::make('cust_info')
                                 ->label('')
@@ -308,13 +423,15 @@ class SaleResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make()->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
                 Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
-                Tables\Actions\DeleteAction::make()
-    ->label('Delete') // Rename "Delete" to "Archive"
+               Tables\Actions\DeleteAction::make()
+    ->label('Archive')
     ->icon('heroicon-o-archive-box-arrow-down')
-    ->modalHeading('Archive Sale')
-    ->modalDescription('Are you sure? Items will return to stock and this sale will move to Archives.'),
-    // 🔒 Superadmin Only
-                Tables\Actions\Action::make('refund')
+    ->modalHeading('Delete Sale')
+    ->modalDescription('Are you sure? Items will return to stock and this sale will move to Archives.')
+    // 🔒 Security Check: Only allow Superadmin OR Administration
+    ->visible(fn () => auth()->user()->hasAnyRole(['Superadmin', 'Administration'])),
+
+Tables\Actions\Action::make('refund')
     ->label('Refund')
     ->icon('heroicon-o-arrow-uturn-left')
     ->color('danger')
@@ -364,27 +481,29 @@ class SaleResource extends Resource
     }
 
     public static function updateTotals(Get $get, Set $set)
-    {
-        $items = $get('items') ?? [];
-        $shipping = floatval($get('shipping_charges') ?? 0);
-        $subtotal = 0;
+{
+    $items = $get('items') ?? [];
+    $shipping = floatval($get('shipping_charges') ?? 0);
+    $subtotal = 0;
 
-        foreach ($items as $item) {
-            $price = floatval($item['sold_price'] ?? 0);
-            $qty = intval($item['qty'] ?? 1);
-            $percent = floatval($item['discount_percent'] ?? 0);
-            $rowTotal = $price * $qty;
-            $subtotal += ($rowTotal - ($rowTotal * ($percent / 100)));
-        }
-
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
-        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-
-        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-        $set('tax_amount', number_format($tax, 2, '.', ''));
-        $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
+    foreach ($items as $item) {
+        $price = floatval($item['sold_price'] ?? 0);
+        $qty = intval($item['qty'] ?? 1);
+        $percent = floatval($item['discount_percent'] ?? 0);
+        
+        $rowTotal = $price * $qty;
+        // This formula is still valid because percent is auto-updated when amount changes
+        $subtotal += ($rowTotal - ($rowTotal * ($percent / 100)));
     }
+
+    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
+    $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+
+    $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
+    $set('tax_amount', number_format($tax, 2, '.', ''));
+    $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
+}
 
     protected static function totalRow($label, $field)
     {

@@ -23,7 +23,11 @@ class ArchivedSaleResource extends Resource
     // 🔒 Only Superadmin can see this menu
     public static function shouldRegisterNavigation(): bool
     {
-        return auth()->user()->hasRole('Superadmin');
+        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = \App\Helpers\Staff::user();
+
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin']) ?? false;
     }
 
     // 🔍 This is the Magic: Only show "Deleted" items
@@ -63,4 +67,6 @@ class ArchivedSaleResource extends Resource
             'index' => Pages\ListArchivedSales::route('/'),
         ];
     }
+
+    
 }
