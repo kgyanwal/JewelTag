@@ -25,9 +25,9 @@ class LaybuyResource extends Resource
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $slug = 'laybuys';
     
-    protected static ?string $navigationLabel = 'Laybuy Plans';
-    protected static ?string $modelLabel = 'Laybuy Plan';
-    protected static ?string $pluralModelLabel = 'Laybuy Plans';
+    protected static ?string $navigationLabel = 'Layby Plans';
+    protected static ?string $modelLabel = 'Layby Plan';
+    protected static ?string $pluralModelLabel = 'Layby Plans';
 
     public static function form(Form $form): Form
     {
