@@ -8,8 +8,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CustomOrder extends Model
 {
-     use LogsActivity;
+    use LogsActivity;
+    
     protected $guarded = [];
+
+    // 🔹 VITAL: Cast dates and booleans for Filament
+    protected $casts = [
+        'due_date' => 'date',
+        'expected_delivery_date' => 'date',
+        'follow_up_date' => 'date',
+        'is_customer_notified' => 'boolean',
+        'notified_at' => 'datetime',
+    ];
 
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function store(): BelongsTo { return $this->belongsTo(Store::class); }

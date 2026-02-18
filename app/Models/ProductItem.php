@@ -66,7 +66,10 @@ public function store(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
     }
-
+public function wishlists() 
+{
+    return $this->hasMany(Wishlist::class); 
+}
     public function memoVendor() {
     return $this->belongsTo(Supplier::class, 'memo_vendor_id');
 }

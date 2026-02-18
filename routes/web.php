@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\LabelLayoutController;
 use App\Http\Controllers\Api\InventoryAuditController;
+use App\Http\Controllers\ReceiptController;
 use App\Models\Sale;
 use App\Models\InventoryAudit;
 use Illuminate\Support\Facades\Route;
@@ -47,3 +48,5 @@ Route::post('/inventory/scan', [InventoryAuditController::class, 'recordScan'])
 
 Route::post('/inventory/complete/{id}', [InventoryAuditController::class, 'completeAudit'])
      ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]);
+
+Route::get('/receipt/{sale}', [ReceiptController::class, 'show'])->name('receipt.show');     

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Filament\Resources;
+
 use App\Filament\Resources\ProductItemResource\Pages;
 use App\Models\ProductItem;
 use App\Services\ZebraPrinterService;
@@ -54,30 +55,30 @@ class ProductItemResource extends Resource
      * Uses withTrashed() to ensure we skip past soft-deleted barcodes like D1002.
      */
     public static function generatePersistentBarcode(?string $prefix = null): string
-{
-    // If no prefix passed (like in Edit mode or manual calls), fetch from DB
-    if (!$prefix) {
-        $prefix = \Illuminate\Support\Facades\DB::table('site_settings')
-            ->where('key', 'barcode_prefix')
-            ->value('value') ?? 'D';
+    {
+        // If no prefix passed (like in Edit mode or manual calls), fetch from DB
+        if (!$prefix) {
+            $prefix = \Illuminate\Support\Facades\DB::table('site_settings')
+                ->where('key', 'barcode_prefix')
+                ->value('value') ?? 'D';
+        }
+
+        $maxInDb = ProductItem::withTrashed()
+            ->where('barcode', 'LIKE', "{$prefix}%")
+            ->selectRaw("MAX(CAST(SUBSTRING(barcode, " . (strlen($prefix) + 1) . ") AS UNSIGNED)) as max_num")
+            ->first();
+
+        $lastNumber = $maxInDb && $maxInDb->max_num ? (int) $maxInDb->max_num : 1000;
+        $nextNumber = $lastNumber + 1;
+
+        // Optional: Keep your sequence tracker updated
+        \App\Models\InventorySetting::updateOrCreate(
+            ['key' => 'barcode_sequence'],
+            ['value' => $nextNumber + 1]
+        );
+
+        return $prefix . $nextNumber;
     }
-
-    $maxInDb = ProductItem::withTrashed()
-        ->where('barcode', 'LIKE', "{$prefix}%")
-        ->selectRaw("MAX(CAST(SUBSTRING(barcode, " . (strlen($prefix) + 1) . ") AS UNSIGNED)) as max_num")
-        ->first();
-
-    $lastNumber = $maxInDb && $maxInDb->max_num ? (int) $maxInDb->max_num : 1000;
-    $nextNumber = $lastNumber + 1;
-
-    // Optional: Keep your sequence tracker updated
-    \App\Models\InventorySetting::updateOrCreate(
-        ['key' => 'barcode_sequence'],
-        ['value' => $nextNumber + 1]
-    );
-
-    return $prefix . $nextNumber;
-}
 
     public static function form(Form $form): Form
     {
@@ -105,7 +106,7 @@ class ProductItemResource extends Resource
                                     ->label('Stock Type')
                                     ->options(['new' => 'New Stock', 'trade_in' => 'Trade-In'])
                                     ->default(fn($record) => $record?->is_trade_in ? 'trade_in' : 'new')
-                                    ->required(fn ($livewire) => $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem)
+                                    ->required(fn($livewire) => $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem)
 
                                     ->inline()->live()->dehydrated(false)
                                     ->columnSpan(4),
@@ -119,9 +120,9 @@ class ProductItemResource extends Resource
                                     })
                                     ->visible(fn(Get $get) => $get('creation_mode') === 'trade_in')
                                     ->required(function (Get $get, $livewire) {
-    return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem
-        && $get('creation_mode') === 'trade_in';
-})
+                                        return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem
+                                            && $get('creation_mode') === 'trade_in';
+                                    })
 
                                     ->searchable()->live()
                                     ->afterStateUpdated(function ($state, Forms\Set $set) {
@@ -130,7 +131,9 @@ class ProductItemResource extends Resource
                                             $set('cost_price', $tradeValue);
                                             $set('supplier_id', null);
                                             $set('is_trade_in', true);
-                                        } else { $set('is_trade_in', false); }
+                                        } else {
+                                            $set('is_trade_in', false);
+                                        }
                                     })->columnSpan(8),
                             ]),
 
@@ -165,7 +168,7 @@ class ProductItemResource extends Resource
 
                         Placeholder::make('memo_vender_label')
                             ->label('Current Inventory Type')
-                            ->visible(fn (Get $get) => filled($get('supplier_id'))) 
+                            ->visible(fn(Get $get) => filled($get('supplier_id')))
                             ->content(function (Get $get) {
                                 $supplier = \App\Models\Supplier::find($get('supplier_id'));
                                 return $get('is_memo') ? "Consignment: Memo + {$supplier?->company_name}" : "Owned: {$supplier?->company_name}";
@@ -173,7 +176,7 @@ class ProductItemResource extends Resource
 
                         Select::make('memo_status')->label('Memo Action')
                             ->options(['on_memo' => 'On Memo', 'returned' => 'Returned to Vendor'])
-                            ->default('on_memo')->visible(fn (Get $get) => $get('is_memo'))->required(fn (Get $get) => $get('is_memo'))->columnSpan(3),
+                            ->default('on_memo')->visible(fn(Get $get) => $get('is_memo'))->required(fn(Get $get) => $get('is_memo'))->columnSpan(3),
                     ]),
 
                     CheckboxList::make('print_options')
@@ -185,31 +188,31 @@ class ProductItemResource extends Resource
                     TextInput::make('rfid_code')
                         ->label('RFID EPC Code')
                         // 🚀 Generates a unique 8-character hex code for the database
-                        ->default(fn () => strtoupper(bin2hex(random_bytes(4)))) 
+                        ->default(fn() => strtoupper(bin2hex(random_bytes(4))))
                         ->required()
                         ->dehydrated() // Ensures it saves even if the field is not manually edited
-                        ->helperText(fn (Get $get) => $get('rfid_code') ? "Short ID: " . self::generateShortCode($get('rfid_code')) : null)
+                        ->helperText(fn(Get $get) => $get('rfid_code') ? "Short ID: " . self::generateShortCode($get('rfid_code')) : null)
                         ->columnSpan(6),
 
                     TextInput::make('supplier_code')->label('Vendor Code')->columnSpan(3),
 
                     Select::make('department')->label('Department')
-                    ->hintAction(
+                        ->hintAction(
                             FormAction::make('Help')
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure Department')
                         )
-                        ->options(function() {
+                        ->options(function () {
                             $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
                             return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
                         })
-                        ->required()->searchable()->live()->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+                        ->required()->searchable()->live()->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
                         ->columnSpan(3),
 
                     // **2. Fix Sub-Department Select**
                     Select::make('sub_department')
                         ->label('Sub-Department')
-                        ->options(function() {
+                        ->options(function () {
                             $data = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
                             // Ensure we use the string value as BOTH the key and the label
                             return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
@@ -221,17 +224,17 @@ class ProductItemResource extends Resource
                     // **1. Fix Category Select**
                     Select::make('category')
                         ->label('Category')
-                        ->options(function() {
+                        ->options(function () {
                             $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
                             // Ensure we use the string value as BOTH the key and the label
                             return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
                         })
                         ->searchable()
-                        ->dehydrated() 
+                        ->dehydrated()
                         ->columnSpan(2),
 
                     Select::make('metal_type')->label('Metal Karat')
-                     ->hintAction(
+                        ->hintAction(
                             FormAction::make('Help')
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
@@ -245,8 +248,8 @@ class ProductItemResource extends Resource
 
                     /* ───────── PRICING ───────── */
                     TextInput::make('qty')->label('Qty')->numeric()->required()->default(1)->columnSpan(2),
-                    TextInput::make('cost_price')->label('Cost price')->prefix('$')->numeric()->required()->live(onBlur: true) 
-                        ->afterStateUpdated(fn (Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))->columnSpan(2),
+                    TextInput::make('cost_price')->label('Cost price')->prefix('$')->numeric()->required()->live(onBlur: true)
+                        ->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))->columnSpan(2),
                     TextInput::make('retail_price')->label('Retail price')->prefix('$')->numeric()->required()->live()->columnSpan(3),
                     TextInput::make('web_price')->label('Web price')->prefix('$')->numeric()->live()->columnSpan(3),
                     TextInput::make('discount_percent')->label('Discount percent')->suffix('%')->default(0)->numeric()->columnSpan(2),
@@ -268,25 +271,80 @@ class ProductItemResource extends Resource
                 Tables\Columns\IconColumn::make('is_trade_in')->label('SOURCE')->boolean()->trueIcon('heroicon-o-user-group')->falseIcon('heroicon-o-building-office'),
                 Tables\Columns\TextColumn::make('custom_description')->label('DESCRIPTION')->limit(40)->wrap(),
                 Tables\Columns\TextColumn::make('retail_price')->label('PRICE')->money('USD')->color('success'),
-                
+
                 /* RFID COLUMNS RESTORED */
                 Tables\Columns\TextColumn::make('rfid_code')->label('RFID NUMBER')->fontFamily('mono')->limit(12)->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('rfid_status')->label('RFID')->badge()->getStateUsing(fn($record) => filled($record->rfid_code) ? 'Encoded' : 'Missing')
                     ->color(fn($state) => $state === 'Encoded' ? 'success' : 'gray'),
 
-                Tables\Columns\TextColumn::make('status')->badge()->color(fn($state) => match($state){'in_stock'=>'success','sold'=>'danger',default=>'gray'}),
+                Tables\Columns\TextColumn::make('status')->badge()->color(fn($state) => match ($state) {
+                    'in_stock' => 'success',
+                    'sold' => 'danger',
+                    default => 'gray'
+                }),
             ])
             ->actions([
                 ActionGroup::make([
                     EditAction::make(),
                     ViewAction::make(),
+                    Action::make('addToWishlist')
+                    ->label('Add to Wishlist')
+                    ->icon('heroicon-o-heart')
+                    ->color('danger')
+                    ->form([
+                        Select::make('customer_id')
+                            ->label('Customer')
+                            // ❌ REMOVE THIS: ->relationship('customer', 'name') 
+                            
+                            // ✅ USE THIS INSTEAD: Manually fetch options
+                            ->options(function () {
+                                return \App\Models\Customer::all()->mapWithKeys(function ($customer) {
+                                    return [$customer->id => "{$customer->name} {$customer->last_name} ({$customer->phone})"];
+                                });
+                            })
+                            ->searchable() // Allows typing to find the name
+                            ->preload()
+                            ->required()
+                            
+                            // This part is fine (creating a new customer on the fly)
+                            ->createOptionForm([
+                                TextInput::make('name')->required(),
+                                TextInput::make('last_name'),
+                                TextInput::make('phone')->tel()->required(),
+                            ])
+                            ->createOptionUsing(function (array $data) {
+                                return \App\Models\Customer::create($data)->id;
+                            }),
+                            
+                        Textarea::make('notes')
+                            ->label('Notes')
+                            ->placeholder('e.g. Loves this for anniversary, budget is tight'),
+                            
+                        Forms\Components\DatePicker::make('follow_up_date')
+                            ->label('Follow Up Date'),
+                    ])
+                    ->action(function (ProductItem $record, array $data) {
+                        \App\Models\Wishlist::create([
+                            'product_item_id' => $record->id,
+                            'customer_id' => $data['customer_id'],
+                            'sales_person_id' => auth()->id(),
+                            'notes' => $data['notes'],
+                            'follow_up_date' => $data['follow_up_date'],
+                            'status' => 'active',
+                        ]);
+
+                        Notification::make()->title('Added to Wishlist')->success()->send();
+                    }),
                     Tables\Actions\DeleteAction::make()
-            ->label('Archive'),
+                        ->label('Archive'),
                     Action::make('print_barcode')->icon('heroicon-o-printer')->action(function ($record, ZebraPrinterService $service, $livewire) {
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, false));
                     }),
                     Action::make('print_rfid')->icon('heroicon-o-identification')->color('warning')->action(function ($record, ZebraPrinterService $service, $livewire) {
-                        if (!$record->rfid_code) { Notification::make()->title('No RFID Data')->danger()->send(); return; }
+                        if (!$record->rfid_code) {
+                            Notification::make()->title('No RFID Data')->danger()->send();
+                            return;
+                        }
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, true));
                     }),
                 ]),
@@ -295,7 +353,8 @@ class ProductItemResource extends Resource
 
     public static function runSmartPricing(Get $get, Forms\Set $set): void
     {
-        $cost = floatval($get('cost_price')); $dept = $get('department');
+        $cost = floatval($get('cost_price'));
+        $dept = $get('department');
         if ($cost <= 0 || !$dept) return;
         $data = collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->firstWhere('name', $dept);
         if ($data && isset($data['multiplier'])) {
@@ -305,10 +364,13 @@ class ProductItemResource extends Resource
             if (blank($get('custom_description'))) $set('custom_description', "{$dept} - " . ($get('metal_type') ?? 'Jewelry'));
         }
     }
-public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
-{
-    return parent::getEloquentQuery()
-        ->withoutTrashed();
-}
-    public static function getPages(): array { return ['index' => Pages\ListProductItems::route('/'), 'create' => Pages\CreateProductItem::route('/create'), 'edit' => Pages\EditProductItem::route('/{record}/edit')]; }
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()
+            ->withoutTrashed();
+    }
+    public static function getPages(): array
+    {
+        return ['index' => Pages\ListProductItems::route('/'), 'create' => Pages\CreateProductItem::route('/create'), 'edit' => Pages\EditProductItem::route('/{record}/edit')];
+    }
 }

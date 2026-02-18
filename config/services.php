@@ -27,6 +27,12 @@ return [
     'secret' => env('AWS_SECRET_ACCESS_KEY'),
     'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
 ],
+'sns' => [
+    'key' => env('AWS_SMS_ACCESS_KEY_ID'),
+    'secret' => env('AWS_SMS_SECRET_ACCESS_KEY'),
+    'region' => env('AWS_SMS_DEFAULT_REGION', 'us-east-2'),
+    'sms_from' => env('AWS_SNS_SMS_FROM'), // Ensure this is in your .env file
+],
 
     'zebra' => [
     'ip' => env('ZEBRA_PRINTER_IP', '192.168.1.60'),

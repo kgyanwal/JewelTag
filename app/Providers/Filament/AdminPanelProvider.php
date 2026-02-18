@@ -273,6 +273,7 @@ HTML
                 \App\Filament\Resources\ArchivedStockResource::class,
                 \App\Filament\Resources\ArchivedSaleResource::class,
                 \App\Filament\Resources\InventoryAuditResource::class,
+                 \App\Filament\Resources\WishlistResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
@@ -293,6 +294,8 @@ HTML
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
+                 \App\Filament\Widgets\ScrapGoldCalculator::class,
+                  \App\Filament\Widgets\UpcomingFollowUps::class,
             ])
             ->middleware([
                 EncryptCookies::class,

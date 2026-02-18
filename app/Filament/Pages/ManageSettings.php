@@ -8,6 +8,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TagsInput;
+use Filament\Forms\Components\KeyValue;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
@@ -37,11 +38,15 @@ class ManageSettings extends Page
             ? json_decode($paymentMethodsJson, true) 
             : $defaultMethods;
 
+        $warrantyOptionsJson = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+        $defaultWarranties = ['1 Year', '2 Years', 'Lifetime', '6 Months'];
+        $warrantyOptions = $warrantyOptionsJson ? json_decode($warrantyOptionsJson, true) : $defaultWarranties;    
         // 3. Fill the form
         $this->form->fill([
             'tax_rate' => $taxRate,
             'barcode_prefix' => $barcodePrefix,
             'payment_methods' => $paymentMethods, 
+            'warranty_options' => $warrantyOptions,
         ]);
     }
 
@@ -80,6 +85,12 @@ class ManageSettings extends Page
                             ->helperText('Add or remove payment methods available at checkout.')
                             ->reorderable()
                             ->required(),
+
+                         TagsInput::make('warranty_options')
+                            ->label('Warranty Duration Options')
+                            ->placeholder('Type duration (e.g. 1 Year) and hit Enter')
+                            ->helperText('These options will appear in the Sales dropdown.')
+                            ->reorderable(),   
                     ])
             ])
             ->statePath('data'); // Binds the form to the $data array
@@ -117,6 +128,7 @@ class ManageSettings extends Page
             ['value' => json_encode($state['payment_methods']), 'updated_at' => now()]
         );
 
+        DB::table('site_settings')->updateOrInsert(['key' => 'warranty_options'], ['value' => json_encode($state['warranty_options']), 'updated_at' => now()]);
         Notification::make()
             ->title('Settings Updated')
             ->success()

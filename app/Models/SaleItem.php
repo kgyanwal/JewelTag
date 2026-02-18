@@ -30,7 +30,10 @@ public function customOrder(): BelongsTo
 {
     return $this->belongsTo(CustomOrder::class, 'custom_order_id');
 }
-
+public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
    protected static function booted()
 {
     static::created(function ($saleItem) {

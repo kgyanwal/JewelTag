@@ -35,6 +35,10 @@ class Sale extends Model
         return $this->belongsTo(ProductItem::class);
     }
 
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
     public function laybuy()
     {
         return $this->hasOne(Laybuy::class, 'sale_id');

@@ -8,10 +8,68 @@ use Filament\Resources\Pages\CreateRecord;
 use App\Models\ProductItem;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\Staff;
+use Filament\Actions\Action;
+use Filament\Forms\Components\TextInput;
 class CreateSale extends CreateRecord
 {
     protected static string $resource = SaleResource::class;
+protected function getFormActions(): array
+    {
+        return [
+            Action::make('complete_sale')
+                ->label('Complete Sale')
+                ->color('success')
+                ->icon('heroicon-o-check')
+                ->extraAttributes(['class' => 'w-full md:w-auto'])
+                
+                // 1. POPUP CONFIGURATION
+                ->requiresConfirmation()
+                ->modalHeading('Staff Verification')
+                ->modalDescription('Please enter your PIN to certify and finalize this sale.')
+                ->modalSubmitActionLabel('Verify & Save')
+                
+                // 2. PIN FORM
+                ->form([
+                    TextInput::make('verification_pin')
+                        ->label('Enter PIN')
+                        ->password()
+                        ->revealable()
+                        ->required()
+                        ->numeric()
+                        ->autofocus(),
+                ])
+                
+                // 3. THE LOGIC
+                ->action(function (array $data) {
+                    // A. Get Active Staff
+                    $staff = Staff::user() ?? auth()->user();
 
+                    if (!$staff) {
+                        Notification::make()->title('Error')->body('No active staff session found.')->danger()->send();
+                        return;
+                    }
+
+                    // B. Verify PIN
+                    if ($staff->pin_code !== $data['verification_pin']) {
+                        Notification::make()
+                            ->title('Invalid PIN')
+                            ->body('Verification failed. Sale was not created.')
+                            ->danger()
+                            ->send();
+                        return; // 🛑 Stop execution
+                    }
+
+                    // C. Submit the Main Form
+                    // This creates the record using the data currently in the main form
+                    $this->create(); 
+                }),
+                
+            // Optional: Keep the "Cancel" button
+            parent::getCancelFormAction(),
+        ];
+    }
+    
 protected function beforeCreate(): void
 {
     $items = $this->data['items'] ?? [];

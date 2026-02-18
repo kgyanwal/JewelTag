@@ -91,7 +91,7 @@ protected static ?int $navigationSort = 1;
                                     ]),
 
                                 // --- TAB 2: MARKETING & JEWELRY ---
-                                Tabs\Tab::make('Marketing')
+                                Tabs\Tab::make('Personal Details')
                                     ->icon('heroicon-o-megaphone')
                                     ->schema([
                                         Grid::make(3)->schema([

@@ -9,8 +9,10 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{Section, Grid, Select, TextInput, Textarea, FileUpload, ViewField};
+use Filament\Forms\Components\{Section, Grid, Select, TextInput, Textarea, FileUpload, DatePicker, Toggle, Placeholder, DateTimePicker};
 use Filament\Notifications\Notification;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 
 class CustomOrderResource extends Resource
 {
@@ -21,53 +23,128 @@ class CustomOrderResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
+            // 👈 LEFT COLUMN (Main Details)
             Forms\Components\Group::make()->schema([
-                Section::make('Customer & Design Notes')
+                
+                Section::make('Customer & Design')->schema([
+                    Select::make('customer_id')
+                        ->label('Select Customer')
+                        ->relationship('customer', 'name')
+                        ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->name} {$record->last_name}")
+                        ->searchable(['name', 'phone'])
+                        ->preload()
+                        ->required(),
+                    
+                    Textarea::make('design_notes')
+                        ->label('Design Description')
+                        ->rows(4)
+                        ->placeholder('Describe the custom piece details...'),
+                        
+                    FileUpload::make('reference_image')
+                        ->image()
+                        ->directory('custom-orders'),
+                ]),
+
+                Section::make('Vendor & Scheduling') // 🆕 Added Vendor & Dates
                     ->schema([
-                       Select::make('customer_id')
-    ->label('Select Customer')
-    ->relationship('customer', 'name') // 🔹 Matches the method name in your model
-    ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->name}") // 🔹 Ensures name displays
-    ->searchable(['name', 'phone']) // 🔹 Allows searching by both name and phone
-    ->preload() // 🔹 Loads the list immediately when clicked
-    ->required(),
-                        Textarea::make('design_notes')
-                            ->rows(5)
-                            ->placeholder('Describe the custom piece details...'),
-                        FileUpload::make('reference_image')
-                            ->image()
-                            ->directory('custom-orders'),
+                        Grid::make(2)->schema([
+                            TextInput::make('vendor_name')
+                                ->label('Vendor / Artisan Name')
+                                ->placeholder('Who is making this?'),
+                            
+                            TextInput::make('vendor_info')
+                                ->label('Vendor Contact/Info'),
+                        ]),
+
+                        Grid::make(3)->schema([
+                            DatePicker::make('due_date')
+                                ->label('Production Due Date')
+                                ->native(false),
+                                
+                            DatePicker::make('expected_delivery_date')
+                                ->label('Cust. Delivery Date')
+                                ->native(false),
+
+                            DatePicker::make('follow_up_date')
+                                ->label('Follow Up By')
+                                ->native(false),
+                        ]),
                     ]),
+
             ])->columnSpan(8),
 
+            // 👉 RIGHT COLUMN (Specs & Status)
             Forms\Components\Group::make()->schema([
-                Section::make('Technical Specifications')
-                    ->schema([
-                        Select::make('metal_type')
-                            ->options([
-                                '10k' => '10k Gold',
-                                '14k' => '14k Gold',
-                                '18k' => '18k Gold',
-                                'platinum' => 'Platinum',
-                                'silver' => 'Silver',
-                            ])->required(),
-                        TextInput::make('metal_weight')->numeric()->suffix('grams'),
-                        TextInput::make('diamond_weight')->numeric()->suffix('ctw'),
-                        TextInput::make('size')->placeholder('e.g., 7.5'),
+                
+                Section::make('Specs')->schema([
+                    Select::make('metal_type')
+                        ->options([
+                            '10k' => '10k Gold',
+                            '14k' => '14k Gold',
+                            '18k' => '18k Gold',
+                            'platinum' => 'Platinum',
+                            'silver' => 'Silver',
+                        ])->required(),
+                    
+                    Grid::make(2)->schema([
+                        TextInput::make('metal_weight')->numeric()->suffix('g'),
+                        TextInput::make('diamond_weight')->numeric()->suffix('ct'),
                     ]),
-                Section::make('Pricing & Status')
-                    ->schema([
-                        TextInput::make('budget')->numeric()->prefix('$'),
-                        TextInput::make('quoted_price')->numeric()->prefix('$')->required(),
-                        Select::make('status')
-                            ->options([
-                                'draft' => 'Draft',
-                                'quoted' => 'Quoted',
-                                'approved' => 'Approved',
-                                'in_production' => 'In Production',
-                                'completed' => 'Completed',
-                            ])->default('draft'),
-                    ]),
+                    
+                    TextInput::make('size')->placeholder('Ring Size / Length'),
+                ]),
+
+                Section::make('Financials & Status')->schema([
+                    TextInput::make('budget')->numeric()->prefix('$'),
+                    TextInput::make('quoted_price')->numeric()->prefix('$')->required(),
+                    
+                    Select::make('status')
+                        ->options([
+                            'draft' => 'Draft',
+                            'quoted' => 'Quoted',
+                            'approved' => 'Approved',
+                            'in_production' => 'In Production',
+                            'received' => 'Received from Vendor',
+                            'completed' => 'Picked Up / Completed',
+                        ])
+                        ->default('draft')
+                        ->live(), 
+                    
+                    // 🆕 Notification Logic
+                    Section::make('Customer Notification')
+                        ->schema([
+                            Placeholder::make('notify_help')
+                                ->label('')
+                                ->content('Item received? Notify customer now:'),
+
+                            Toggle::make('is_customer_notified')
+                                ->label('Notify Customer (Email/SMS)')
+                                ->onColor('success')
+                                ->offColor('danger')
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set, $state, $record) {
+                                    if ($state && $record) {
+                                        // 📧 EMAIL LOGIC HERE:
+                                        // Mail::to($record->customer->email)->send(new CustomOrderReady($record));
+                                        
+                                        $set('notified_at', now());
+                                        
+                                        Notification::make()
+                                            ->title('Notification Sent')
+                                            ->body("Customer {$record->customer->name} has been notified.")
+                                            ->success()
+                                            ->send();
+                                    }
+                                }),
+                                
+                            DateTimePicker::make('notified_at')
+                                ->label('Sent At')
+                                ->readOnly(),
+                        ])
+                        ->visible(fn (Get $get) => in_array($get('status'), ['received', 'completed'])) 
+                        ->compact(),
+                ]),
+
             ])->columnSpan(4),
         ])->columns(12);
     }
@@ -76,37 +153,44 @@ class CustomOrderResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('order_no')->label('Order #')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('customer.name')->label('Customer'),
-                Tables\Columns\TextColumn::make('metal_type')->badge()->color('gray'),
+                Tables\Columns\TextColumn::make('order_no')->label('#')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('customer.name')->label('Customer')->searchable(),
+                Tables\Columns\TextColumn::make('vendor_name')->label('Vendor')->toggleable(),
+                Tables\Columns\TextColumn::make('due_date')->date('M d')->label('Due')->sortable()->color('danger'),
                 Tables\Columns\TextColumn::make('quoted_price')->money('USD')->weight('bold'),
-                Tables\Columns\SelectColumn::make('status')
-                    ->options([
-                        'draft' => 'Draft',
-                        'quoted' => 'Quoted',
-                        'approved' => 'Approved',
-                        'in_production' => 'Production',
-                        'completed' => 'Completed',
-                    ]),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'draft' => 'gray',
+                        'quoted' => 'info',
+                        'approved' => 'primary',
+                        'in_production' => 'warning',
+                        'received' => 'success',
+                        'completed' => 'success',
+                        default => 'gray',
+                    }),
+                Tables\Columns\IconColumn::make('is_customer_notified')
+                    ->label('Notified')
+                    ->boolean(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                // 🔹 THE MAGIC LINK: This button pushes the custom order to the POS
+                
+                // 🔹 Send to POS Action
                 Tables\Actions\Action::make('convertToSale')
-                    ->label('Send to POS')
+                    ->label('To Sale')
                     ->icon('heroicon-o-shopping-cart')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->modalHeading('Convert Custom Order to Sale?')
+                    ->visible(fn (CustomOrder $record) => $record->status === 'completed' || $record->status === 'received')
                     ->action(function (CustomOrder $record) {
                         return redirect()->route('filament.admin.resources.sales.create', [
                             'customer_id' => $record->customer_id,
                             'custom_order_id' => $record->id,
-                            'price' => $record->quoted_price,
-                            'desc' => "Custom Order: {$record->order_no} ({$record->metal_type})",
                         ]);
                     }),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

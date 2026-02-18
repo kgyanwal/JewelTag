@@ -11,7 +11,8 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Model;
-
+use App\Helpers\Staff; // 👈 Import Staff Helper
+use Filament\Forms\Components\TextInput; // 👈 Import Input
 class CreateProductItem extends CreateRecord
 {
     protected static string $resource = ProductItemResource::class;
@@ -34,7 +35,66 @@ class CreateProductItem extends CreateRecord
                 }),
         ];
     }
+protected function getFormActions(): array
+    {
+        return [
+            Action::make('create')
+                ->label('Add to Inventory')
+                ->color('primary')
+                ->icon('heroicon-o-plus')
+                ->size(\Filament\Support\Enums\ActionSize::Large) 
+                
+                // 🎨 CUSTOM UI STYLING (Shadows, Width, Bold Text)
+                ->extraAttributes([
+                    'class' => 'w-full md:w-1/2 mx-auto shadow-xl font-black tracking-wider ring-1 ring-green-600/20 transform hover:scale-105 transition-all duration-300',
+                    'style' => 'height: 3.5rem; font-size: 1.1rem;', 
+                ])
+                
+                // Pop-up Config
+                ->requiresConfirmation()
+                ->modalHeading('Staff Verification')
+                ->modalDescription('Enter your PIN to authorize adding this stock.')
+                ->modalSubmitActionLabel('Verify & Save')
+                
+                // PIN Form
+                ->form([
+                    TextInput::make('verification_pin')
+                        ->label('Enter PIN')
+                        ->password()
+                        ->revealable()
+                        ->required()
+                        ->numeric()
+                        ->autofocus(),
+                ])
+                
+                // Logic
+                ->action(function (array $data) {
+                    // Get Active Staff
+                    $staff = Staff::user() ?? auth()->user();
 
+                    if (!$staff) {
+                        Notification::make()->title('Error')->body('No active staff session found.')->danger()->send();
+                        return;
+                    }
+
+                    // Verify PIN
+                    if ($staff->pin_code !== $data['verification_pin']) {
+                        Notification::make()
+                            ->title('Invalid PIN')
+                            ->body('Access Denied. Inventory was not added.')
+                            ->danger()
+                            ->send();
+                        return; // 🛑 Stop execution
+                    }
+
+                    // ✅ Valid PIN: Run the creation logic
+                    $this->create();
+                }),
+
+            // Keep the cancel button
+            parent::getCancelFormAction(),
+        ];
+    }
    protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
 {
     $qty = (int) ($data['qty'] ?? 1);

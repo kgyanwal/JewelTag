@@ -245,11 +245,26 @@ if ($hasRepair) {
         }
 
         * {
+            font-size: 11px;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+h1, .store-info h1 {
+    font-size: 24px !important;
+}
+.invoice-number {
+    font-size: 20px !important;
+}
+.grand-total-row {
+    font-size: 18px !important;
+}
+.customer-name {
+    font-size: 15px !important;
+}
+.items-table th {
+    font-size: 10px !important;
+}
         body {
             font-family: 'Inter', sans-serif;
             font-size: 13px;
@@ -700,16 +715,30 @@ if ($hasRepair) {
                 </div>
 
                 @if(!isset($is_pdf) && !isset($is_email))
-                <div class="social-qr-card">
-                    <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://www.thediamondsq.com/" alt="QR">
-                    <div class="social-links">
-                        <div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">Follow Us Online</div>
-                        <a href="https://www.thediamondsq.com/" target="_blank"><i class="fas fa-globe"></i> thediamondsq.com</a>
-                        <a href="https://www.facebook.com/diamondsquareabq/" target="_blank"><i class="fab fa-facebook-square"></i> diamondsquareabq</a>
-                        <a href="https://www.instagram.com/thediamondsq/" target="_blank"><i class="fab fa-instagram"></i> thediamondsq</a>
-                    </div>
-                </div>
-                @endif
+<div class="social-qr-card">
+    <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={{ $sale->store->domain_url ?? config('app.url') }}" alt="QR">
+    
+    <div class="social-links">
+        <div style="font-weight: 700; color: var(--primary); margin-bottom: 4px;">Follow Us Online</div>
+        
+        <a href="{{ $sale->store->domain_url ?? '#' }}" target="_blank">
+            <i class="fas fa-globe"></i> {{ parse_url($sale->store->domain_url ?? config('app.url'), PHP_URL_HOST) }}
+        </a>
+
+        @if(!empty($sale->store->facebook_link))
+        <a href="{{ $sale->store->facebook_link }}" target="_blank">
+            <i class="fab fa-facebook-square"></i> Facebook
+        </a>
+        @endif
+
+        @if(!empty($sale->store->instagram_link))
+        <a href="{{ $sale->store->instagram_link }}" target="_blank">
+            <i class="fab fa-instagram"></i> Instagram
+        </a>
+        @endif
+    </div>
+</div>
+@endif
 
                 <div class="signature-box">
                     @if($receiptType == 'repair')
