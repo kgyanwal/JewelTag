@@ -49,7 +49,7 @@ class CustomOrderResource extends Resource
                     ->schema([
                         Grid::make(2)->schema([
                             TextInput::make('vendor_name')
-                                ->label('Vendor / Artisan Name')
+                                ->label('Vendor Name')
                                 ->placeholder('Who is making this?'),
                             
                             TextInput::make('vendor_info')
@@ -66,7 +66,7 @@ class CustomOrderResource extends Resource
                                 ->native(false),
 
                             DatePicker::make('follow_up_date')
-                                ->label('Follow Up By')
+                                ->label('Follow Up Date')
                                 ->native(false),
                         ]),
                     ]),

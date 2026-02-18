@@ -26,7 +26,7 @@ class CustomerResource extends Resource
     protected static ?string $model = Customer::class;
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Customer';
-protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 1;
     public static function form(Form $form): Form
     {
         return $form
@@ -55,6 +55,9 @@ protected static ?int $navigationSort = 1;
                                                 ->label('Mobile Phone')
                                                 ->tel()
                                                 ->prefix('+1')
+                                                ->mask('(999) 999-9999') // 👈 THIS ADDS THE FORMATTING
+                                                ->placeholder('(555) 555-5555') // Shows the user what to type
+                                                ->stripCharacters(['(', ')', '-', ' ']) // Optional: Removes format before saving to DB (saves as 5053750269)
                                                 ->required()
                                                 ->unique(ignoreRecord: true)
                                                 ->validationMessages([
@@ -63,18 +66,18 @@ protected static ?int $navigationSort = 1;
                                             TextInput::make('email')->email(),
                                         ]),
                                         Grid::make(2)->schema([
-                                           Select::make('sales_person')
-    ->label('Sales Person')
-    ->options(function () {
-        // 🔹 DEFENSIVE FIX: Only query roles that definitely exist in the DB
-        $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales']; // Changed 'Sales Associate' to 'Sales' to match seeder
-        
-        return \App\Models\User::whereHas('roles', function($q) use ($validRoles) {
-            $q->whereIn('name', $validRoles);
-        })->pluck('name', 'name');
-    })
-    ->searchable()
-    ->preload()
+                                            Select::make('sales_person')
+                                                ->label('Sales Person')
+                                                ->options(function () {
+                                                    // 🔹 DEFENSIVE FIX: Only query roles that definitely exist in the DB
+                                                    $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales']; // Changed 'Sales Associate' to 'Sales' to match seeder
+
+                                                    return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
+                                                        $q->whereIn('name', $validRoles);
+                                                    })->pluck('name', 'name');
+                                                })
+                                                ->searchable()
+                                                ->preload()
                                             // TextInput::make('tax_number')->label('Tax Number'),
                                         ]),
                                         Section::make('Address')
@@ -252,3 +255,4 @@ protected static ?int $navigationSort = 1;
         return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
     }
 }
+

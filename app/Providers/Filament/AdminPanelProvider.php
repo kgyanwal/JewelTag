@@ -291,11 +291,12 @@ HTML
                 \App\Filament\Pages\MemoInventory::class,
                 \App\Filament\Pages\Analytics::class,
                 \App\Filament\Pages\StockAgingReport::class,
+                 \App\Filament\Pages\UpcomingFollowUps::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
                  \App\Filament\Widgets\ScrapGoldCalculator::class,
-                  \App\Filament\Widgets\UpcomingFollowUps::class,
+                 
             ])
             ->middleware([
                 EncryptCookies::class,

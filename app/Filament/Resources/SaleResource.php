@@ -235,110 +235,135 @@ class SaleResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
-                       Section::make('Shipping & Handling')->schema([
-    Grid::make(4)->schema([
-        TextInput::make('shipping_charges')
-            ->label('Charges')->numeric()->prefix('$')->default(0)->required()->live()
-            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-        Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
-        Select::make('carrier')->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])->default('No carrier'),
-        TextInput::make('tracking_number')->label('Tracking')->nullable(),
-    ]),
+                        Section::make('Shipping & Handling')->schema([
+                            Grid::make(4)->schema([
+                                TextInput::make('shipping_charges')
+                                    ->label('Charges')->numeric()->prefix('$')->default(0)->required()->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
+                                Select::make('carrier')->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])->default('No carrier'),
+                                TextInput::make('tracking_number')->label('Tracking')->nullable(),
+                            ]),
 
-    // 🆕 WARRANTY & FOLLOW-UP SECTION (Added Below Shipping)
-    Grid::make(4)->schema([
-        // 1. Warranty Toggle (Yes/No)
-        Select::make('has_warranty')
-            ->label('Include Warranty?')
-            ->options([0 => 'No', 1 => 'Yes'])
-            ->default(0)
-            ->live(),
+                            // 🆕 WARRANTY & FOLLOW-UP SECTION (Added Below Shipping)
+                            Grid::make(4)->schema([
+                                // 1. Warranty Toggle (Yes/No)
+                                Select::make('has_warranty')
+                                    ->label('Include Warranty?')
+                                    ->options([0 => 'No', 1 => 'Yes'])
+                                    ->default(0)
+                                    ->live(),
 
-        // 2. Warranty Duration (Dynamic from Settings)
-        Select::make('warranty_period')
-            ->label('Warranty Time')
-            ->visible(fn (Get $get) => $get('has_warranty') == 1) // Only show if Yes
-            ->required(fn (Get $get) => $get('has_warranty') == 1)
-            ->options(function () {
-                // Fetch from settings or use defaults
-                $json = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
-                $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
-                return array_combine($options, $options); // Key = Value
-            }),
+                                // 2. Warranty Duration (Dynamic from Settings)
+                                Select::make('warranty_period')
+                                    ->label('Warranty Time')
+                                    ->visible(fn(Get $get) => $get('has_warranty') == 1) // Only show if Yes
+                                    ->required(fn(Get $get) => $get('has_warranty') == 1)
+                                    ->options(function () {
+                                        // Fetch from settings or use defaults
+                                        $json = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                        $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                                        return array_combine($options, $options); // Key = Value
+                                    }),
 
-        // 3. First Follow Up
-        Forms\Components\DatePicker::make('follow_up_date')
-            ->label('Follow Up (2 Weeks)')
-            ->default(now()->addWeeks(2)) // 🟢 Default to 2 weeks from today
-            ->native(false)
-            ->displayFormat('M d, Y'),
+                                // 3. First Follow Up
+                                Forms\Components\DatePicker::make('follow_up_date')
+                                    ->label('Follow Up (2 Weeks)')
+                                    ->default(now()->addWeeks(2)) // 🟢 Default to 2 weeks from today
+                                    ->native(false)
+                                    ->displayFormat('M d, Y'),
 
-        // 4. Second Follow Up
-        Forms\Components\DatePicker::make('second_follow_up_date')
-            ->label('Follow Up Second')
-            ->default(now()->addMonths(6)) // Example default
-            ->native(false)
-            ->displayFormat('M d, Y'),
-    ]),
-]),
+                                // 4. Second Follow Up
+                                Forms\Components\DatePicker::make('second_follow_up_date')
+                                    ->label('Follow Up Second')
+                                    ->default(now()->addMonths(6)) // Example default
+                                    ->native(false)
+                                    ->displayFormat('M d, Y'),
+                            ]),
+                        ]),
                     ]),
 
                     Group::make()->columnSpan(4)->schema([
                         Section::make('Customer & Personnel')->schema([
-                            Select::make('customer_id')
-                                ->label('Customer')
-                                ->relationship('customer', 'name')
-                                // 1. Clean Display: Only show First and Last Name
-                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
-                                // 2. Searchable: You can still search by Name OR Phone
-                                ->searchable(['name', 'last_name', 'phone'])
-                                ->preload()
+                           Select::make('customer_id')
+    ->label('Customer')
+    ->relationship('customer', 'name')
+    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
+    ->searchable(['name', 'last_name', 'phone'])
+    ->preload()
+    ->required()
+    ->live()
+
+    // 🚀 ENHANCED CUSTOMER CREATION MODAL
+    ->createOptionForm([
+        Forms\Components\Tabs::make('New Customer')
+            ->tabs([
+                // 1. Essential Contact Info
+                Forms\Components\Tabs\Tab::make('Contact')
+                    ->icon('heroicon-o-user')
+                    ->schema([
+                        Forms\Components\Grid::make(2)->schema([
+                            Forms\Components\TextInput::make('name')
+                                ->label('First Name')
+                                ->required(),
+                            Forms\Components\TextInput::make('last_name')
+                                ->label('Last Name'),
+                        ]),
+                        
+                        Forms\Components\Grid::make(2)->schema([
+                            Forms\Components\TextInput::make('phone')
+                                ->label('Mobile Phone')
+                                ->tel()
+                                ->prefix('+1')
+                                ->mask('(999) 999-9999') // Auto-format
+                                ->stripCharacters(['(', ')', '-', ' '])
                                 ->required()
-                                ->live()
+                                ->unique('customers', 'phone'),
+                                
+                            Forms\Components\TextInput::make('email')
+                                ->label('Email')
+                                ->email(),
+                        ]),
 
-                                // 3. The "Create New" (+) Button Logic
-                                ->createOptionForm([
-                                    Forms\Components\Section::make('New Customer')->schema([
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\TextInput::make('name')
-                                                ->label('First Name')
-                                                ->required(),
-                                            Forms\Components\TextInput::make('last_name')
-                                                ->label('Last Name'),
-                                            Forms\Components\TextInput::make('phone')
-                                                ->label('Mobile Phone')
-                                                ->tel()
-                                                ->required()
-                                                ->unique('customers', 'phone'),
-                                            Forms\Components\TextInput::make('email')
-                                                ->label('Email')
-                                                ->email(),
-                                        ]),
-                                        Forms\Components\TextInput::make('address')
-                                            ->label('Address')
-                                            ->columnSpanFull(),
-                                        // Auto-generate a customer number in the background
-                                        Forms\Components\Hidden::make('customer_no')
-                                            ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
-                                    ])
-                                ])
-                                ->createOptionUsing(function (array $data) {
-                                    // Save the new customer
-                                    $customer = \App\Models\Customer::create($data);
+                        Forms\Components\Textarea::make('address')
+                            ->label('Address')
+                            ->rows(2)
+                            ->columnSpanFull(),
+                    ]),
 
-                                    // Return their ID so they are immediately selected in the dropdown
-                                    return $customer->id;
-                                }),
+                // 2. Personal Details & Image
+                Forms\Components\Tabs\Tab::make('Profile')
+                    ->icon('heroicon-o-camera')
+                    ->schema([
+                        Forms\Components\FileUpload::make('image')
+                            ->label('Customer Photo')
+                            ->image()
+                            ->avatar()
+                            ->imageEditor()
+                            ->directory('customer-photos')
+                            ->visibility('public')
+                            ->columnSpanFull(),
 
-                            Placeholder::make('cust_info')
-                                ->label('')
-                                ->content(function (Get $get) {
-                                    $customer = Customer::find($get('customer_id'));
-                                    if (!$customer) return 'Select customer to view details';
-                                    $phone = $customer->phone ?? 'N/A';
-                                    return new HtmlString("<div class='text-sm border-t pt-2'><strong>Address:</strong> {$customer->address}<br><strong>Phone:</strong> {$phone}</div>");
-                                }),
+                        Forms\Components\Grid::make(2)->schema([
+                            Forms\Components\DatePicker::make('dob')
+                                ->label('Birthday')
+                                ->native(false),
+                                
+                            Forms\Components\DatePicker::make('wedding_anniversary')
+                                ->label('Anniversary')
+                                ->native(false),
+                        ]),
+                    ]),
+            ]),
 
+        // Auto-generate customer number
+        Forms\Components\Hidden::make('customer_no')
+            ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
+    ])
+    ->createOptionUsing(function (array $data) {
+        // Save and return ID
+        return \App\Models\Customer::create($data)->id;
+    }),
                             TextInput::make('sales_person_list')
                                 ->label('Sales Person')
                                 ->default(fn() => auth()->user()->name)
@@ -519,74 +544,73 @@ class SaleResource extends Resource
 
 
                 Tables\Actions\Action::make('smsReceipt')
-    ->label('SMS Receipt')
-    ->icon('heroicon-o-device-phone-mobile')
-    ->color('warning')
-    ->requiresConfirmation()
-    ->modalHeading('Send Receipt via SMS')
-    ->action(function (Sale $record) {
-        // 1. Get Customer Phone
-        $phone = $record->customer->phone;
-        if (empty($phone)) {
-            Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
-            return;
-        }
+                    ->label('SMS Receipt')
+                    ->icon('heroicon-o-device-phone-mobile')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Send Receipt via SMS')
+                    ->action(function (Sale $record) {
+                        // 1. Get Customer Phone
+                        $phone = $record->customer->phone;
+                        if (empty($phone)) {
+                            Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
+                            return;
+                        }
 
-        // 2. Format Phone (+1 for USA)
-        $digits = preg_replace('/[^0-9]/', '', $phone);
-        
-        // 🔹 FIX: Used 'Str::' instead of 'Illuminate\Support\Str::'
-        if (Str::startsWith($digits, '1') && strlen($digits) === 11) {
-            $digits = substr($digits, 1);
-        }
-        $formattedPhone = '+1' . $digits;
+                        // 2. Format Phone (+1 for USA)
+                        $digits = preg_replace('/[^0-9]/', '', $phone);
 
-        // ---------------------------------------------------------
-        // 3. GENERATE DYNAMIC LINK BASED ON STORE
-        // ---------------------------------------------------------
-        
-        $store = $record->store; 
-        
-        $baseUrl = $store && !empty($store->domain_url) 
-            ? rtrim($store->domain_url, '/') 
-            : config('app.url'); 
+                        // 🔹 FIX: Used 'Str::' instead of 'Illuminate\Support\Str::'
+                        if (Str::startsWith($digits, '1') && strlen($digits) === 11) {
+                            $digits = substr($digits, 1);
+                        }
+                        $formattedPhone = '+1' . $digits;
 
-        $link = $baseUrl . "/receipt/" . $record->id; 
+                        // ---------------------------------------------------------
+                        // 3. GENERATE DYNAMIC LINK BASED ON STORE
+                        // ---------------------------------------------------------
 
-        // ---------------------------------------------------------
+                        $store = $record->store;
 
-        // 4. Create Message
-        $storeName = $store->name ?? 'Diamond Square';
-        $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
+                        $baseUrl = $store && !empty($store->domain_url)
+                            ? rtrim($store->domain_url, '/')
+                            : config('app.url');
 
-        // 5. Send via AWS SNS
-        try {
-            $sns = new SnsClient([
-                'version' => 'latest',
-                'region'  => config('services.sns.region'),
-                'credentials' => [
-                    'key'    => config('services.sns.key'),
-                    'secret' => config('services.sns.secret'),
-                ],
-            ]);
+                        $link = $baseUrl . "/receipt/" . $record->id;
 
-            $sns->publish([
-                'Message' => $message,
-                'PhoneNumber' => $formattedPhone,
-                'MessageAttributes' => [
-                    'OriginationNumber' => [
-                        'DataType' => 'String',
-                        'StringValue' => config('services.sns.sms_from'),
-                    ],
-                ],
-            ]);
+                        // ---------------------------------------------------------
 
-            Notification::make()->title('SMS Sent')->success()->send();
+                        // 4. Create Message
+                        $storeName = $store->name ?? 'Diamond Square';
+                        $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
 
-        } catch (\Exception $e) {
-            Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
-        }
-    }),
+                        // 5. Send via AWS SNS
+                        try {
+                            $sns = new SnsClient([
+                                'version' => 'latest',
+                                'region'  => config('services.sns.region'),
+                                'credentials' => [
+                                    'key'    => config('services.sns.key'),
+                                    'secret' => config('services.sns.secret'),
+                                ],
+                            ]);
+
+                            $sns->publish([
+                                'Message' => $message,
+                                'PhoneNumber' => $formattedPhone,
+                                'MessageAttributes' => [
+                                    'OriginationNumber' => [
+                                        'DataType' => 'String',
+                                        'StringValue' => config('services.sns.sms_from'),
+                                    ],
+                                ],
+                            ]);
+
+                            Notification::make()->title('SMS Sent')->success()->send();
+                        } catch (\Exception $e) {
+                            Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
+                        }
+                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }
