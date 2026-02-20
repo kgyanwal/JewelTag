@@ -276,7 +276,7 @@ HTML
                  \App\Filament\Resources\WishlistResource::class,
             ])
             ->pages([
-                Pages\Dashboard::class,
+                \App\Filament\Pages\Dashboard::class,
                 \App\Filament\Pages\FindStock::class,
                 \App\Filament\Pages\FindCustomer::class,
                 \App\Filament\Pages\FindSale::class,

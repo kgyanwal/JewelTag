@@ -18,56 +18,59 @@ class StoreResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
     protected static ?string $navigationGroup = 'Admin';
 
-   public static function form(Form $form): Form
-{
-    return $form
-        ->schema([
-            Forms\Components\Section::make('Store Details')->schema([
-                Forms\Components\TextInput::make('name')
-                    ->label('Store Name')
-                    ->required()
-                    ->placeholder('e.g. Head Office')
-                    ->maxLength(255),
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Forms\Components\Section::make('Store Details')->schema([
+                    Forms\Components\TextInput::make('name')
+                        ->label('Store Name')
+                        ->required()
+                        ->placeholder('e.g. Head Office')
+                        ->maxLength(255),
 
-                // Existing Location Field
-                Forms\Components\TextInput::make('location') 
-                    ->label('Address / Location')
-                    ->placeholder('123 Main St'),
+                    // Existing Location Field
+                    Forms\Components\TextInput::make('location')
+                        ->label('Address / Location')
+                        ->placeholder('123 Main St'),
 
-                // 🆕 NEW FIELD: Domain URL
-                Forms\Components\TextInput::make('domain_url')
-                    ->label('Website / Receipt Domain')
-                    ->placeholder('https://thediamondsq.com')
-                    ->url() // Validates that input is a proper URL
-                    ->suffixIcon('heroicon-m-globe-alt')
-                    ->helperText('Enter the full URL (including https://). This is used for SMS receipt links.')
-                    ->columnSpanFull(), // Make it full width
-                
-                Forms\Components\TextInput::make('phone')
-                    ->label('Phone Number'),
-                
+                    // 🆕 NEW FIELD: Domain URL
+                    Forms\Components\TextInput::make('domain_url')
+                        ->label('Website / Receipt Domain')
+                        ->placeholder('https://thediamondsq.com')
+                        ->url() // Validates that input is a proper URL
+                        ->suffixIcon('heroicon-m-globe-alt')
+                        ->helperText('Enter the full URL (including https://). This is used for SMS receipt links.')
+                        ->columnSpanFull(), // Make it full width
+
+                    Forms\Components\TextInput::make('phone')
+                        ->label('Phone Number'),
+                    Forms\Components\TextInput::make('email')
+                        ->label('Email Address')
+                        ->email()
+                        ->placeholder('info@yourstore.com'),
                     Forms\Components\TextInput::make('facebook_link')
-    ->label('Facebook URL')
-    ->placeholder('https://facebook.com/yourpage')
-    ->url()
-    ->prefixIcon('heroicon-o-globe-alt'),
+                        ->label('Facebook URL')
+                        ->placeholder('https://facebook.com/yourpage')
+                        ->url()
+                        ->prefixIcon('heroicon-o-globe-alt'),
 
-Forms\Components\TextInput::make('instagram_link')
-    ->label('Instagram URL')
-    ->placeholder('https://instagram.com/yourhandle')
-    ->url()
-    ->prefixIcon('heroicon-o-camera'),
+                    Forms\Components\TextInput::make('instagram_link')
+                        ->label('Instagram URL')
+                        ->placeholder('https://instagram.com/yourhandle')
+                        ->url()
+                        ->prefixIcon('heroicon-o-camera'),
 
-                FileUpload::make('logo_path')
-                    ->label('Store Logo/Image')
-                    ->image()
-                    ->directory('store-logos')
-                    ->visibility('public')
-                    ->disk('public')
-                    ->columnSpanFull(),
-            ])
-        ]);
-}
+                    FileUpload::make('logo_path')
+                        ->label('Store Logo/Image')
+                        ->image()
+                        ->directory('store-logos')
+                        ->visibility('public')
+                        ->disk('public')
+                        ->columnSpanFull(),
+                ])
+            ]);
+    }
 
     public static function table(Table $table): Table
     {

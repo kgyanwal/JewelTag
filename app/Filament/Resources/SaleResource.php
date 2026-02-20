@@ -189,6 +189,8 @@ class SaleResource extends Resource
                                         ->label('Disc %')
                                         ->numeric()
                                         ->suffix('%')
+                                        ->default(0)
+                                        ->dehydrateStateUsing(fn ($state) => $state ?: 0)
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
@@ -207,6 +209,8 @@ class SaleResource extends Resource
                                     TextInput::make('discount_amount')
                                         ->label('Disc $')
                                         ->numeric()
+                                        ->default(0)
+                                        ->dehydrateStateUsing(fn ($state) => $state ?: 0)
                                         ->prefix('$')
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
@@ -293,7 +297,14 @@ class SaleResource extends Resource
     ->preload()
     ->required()
     ->live()
-
+// 🆕 1. Auto-fills the customer if coming from the "Find Customer" page
+    ->default(fn() => request()->query('customer_id')) 
+    
+    // 🆕 2. Tells the client exactly how to add a customer
+    ->helperText('Need a new customer? Click the "+" button.') 
+    
+    // 🆕 3. Adds a clear title to the popup modal
+    ->createOptionModalHeading('Create New Customer')
     // 🚀 ENHANCED CUSTOMER CREATION MODAL
     ->createOptionForm([
         Forms\Components\Tabs::make('New Customer')
@@ -373,39 +384,95 @@ class SaleResource extends Resource
                         ]),
 
                         Section::make('Payment & Status')->schema([
-                            Select::make('payment_method')
-                                ->label('Payment Method')
-                                ->options(function () {
-                                    // 1. Fetch from DB
-                                    $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+    
+    // 1. SPLIT PAYMENT TOGGLE
+    Toggle::make('is_split_payment')
+        ->label('Enable Split Payment')
+        ->onColor('warning')
+        ->offColor('gray')
+        ->live()
+        ->columnSpanFull(),
 
-                                    // 2. Default fallback if DB is empty
-                                    $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+    // 2. STANDARD SINGLE PAYMENT (Hidden if Split is ON)
+    Select::make('payment_method')
+        ->label('Payment Method')
+        ->options(self::getPaymentOptions()) // Uses helper function
+        ->default('cash')
+        ->required(fn (Get $get) => ! $get('is_split_payment')) // Not required if split
+        ->visible(fn (Get $get) => ! $get('is_split_payment')), // Hide if split
 
-                                    $methods = $json ? json_decode($json, true) : $defaultMethods;
-                                    $options = [];
+    // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
+    // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
+    Group::make()->schema([
+        // --- METHOD 1 (Required if Split) ---
+        Grid::make(2)->schema([
+            Select::make('payment_method_1')
+                ->label('Method 1')
+                ->options(self::getPaymentOptions())
+                ->required(fn (Get $get) => $get('is_split_payment')),
+                
+            TextInput::make('payment_amount_1')
+                ->label('Amount 1')
+                ->numeric()
+                ->prefix('$')
+                ->default(fn (Get $get) => $get('final_total')) // Auto-fill total
+                ->required(fn (Get $get) => $get('is_split_payment'))
+                ->live(onBlur: true), // 👈 Makes balance update live when typing finishes
+        ]),
 
-                                    foreach ($methods as $method) {
-                                        // 🛑 CRITICAL: Preserve Laybuy Key
-                                        // If the user typed "Laybuy", "LAYBUY", or "laybuy" in settings,
-                                        // we force the key to be 'laybuy' so your installment logic doesn't break.
-                                        if (strtoupper($method) === 'LAYBUY') {
-                                            $options['laybuy'] = 'LAYBUY (Installment Plan)';
-                                        } else {
-                                            // For everything else (Zelle, Cash, Visa), use the name as both Key and Value
-                                            $options[$method] = $method;
-                                        }
-                                    }
+        // --- METHOD 2 (Required if Split) ---
+        Grid::make(2)->schema([
+            Select::make('payment_method_2')
+                ->label('Method 2')
+                ->options(self::getPaymentOptions())
+                ->required(fn (Get $get) => $get('is_split_payment')), // 👈 Now required for split!
+                
+            TextInput::make('payment_amount_2')
+                ->label('Amount 2')
+                ->numeric()
+                ->prefix('$')
+                ->required(fn (Get $get) => $get('is_split_payment')) // 👈 Now required for split!
+                ->live(onBlur: true), // 👈 Makes balance update live
+        ]),
 
-                                    return $options;
-                                })
-                                ->default('cash')
-                                ->required(),
-                            Select::make('status')
-                                ->label('Sale Status')
-                                ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
-                                ->default('completed')->required(),
-                        ]),
+        // --- METHOD 3 (Optional) ---
+        Grid::make(2)->schema([
+            Select::make('payment_method_3')
+                ->label('Method 3')
+                ->options(self::getPaymentOptions()),
+                
+            TextInput::make('payment_amount_3')
+                ->label('Amount 3')
+                ->numeric()
+                ->prefix('$')
+                ->live(onBlur: true), // 👈 Makes balance update live
+        ]),
+        
+        // 🔹 Live Remaining Balance
+        Placeholder::make('split_calc')
+            ->label('Remaining Balance')
+            ->content(function (Get $get) {
+                $total = (float) $get('final_total');
+                $p1 = (float) ($get('payment_amount_1') ?: 0);
+                $p2 = (float) ($get('payment_amount_2') ?: 0);
+                $p3 = (float) ($get('payment_amount_3') ?: 0);
+                
+                $remaining = $total - ($p1 + $p2 + $p3);
+                
+                // Show green if perfectly balanced, red if money is still owed or overpaid
+                $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
+                
+                return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
+            }),
+
+    ])->visible(fn (Get $get) => $get('is_split_payment')),
+
+    Select::make('status')
+        ->label('Sale Status')
+        ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
+        ->default('completed')
+        ->required(),
+]),
 
 
                         Section::make('Financial Summary')->schema([
@@ -640,6 +707,22 @@ class SaleResource extends Resource
         $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
     }
 
+    public static function getPaymentOptions(): array
+    {
+        $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+        $methods = $json ? json_decode($json, true) : $defaultMethods;
+        $options = [];
+
+        foreach ($methods as $method) {
+            if (strtoupper($method) === 'LAYBUY') {
+                $options['laybuy'] = 'LAYBUY (Installment Plan)';
+            } else {
+                $options[$method] = $method;
+            }
+        }
+        return $options;
+    }
     protected static function totalRow($label, $field)
     {
         return TextInput::make($field)->label($label)->prefix('$')->readOnly()->extraInputAttributes(['class' => 'text-right']);

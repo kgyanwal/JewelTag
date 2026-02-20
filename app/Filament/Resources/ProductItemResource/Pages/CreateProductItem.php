@@ -35,27 +35,27 @@ class CreateProductItem extends CreateRecord
                 }),
         ];
     }
-protected function getFormActions(): array
+    protected function getFormActions(): array
     {
         return [
             Action::make('create')
                 ->label('Add to Inventory')
                 ->color('primary')
                 ->icon('heroicon-o-plus')
-                ->size(\Filament\Support\Enums\ActionSize::Large) 
-                
+                ->size(\Filament\Support\Enums\ActionSize::Large)
+
                 // 🎨 CUSTOM UI STYLING (Shadows, Width, Bold Text)
                 ->extraAttributes([
                     'class' => 'w-full md:w-1/2 mx-auto shadow-xl font-black tracking-wider ring-1 ring-green-600/20 transform hover:scale-105 transition-all duration-300',
-                    'style' => 'height: 3.5rem; font-size: 1.1rem;', 
+                    'style' => 'height: 3.5rem; font-size: 1.1rem;',
                 ])
-                
+
                 // Pop-up Config
                 ->requiresConfirmation()
                 ->modalHeading('Staff Verification')
                 ->modalDescription('Enter your PIN to authorize adding this stock.')
                 ->modalSubmitActionLabel('Verify & Save')
-                
+
                 // PIN Form
                 ->form([
                     TextInput::make('verification_pin')
@@ -66,7 +66,7 @@ protected function getFormActions(): array
                         ->numeric()
                         ->autofocus(),
                 ])
-                
+
                 // Logic
                 ->action(function (array $data) {
                     // Get Active Staff
@@ -95,43 +95,42 @@ protected function getFormActions(): array
             parent::getCancelFormAction(),
         ];
     }
-   protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
-{
-    $qty = (int) ($data['qty'] ?? 1);
-    $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
-    $tradeInNo = $data['original_trade_in_no'] ?? null;
-    $department = $data['department'] ?? '';
+    protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
+    {
+        $qty = (int) ($data['qty'] ?? 1);
+        $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
+        $tradeInNo = $data['original_trade_in_no'] ?? null;
+        $department = $data['department'] ?? '';
+        $subDepartment = $data['sub_department'] ?? ''; 
 
-    $isRepair = str_contains(strtolower($department), 'repair');
-    
-    unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
+        $isRepair = str_contains(strtolower($department), 'repair');
+        
+        unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
-    // 🔹 Fetch dynamic prefix from settings once before the loop
-    $dynamicPrefix = \Illuminate\Support\Facades\DB::table('site_settings')
-        ->where('key', 'barcode_prefix')
-        ->value('value') ?? 'D';
+        // 🔹 FETCH DYNAMIC PREFIX USING THE UPDATED HELPER
+        $dynamicPrefix = ProductItemResource::getPrefixForSubDepartment($subDepartment);
 
-    $firstRecord = null;
+        $firstRecord = null;
 
-    for ($i = 0; $i < $qty; $i++) {
-        $itemData = $data;
-        $itemData['store_id'] = $storeId;
-        $itemData['is_trade_in'] = ($tradeInNo !== null);
-        $itemData['original_trade_in_no'] = $tradeInNo;
+        for ($i = 0; $i < $qty; $i++) {
+            $itemData = $data;
+            $itemData['store_id'] = $storeId;
+            $itemData['is_trade_in'] = ($tradeInNo !== null);
+            $itemData['original_trade_in_no'] = $tradeInNo;
 
-        // 🔹 Pass the dynamic prefix to the generator
-        $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
+            // 🔹 Apply Prefix
+            $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
 
-        if (!$isRepair) {
-            $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
-        } else {
-            $itemData['rfid_code'] = null;
+            if (!$isRepair) {
+                $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
+            } else {
+                $itemData['rfid_code'] = null;
+            }
+
+            $record = static::getModel()::create($itemData);
+            if ($i === 0) $firstRecord = $record;
         }
 
-        $record = static::getModel()::create($itemData);
-        if ($i === 0) $firstRecord = $record;
+        return $firstRecord;
     }
-
-    return $firstRecord;
-}
 }

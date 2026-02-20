@@ -8,9 +8,11 @@ return [
     |--------------------------------------------------------------------------
     | Default Database Connection Name
     |--------------------------------------------------------------------------
+    | We keep 'mysql' as default (the Landlord). Your Middleware will 
+    | switch to 'tenant' dynamically for every store request.
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'mysql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -32,12 +34,17 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        /*
+         * 🔹 LANDLORD CONNECTION 🔹
+         * This connects to your main jewelry_pos database (Port 3306).
+         * It stores the 'tenants' table which lists all your stores.
+         */
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'laravel'),
+            'database' => env('DB_DATABASE', 'jewelry_pos'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
@@ -51,21 +58,36 @@ return [
                 (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
 
-            /* * 🔹 BACKUP EXCLUSION SETTINGS 🔹
-             * These tables will be skipped during `php artisan backup:run`
-             */
             'dump' => [
                 'exclude_tables' => [
-                    'activity_logs',  // Log history (often huge)
-                    'cache',          // 👈 Added as requested
-                    'cache_locks',    // 👈 Added as requested
-                    'failed_jobs',    // Temporary error data
-                    'sessions',       // User login sessions
-                    'job_batches',    // Queue batch tracking
-                    // 'telescope_entries', // Uncomment if using Laravel Telescope
-                    // 'telescope_entries_tags',
+                    'activity_logs',
+                    'cache',
+                    'cache_locks',
+                    'failed_jobs',
+                    'sessions',
+                    'job_batches',
                 ],
             ],
+        ],
+
+        /*
+         * 🔹 DYNAMIC TENANT CONNECTION 🔹
+         * This routes through ProxySQL (Port 6033).
+         * These 'null' values are filled by your TenantIdentifier Middleware.
+         */
+        'tenant' => [
+            'driver' => 'mysql',
+            'host' => '127.0.0.1',
+            'port' => '6033', // 👈 Port for ProxySQL Traffic
+            'database' => null, 
+            'username' => null,
+            'password' => null,
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
         ],
 
         'mariadb' => [

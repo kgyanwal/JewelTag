@@ -86,6 +86,11 @@ class FindCustomer extends Page implements HasTable
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
                     ->url(fn (Customer $record): string => "/admin/customers/{$record->id}/edit"),
+                \Filament\Tables\Actions\Action::make('new_sale')
+            ->label('New Sale')
+            ->icon('heroicon-o-shopping-cart')
+            ->color('success')
+            ->url(fn (Customer $record): string => \App\Filament\Resources\SaleResource::getUrl('create', ['customer_id' => $record->id])),    
             ]);
     }
 protected function getTableQuery(): Builder

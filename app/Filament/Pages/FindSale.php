@@ -127,6 +127,12 @@ class FindSale extends Page implements HasForms, HasTable
                     ->icon('heroicon-m-eye')
                     ->color('gray')
                     ->url(fn (Sale $record): string => SaleResource::getUrl('edit', ['record' => $record])),
+                \Filament\Tables\Actions\Action::make('printReceipt')
+            ->label('Receipt')
+            ->icon('heroicon-o-printer')
+            ->color('info')
+            ->url(fn (Sale $record): string => route('sales.receipt', $record))
+            ->openUrlInNewTab(),    
             ]);
     }
 
