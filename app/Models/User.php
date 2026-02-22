@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// 🔹 CRITICAL IMPORTS for Filament and Roles
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,45 +9,22 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
-// 🔹 Must "implements FilamentUser" to allow panel access
+
 class User extends Authenticatable implements FilamentUser
 {
-    use HasFactory, HasRoles, Notifiable,SoftDeletes;
+    // 🚨 FIX 1: Merge traits correctly. Remove the duplicate 'use HasRoles'
+    use HasFactory, Notifiable, SoftDeletes, HasRoles {
+        hasPermissionTo as protected traitHasPermissionTo;
+    }
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
-        'name',
-        'email',
-        'username',
-        'phone',
-        'password',
-        'store_id',
-        'base_commission_rate',
-        'phone',
-        'is_active',
-        'employee_code',
-        'pin_code',
+        'name', 'email', 'username', 'phone', 'password',
+        'store_id', 'base_commission_rate', 'is_active',
+        'employee_code', 'pin_code',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<int, string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $hidden = ['password', 'remember_token'];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
@@ -58,14 +34,31 @@ class User extends Authenticatable implements FilamentUser
 
     /**
      * 🔹 FILAMENT ACCESS CONTROL
-     * This method is required by the FilamentUser interface.
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        // Grants access only if user is active and has the 'Superadmin' role
-       return $this->roles()->exists();
+        if ($panel->getId() === 'master') {
+            return true; 
+        }
+
+        // Inside a store, ensure the user has at least one role to enter
+        return $this->roles()->exists();
     }
 
+    /**
+     * 🔹 PERMISSION SHIELD
+     */
+    public function hasPermissionTo($permission, $guardName = null): bool
+    {
+        // 🚨 FIX 2: Corrected the tenancy check
+        // If tenancy isn't initialized, we are in the Master database.
+        if (!function_exists('tenancy') || !tenancy()->initialized) { 
+             return true; 
+        }
+
+        // Inside a store, run the actual Spatie check
+        return $this->traitHasPermissionTo($permission, $guardName);
+    }
     // --- Relationships ---
 
    public function store()

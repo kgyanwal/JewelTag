@@ -33,10 +33,7 @@ class AdminPanelProvider extends PanelProvider
     public function panel(Panel $panel): Panel
     {
         // 1. Dynamically fetch the store logo for the navigation bar
-        $store = Store::first();
-        $logoUrl = ($store && $store->logo_path) 
-            ? asset('storage/' . $store->logo_path) 
-            : asset('jeweltaglogo.png');
+        
 
         return $panel
             ->default()
@@ -46,7 +43,19 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->topNavigation()
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
-            ->brandLogo($logoUrl)
+ ->brandLogo(function () {
+    if (function_exists('tenancy') && tenancy()->initialized) {
+        // Fetch the store settings from the tenant database
+        $store = \App\Models\Store::first();
+        
+        if ($store && $store->logo_path) {
+            // 💡 The tenant_asset helper prepends the tenant-specific path
+            return tenant_asset($store->logo_path);
+        }
+    }
+    // Fallback to global central logo
+    return asset('jeweltaglogo.png'); 
+})
             ->brandLogoHeight('2.5rem') 
             ->brandName('JEWELTAG')
             ->renderHook(
@@ -309,6 +318,8 @@ HTML
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
                 \App\Http\Middleware\LogPageViews::class,
+                \Stancl\Tenancy\Middleware\InitializeTenancyByDomain::class,
+        \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
             ])
             ->authMiddleware([
                 Authenticate::class,

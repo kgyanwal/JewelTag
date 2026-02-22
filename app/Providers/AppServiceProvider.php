@@ -16,7 +16,12 @@ use App\Policies\UserPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\ProductItemPolicy;
 use Illuminate\Support\Facades\Gate;
+
+// 🚨 ADD THESE THREE IMPORTS
 use Livewire\Livewire;
+use Illuminate\Support\Facades\Route;
+use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
+
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -30,23 +35,52 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-   public function boot(): void
-{
-    Livewire::component('app.filament.widgets.stats-overview', StatsOverview::class);
-    Livewire::component('app.filament.widgets.latest-sales', LatestSales::class);
-    Livewire::component('app.filament.widgets.fastest-selling-items', FastestSellingItems::class);
+    public function boot(): void
+    {
+        // 🚨 THE FIX: Force Livewire to use the Tenancy database when updating forms
+        Livewire::setUpdateRoute(function ($handle) {
+            $route = Route::post('/livewire/update', $handle)->middleware('web');
+            
+            // Only apply Tenancy if we are on a Store's URL (Not the Master Landlord URL)
+            $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
+            
+            if (! $isCentralDomain) {
+                $route->middleware(InitializeTenancyByDomain::class);
+            }
+            
+            return $route;
+        });
+
+        Livewire::component('app.filament.widgets.stats-overview', StatsOverview::class);
+        Livewire::component('app.filament.widgets.latest-sales', LatestSales::class);
+        Livewire::component('app.filament.widgets.fastest-selling-items', FastestSellingItems::class);
         Livewire::component('app.filament.widgets.department-chart', DepartmentChart::class);
-        \Livewire\Livewire::component('app.filament.widgets.dashboard-quick-menu', \App\Filament\Widgets\DashboardQuickMenu::class);
-    // Register your policies here
-    Gate::policy(User::class, UserPolicy::class);
-    Gate::policy(Sale::class, SalePolicy::class);
-    Gate::policy(Customer::class, CustomerPolicy::class);
-    Gate::policy(ProductItem::class, ProductItemPolicy::class);
-    
-    // This part is the "Superpower" for Superadmins
-    // It tells Laravel: "If the user is a Superadmin, ignore all policies and let them in"
-    Gate::before(function ($user, $ability) {
+        Livewire::component('app.filament.widgets.dashboard-quick-menu', \App\Filament\Widgets\DashboardQuickMenu::class);
+        
+        // Register your policies here
+        Gate::policy(User::class, UserPolicy::class);
+        Gate::policy(Sale::class, SalePolicy::class);
+        Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(ProductItem::class, ProductItemPolicy::class);
+        
+        // This part is the "Superpower" for Superadmins
+        // It tells Laravel: "If the user is a Superadmin, ignore all policies and let them in"
+      Gate::before(function ($user, $ability) {
+    // Determine if we are on the Central (Master) domain
+    $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
+
+    // 🚨 IF ON MASTER: Grant all permissions and STOP. 
+    // Do not let Spatie touch the database.
+    if ($isCentralDomain) {
+        return true; 
+    }
+
+    // IF IN A STORE: Check roles safely.
+    if (tenancy()->initialized && method_exists($user, 'hasRole')) {
         return $user->hasRole('Superadmin') ? true : null;
-    });
-}
+    }
+
+    return null;
+});
+    }
 }

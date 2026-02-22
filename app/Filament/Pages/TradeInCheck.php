@@ -45,6 +45,10 @@ class TradeInCheck extends Page implements HasTable
                     ->label('Received Date')
                     ->dateTime()
                     ->sortable(),
+                 TextColumn::make('trade_in_description')
+                ->label('Item Description')
+                ->wrap()
+                ->limit(50),   
                 BadgeColumn::make('status')
                     ->default('Pending Assembly')
                     ->color('warning'),
