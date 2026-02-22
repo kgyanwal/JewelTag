@@ -9,24 +9,22 @@ class CreateTenant extends CreateRecord
 {
     protected static string $resource = TenantResource::class;
 
+    public string $domainUrl = '';
+
+    // 1. Grab the domain before Filament tries to save the Tenant
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Store domain in a temporary property so we can use it in afterCreate
-        $this->recordData['domain_to_create'] = $data['domain'];
-        
-        // Remove 'domain' so it doesn't try to save into the 'tenants' table
-        unset($data['domain']); 
+        $this->domainUrl = $data['domain'];
+        unset($data['domain']); // Remove it so it doesn't crash the tenant save
         
         return $data;
     }
 
+    // 2. After the Tenant database is created, attach the domain!
     protected function afterCreate(): void
     {
-        $domain = $this->recordData['domain_to_create'];
-
-        // Automatically create the domain record for the new tenant database
         $this->record->domains()->create([
-            'domain' => $domain,
+            'domain' => $this->domainUrl
         ]);
     }
 }
