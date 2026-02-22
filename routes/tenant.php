@@ -12,6 +12,13 @@ use App\Http\Controllers\Api\InventoryAuditController;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
+/*
+|--------------------------------------------------------------------------
+| Tenant Routes
+|--------------------------------------------------------------------------
+| These routes are only accessible via tenant subdomains (e.g., thedsq.jeweltag.us)
+*/
+
 Route::middleware([
     'web',
     InitializeTenancyByDomain::class,
@@ -20,15 +27,21 @@ Route::middleware([
 
     // 1. THE PRODUCTION LOGO FIX
     Route::get('/storage/{path}', function ($path) {
+        // In production, we ensure the path is scoped to the tenant
         if (!Storage::disk('public')->exists($path)) abort(404);
         return response()->file(Storage::disk('public')->path($path));
     })->where('path', '.*')->name('tenant.storage');
 
-    Route::redirect('/', '/admin');
-Route::get('/login', function () {
+    // 2. AUTHENTICATION & REDIRECTS
+    Route::get('/login', function () {
         return redirect()->route('filament.admin.auth.login');
     })->name('login');
-    // 2. STORE-SPECIFIC FEATURES
+
+    Route::get('/', function () {
+        return redirect('/admin');
+    });
+
+    // 3. STORE-SPECIFIC FEATURES
     Route::get('/sales/{record}/receipt', function (Sale $record) {
         $record->load(['customer', 'items']);
         return view('receipts.sale', ['sale' => $record]);
@@ -47,7 +60,7 @@ Route::get('/login', function () {
     // Inventory Audit & Zebra Scanning
     Route::get('/admin/inventory/audit/{audit}', function (InventoryAudit $audit) {
         return view('admin.inventory.audit', ['audit' => $audit]);
-    })->name('inventory.audit');
+    })->name('inventory.audit')->middleware('auth');
 
     Route::post('/inventory/scan', [InventoryAuditController::class, 'recordScan'])
          ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]);
