@@ -65,22 +65,23 @@ class AppServiceProvider extends ServiceProvider
         
         // This part is the "Superpower" for Superadmins
         // It tells Laravel: "If the user is a Superadmin, ignore all policies and let them in"
-      Gate::before(function ($user, $ability) {
-    // Determine if we are on the Central (Master) domain
-    $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
+        Gate::before(function ($user, $ability) {
+            // Determine if we are on the Central (Master) domain
+            $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
 
-    // 🚨 IF ON MASTER: Grant all permissions and STOP. 
-    // Do not let Spatie touch the database.
-    if ($isCentralDomain) {
-        return true; 
-    }
+            // 🚨 SECURITY FIX: On Central, check if user is a landlord
+            if ($isCentralDomain) {
+                // If you have a column 'is_landlord', use it. Otherwise, return true for your admin emails.
+                return $user->is_landlord ? true : null; 
+            }
 
-    // IF IN A STORE: Check roles safely.
-    if (tenancy()->initialized && method_exists($user, 'hasRole')) {
-        return $user->hasRole('Superadmin') ? true : null;
-    }
+            // 🚀 TENANCY FIX: Check roles ONLY if tenancy is initialized.
+            // This prevents the "Role Not Found" crash during the boot process.
+            if (function_exists('tenancy') && tenancy()->initialized && method_exists($user, 'hasRole')) {
+                return $user->hasRole('Superadmin') ? true : null;
+            }
 
-    return null;
-});
+            return null;
+        });
     }
 }
