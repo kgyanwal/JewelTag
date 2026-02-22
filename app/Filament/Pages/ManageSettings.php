@@ -8,6 +8,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Repeater;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -37,7 +38,6 @@ class ManageSettings extends Page
         $rawWarranties = $warrantyOptionsJson ? json_decode($warrantyOptionsJson, true) : $defaultWarranties;
         $formattedWarranties = collect($rawWarranties)->map(fn($item) => ['name' => $item])->toArray();
 
-        // 🆕 Load Sub-Department Prefixes mapping
         $prefixesJson = DB::table('site_settings')->where('key', 'sub_department_prefixes')->value('value');
         $defaultPrefixes = [
             ['sub_department' => 'Ring', 'prefix' => 'R'],
@@ -54,7 +54,7 @@ class ManageSettings extends Page
             'barcode_prefix' => $barcodePrefix,
             'payment_methods' => $formattedPayments, 
             'warranty_options' => $formattedWarranties, 
-            'sub_department_prefixes' => $formattedPrefixes, // 🆕 Add to form
+            'sub_department_prefixes' => $formattedPrefixes, 
         ]);
     }
 
@@ -68,45 +68,90 @@ class ManageSettings extends Page
     {
         return $form
             ->schema([
-                Section::make('Global Configuration')
-                    ->description('Set your base store parameters.')
-                    ->icon('heroicon-o-globe-alt')
-                    ->schema([
-                        Grid::make(2)->schema([
-                            TextInput::make('tax_rate')->label('Sales Tax Rate')->numeric()->suffix('%')->prefixIcon('heroicon-m-receipt-percent')->required(),
-                            TextInput::make('barcode_prefix')
-                                ->label('Default Inventory Prefix')
-                                ->placeholder('e.g. D')
-                                ->maxLength(3)
-                                ->prefixIcon('heroicon-m-qr-code')
-                                ->required()
-                                ->helperText('Used if a sub-department prefix is not set.'),
-                        ]),
-                    ]),
-
-                // 🆕 PREFIX MAPPING REPEATER
-                Section::make('Inventory Prefix Rules')
-                    ->description('Map Sub-Departments to specific starting letters (e.g. Ring -> R).')
-                    ->icon('heroicon-o-bars-3-bottom-left')
-                    ->schema([
-                        Repeater::make('sub_department_prefixes')
-                            ->label('')
+                // ─── TOP ROW ───
+                Grid::make(12)->schema([
+                    
+                    // LEFT SIDE: Base Settings (Takes up 4 columns out of 12)
+                    Group::make()->schema([
+                        Section::make('Global Configuration')
+                            ->description('Base store parameters.')
+                            ->icon('heroicon-o-globe-alt')
+                            ->compact() // 👈 Makes the white box padding smaller
                             ->schema([
-                                TextInput::make('sub_department')->label('Sub-Department Name')->required()->placeholder('e.g. Ring'),
-                                TextInput::make('prefix')->label('Prefix Letter(s)')->required()->maxLength(3)->placeholder('e.g. R'),
-                            ])
-                            ->columns(2)
-                            ->addActionLabel('Add Prefix Rule')
-                            ->reorderableWithButtons(),
-                    ]),
+                                TextInput::make('tax_rate')
+                                    ->label('Sales Tax Rate')
+                                    ->numeric()
+                                    ->suffix('%')
+                                    ->prefixIcon('heroicon-m-receipt-percent')
+                                    ->required(),
+                                    
+                                TextInput::make('barcode_prefix')
+                                    ->label('Default Inventory Prefix')
+                                    ->placeholder('e.g. D')
+                                    ->maxLength(3)
+                                    ->prefixIcon('heroicon-m-qr-code')
+                                    ->required()
+                                    ->helperText('Fallback prefix if a rule is not set.'),
+                            ]),
+                    ])->columnSpan(['sm' => 12, 'lg' => 4]),
 
-                Grid::make(2)->schema([
-                    Section::make('Payment Methods')->icon('heroicon-o-credit-card')->schema([
-                        Repeater::make('payment_methods')->label('')->schema([TextInput::make('name')->label('Method Name')->required()])->addActionLabel('Add Method')->reorderableWithButtons()->grid(1),
-                    ]),
-                    Section::make('Warranty Options')->icon('heroicon-o-shield-check')->schema([
-                        Repeater::make('warranty_options')->label('')->schema([TextInput::make('name')->label('Duration Label')->required()])->addActionLabel('Add Option')->reorderableWithButtons()->grid(1),
-                    ]),
+                    // RIGHT SIDE: Prefix Rules (Takes up 8 columns out of 12)
+                    Group::make()->schema([
+                        Section::make('Inventory Prefix Rules')
+                            ->description('Map Sub-Departments to specific starting letters.')
+                            ->icon('heroicon-o-bars-3-bottom-left')
+                            ->compact()
+                            ->schema([
+                                Repeater::make('sub_department_prefixes')
+                                    ->hiddenLabel() // Hides the duplicate title
+                                    ->schema([
+                                        Grid::make(2)->schema([ // Puts the two inputs side-by-side inside the card
+                                            TextInput::make('sub_department')->label('Sub-Dept')->placeholder('e.g. Ring')->required(),
+                                            TextInput::make('prefix')->label('Prefix')->required()->maxLength(3)->placeholder('e.g. R'),
+                                        ])
+                                    ])
+                                    ->addActionLabel('Add New Rule')
+                                    ->cloneable() // Allows duplicating a rule quickly
+                                    ->grid(2) // 👈 MAGIC: Turns the stacked list into a 2-column grid of small tiles!
+                            ]),
+                    ])->columnSpan(['sm' => 12, 'lg' => 8]),
+                ]),
+
+                // ─── BOTTOM ROW ───
+                Grid::make(12)->schema([
+                    
+                    // BOTTOM LEFT: Payments
+                    Group::make()->schema([
+                        Section::make('Payment Methods')
+                            ->icon('heroicon-o-credit-card')
+                            ->compact()
+                            ->schema([
+                                Repeater::make('payment_methods')
+                                    ->hiddenLabel()
+                                    ->schema([
+                                        TextInput::make('name')->hiddenLabel()->placeholder('Method Name')->required()
+                                    ])
+                                    ->addActionLabel('Add Method')
+                                    ->grid(2) // 👈 MAGIC: 2 tiny tiles per row
+                            ]),
+                    ])->columnSpan(['sm' => 12, 'lg' => 6]),
+
+                    // BOTTOM RIGHT: Warranties
+                    Group::make()->schema([
+                        Section::make('Warranty Options')
+                            ->icon('heroicon-o-shield-check')
+                            ->compact()
+                            ->schema([
+                                Repeater::make('warranty_options')
+                                    ->hiddenLabel()
+                                    ->schema([
+                                        TextInput::make('name')->hiddenLabel()->placeholder('Duration Label')->required()
+                                    ])
+                                    ->addActionLabel('Add Option')
+                                    ->grid(2) // 👈 MAGIC: 2 tiny tiles per row
+                            ]),
+                    ])->columnSpan(['sm' => 12, 'lg' => 6]),
+
                 ]),
             ])
             ->statePath('data');
@@ -114,7 +159,14 @@ class ManageSettings extends Page
 
     protected function getFormActions(): array
     {
-        return [Action::make('save')->label('Save Changes')->icon('heroicon-o-check-circle')->submit('save')->color('primary')];
+        return [
+            Action::make('save')
+                ->label('Save Configuration')
+                ->icon('heroicon-o-check-circle')
+                ->submit('save')
+                ->color('primary')
+                ->size(\Filament\Support\Enums\ActionSize::Large)
+        ];
     }
 
     public function save(): void
@@ -129,8 +181,6 @@ class ManageSettings extends Page
 
         DB::table('site_settings')->updateOrInsert(['key' => 'payment_methods'], ['value' => json_encode($flatPayments), 'updated_at' => now()]);
         DB::table('site_settings')->updateOrInsert(['key' => 'warranty_options'], ['value' => json_encode($flatWarranties), 'updated_at' => now()]);
-        
-        // 🆕 Save Prefix Map
         DB::table('site_settings')->updateOrInsert(['key' => 'sub_department_prefixes'], ['value' => json_encode($state['sub_department_prefixes']), 'updated_at' => now()]);
 
         Notification::make()->title('System Settings Saved')->success()->send();

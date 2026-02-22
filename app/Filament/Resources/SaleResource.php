@@ -122,6 +122,12 @@ class SaleResource extends Resource
                                             ->label('Trade-In Tracking #')
                                             ->default(fn() => 'TRD-' . date('Ymd-His'))
                                             ->readOnly(),
+                                         Forms\Components\Textarea::make('trade_in_description')
+                    ->label('Item Description')
+                    ->placeholder('e.g. 14k White Gold Diamond Band, 0.50ctw, Size 7')
+                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                    ->columnSpanFull() // Spans across both columns for better typing space
+                    ->rows(2),   
                                     ]),
                             ]),
                         Section::make('Current Bill Items')->schema([

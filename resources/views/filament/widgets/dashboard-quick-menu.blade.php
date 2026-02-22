@@ -19,28 +19,28 @@
             <div class="header-platinum">
                 <div class="brand-display">
                     <div class="diamond-badge">
-                        @if($store && $store->logo_path)
-                            <img src="{{ asset('storage/' . $store->logo_path) }}" 
-                                 alt="{{ $store->name }}" 
-                                 class="diamond-logo"
-                                 style="width: 100%; height: 100%; object-fit: contain;">
-                        @else
-                            <img src="{{ asset('images/store-placeholder.png') }}" 
-                                 alt="Default" 
-                                 class="diamond-logo">
-                        @endif
+                       @if($store && $store->logo_path)
+    <img src="{{ tenant_asset($store->logo_path) }}" 
+         alt="{{ $store->name }}" 
+         class="diamond-logo"
+         style="width: 100%; height: 100%; object-fit: contain;">
+@else
+    <img src="{{ asset('jeweltaglogo.png') }}" 
+         alt="Default" 
+         class="diamond-logo">
+@endif
                     </div>
 
                     <div class="brand-identity">
                         <h1 class="brand-name">
-                            {{ strtoupper($store->name ?? 'DIAMOND SQUARE') }}
+                            {{ strtoupper($store->name ?? 'StoreName') }}
                         </h1>
                         <p class="brand-tag">
                             {{ $store->location ?? 'Premium Jewelry Management Suite' }}
                         </p>
                     </div>
                     
-                    <!-- Quick Stats Bar -->
+                    <!-- Quick Stats Bar - 5 symmetrical items -->
                     <div class="quick-stats-bar">
                         <div class="stat-item">
                             <span class="stat-value">${{ number_format($todaySales ?? 0, 2) }}</span>
@@ -58,13 +58,29 @@
                             <span class="stat-value">{{ $pendingRepairs ?? '0' }}</span>
                             <span class="stat-label">Pending Repairs</span>
                         </div>
+                        <!-- Time Widget as 5th stat item -->
+                        <div class="stat-item time-stat-item">
+                            <div class="time-widget-compact">
+                                <div class="time-badge">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <span>MST • NM</span>
+                                </div>
+                                <div class="compact-time">
+                                    <span class="time-display">{{ now()->setTimezone('America/Denver')->format('h:i:s A') }}</span>
+                                    <span class="date-display">{{ now()->setTimezone('America/Denver')->format('M d') }}</span>
+                                </div>
+                                <div class="system-dot" title="System Active"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </header>
 
         <div class="dashboard-body">
-            <!-- Priority Actions Section - NOW AT THE TOP -->
+            <!-- Priority Actions Section - 5 symmetrical cards -->
             <div class="priority-section" style="margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
                     <div style="width: 52px; height: 52px; background: linear-gradient(135deg, #0d9488, #0f766e); border-radius: 16px; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 8px 20px rgba(13, 148, 136, 0.3);">
@@ -78,9 +94,9 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.25rem;">
+                <div class="priority-grid">
                     <!-- Laybuys -->
-                    <a href="/admin/laybuys" class="operation-card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; border-color: #10b981;">
+                    <a href="/admin/laybuys" class="operation-card priority-card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; border-color: #10b981;">
                         <div class="card-gem" style="background: #10b981;"></div>
                         <div class="card-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,14 +104,14 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Laybuys <span style="background: #065f46; color: white; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.5rem;">{{ $pendingLaybuys }}</span></h3>
+                            <h3>Laybuys <span class="badge" style="background: #065f46; color: white;">{{ $pendingLaybuys }}</span></h3>
                             <p>Active payment plans</p>
                         </div>
                         <div class="card-tag">Track</div>
                     </a>
 
                     <!-- Custom Orders -->
-                    <a href="/admin/custom-orders" class="operation-card" style="background: linear-gradient(135deg, #f3e8ff, #e9d5ff); color: #6d28d9; border-color: #8b5cf6;">
+                    <a href="/admin/custom-orders" class="operation-card priority-card" style="background: linear-gradient(135deg, #f3e8ff, #e9d5ff); color: #6d28d9; border-color: #8b5cf6;">
                         <div class="card-gem" style="background: #8b5cf6;"></div>
                         <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,14 +119,14 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Custom Orders <span style="background: #6d28d9; color: white; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.5rem;">{{ $pendingCustomOrders }}</span></h3>
+                            <h3>Custom Orders <span class="badge" style="background: #6d28d9; color: white;">{{ $pendingCustomOrders }}</span></h3>
                             <p>In progress / Pending</p>
                         </div>
                         <div class="card-tag">Design</div>
                     </a>
 
-                    <!-- Upcoming Follow-ups (Link to your page) -->
-                    <a href="/admin/upcoming-follow-ups" class="operation-card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; border-color: #f59e0b;">
+                    <!-- Upcoming Follow-ups -->
+                    <a href="/admin/upcoming-follow-ups" class="operation-card priority-card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; border-color: #f59e0b;">
                         <div class="card-gem" style="background: #f59e0b;"></div>
                         <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,14 +134,14 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Follow-ups <span style="background: #92400e; color: white; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.5rem;">{{ $pendingFollowUps }}</span></h3>
+                            <h3>Follow-ups <span class="badge" style="background: #92400e; color: white;">{{ $pendingFollowUps }}</span></h3>
                             <p>Pending customer contacts</p>
                         </div>
                         <div class="card-tag">Remind</div>
                     </a>
 
                     <!-- Memo Inventory -->
-                    <a href="/admin/memo-inventory" class="operation-card" style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af; border-color: #3b82f6;">
+                    <a href="/admin/memo-inventory" class="operation-card priority-card" style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af; border-color: #3b82f6;">
                         <div class="card-gem" style="background: #3b82f6;"></div>
                         <div class="card-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,14 +149,14 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Memo Inventory <span style="background: #1e40af; color: white; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.5rem;">{{ $memoItems }}</span></h3>
+                            <h3>Memo Inventory <span class="badge" style="background: #1e40af; color: white;">{{ $memoItems }}</span></h3>
                             <p>Consignment tracking</p>
                         </div>
                         <div class="card-tag">Track</div>
                     </a>
 
-                    <!-- Trade-in Check (Link to your page) -->
-                    <a href="/admin/trade-in-check" class="operation-card" style="background: linear-gradient(135deg, #e0f2fe, #bae6fd); color: #075985; border-color: #0ea5e9;">
+                    <!-- Trade-in Check -->
+                    <a href="/admin/trade-in-check" class="operation-card priority-card" style="background: linear-gradient(135deg, #e0f2fe, #bae6fd); color: #075985; border-color: #0ea5e9;">
                         <div class="card-gem" style="background: #0ea5e9;"></div>
                         <div class="card-icon" style="background: linear-gradient(135deg, #0ea5e9, #0369a1);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +164,7 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Trade-in Check <span style="background: #075985; color: white; padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.5rem;">{{ $tradeInRequests }}</span></h3>
+                            <h3>Trade-in Check <span class="badge" style="background: #075985; color: white;">{{ $tradeInRequests }}</span></h3>
                             <p>Pending evaluations</p>
                         </div>
                         <div class="card-tag">Evaluate</div>
@@ -156,11 +172,11 @@
                 </div>
             </div>
 
-            <!-- Main Operations Grid (Original Layout) -->
+            <!-- Main Operations Grid - 2 columns -->
             <div class="operations-grid">
-                <!-- Core Operations Column -->
+                <!-- Left Column - Sales & Inventory -->
                 <div class="operations-column">
-                    <!-- Sales Operations -->
+                    <!-- Sales Operations - 5 cards -->
                     <section class="operations-module">
                         <div class="module-header">
                             <div class="module-icon">
@@ -176,7 +192,7 @@
                             </div>
                         </div>
                         
-                        <div class="operations-grid-inner">
+                        <div class="five-card-grid">
                             <a href="/admin/sales/create" class="operation-card sapphire-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
@@ -186,7 +202,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>New Sale</h3>
-                                    <p>Standard invoice processing</p>
+                                    <p>Standard invoice</p>
                                 </div>
                                 <div class="card-tag">Primary</div>
                             </a>
@@ -200,7 +216,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Quick Sale</h3>
-                                    <p>Express checkout terminal</p>
+                                    <p>Express checkout</p>
                                 </div>
                                 <div class="card-tag">Express</div>
                             </a>
@@ -214,7 +230,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Find Sale</h3>
-                                    <p>Transaction history archive</p>
+                                    <p>Transaction history</p>
                                 </div>
                                 <div class="card-tag">Archive</div>
                             </a>
@@ -228,7 +244,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Sold Items</h3>
-                                    <p>Sales report & analytics</p>
+                                    <p>Sales reports</p>
                                 </div>
                                 <div class="card-tag">Reports</div>
                             </a>
@@ -242,14 +258,14 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>End of Day</h3>
-                                    <p>Daily closing & reconciliation</p>
+                                    <p>Daily closing</p>
                                 </div>
                                 <div class="card-tag">Closing</div>
                             </a>
                         </div>
                     </section>
 
-                    <!-- Inventory & Stock Management -->
+                    <!-- Inventory Management - 5 cards -->
                     <section class="operations-module">
                         <div class="module-header">
                             <div class="module-icon">
@@ -265,7 +281,7 @@
                             </div>
                         </div>
                         
-                        <div class="operations-grid-inner">
+                        <div class="five-card-grid">
                             <a href="/admin/product-items/create" class="operation-card gold-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
@@ -275,7 +291,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Add Item</h3>
-                                    <p>Create new inventory items</p>
+                                    <p>Create new items</p>
                                 </div>
                                 <div class="card-tag">Create</div>
                             </a>
@@ -284,17 +300,17 @@
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                                     </svg>
                                 </div>
                                 <div class="card-content">
                                     <h3>Find Stock</h3>
-                                    <p>Advanced catalog search</p>
+                                    <p>Catalog search</p>
                                 </div>
                                 <div class="card-tag">Search</div>
                             </a>
 
-                            <a href="/admin/memo-inventory" class="operation-card pearl-card">
+                            <a href="/admin/memo-inventory" class="operation-card aquamarine-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -303,12 +319,12 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Memo</h3>
-                                    <p>Consignment tracking</p>
+                                    <p>Consignment</p>
                                 </div>
                                 <div class="card-tag">Track</div>
                             </a>
 
-                            <a href="/admin/restocks" class="operation-card aquamarine-card">
+                            <a href="/admin/restocks" class="operation-card pearl-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -317,7 +333,7 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Restocks</h3>
-                                    <p>Inventory replenishment</p>
+                                    <p>Replenishment</p>
                                 </div>
                                 <div class="card-tag">Supply</div>
                             </a>
@@ -327,12 +343,11 @@
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
                                 </div>
                                 <div class="card-content">
                                     <h3>Repairs</h3>
-                                    <p>Jewelry repair & restoration</p>
+                                    <p>Restoration</p>
                                 </div>
                                 <div class="card-tag">Service</div>
                             </a>
@@ -340,9 +355,9 @@
                     </section>
                 </div>
 
-                <!-- Services & Analytics Column -->
-                <div class="services-column">
-                    <!-- Custom Services -->
+                <!-- Right Column - Services & Analytics -->
+                <div class="operations-column">
+                    <!-- Custom Services - 5 cards -->
                     <section class="operations-module">
                         <div class="module-header">
                             <div class="module-icon">
@@ -358,17 +373,17 @@
                             </div>
                         </div>
                         
-                        <div class="operations-grid-inner">
+                        <div class="five-card-grid">
                             <a href="/admin/custom-orders" class="operation-card aquamarine-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                     </svg>
                                 </div>
                                 <div class="card-content">
                                     <h3>Custom Orders</h3>
-                                    <p>Bespoke jewelry creation</p>
+                                    <p>Bespoke creations</p>
                                 </div>
                                 <div class="card-tag">Bespoke</div>
                             </a>
@@ -378,19 +393,60 @@
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
                                 </div>
                                 <div class="card-content">
                                     <h3>Repairs</h3>
-                                    <p>Jewelry repair & restoration</p>
+                                    <p>Jewelry repair</p>
                                 </div>
                                 <div class="card-tag">Service</div>
+                            </a>
+
+                            <a href="/admin/memo-inventory" class="operation-card pearl-card">
+                                <div class="card-gem"></div>
+                                <div class="card-icon">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                </div>
+                                <div class="card-content">
+                                    <h3>Memo</h3>
+                                    <p>Consignment</p>
+                                </div>
+                                <div class="card-tag">Track</div>
+                            </a>
+
+                            <a href="/admin/trade-in-check" class="operation-card onyx-card">
+                                <div class="card-gem"></div>
+                                <div class="card-icon">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                    </svg>
+                                </div>
+                                <div class="card-content">
+                                    <h3>Trade-in</h3>
+                                    <p>Evaluation</p>
+                                </div>
+                                <div class="card-tag">Check</div>
+                            </a>
+
+                            <a href="/admin/upcoming-follow-ups" class="operation-card gold-card">
+                                <div class="card-gem"></div>
+                                <div class="card-icon">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                <div class="card-content">
+                                    <h3>Follow-ups</h3>
+                                    <p>Customer contacts</p>
+                                </div>
+                                <div class="card-tag">Remind</div>
                             </a>
                         </div>
                     </section>
 
-                    <!-- Analytics & Reports -->
+                    <!-- Analytics & Reports - 5 cards -->
                     <section class="operations-module">
                         <div class="module-header">
                             <div class="module-icon">
@@ -406,7 +462,7 @@
                             </div>
                         </div>
                         
-                        <div class="operations-grid-inner">
+                        <div class="five-card-grid">
                             <a href="/admin/analytics" class="operation-card peridot-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
@@ -416,37 +472,37 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Analytics</h3>
-                                    <p>Business performance metrics</p>
+                                    <p>Performance</p>
                                 </div>
                                 <div class="card-tag">Insights</div>
-                            </a>
-
-                            <a href="/admin/customer-details-report" class="operation-card topaz-card">
-                                <div class="card-gem"></div>
-                                <div class="card-icon">
-                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                                    </svg>
-                                </div>
-                                <div class="card-content">
-                                    <h3>Customer Report</h3>
-                                    <p>Customer details & analytics</p>
-                                </div>
-                                <div class="card-tag">Clients</div>
                             </a>
 
                             <a href="/admin/customers" class="operation-card pink-sapphire-card">
                                 <div class="card-gem"></div>
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                                     </svg>
                                 </div>
                                 <div class="card-content">
                                     <h3>Customers</h3>
-                                    <p>Client database management</p>
+                                    <p>Database</p>
                                 </div>
-                                <div class="card-tag">Database</div>
+                                <div class="card-tag">Clients</div>
+                            </a>
+
+                            <a href="/admin/customer-details-report" class="operation-card topaz-card">
+                                <div class="card-gem"></div>
+                                <div class="card-icon">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                </div>
+                                <div class="card-content">
+                                    <h3>Customer Rpt</h3>
+                                    <p>Details</p>
+                                </div>
+                                <div class="card-tag">Report</div>
                             </a>
 
                             <a href="/admin/stock-aging-report" class="operation-card peridot-card">
@@ -458,105 +514,84 @@
                                 </div>
                                 <div class="card-content">
                                     <h3>Stock Aging</h3>
-                                    <p>Inventory age analysis</p>
+                                    <p>Analysis</p>
                                 </div>
-                                <div class="card-tag">Analysis</div>
+                                <div class="card-tag">Age</div>
+                            </a>
+
+                            <a href="/admin/activity-logs" class="operation-card onyx-card">
+                                <div class="card-gem"></div>
+                                <div class="card-icon">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0zM4 4v4h4"/>
+                                    </svg>
+                                </div>
+                                <div class="card-content">
+                                    <h3>Activity</h3>
+                                    <p>Audit trail</p>
+                                </div>
+                                <div class="card-tag">Logs</div>
                             </a>
                         </div>
                     </section>
                 </div>
+            </div>
 
-                <!-- Dashboard Sidebar -->
-                <div class="dashboard-sidebar">
-                    <!-- Time & Status Widget -->
-                    <div class="status-widget">
-                        <div class="status-header">
-                            <div class="status-badge">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                <span>MST • NEW MEXICO</span>
-                            </div>
-                        </div>
-                        <div class="status-body">
-                            <div class="date-display">
-                                {{ now()->setTimezone('America/Denver')->format('l, F d, Y') }}
-                            </div>
-                            <div class="clock-display">
-                                <div class="clock-main">
-                                    <span class="clock-hour">{{ now()->setTimezone('America/Denver')->format('h') }}</span>
-                                    <span class="clock-colon">:</span>
-                                    <span class="clock-minute">{{ now()->setTimezone('America/Denver')->format('i') }}</span>
-                                    <span class="clock-second">{{ now()->setTimezone('America/Denver')->format('s') }}</span>
-                                </div>
-                                <div class="clock-meridiem">
-                                    {{ now()->setTimezone('America/Denver')->format('A') }}
-                                </div>
-                            </div>
-                            <div class="system-status">
-                                <div class="status-indicator active">
-                                    <div class="indicator-dot"></div>
-                                    <span>SYSTEM ACTIVE</span>
-                                </div>
-                            </div>
+            <!-- Live Activity Stream - Full Width at Bottom -->
+            <div class="live-activity-section">
+                <div class="activity-stream-full">
+                    <div class="stream-header">
+                        <h3>LIVE ACTIVITY STREAM</h3>
+                        <div class="stream-indicator">
+                            <div class="pulse-dot"></div>
+                            <span>REALTIME</span>
                         </div>
                     </div>
-
-                    <!-- Recent Activity Stream -->
-                    <div class="activity-stream">
-                        <div class="stream-header">
-                            <h3>LIVE ACTIVITY STREAM</h3>
-                            <div class="stream-indicator">
-                                <div class="pulse-dot"></div>
-                                <span>REALTIME</span>
-                            </div>
-                        </div>
-                        <div class="stream-content">
-                            @forelse($data['recentSales'] as $sale)
-                            <div class="stream-item">
-                                <div class="item-icon">
-                                    <div class="icon-pulse {{ $sale->final_total > 5000 ? 'premium' : 'regular' }}">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                        </svg>
-                                    </div>
-                                </div>
-                                <div class="item-details">
-                                    <div class="item-header">
-                                        <span class="item-code">#{{ $sale->receipt_no }}</span>
-                                        <span class="item-time">{{ $sale->created_at->setTimezone('America/Denver')->format('h:i A') }}</span>
-                                    </div>
-                                    <div class="item-info">
-                                        <span class="item-customer">{{ $sale->customer->name ?? 'Walk-in Customer' }}</span>
-                                        <span class="item-meta">{{ $sale->items_count ?? 1 }} items • {{ $sale->payment_method ?? 'Cash' }}</span>
-                                    </div>
-                                </div>
-                                <div class="item-value">
-                                    <span class="value-amount">${{ number_format($sale->final_total, 2) }}</span>
-                                    <span class="value-time">{{ $sale->created_at->diffForHumans() }}</span>
-                                </div>
-                            </div>
-                            @empty
-                            <div class="stream-empty">
-                                <div class="empty-icon">
-                                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    <div class="stream-content-full">
+                        @forelse($data['recentSales'] as $sale)
+                        <div class="stream-item">
+                            <div class="item-icon">
+                                <div class="icon-pulse {{ $sale->final_total > 5000 ? 'premium' : 'regular' }}">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                     </svg>
                                 </div>
-                                <p>No recent activity</p>
-                                <small>Transactions will appear here</small>
                             </div>
-                            @endforelse
+                            <div class="item-details">
+                                <div class="item-header">
+                                    <span class="item-code">#{{ $sale->receipt_no }}</span>
+                                    <span class="item-time">{{ $sale->created_at->setTimezone('America/Denver')->format('h:i A') }}</span>
+                                </div>
+                                <div class="item-info">
+                                    <span class="item-customer">{{ $sale->customer->name ?? 'Walk-in Customer' }}</span>
+                                    <span class="item-meta">{{ $sale->items_count ?? 1 }} items • {{ $sale->payment_method ?? 'Cash' }}</span>
+                                </div>
+                            </div>
+                            <div class="item-value">
+                                <span class="value-amount">${{ number_format($sale->final_total, 2) }}</span>
+                                <span class="value-time">{{ $sale->created_at->diffForHumans() }}</span>
+                            </div>
                         </div>
-                        @if($data['recentSales']->count() > 0)
-                        <a href="/admin/sales" class="stream-view-all">
-                            View Complete History
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                            </svg>
-                        </a>
-                        @endif
+                        @empty
+                        <div class="stream-empty">
+                            <div class="empty-icon">
+                                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <p>No recent activity</p>
+                            <small>Transactions will appear here</small>
+                        </div>
+                        @endforelse
                     </div>
+                    @if($data['recentSales']->count() > 0)
+                    <a href="/admin/sales" class="stream-view-all">
+                        View Complete History
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                    @endif
                 </div>
             </div>
         </div>
@@ -594,6 +629,7 @@
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
         min-height: 100vh;
+        padding: 1rem;
     }
 
     /* Premium Header */
@@ -606,25 +642,6 @@
         border-radius: var(--radius-2xl);
         padding: 1.5rem 2.5rem;
         box-shadow: var(--shadow-ultra);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .header-platinum::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-    }
-
-    .header-inner {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
     }
 
     .brand-display {
@@ -634,7 +651,6 @@
     }
 
     .diamond-badge {
-        position: relative;
         width: 72px;
         height: 72px;
         background: white;
@@ -644,30 +660,10 @@
         border: 1px solid rgba(255, 255, 255, 0.6);
     }
 
-    .diamond-facet {
-        position: absolute;
-        width: 8px;
-        height: 8px;
-        background: white;
-        border-radius: 2px;
-        transform: rotate(45deg);
-        animation: facet-sparkle 4s infinite;
-    }
-
-    .facet-1 { top: 10px; left: 10px; animation-delay: 0s; }
-    .facet-2 { top: 10px; right: 10px; animation-delay: 1s; }
-    .facet-3 { bottom: 10px; right: 10px; animation-delay: 2s; }
-
-    @keyframes facet-sparkle {
-        0%, 100% { opacity: 0.3; }
-        50% { opacity: 1; }
-    }
-
     .diamond-logo {
         width: 100%;
         height: 100%;
         object-fit: contain;
-        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
     }
 
     .brand-identity {
@@ -682,8 +678,6 @@
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin: 0;
-        letter-spacing: -0.5px;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .brand-tag {
@@ -693,54 +687,11 @@
         margin-top: 0.25rem;
     }
 
-    .user-console {
-        display: flex;
-        align-items: center;
-    }
-
-    .user-profile-card {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 0.75rem 1.5rem;
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(12px);
-        border-radius: var(--radius-md);
-        border: 1px solid rgba(255, 255, 255, 0.25);
-    }
-
-    .user-avatar {
-        width: 36px;
-        height: 36px;
-        background: var(--emerald);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-    }
-
-    .user-details {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .user-name {
-        font-weight: 600;
-        color: white;
-        font-size: 0.875rem;
-    }
-
-    .user-station {
-        font-size: 0.75rem;
-        color: #94a3b8;
-    }
-
-    /* Quick Stats Bar */
+    /* Quick Stats Bar - 5 symmetrical items */
     .quick-stats-bar {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1.5rem;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1rem;
         padding-top: 1.5rem;
         border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
@@ -775,21 +726,97 @@
         font-weight: 500;
     }
 
-    /* Dashboard Body */
-    .dashboard-body {
+    /* Time Widget */
+    .time-stat-item {
+        padding: 0.75rem;
+    }
+
+    .time-widget-compact {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .time-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.15rem 0.5rem;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 30px;
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 600;
+    }
+
+    .compact-time {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+
+    .time-display {
+        color: white;
+        font-weight: 700;
+        font-size: 0.9rem;
+        font-family: monospace;
+    }
+
+    .date-display {
+        color: #94a3b8;
+        font-size: 0.65rem;
+    }
+
+    .system-dot {
+        width: 6px;
+        height: 6px;
+        background: #10b981;
+        border-radius: 50%;
+        position: relative;
+        margin-top: 0.1rem;
+    }
+
+    .system-dot::after {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        background: #10b981;
+        border-radius: 50%;
+        opacity: 0.5;
+        animation: pulse 2s infinite;
+    }
+
+    /* Priority Grid - 5 symmetrical cards */
+    .priority-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1.25rem;
+    }
+
+    .priority-card {
+        min-height: 220px;
+    }
+
+    /* Operations Grid - 2 columns */
+    .operations-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
         margin-top: 2rem;
     }
 
-    .operations-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr 380px;
-        gap: 2rem;
-    }
-
-    .operations-column, .services-column {
+    .operations-column {
         display: flex;
         flex-direction: column;
         gap: 2rem;
+    }
+
+    /* Five Card Grid - exactly 5 cards per row */
+    .five-card-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1rem;
     }
 
     /* Operations Modules */
@@ -797,7 +824,7 @@
         background: var(--glass-bg);
         backdrop-filter: blur(24px);
         border-radius: var(--radius-xl);
-        padding: 2rem;
+        padding: 1.5rem;
         box-shadow: var(--shadow-premium);
         border: 1px solid var(--glass-border);
     }
@@ -805,19 +832,15 @@
     .module-header {
         display: flex;
         align-items: center;
-        gap: 1.25rem;
-        margin-bottom: 1.75rem;
-        padding-bottom: 1.25rem;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+        padding-bottom: 1rem;
         border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     }
 
-    .module-icon {
-        flex-shrink: 0;
-    }
-
     .icon-frame {
-        width: 52px;
-        height: 52px;
+        width: 48px;
+        height: 48px;
         border-radius: 16px;
         display: flex;
         align-items: center;
@@ -831,117 +854,109 @@
     .icon-frame.aquamarine { background: var(--aquamarine); }
     .icon-frame.peridot { background: var(--peridot); }
 
-    .module-title {
-        flex: 1;
-    }
-
     .module-title h2 {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
         font-weight: 800;
         color: #1e293b;
-        margin: 0 0 0.375rem 0;
-        letter-spacing: -0.25px;
+        margin: 0 0 0.25rem 0;
     }
 
     .module-title p {
         color: #64748b;
-        font-size: 0.875rem;
+        font-size: 0.75rem;
         margin: 0;
-        font-weight: 500;
     }
 
-    /* Operations Grid Inner */
-    .operations-grid-inner {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1.25rem;
-    }
-
-    /* Operation Cards */
+    /* Operation Cards - Symmetrical sizing */
     .operation-card {
         background: white;
         border-radius: var(--radius-lg);
-        padding: 1.75rem;
+        padding: 1.25rem 1rem;
         text-decoration: none !important;
         position: relative;
         overflow: hidden;
-        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        transition: all 0.3s ease;
         border: 1px solid rgba(255, 255, 255, 0.3);
         display: flex;
         flex-direction: column;
-        height: 100%;
+        height: 180px;
     }
 
     .operation-card:hover {
-        transform: translateY(-10px) scale(1.02);
+        transform: translateY(-5px);
         box-shadow: var(--shadow-ultra);
     }
 
     .card-gem {
         position: absolute;
-        top: -20px;
-        right: -20px;
-        width: 60px;
-        height: 60px;
+        top: -15px;
+        right: -15px;
+        width: 50px;
+        height: 50px;
         border-radius: 50%;
         opacity: 0.1;
-        filter: blur(10px);
-        transition: all 0.4s ease;
-    }
-
-    .operation-card:hover .card-gem {
-        opacity: 0.2;
-        transform: scale(1.5);
+        filter: blur(8px);
     }
 
     .card-icon {
-        position: relative;
-        z-index: 2;
-        margin-bottom: 1.25rem;
-        width: 56px;
-        height: 56px;
-        border-radius: 16px;
+        margin-bottom: 0.75rem;
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-icon svg {
+        width: 22px;
+        height: 22px;
     }
 
     .card-content {
-        position: relative;
-        z-index: 2;
         flex: 1;
     }
 
     .card-content h3 {
-        font-size: 1.25rem;
+        font-size: 1rem;
         font-weight: 700;
         color: #1e293b;
-        margin: 0 0 0.375rem 0;
-        line-height: 1.3;
+        margin: 0 0 0.25rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 0.2rem 0.4rem;
+        border-radius: 999px;
+        font-size: 0.6rem;
+        font-weight: 700;
+        margin-left: 0.25rem;
     }
 
     .card-content p {
         color: #64748b;
-        font-size: 0.875rem;
+        font-size: 0.7rem;
         margin: 0;
-        line-height: 1.5;
+        line-height: 1.3;
     }
 
     .card-tag {
-        position: relative;
-        z-index: 2;
         display: inline-block;
-        margin-top: 1rem;
-        padding: 0.375rem 0.75rem;
-        background: rgba(0, 0, 0, 0.08);
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
+        margin-top: 0.5rem;
+        padding: 0.2rem 0.5rem;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        font-size: 0.6rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
         color: inherit;
         text-transform: uppercase;
+        align-self: flex-start;
     }
 
     /* Card Color Schemes */
@@ -993,123 +1008,17 @@
     .pink-sapphire-card .card-icon { background: var(--pink-sapphire); }
     .pink-sapphire-card .card-gem { background: #ec4899; }
 
-    /* Dashboard Sidebar */
-    .dashboard-sidebar {
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
+    /* Live Activity Section - Full Width at Bottom */
+    .live-activity-section {
+        margin-top: 2rem;
+        width: 100%;
     }
 
-    .status-widget {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border-radius: var(--radius-xl);
-        padding: 2rem;
-        color: white;
-        box-shadow: var(--shadow-premium);
-    }
-
-    .status-header {
-        margin-bottom: 1.5rem;
-    }
-
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: var(--radius-sm);
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-    }
-
-    .status-body {
-        text-align: center;
-    }
-
-    .date-display {
-        font-size: 0.875rem;
-        color: #cbd5e1;
-        margin-bottom: 1rem;
-        font-weight: 500;
-    }
-
-    .clock-display {
-        display: flex;
-        align-items: baseline;
-        justify-content: center;
-        gap: 0.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .clock-main {
-        font-size: 3rem;
-        font-weight: 900;
-        line-height: 1;
-        display: flex;
-        align-items: baseline;
-    }
-
-    .clock-colon {
-        animation: blink 1s infinite;
-    }
-
-    .clock-second {
-        font-size: 1.25rem;
-        opacity: 0.7;
-        margin-left: 0.25rem;
-    }
-
-    .clock-meridiem {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: #cbd5e1;
-    }
-
-    .system-status {
-        margin-top: 1rem;
-    }
-
-    .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        background: rgba(16, 185, 129, 0.2);
-        border-radius: var(--radius-sm);
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #10b981;
-    }
-
-    .status-indicator.active .indicator-dot {
-        background: #10b981;
-    }
-
-    .indicator-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        position: relative;
-    }
-
-    .indicator-dot::after {
-        content: '';
-        position: absolute;
-        inset: -2px;
-        background: #10b981;
-        border-radius: 50%;
-        opacity: 0.5;
-        animation: pulse 2s infinite;
-    }
-
-    /* Activity Stream */
-    .activity-stream {
+    .activity-stream-full {
         background: var(--glass-bg);
         backdrop-filter: blur(24px);
         border-radius: var(--radius-xl);
-        padding: 2rem;
+        padding: 1.5rem;
         box-shadow: var(--shadow-premium);
         border: 1px solid var(--glass-border);
     }
@@ -1118,7 +1027,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
     }
 
     .stream-header h3 {
@@ -1126,7 +1035,6 @@
         font-weight: 800;
         color: #1e293b;
         margin: 0;
-        letter-spacing: -0.25px;
     }
 
     .stream-indicator {
@@ -1136,7 +1044,6 @@
         font-size: 0.75rem;
         font-weight: 700;
         color: #ef4444;
-        letter-spacing: 0.5px;
     }
 
     .pulse-dot {
@@ -1157,37 +1064,38 @@
         animation: pulse 1.5s infinite;
     }
 
-    .stream-content {
-        max-height: 400px;
-        overflow-y: auto;
-        margin-bottom: 1.5rem;
+    .stream-content-full {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        max-height: none;
+        overflow: visible;
+        margin-bottom: 1.25rem;
     }
 
     .stream-item {
         display: flex;
         align-items: center;
-        padding: 1rem;
+        padding: 0.75rem;
         border-radius: var(--radius-md);
         background: #f8fafc;
-        margin-bottom: 0.75rem;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
         border: 1px solid transparent;
     }
 
     .stream-item:hover {
         background: white;
         border-color: #e2e8f0;
-        transform: translateX(4px);
     }
 
     .item-icon {
-        margin-right: 1rem;
+        margin-right: 0.75rem;
     }
 
     .icon-pulse {
-        width: 32px;
-        height: 32px;
-        border-radius: 10px;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1199,29 +1107,30 @@
 
     .item-details {
         flex: 1;
+        min-width: 0;
     }
 
     .item-header {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.125rem;
     }
 
     .item-code {
         font-weight: 700;
         color: #1e293b;
-        font-size: 0.875rem;
+        font-size: 0.8rem;
     }
 
     .item-time {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
         color: #64748b;
     }
 
     .item-info {
         display: flex;
-        gap: 0.75rem;
-        font-size: 0.75rem;
+        gap: 0.5rem;
+        font-size: 0.7rem;
     }
 
     .item-customer {
@@ -1235,41 +1144,32 @@
 
     .item-value {
         text-align: right;
-        margin-left: 1rem;
+        margin-left: 0.75rem;
     }
 
     .value-amount {
         display: block;
         font-weight: 800;
         color: #059669;
-        font-size: 1.125rem;
+        font-size: 0.9rem;
         margin-bottom: 0.125rem;
     }
 
     .value-time {
-        font-size: 0.75rem;
+        font-size: 0.6rem;
         color: #94a3b8;
     }
 
     .stream-empty {
+        grid-column: 1/-1;
         text-align: center;
-        padding: 3rem 1rem;
+        padding: 2rem;
         color: #64748b;
     }
 
     .empty-icon {
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
         opacity: 0.3;
-    }
-
-    .stream-empty p {
-        font-weight: 600;
-        margin-bottom: 0.25rem;
-    }
-
-    .stream-empty small {
-        font-size: 0.875rem;
-        opacity: 0.7;
     }
 
     .stream-view-all {
@@ -1277,16 +1177,14 @@
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
-        width: 100%;
-        padding: 1rem;
+        padding: 0.75rem;
         background: var(--sapphire);
         color: white;
         border-radius: var(--radius-md);
         text-decoration: none;
-        font-weight: 700;
-        font-size: 0.875rem;
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease;
+        font-weight: 600;
+        font-size: 0.8rem;
+        transition: all 0.2s ease;
     }
 
     .stream-view-all:hover {
@@ -1295,44 +1193,22 @@
     }
 
     /* Animations */
-    @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
-    }
-
     @keyframes pulse {
         0% { transform: scale(1); opacity: 0.5; }
         70% { transform: scale(1.5); opacity: 0; }
         100% { transform: scale(1.5); opacity: 0; }
     }
 
-    /* Custom Scrollbar */
-    .stream-content::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .stream-content::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 3px;
-    }
-
-    .stream-content::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 3px;
-    }
-
-    .stream-content::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-    }
-
     /* Responsive Design */
     @media (max-width: 1600px) {
-        .operations-grid {
-            grid-template-columns: 1fr 380px;
+        .five-card-grid {
+            grid-template-columns: repeat(3, 1fr);
         }
-        
-        .operations-grid-inner {
-            grid-template-columns: 1fr;
+        .priority-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .stream-content-full {
+            grid-template-columns: repeat(2, 1fr);
         }
     }
 
@@ -1340,118 +1216,57 @@
         .operations-grid {
             grid-template-columns: 1fr;
         }
-        
         .quick-stats-bar {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
         }
     }
 
     @media (max-width: 768px) {
         .header-platinum {
-            padding: 1.25rem;
+            padding: 1rem;
         }
-        
-        .header-inner {
-            flex-direction: column;
-            gap: 1.5rem;
-            text-align: center;
-        }
-        
         .brand-display {
             flex-direction: column;
             text-align: center;
         }
-        
-        .user-profile-card {
-            width: 100%;
-            justify-content: center;
+        .five-card-grid {
+            grid-template-columns: repeat(2, 1fr);
         }
-        
-        .operations-module {
-            padding: 1.5rem;
+        .priority-grid {
+            grid-template-columns: repeat(2, 1fr);
         }
-        
-        .operations-grid-inner {
+        .stream-content-full {
             grid-template-columns: 1fr;
-        }
-        
-        .quick-stats-bar {
-            grid-template-columns: 1fr;
-            gap: 1rem;
-        }
-        
-        .clock-main {
-            font-size: 2.5rem;
         }
     }
     </style>
 
     <script>
     // Real-time New Mexico Clock
-    function updateNMDashboardClock() {
+    function updateCompactTime() {
         const now = new Date();
         const nmTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
         
-        const hours = nmTime.getHours();
-        const minutes = nmTime.getMinutes().toString().padStart(2, '0');
-        const seconds = nmTime.getSeconds().toString().padStart(2, '0');
-        const meridiem = hours >= 12 ? 'PM' : 'AM';
-        const displayHour = (hours % 12 || 12).toString().padStart(2, '0');
-        
-        document.querySelector('.clock-hour').textContent = displayHour;
-        document.querySelector('.clock-minute').textContent = minutes;
-        document.querySelector('.clock-second').textContent = seconds;
-        document.querySelector('.clock-meridiem').textContent = meridiem;
-        
-        const dateOptions = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-        const dateString = nmTime.toLocaleDateString('en-US', dateOptions);
-        document.querySelector('.date-display').textContent = dateString;
-    }
-
-    // Initialize and update clock
-    updateNMDashboardClock();
-    setInterval(updateNMDashboardClock, 1000);
-
-    // Interactive card effects
-    document.querySelectorAll('.operation-card').forEach(card => {
-        card.addEventListener('mouseenter', function(e) {
-            const rect = this.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width) * 100;
-            const y = ((e.clientY - rect.top) / rect.height) * 100;
-            
-            this.style.setProperty('--mouse-x', `${x}%`);
-            this.style.setProperty('--mouse-y', `${y}%`);
+        const timeString = nmTime.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: true 
         });
-    });
-
-    // Smooth scroll for activity stream
-    const activityStream = document.querySelector('.stream-content');
-    if (activityStream) {
-        activityStream.addEventListener('wheel', function(e) {
-            if (this.scrollHeight > this.clientHeight) {
-                e.preventDefault();
-                this.scrollTop += e.deltaY * 0.5;
-            }
+        
+        const dateString = nmTime.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric'
         });
+        
+        const timeDisplay = document.querySelector('.time-display');
+        const dateDisplay = document.querySelector('.compact-time .date-display');
+        
+        if (timeDisplay) timeDisplay.textContent = timeString;
+        if (dateDisplay) dateDisplay.textContent = dateString;
     }
 
-    // Add parallax effect to header
-    window.addEventListener('scroll', function() {
-        const scrolled = window.pageYOffset;
-        const header = document.querySelector('.header-platinum');
-        if (header) {
-            header.style.transform = `translateY(${scrolled * 0.05}px)`;
-        }
-    });
-
-    // System status animation
-    function updateSystemStatus() {
-        const statusDot = document.querySelector('.indicator-dot');
-        if (statusDot) {
-            statusDot.style.animation = 'pulse 2s infinite';
-        }
-    }
-
-    updateSystemStatus();
+    updateCompactTime();
+    setInterval(updateCompactTime, 1000);
     </script>
 </x-filament-widgets::widget>
