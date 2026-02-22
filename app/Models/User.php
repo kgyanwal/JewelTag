@@ -12,7 +12,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class User extends Authenticatable implements FilamentUser
 {
-    // 🚨 FIX 1: Merge traits correctly. Remove the duplicate 'use HasRoles'
     use HasFactory, Notifiable, SoftDeletes, HasRoles {
         hasPermissionTo as protected traitHasPermissionTo;
     }
@@ -37,12 +36,17 @@ class User extends Authenticatable implements FilamentUser
      */
     public function canAccessPanel(Panel $panel): bool
     {
+        // 1. Check if we are on the Master Panel
         if ($panel->getId() === 'master') {
-            return true; 
+            return in_array(request()->getHost(), config('tenancy.central_domains', []));
         }
 
-        // Inside a store, ensure the user has at least one role to enter
-        return $this->roles()->exists();
+        // 2. Inside a Store: Ensure tenancy is ready and user has a role
+        if (function_exists('tenancy') && tenancy()->initialized) {
+            return $this->roles()->exists();
+        }
+
+        return false;
     }
 
     /**
@@ -50,57 +54,27 @@ class User extends Authenticatable implements FilamentUser
      */
     public function hasPermissionTo($permission, $guardName = null): bool
     {
-        // 🚨 FIX 2: Corrected the tenancy check
-        // If tenancy isn't initialized, we are in the Master database.
+        // On Master: Allow all
         if (!function_exists('tenancy') || !tenancy()->initialized) { 
              return true; 
         }
 
-        // Inside a store, run the actual Spatie check
+        // Inside Store: Check Spatie Roles
         return $this->traitHasPermissionTo($permission, $guardName);
     }
-    // --- Relationships ---
 
-   public function store()
-{
-    // Adjust 'store_id' if your foreign key column has a different name
-    return $this->belongsTo(Store::class, 'store_id');
-}
-
-    // --- Scopes ---
+    public function store()
+    {
+        return $this->belongsTo(Store::class, 'store_id');
+    }
 
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
-    public function scopeByStore($query, $storeId)
-    {
-        return $query->where('store_id', $storeId);
-    }
-
-    // --- Attributes ---
-
-    public function getFullNameAttribute()
-    {
-        return $this->name;
-    }
-
     public function getRoleNamesAttribute()
     {
         return $this->roles->pluck('name')->join(', ');
-    }
-
-    public function getPrimaryRoleAttribute()
-    {
-        return $this->roles->first()->name ?? 'No Role';
-    }
-
-    /**
-     * Check if user has any of the given roles.
-     */
-    public function hasAnyRole($roles)
-    {
-        return $this->hasRole($roles);
     }
 }

@@ -16,10 +16,11 @@ use App\Policies\UserPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\ProductItemPolicy;
 use Illuminate\Support\Facades\Gate;
-
-// 🚨 ADD THESE THREE IMPORTS
-use Livewire\Livewire;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
+use Livewire\Livewire;
+use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,46 +38,60 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // 🚨 THE FIX: Force Livewire to use the Tenancy database when updating forms
+        // 🚀 AUTOMATIC FOLDER CREATION
+        // This prevents the "Failed to open stream" error for every new store.
+        Event::listen(TenantCreated::class, function (TenantCreated $event) {
+            $storagePath = storage_path("tenant{$event->tenant->id}");
+            
+            $folders = [
+                "$storagePath/framework/cache",
+                "$storagePath/framework/views",
+                "$storagePath/framework/sessions",
+                "$storagePath/app/public",
+            ];
+
+            foreach ($folders as $folder) {
+                if (!File::exists($folder)) {
+                    File::makeDirectory($folder, 0775, true, true);
+                }
+            }
+        });
+
+        // 🚨 LIVEWIRE MULTI-TENANCY FIX
         Livewire::setUpdateRoute(function ($handle) {
             $route = Route::post('/livewire/update', $handle)->middleware('web');
-            
-            // Only apply Tenancy if we are on a Store's URL (Not the Master Landlord URL)
             $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
             
             if (! $isCentralDomain) {
                 $route->middleware(InitializeTenancyByDomain::class);
             }
-            
             return $route;
         });
 
+        // Widgets
         Livewire::component('app.filament.widgets.stats-overview', StatsOverview::class);
         Livewire::component('app.filament.widgets.latest-sales', LatestSales::class);
         Livewire::component('app.filament.widgets.fastest-selling-items', FastestSellingItems::class);
         Livewire::component('app.filament.widgets.department-chart', DepartmentChart::class);
         Livewire::component('app.filament.widgets.dashboard-quick-menu', \App\Filament\Widgets\DashboardQuickMenu::class);
         
-        // Register your policies here
+        // Policies
         Gate::policy(User::class, UserPolicy::class);
         Gate::policy(Sale::class, SalePolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(ProductItem::class, ProductItemPolicy::class);
         
-        // This part is the "Superpower" for Superadmins
-        // It tells Laravel: "If the user is a Superadmin, ignore all policies and let them in"
+        // 🔹 GLOBAL SUPERADMIN GATE
         Gate::before(function ($user, $ability) {
-            // Determine if we are on the Central (Master) domain
             $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
 
-            // 🚨 SECURITY FIX: On Central, check if user is a landlord
+            // On Master Panel: Access is granted for everyone in central DB for now 
+            // (You can change this to $user->is_landlord later)
             if ($isCentralDomain) {
-                // If you have a column 'is_landlord', use it. Otherwise, return true for your admin emails.
-                return $user->is_landlord ? true : null; 
+                return true; 
             }
 
-            // 🚀 TENANCY FIX: Check roles ONLY if tenancy is initialized.
-            // This prevents the "Role Not Found" crash during the boot process.
+            // Inside a Store: Only grant if Superadmin role exists
             if (function_exists('tenancy') && tenancy()->initialized && method_exists($user, 'hasRole')) {
                 return $user->hasRole('Superadmin') ? true : null;
             }
