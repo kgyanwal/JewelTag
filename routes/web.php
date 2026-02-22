@@ -1,52 +1,26 @@
 <?php
 
-use App\Http\Controllers\LabelLayoutController;
-use App\Http\Controllers\Api\InventoryAuditController;
-use App\Http\Controllers\ReceiptController;
-use App\Models\Sale;
-use App\Models\InventoryAudit;
 use Illuminate\Support\Facades\Route;
 
-// --- EXISTING CORE ROUTES ---
-Route::redirect('/', '/admin');
+/*
+|--------------------------------------------------------------------------
+| Web Routes (Central / Landlord Only)
+|--------------------------------------------------------------------------
+*/
 
-Route::get('/login', function () {
-    return redirect()->route('filament.admin.auth.login');
-})->name('login');
+// 1. Redirect the main domain to the Master Panel
+Route::redirect('/', '/master');
 
-Route::get('/sales/{record}/receipt', function (Sale $record) {
-    // 🔹 Crucial: Load the customer and items before sending to view
-    $record->load(['customer', 'items']);
-    return view('receipts.sale', ['sale' => $record]);
-})->name('sales.receipt');
+// 2. Simple Store Creation Route (For testing/internal use)
+Route::get('/create-store/{store_name}', function ($store_name) {
+    // This creates the tenant entry in the MASTER database
+    $tenant = App\Models\Tenant::create(['id' => $store_name]);
 
-// --- EXISTING LABEL LAYOUT ROUTES ---
-Route::prefix('label-layout')->group(function () {
-    Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);
-    Route::get('/current', [LabelLayoutController::class, 'getLayouts']);
-    Route::put('/update/{fieldId}', [LabelLayoutController::class, 'updateLayout']);
-    Route::post('/save-all', [LabelLayoutController::class, 'saveAllLayouts']);
+    // This assigns the domain in the MASTER database
+    $tenant->domains()->create(['domain' => $store_name . '.localhost']);
+
+    return "Success! Store '{$store_name}' created. Visit http://{$store_name}.localhost:8001/admin";
 });
 
-// --- NEW INVENTORY AUDIT ROUTES ---
-
-/**
- * 1. The UI Route (This fixes your 404)
- * This is the page you visit to see the scanning interface.
- */
-Route::get('/admin/inventory/audit/{audit}', function (InventoryAudit $audit) {
-    return view('admin.inventory.audit', ['audit' => $audit]);
-})->name('inventory.audit')->middleware(['auth']);
-
-/**
- * 2. The Scanner API Routes
- * These handle the data sent from the Zebra RFD9090 trigger.
- * Note: We bypass CSRF so the handheld device doesn't get blocked.
- */
-Route::post('/inventory/scan', [InventoryAuditController::class, 'recordScan'])
-     ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]);
-
-Route::post('/inventory/complete/{id}', [InventoryAuditController::class, 'completeAudit'])
-     ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]);
-
-Route::get('/receipt/{sale}', [ReceiptController::class, 'show'])->name('receipt.show');     
+// Note: Receipt, Audit, and Label routes are REMOVED because 
+// they now live in tenant.php and run on the store's private database.

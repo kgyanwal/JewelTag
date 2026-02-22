@@ -186,9 +186,15 @@ class ProductItemResource extends Resource
                             ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
                                 if ($get('is_memo')) $set('memo_vendor_id', $state);
                                 if ($state) {
-                                    $latestCode = ProductItem::where('supplier_id', $state)->latest()->value('supplier_code');
-                                    $set('supplier_code', $latestCode);
-                                }
+            // We fetch the code directly from the Supplier model (The master record)
+            // instead of searching through previous product items.
+            $vendor = \App\Models\Supplier::find($state);
+            
+            if ($vendor) {
+                // Assuming your Supplier model has a 'code' or 'supplier_code' column
+                $set('supplier_code', $vendor->code ?? $vendor->supplier_code);
+            }
+        }
                             })->columnSpan(4),
 
                         Toggle::make('is_memo')->label('Is this Memo?')->inline(false)->live()

@@ -11,6 +11,9 @@ class RolePermissionSeeder extends Seeder
 {
     public function run(): void
     {
+        if (!tenancy()->initialized) {
+        return; 
+    }
         // 1. Clear cached permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
