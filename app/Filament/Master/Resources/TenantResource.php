@@ -54,7 +54,14 @@ class TenantResource extends Resource
                     ->label('Web Address')
                     ->badge()
                     ->color('success')
-                    ->url(fn ($record) => "http://" . $record->domains->first()?->domain . ":8001/admin", true),
+                    ->url(function ($record) {
+                        $domain = $record->domains->first()?->domain;
+                        // If on local, keep the port. If on production, use HTTPS and no port.
+                        $protocol = app()->isLocal() ? 'http' : 'https';
+                        $port = app()->isLocal() ? ':8001' : '';
+                        
+                        return "{$protocol}://{$domain}{$port}/admin";
+                    }, true),
 
                 // 🚀 Total Staff Count
                 TextColumn::make('users_count')
