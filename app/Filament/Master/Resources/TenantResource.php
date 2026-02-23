@@ -12,6 +12,7 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\Action;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Hash;
 
 class TenantResource extends Resource
 {
@@ -56,7 +57,6 @@ class TenantResource extends Resource
                     ->color('success')
                     ->url(function ($record) {
                         $domain = $record->domains->first()?->domain;
-                        // If on local, keep the port. If on production, use HTTPS and no port.
                         $protocol = app()->isLocal() ? 'http' : 'https';
                         $port = app()->isLocal() ? ':8001' : '';
                         
@@ -73,10 +73,17 @@ class TenantResource extends Resource
                 TextColumn::make('support_info')
                     ->label('Admin Login (Support Only)')
                     ->description(fn (Tenant $record) => $record->run(function() {
-                        $admin = \App\Models\User::role('Superadmin')->first();
-                        return $admin ? "User: {$admin->username} | PIN: " . ($admin->pin_code ?? 'N/A') : 'No Admin Found';
+                        // 💡 FIX: Use whereHas to avoid "Role Not Found" Exception
+                        $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
+                        
+                        return $admin 
+                            ? "User: {$admin->username} | PIN: " . ($admin->pin_code ?? 'N/A') 
+                            : 'No Superadmin Role Found';
                     }))
-                    ->getStateUsing(fn (Tenant $record) => $record->run(fn () => \App\Models\User::role('Superadmin')->first()?->email))
+                    ->getStateUsing(fn (Tenant $record) => $record->run(function() {
+                        $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
+                        return $admin?->email ?? 'No Admin';
+                    }))
                     ->icon('heroicon-m-finger-print')
                     ->color('info'),
 
@@ -98,12 +105,16 @@ class TenantResource extends Resource
                     ->modalDescription('This will reset the Superadmin password to "jeweltag123" and PIN to "1234". Use this only for support requests.')
                     ->action(function (Tenant $record) {
                         $record->run(function () {
-                            $admin = \App\Models\User::role('Superadmin')->first();
+                            // 💡 FIX: Use manual query to find admin
+                            $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
+                            
                             if ($admin) {
                                 $admin->update([
-                                    'password' => bcrypt('jeweltag123'),
+                                    'password' => Hash::make('jeweltag123'),
                                     'pin_code' => '1234'
                                 ]);
+                            } else {
+                                Notification::make()->title('Error: Superadmin role not found in this store')->danger()->send();
                             }
                         });
                         Notification::make()->title('Credentials Reset Successfully')->success()->send();

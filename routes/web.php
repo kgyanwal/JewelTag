@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
 
 /*
 |--------------------------------------------------------------------------
@@ -8,19 +9,30 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-// 1. Redirect the main domain to the Master Panel
-Route::redirect('/', '/master');
+Route::middleware([
+    'web',
+    PreventAccessFromTenantDomains::class, // 🚀 Ensures tenant subdomains can't hit landlord routes
+])->group(function () {
 
-// 2. Simple Store Creation Route (For testing/internal use)
-Route::get('/create-store/{store_name}', function ($store_name) {
-    // This creates the tenant entry in the MASTER database
-    $tenant = App\Models\Tenant::create(['id' => $store_name]);
+    // 1. Redirect the main domain to the Master Panel
+    Route::redirect('/', '/master');
 
-    // This assigns the domain in the MASTER database
-    $tenant->domains()->create(['domain' => $store_name . '.localhost']);
+    // 2. Dynamic Store Creation Route
+    Route::get('/create-store/{store_name}', function ($store_name) {
+        // Create the Tenant record
+        $tenant = App\Models\Tenant::create(['id' => $store_name]);
 
-    return "Success! Store '{$store_name}' created. Visit http://{$store_name}.localhost:8001/admin";
+        // 🚀 SMART DOMAIN LOGIC
+        // Detects if we are on local or production
+        $baseDomain = app()->isLocal() ? 'localhost' : 'jeweltag.us';
+        $fullDomain = $store_name . '.' . $baseDomain;
+
+        $tenant->domains()->create(['domain' => $fullDomain]);
+
+        $protocol = app()->isLocal() ? 'http' : 'https';
+        $port = app()->isLocal() ? ':8001' : '';
+
+        return "Success! Store '{$store_name}' created. Visit {$protocol}://{$fullDomain}{$port}/admin";
+    });
 });
 
-// Note: Receipt, Audit, and Label routes are REMOVED because 
-// they now live in tenant.php and run on the store's private database.
