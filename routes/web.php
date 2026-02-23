@@ -35,3 +35,4 @@ Route::middleware([
         return "Success! Store '{$store_name}' created. Visit {$protocol}://{$fullDomain}{$port}/admin";
     });
 });
+

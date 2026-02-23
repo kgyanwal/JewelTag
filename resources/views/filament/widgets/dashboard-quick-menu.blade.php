@@ -598,6 +598,7 @@
     </div>
 
     <style>
+        
     /* ===== ULTIMATE JEWELRY DASHBOARD ===== */
     .ultimate-jewel-dashboard {
         --sapphire: linear-gradient(135deg, #2563eb, #1d4ed8);
@@ -1200,17 +1201,81 @@
     }
 
     /* Responsive Design */
-    @media (max-width: 1600px) {
-        .five-card-grid {
-            grid-template-columns: repeat(3, 1fr);
-        }
-        .priority-grid {
-            grid-template-columns: repeat(3, 1fr);
-        }
-        .stream-content-full {
-            grid-template-columns: repeat(2, 1fr);
-        }
+   /* Priority Grid - Force 5 cards in a row */
+.priority-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: clamp(0.75rem, 1vw, 1.25rem);
+}
+
+/* Remove the responsive breakpoint that changes to 3 columns */
+@media (max-width: 1600px) {
+    /* Remove or comment out this section */
+    /* .priority-grid {
+        grid-template-columns: repeat(3, 1fr);
+    } */
+}
+
+/* Alternative: If you want to keep responsive but ensure 5 cards at larger screens */
+@media (max-width: 1400px) {
+    .priority-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr)); /* Maintain 5 columns but allow shrinking */
     }
+    
+    /* Make cards slightly smaller at this breakpoint */
+    .priority-card {
+        aspect-ratio: 1 / 1.2;
+    }
+}
+
+@media (max-width: 1200px) {
+    .priority-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr)); /* Still 5 columns */
+        gap: 0.5rem;
+    }
+    
+    .priority-card {
+        padding: 0.75rem 0.5rem;
+    }
+    
+    /* Adjust font sizes for smaller screens */
+    .priority-card .card-content h3 {
+        font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+    }
+    
+    .priority-card .card-content p {
+        font-size: clamp(0.55rem, 1.2vw, 0.65rem);
+    }
+    
+    .priority-card .card-icon {
+        width: 2rem;
+        height: 2rem;
+    }
+    
+    .priority-card .card-icon svg {
+        width: 1rem;
+        height: 1rem;
+    }
+}
+
+/* Only at very small screens should it wrap */
+@media (max-width: 900px) {
+    .priority-grid {
+        grid-template-columns: repeat(3, 1fr); /* Now wrap to 3 columns */
+    }
+}
+
+@media (max-width: 600px) {
+    .priority-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 columns on mobile */
+    }
+}
+
+@media (max-width: 400px) {
+    .priority-grid {
+        grid-template-columns: 1fr; /* 1 column on very small screens */
+    }
+}
 
     @media (max-width: 1200px) {
         .operations-grid {
