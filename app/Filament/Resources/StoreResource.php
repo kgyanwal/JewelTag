@@ -4,13 +4,17 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\StoreResource\Pages;
 use App\Models\Store;
+use App\Helpers\LocationHelper;
 use Filament\Forms;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Section;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Columns\ImageColumn;
+use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class StoreResource extends Resource
 {
@@ -22,51 +26,58 @@ class StoreResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Section::make('Store Details')->schema([
-                    Forms\Components\TextInput::make('name')
+                Section::make('Store Identity')->schema([
+                    TextInput::make('name')
                         ->label('Store Name')
                         ->required()
-                        ->placeholder('e.g. Head Office')
                         ->maxLength(255),
-
-                    // Existing Location Field
-                    Forms\Components\TextInput::make('location')
-                        ->label('Address / Location')
-                        ->placeholder('123 Main St'),
-
-                    // 🆕 NEW FIELD: Domain URL
-                    Forms\Components\TextInput::make('domain_url')
-                        ->label('Website / Receipt Domain')
-                        ->placeholder('https://thediamondsq.com')
-                        ->url() // Validates that input is a proper URL
+                    
+                    TextInput::make('domain_url')
+                        ->label('Website Domain')
+                        ->url()
                         ->suffixIcon('heroicon-m-globe-alt')
-                        ->helperText('Enter the full URL (including https://). This is used for SMS receipt links.')
-                        ->columnSpanFull(), // Make it full width
+                        ->columnSpanFull(),
+                ])->columns(2),
 
-                    Forms\Components\TextInput::make('phone')
-                        ->label('Phone Number'),
-                    Forms\Components\TextInput::make('email')
+                Section::make('Location Details')->schema([
+                    // 1. THE SEARCH TRIGGER
+                    GoogleAutocomplete::make('address_search')
+    ->label('Search Address')
+    ->autocompletePlaceholder('Start typing...')
+    ->countries(['US'])
+  
+    ->withFields([
+        TextInput::make('address_line_1')
+            ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+        TextInput::make('city')
+            ->extraInputAttributes(['data-google-field' => 'locality']),
+        Select::make('state')
+            ->options(LocationHelper::getUsStates())
+            ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1_short']),
+        TextInput::make('zip_code')
+            ->extraInputAttributes(['data-google-field' => 'postal_code']),
+    ])
+                ])->columns(2),
+
+                Section::make('Contact Information')->schema([
+                    TextInput::make('phone')
+                        ->label('Phone Number')
+                        ->tel()
+                        ->prefix('+1')
+                        ->mask('999-999-9999')
+                        // Persistent +1 logic
+                        ->dehydrateStateUsing(fn ($state) => $state ? '+1' . preg_replace('/\D/', '', $state) : null),
+                        
+                    TextInput::make('email')
                         ->label('Email Address')
-                        ->email()
-                        ->placeholder('info@yourstore.com'),
-                    Forms\Components\TextInput::make('facebook_link')
-                        ->label('Facebook URL')
-                        ->placeholder('https://facebook.com/yourpage')
-                        ->url()
-                        ->prefixIcon('heroicon-o-globe-alt'),
+                        ->email(),
+                ])->columns(2),
 
-                    Forms\Components\TextInput::make('instagram_link')
-                        ->label('Instagram URL')
-                        ->placeholder('https://instagram.com/yourhandle')
-                        ->url()
-                        ->prefixIcon('heroicon-o-camera'),
-
+                Section::make('Branding')->schema([
                     FileUpload::make('logo_path')
-                        ->label('Store Logo/Image')
+                        ->label('Store Logo')
                         ->image()
                         ->directory('store-logos')
-                        ->visibility('public')
-                        ->disk('public')
                         ->columnSpanFull(),
                 ])
             ]);
@@ -76,50 +87,12 @@ class StoreResource extends Resource
     {
         return $table
             ->columns([
-                ImageColumn::make('logo_path')
-                    ->label('Logo')
-                    ->disk('public') // IMPORTANT
-                    ->height(50)
-                    ->width(50)
-                    ->circular()
-                    ->defaultImageUrl(asset('images/store-placeholder.png')),
-
-                Tables\Columns\TextColumn::make('name')
-                    ->label('Store Name')
-                    ->sortable()
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('location')
-                    ->label('Address')
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('phone')
-                    ->label('Phone'),
+                Tables\Columns\TextColumn::make('name')->sortable()->searchable(),
+                Tables\Columns\TextColumn::make('city')->sortable(),
+                Tables\Columns\TextColumn::make('state')->sortable(),
+                Tables\Columns\TextColumn::make('phone'),
             ])
-            ->filters([])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
-            ]);
-    }
-
-
-    public static function canAccess(): bool
-    {
-        // 🔹 Only allow users with the 'super_admin' role to access Store management
-        return auth()->user()->hasRole('Superadmin');
-    }
-    public static function shouldRegisterNavigation(): bool
-    {
-        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
-        $staff = \App\Helpers\Staff::user();
-
-        // Only allow specific roles to see the Administration menu
-        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+            ->actions([Tables\Actions\EditAction::make()]);
     }
 
     public static function getPages(): array

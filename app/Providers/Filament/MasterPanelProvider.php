@@ -17,7 +17,7 @@ use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Illuminate\Support\HtmlString;
-
+use Jeffgreco13\FilamentBreezy\BreezyCore;
 class MasterPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -123,6 +123,11 @@ class MasterPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+           ->plugins([
+            BreezyCore::make()
+                ->myProfile(shouldRegisterUserMenu: true)
+                ->enableTwoFactorAuthentication(force: true), 
+        ]);
     }
 }

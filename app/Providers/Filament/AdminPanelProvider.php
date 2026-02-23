@@ -24,7 +24,7 @@ use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
 use App\Models\Store;
-
+use Jeffgreco13\FilamentBreezy\BreezyCore;
 class AdminPanelProvider extends PanelProvider
 {
     /**
@@ -39,7 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->registration()
+            
             ->login()
             ->topNavigation()
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
@@ -332,6 +332,7 @@ HTML
                 NavigationGroup::make()->label('Admin'),
                 NavigationGroup::make()->label('Analytics & Reports'),
             ])
+            
             ->userMenuItems([
                 'settings' => MenuItem::make()
                     ->label('Store Settings')
@@ -344,6 +345,11 @@ HTML
                     ->icon('heroicon-o-finger-print')
                     ->url(fn (): string => ActivityLogResource::getUrl())
                     ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-            ]);
+            ])
+            ->plugins([
+            BreezyCore::make()
+                ->myProfile(shouldRegisterUserMenu: false) // Hides the profile menu
+                ->enableTwoFactorAuthentication(false),   // Explicitly turns off MFA
+        ]);
     }
 }
