@@ -58,17 +58,18 @@ class User extends Authenticatable implements FilamentUser
      * 🔹 MFA SESSION ISOLATION
      */
     public function breezySessions()
-    {
-        if (function_exists('tenancy') && tenancy()->initialized) {
-            return $this->hasMany(self::class, 'id', 'id')->whereRaw('1 = 0');
-        }
-
-        return $this->hasMany(
-            config('filament-breezy.session_model', \Jeffgreco13\FilamentBreezy\Models\BreezySession::class),
-            'authenticatable_id'
-        )->where('authenticatable_type', $this->getMorphClass());
+{
+    // Tenant isolation remains the same
+    if (function_exists('tenancy') && tenancy()->initialized) {
+        return $this->hasMany(self::class, 'id', 'id')->whereRaw('1 = 0');
     }
 
+    // Use the polymorphic relationship helpers
+    return $this->morphMany(
+        config('filament-breezy.session_model', \Jeffgreco13\FilamentBreezy\Models\BreezySession::class),
+        'authenticatable' // 🚨 This matches your morphs('authenticatable') in migration
+    );
+}
     public function store()
     {
         return $this->belongsTo(Store::class, 'store_id');
