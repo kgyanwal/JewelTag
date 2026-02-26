@@ -11,6 +11,13 @@
         $pendingFollowUps = $data['pendingFollowUps'] ?? 0;
         $memoItems = $data['memoItems'] ?? 0;
         $tradeInRequests = $data['tradeInRequests'] ?? 0;
+      
+    $timezone = $store->timezone ?? 'America/Denver';
+     $state = $store->state ?? 'NM';
+
+    $now = now()->setTimezone($timezone);
+
+    $tzAbbreviation = $now->format('T');
     @endphp
 
     <div class="ultimate-jewel-dashboard" style="margin-top: -1rem;">
@@ -65,11 +72,18 @@
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                     </svg>
-                                    <span>MST • NM</span>
+                                    <span>
+    {{ $tzAbbreviation }} • {{ $state }}
+</span>
                                 </div>
                                 <div class="compact-time">
-                                    <span class="time-display">{{ now()->setTimezone('America/Denver')->format('h:i:s A') }}</span>
-                                    <span class="date-display">{{ now()->setTimezone('America/Denver')->format('M d') }}</span>
+                                  <span class="time-display">
+    {{ now()->setTimezone($timezone)->format('h:i:s A') }}
+</span>
+
+<span class="date-display">
+    {{ now()->setTimezone($timezone)->format('M d') }}
+</span>
                                 </div>
                                 <div class="system-dot" title="System Active"></div>
                             </div>

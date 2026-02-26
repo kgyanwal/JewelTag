@@ -108,6 +108,7 @@ class MasterPanelProvider extends PanelProvider
             ])
             ->widgets([
     \App\Filament\Master\Widgets\SubscriptionOverview::class,
+    \App\Filament\Master\Widgets\PlatformHealthWidget::class,
 ])
             ->discoverWidgets(in: app_path('Filament/Master/Widgets'), for: 'App\\Filament\\Master\\Widgets')
             ->middleware([

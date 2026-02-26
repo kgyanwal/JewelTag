@@ -25,6 +25,9 @@ use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
 use App\Models\Store;
 use Jeffgreco13\FilamentBreezy\BreezyCore;
+use Filament\Support\Facades\FilamentView;
+use Illuminate\Support\Facades\Blade;
+use App\Models\Announcement;
 class AdminPanelProvider extends PanelProvider
 {
     /**
@@ -301,6 +304,7 @@ HTML
                 \App\Filament\Pages\Analytics::class,
                 \App\Filament\Pages\StockAgingReport::class,
                  \App\Filament\Pages\UpcomingFollowUps::class,
+                 \App\Filament\Pages\InactiveStockReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
@@ -352,4 +356,38 @@ HTML
                 ->enableTwoFactorAuthentication(false),   // Explicitly turns off MFA
         ]);
     }
+    public function boot(): void
+{
+    FilamentView::registerRenderHook(
+        'panels::content.start',
+        fn (): string => Blade::render('
+            @php
+                // 💡 FORCE connection to central database to avoid 402/1146 error
+                try {
+                    $announcement = \Illuminate\Support\Facades\DB::connection("mysql") // Use your central connection name
+                        ->table("announcements")
+                        ->where("is_active", true)
+                        ->where(function($q) {
+                            $q->whereNull("expires_at")->orWhere("expires_at", ">", now());
+                        })
+                        ->latest()
+                        ->first();
+                } catch (\Exception $e) {
+                    $announcement = null; // Prevent crash if central DB is unreachable
+                }
+            @endphp
+
+            @if($announcement)
+                <div class="p-4 mb-4 text-sm rounded-lg bg-{{ $announcement->color }}-500 text-white shadow-md border-l-4 border-white/20">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                        <span><strong>{{ $announcement->title }}:</strong> {{ $announcement->message }}</span>
+                    </div>
+                </div>
+            @endif
+        '),
+    );
+}
 }
