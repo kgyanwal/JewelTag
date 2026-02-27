@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 class ImportOnSwimSales extends Command
 {
     protected $signature = 'import:onswim-sales {tenant} {--rollback}';
-    protected $description = 'Import sales and link them to customers using Sales CSV data';
+    protected $description = 'Import sales grouped by unique job/date/customer to prevent massive single-sale errors';
 
     public function handle()
     {
@@ -30,6 +30,7 @@ class ImportOnSwimSales extends Command
             return;
         }
 
+        // 1. SAFE ROLLBACK
         if ($this->option('rollback')) {
             $this->warn("Rolling back sales for tenant: {$tenantId}...");
             Schema::disableForeignKeyConstraints();
@@ -40,11 +41,12 @@ class ImportOnSwimSales extends Command
             return;
         }
 
+        // 2. LOAD FILE
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/sales_dsqdata_feb27_26.csv";
+        $filePath = "{$directoryPath}/sales_dsqdata.csv";
 
         if (!file_exists($filePath)) {
-            $this->error("Sales file not found at: {$filePath}");
+            $this->error("File not found at: {$filePath}");
             return;
         }
 
@@ -58,43 +60,58 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
-        $salesGroups = collect($rows)->groupBy('Job No.');
+        // 🚀 THE FIX: Grouping by a combination of identifiers
+        // This ensures that even if Job No is missing, separate days or customers create separate sales.
+        $salesGroups = collect($rows)->groupBy(function ($item) {
+            $job = trim($item['Job No.'] ?? '0');
+            $date = trim($item['Purchase Date'] ?? '00-00-00');
+            $cust = trim($item['Customer No.'] ?? 'WALKIN');
+            return "{$job}-{$date}-{$cust}";
+        });
+
+        $this->info("Processing " . $salesGroups->count() . " individual sales...");
         $bar = $this->output->createProgressBar($salesGroups->count());
 
         DB::connection('tenant')->beginTransaction();
 
         try {
-            foreach ($salesGroups as $jobNo => $items) {
+            foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
                 
-                // 🚀 LINKING LOGIC: Uses the customer data embedded in the sales row
+                // Link Customer
                 $customer = $this->findCustomer($firstItem);
                 
-                $purchaseDate = !empty($firstItem['Purchase Date']) ? Carbon::parse($firstItem['Purchase Date']) : now();
-                $invoiceNo = 'D' . $purchaseDate->format('mdy') . str_pad($jobNo, 4, '0', STR_PAD_LEFT);
+                // Format Date
+                $purchaseDate = !empty($firstItem['Purchase Date']) 
+                    ? Carbon::parse($firstItem['Purchase Date']) 
+                    : now();
 
+                // Generate a real invoice number based on the CSV data
+                $jobNo = trim($firstItem['Job No.'] ?? rand(1000, 9999));
+                $invoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
+
+                // Staff Array
                 $staff = array_filter([
                     trim($firstItem['Sales Assistant'] ?? null),
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                $sale = Sale::updateOrCreate(
-                    ['invoice_number' => $invoiceNo],
-                    [
-                        'customer_id' => $customer?->id,
-                        'store_id' => $storeId,
-                        'status' => 'completed',
-                        'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
-                        'created_at' => $purchaseDate,
-                        'payment_method' => 'cash',
-                        'is_split_payment' => false,
-                        'repair_number' => $firstItem['Repair Number'] ?? null,
-                    ]
-                );
+                // Create the Individual Sale
+                $sale = Sale::create([
+                    'invoice_number' => $invoiceNo,
+                    'customer_id' => $customer?->id,
+                    'store_id' => $storeId,
+                    'status' => 'completed',
+                    'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
+                    'created_at' => $purchaseDate,
+                    'payment_method' => 'cash',
+                    'is_split_payment' => false,
+                    'repair_number' => $firstItem['Repair Number'] ?? null,
+                ]);
 
-                $sale->items()->delete();
                 $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
+                // Process specific items for this sale group only
                 foreach ($items as $item) {
                     $desc = strtoupper($item['Description'] ?? '');
                     
@@ -134,6 +151,7 @@ class ImportOnSwimSales extends Command
 
                 $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
 
+                // Update this specific sale with its calculated totals
                 $sale->update([
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxTotal,
@@ -141,7 +159,6 @@ class ImportOnSwimSales extends Command
                     'has_trade_in' => $tradeInTotal > 0,
                     'trade_in_value' => $tradeInTotal,
                     'trade_in_description' => rtrim($tradeInDesc, '; '),
-                    'trade_in_receipt_no' => $tradeInTotal > 0 ? 'TRD-' . $jobNo : null,
                     'final_total' => $finalTotal,
                     'payment_method_1' => 'cash',
                     'payment_amount_1' => $finalTotal,
@@ -153,7 +170,7 @@ class ImportOnSwimSales extends Command
             DB::connection('tenant')->commit();
             $bar->finish();
             $this->newLine();
-            $this->info("Sales Import Successful.");
+            $this->info("Individual Sales Imported Successfully.");
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
@@ -163,21 +180,18 @@ class ImportOnSwimSales extends Command
 
     private function findCustomer($data)
     {
-        // 1. Search by Customer Number (Exact Match)
         $onSwimCustNo = trim($data['Customer No.'] ?? '');
         if (!empty($onSwimCustNo)) {
             $found = Customer::where('customer_no', 'CUST-' . $onSwimCustNo)->first();
             if ($found) return $found;
         }
 
-        // 2. Search by Email
         $email = trim($data['Email'] ?? '');
         if (!empty($email)) {
             $found = Customer::where('email', $email)->first();
             if ($found) return $found;
         }
 
-        // 3. Search by Mobile/Phone
         $rawPhone = !empty(trim($data['Mobile'] ?? '')) ? $data['Mobile'] : ($data['Customer Ph'] ?? null);
         if (!empty($rawPhone)) {
             $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
