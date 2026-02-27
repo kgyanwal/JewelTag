@@ -15,7 +15,7 @@ class ImportOnSwimCustomers extends Command
      * Rollback: php artisan import:onswim-customers lxdiamond --rollback
      */
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers from OnSwim CSV with dynamic tenant paths and rollback capability';
+    protected $description = 'Import customers from OnSwim CSV with correct city/suburb mapping and rollback capability';
 
     public function handle()
     {
@@ -43,8 +43,8 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        // 🚀 2. DYNAMIC IMPORT LOGIC
-        // Structure: storage/app/data/{tenant_id}/filename.csv
+        // 2. DYNAMIC PATH LOGIC
+        // Looks in storage/app/data/{tenant_id}/customer_dsqdata_feb25_26.csv
         $directoryPath = storage_path("app/data/{$tenantId}");
         $fileName = 'customer_dsqdata_feb25_26.csv';
         $filePath = "{$directoryPath}/{$fileName}";
@@ -56,7 +56,7 @@ class ImportOnSwimCustomers extends Command
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
-            $this->info("Please ensure the file is uploaded to the tenant folder.");
+            $this->info("Please upload the file to: {$filePath}");
             return;
         }
 
@@ -93,12 +93,16 @@ class ImportOnSwimCustomers extends Command
                         'email' => $email ?: ($existing?->email ?? null),
                         'phone' => $phone,
                         'home_phone' => $data['Home Phone'] ?? null,
-                        'street' => $data['Street'] ?? null,
-                        'suburb' => $data['Suburb/City'] ?? null,
-                        'city' => $data['City/Province'] ?? null,
-                        'state' => $data['State'] ?? null,
+                        
+                        // 🔹 ADDRESS MAPPING (Fixed for OnSwim Headers)
+                        'street'   => $data['Street'] ?? null,
+                        'suburb'   => $data['Suburb/City'] ?? null,   // From CSV Header
+                        'city'     => $data['City/Province'] ?? null, // From CSV Header
+                        'state'    => $data['State'] ?? null,
                         'postcode' => $data['Postcode'] ?? null,
-                        'country' => $data['Country'] ?? 'USA',
+                        'country'  => $data['Country'] ?? 'USA',
+
+                        // Dates & Preferences
                         'dob' => $this->parseDate($data['Birthdate'] ?? null),
                         'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
                         'gender' => $data['Gender'] ?? null,
@@ -106,8 +110,12 @@ class ImportOnSwimCustomers extends Command
                         'lh_ring' => $data['Finger Size'] ?? null,
                         'sales_person' => $data['Staff Assigned'] ?? null,
                         'how_found_store' => $data['Referred By'] ?? null,
+                        
+                        // Spouse Info
                         'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
                         'spouse_email' => $data['Spouse Email'] ?? null,
+
+                        // Metadata
                         'comments' => $data['Comments'] ?? null,
                         'customer_alerts' => $data['Issues'] ?? null,
                         'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
@@ -139,8 +147,11 @@ class ImportOnSwimCustomers extends Command
 
     private function parseDate($date)
     {
-        if (empty($date) || $date == ' ') return null;
-        try { return Carbon::parse($date)->format('Y-m-d'); } 
-        catch (\Exception $e) { return null; }
+        if (empty($date) || trim($date) == '') return null;
+        try { 
+            return Carbon::parse($date)->format('Y-m-d'); 
+        } catch (\Exception $e) { 
+            return null; 
+        }
     }
 }
