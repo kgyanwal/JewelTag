@@ -16,7 +16,7 @@ class ImportOnSwimCustomers extends Command
      * Rollback: php artisan import:onswim-customers thedsq --rollback
      */
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers from OnSwim CSV with smart city/suburb mapping and FK-safe rollback';
+    protected $description = 'Import customers with smart city mapping and multi-column conflict resolution';
 
     public function handle()
     {
@@ -35,7 +35,6 @@ class ImportOnSwimCustomers extends Command
             $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
             
             if ($this->confirm('This will delete ALL customers in this tenant. Are you sure?', false)) {
-                // Disable foreign key checks to allow truncate despite 'laybuys' or 'sales' tables
                 Schema::disableForeignKeyConstraints();
                 Customer::truncate();
                 Schema::enableForeignKeyConstraints();
@@ -49,16 +48,11 @@ class ImportOnSwimCustomers extends Command
 
         // 2. DYNAMIC PATH LOGIC
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $fileName = 'customer_dsqdata_feb26_26.csv';
+        $fileName = 'customer_dsqdata_feb25_26.csv';
         $filePath = "{$directoryPath}/{$fileName}";
-
-        if (!file_exists($directoryPath)) {
-            mkdir($directoryPath, 0775, true);
-        }
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
-            $this->info("Please ensure the file is uploaded to: {$filePath}");
             return;
         }
 
@@ -78,19 +72,25 @@ class ImportOnSwimCustomers extends Command
 
                 $email = trim($data['Email'] ?? '');
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
-                $custNo = 'CUST-' . ($data['Cust No.'] ?? rand(1000, 9999));
+                
+                $rawCustNo = trim($data['Cust No.'] ?? '');
+                if (empty($rawCustNo)) continue;
+                $fullCustNo = 'CUST-' . $rawCustNo;
 
-                $existing = null;
-                if (!empty($email)) {
-                    $existing = Customer::where('email', $email)->first();
-                }
+                // 🚀 CONFLICT RESOLUTION LOGIC
+                // Look for an existing record by any unique identifier to prevent 1062 errors
+                $existing = Customer::where('customer_no', $fullCustNo)->first();
+
                 if (!$existing && !empty($phone)) {
                     $existing = Customer::where('phone', $phone)->first();
                 }
 
-                // 🚀 SMART ADDRESS MAPPING
-                // Based on your data, 'Suburb/City' contains values like 'Lubbock'
-                // while 'City/Province' is often empty.
+                if (!$existing && !empty($email)) {
+                    $existing = Customer::where('email', $email)->first();
+                }
+
+                // 🚀 SMART CITY/ADDRESS MAPPING
+                // Use 'City/Province' if it has data; otherwise, use 'Suburb/City'
                 $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                 ? $data['City/Province'] 
                                 : ($data['Suburb/City'] ?? null);
@@ -98,7 +98,7 @@ class ImportOnSwimCustomers extends Command
                 Customer::updateOrCreate(
                     ['id' => $existing?->id ?? null],
                     [
-                        'customer_no' => $existing?->customer_no ?? $custNo,
+                        'customer_no' => $fullCustNo,
                         'name' => $data['First Name'] ?? 'Walk-in',
                         'last_name' => $data['Last Name'] ?? null,
                         'email' => $email ?: ($existing?->email ?? null),
@@ -107,7 +107,7 @@ class ImportOnSwimCustomers extends Command
                         
                         'street'   => $data['Street'] ?? null,
                         'suburb'   => $data['Suburb/City'] ?? null,   
-                        'city'     => $cityValue, // 👈 Populates the field in your screenshot
+                        'city'     => $cityValue,
                         'state'    => $data['State'] ?? null,
                         'postcode' => $data['Postcode'] ?? null,
                         'country'  => $data['Country'] ?? 'USA',
@@ -137,8 +137,7 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
             if (isset($file)) fclose($file);
-            $this->error("Error during import: " . $e->getMessage());
-            $this->error("Data has been rolled back to its original state.");
+            $this->error("Error: " . $e->getMessage());
         }
     }
 
