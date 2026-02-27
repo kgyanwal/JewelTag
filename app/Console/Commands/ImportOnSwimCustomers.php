@@ -48,7 +48,7 @@ class ImportOnSwimCustomers extends Command
 
         // 2. DYNAMIC PATH LOGIC
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $fileName = 'customer_dsqdata_feb25_26.csv';
+        $fileName = 'customer_dsqdata_feb26_26.csv';
         $filePath = "{$directoryPath}/{$fileName}";
 
         if (!file_exists($filePath)) {
