@@ -43,7 +43,7 @@ class ImportOnSwimSales extends Command
 
         // 2. LOAD FILE
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/sales_dsqdata.csv";
+        $filePath = "{$directoryPath}/sales_dsqdata_feb27_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
