@@ -66,7 +66,7 @@ class ImportOnSwimCustomers extends Command
         }
 
         $file = fopen($filePath, 'r');
-        $headers = fgetcsv($file);
+        $headers = array_map('trim', fgetcsv($file));
 
         $this->info("Starting Full Customer Import for {$tenantId}...");
 
@@ -106,7 +106,6 @@ class ImportOnSwimCustomers extends Command
                         'state'    => $data['State'] ?? null,
                         'postcode' => $data['Postcode'] ?? null,
                         'country'  => $data['Country'] ?? 'USA',
-
                         'dob' => $this->parseDate($data['Birthdate'] ?? null),
                         'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
                         'gender' => $data['Gender'] ?? null,
