@@ -27,6 +27,7 @@ use Illuminate\Support\HtmlString;
 use Aws\Sns\SnsClient;
 use Illuminate\Support\Str;
 use Filament\Notifications\Notification;
+use Filament\Forms\Components\Actions\Action as FormAction;
 
 
 class SaleResource extends Resource
@@ -122,12 +123,12 @@ class SaleResource extends Resource
                                             ->label('Trade-In Tracking #')
                                             ->default(fn() => 'TRD-' . date('Ymd-His'))
                                             ->readOnly(),
-                                         Forms\Components\Textarea::make('trade_in_description')
-                    ->label('Item Description')
-                    ->placeholder('e.g. 14k White Gold Diamond Band, 0.50ctw, Size 7')
-                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                    ->columnSpanFull() // Spans across both columns for better typing space
-                    ->rows(2),   
+                                        Forms\Components\Textarea::make('trade_in_description')
+                                            ->label('Item Description')
+                                            ->placeholder('e.g. 14k White Gold Diamond Band, 0.50ctw, Size 7')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                            ->columnSpanFull() // Spans across both columns for better typing space
+                                            ->rows(2),
                                     ]),
                             ]),
                         Section::make('Current Bill Items')->schema([
@@ -196,7 +197,7 @@ class SaleResource extends Resource
                                         ->numeric()
                                         ->suffix('%')
                                         ->default(0)
-                                        ->dehydrateStateUsing(fn ($state) => $state ?: 0)
+                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
@@ -216,7 +217,7 @@ class SaleResource extends Resource
                                         ->label('Disc $')
                                         ->numeric()
                                         ->default(0)
-                                        ->dehydrateStateUsing(fn ($state) => $state ?: 0)
+                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
                                         ->prefix('$')
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
@@ -295,194 +296,199 @@ class SaleResource extends Resource
 
                     Group::make()->columnSpan(4)->schema([
                         Section::make('Customer & Personnel')->schema([
-                           Select::make('customer_id')
-    ->label('Customer')
-    ->relationship('customer', 'name')
-    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
-    ->searchable(['name', 'last_name', 'phone'])
-    ->preload()
-    ->required()
-    ->live()
-// 🆕 1. Auto-fills the customer if coming from the "Find Customer" page
-    ->default(fn() => request()->query('customer_id')) 
-    
-    // 🆕 2. Tells the client exactly how to add a customer
-    ->helperText('Need a new customer? Click the "+" button.') 
-    
-    // 🆕 3. Adds a clear title to the popup modal
-    ->createOptionModalHeading('Create New Customer')
-    // 🚀 ENHANCED CUSTOMER CREATION MODAL
-    ->createOptionForm([
-        Forms\Components\Tabs::make('New Customer')
-            ->tabs([
-                // 1. Essential Contact Info
-                Forms\Components\Tabs\Tab::make('Contact')
-                    ->icon('heroicon-o-user')
-                    ->schema([
-                        Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\TextInput::make('name')
-                                ->label('First Name')
-                                ->required(),
-                            Forms\Components\TextInput::make('last_name')
-                                ->label('Last Name'),
-                        ]),
-                        
-                        Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\TextInput::make('phone')
-                                ->label('Mobile Phone')
-                                ->tel()
-                                ->prefix('+1')
-                                ->mask('(999) 999-9999') // Auto-format
-                                ->stripCharacters(['(', ')', '-', ' '])
+                            Select::make('customer_id')
+                                ->label('Customer')
+                                ->relationship('customer', 'name')
+                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
+                                ->searchable(['name', 'last_name', 'phone'])
+                                ->preload()
                                 ->required()
-                                ->unique('customers', 'phone'),
-                                
-                            Forms\Components\TextInput::make('email')
-                                ->label('Email')
-                                ->email(),
-                        ]),
+                                ->live()
+                                // 🆕 1. Auto-fills the customer if coming from the "Find Customer" page
+                                ->default(fn() => request()->query('customer_id'))
 
-                        Forms\Components\Textarea::make('address')
-                            ->label('Address')
-                            ->rows(2)
-                            ->columnSpanFull(),
-                    ]),
+                                // 🆕 2. Tells the client exactly how to add a customer
+                                ->helperText('Need a new customer? Click the "+" button.')
 
-                // 2. Personal Details & Image
-                Forms\Components\Tabs\Tab::make('Profile')
-                    ->icon('heroicon-o-camera')
-                    ->schema([
-                        Forms\Components\FileUpload::make('image')
-                            ->label('Customer Photo')
-                            ->image()
-                            ->avatar()
-                            ->imageEditor()
-                            ->directory('customer-photos')
-                            ->visibility('public')
-                            ->columnSpanFull(),
+                                // 🆕 3. Adds a clear title to the popup modal
+                                ->createOptionModalHeading('Create New Customer')
+                                // 🚀 ENHANCED CUSTOMER CREATION MODAL
+                                ->createOptionForm([
+                                    Forms\Components\Tabs::make('New Customer')
+                                        ->tabs([
+                                            // 1. Essential Contact Info
+                                            Forms\Components\Tabs\Tab::make('Contact')
+                                                ->icon('heroicon-o-user')
+                                                ->schema([
+                                                    Forms\Components\Grid::make(2)->schema([
+                                                        Forms\Components\TextInput::make('name')
+                                                            ->label('First Name')
+                                                            ->required(),
+                                                        Forms\Components\TextInput::make('last_name')
+                                                            ->label('Last Name'),
+                                                    ]),
 
-                        Forms\Components\Grid::make(2)->schema([
-                            Forms\Components\DatePicker::make('dob')
-                                ->label('Birthday')
-                                ->native(false),
-                                
-                            Forms\Components\DatePicker::make('wedding_anniversary')
-                                ->label('Anniversary')
-                                ->native(false),
-                        ]),
-                    ]),
-            ]),
+                                                    Forms\Components\Grid::make(2)->schema([
+                                                        Forms\Components\TextInput::make('phone')
+                                                            ->label('Mobile Phone')
+                                                            ->tel()
+                                                            ->prefix('+1')
+                                                            ->mask('(999) 999-9999') // Auto-format
+                                                            ->stripCharacters(['(', ')', '-', ' '])
+                                                            ->required()
+                                                            ->unique('customers', 'phone'),
 
-        // Auto-generate customer number
-        Forms\Components\Hidden::make('customer_no')
-            ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
-    ])
-    ->createOptionUsing(function (array $data) {
-        // Save and return ID
-        return \App\Models\Customer::create($data)->id;
-    }),
+                                                        Forms\Components\TextInput::make('email')
+                                                            ->label('Email')
+                                                            ->email(),
+                                                    ]),
+
+                                                    Forms\Components\Textarea::make('address')
+                                                        ->label('Address')
+                                                        ->rows(2)
+                                                        ->columnSpanFull(),
+                                                ]),
+
+                                            // 2. Personal Details & Image
+                                            Forms\Components\Tabs\Tab::make('Profile')
+                                                ->icon('heroicon-o-camera')
+                                                ->schema([
+                                                    Forms\Components\FileUpload::make('image')
+                                                        ->label('Customer Photo')
+                                                        ->image()
+                                                        ->avatar()
+                                                        ->imageEditor()
+                                                        ->directory('customer-photos')
+                                                        ->visibility('public')
+                                                        ->columnSpanFull(),
+
+                                                    Forms\Components\Grid::make(2)->schema([
+                                                        Forms\Components\DatePicker::make('dob')
+                                                            ->label('Birthday')
+                                                            ->native(false),
+
+                                                        Forms\Components\DatePicker::make('wedding_anniversary')
+                                                            ->label('Anniversary')
+                                                            ->native(false),
+                                                    ]),
+                                                ]),
+                                        ]),
+
+                                    // Auto-generate customer number
+                                    Forms\Components\Hidden::make('customer_no')
+                                        ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
+                                ])
+                                ->createOptionUsing(function (array $data) {
+                                    // Save and return ID
+                                    return \App\Models\Customer::create($data)->id;
+                                }),
                             Select::make('sales_person_list')
-        ->label('Sales Persons (Double Assistant)')
-        ->multiple() // 🚀 THIS ENABLES MULTIPLE SELECTION
-        ->searchable()
-        ->preload()
-        ->options(fn() => User::pluck('name', 'name')->toArray()) // Fetches your team list
-        ->default(fn() => [auth()->user()->name]) // Defaults to current user in an array
-        ->required()
-        ->helperText('Select one or more staff members for this sale.')
-        ->dehydrated(),
+                                ->label('Sales Persons (Double Assistant)')
+                                ->multiple() // 🚀 THIS ENABLES MULTIPLE SELECTION
+                                ->searchable()
+                                ->preload()
+                                 ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Add SalesPerson for multi-people sales')
+                        )
+                                ->options(fn() => User::pluck('name', 'name')->toArray()) // Fetches your team list
+                                ->default(fn() => [auth()->user()->name]) // Defaults to current user in an array
+                                ->required()
+                                ->helperText('Select one or more staff members for this sale.')
+                                ->dehydrated(),
                         ]),
 
                         Section::make('Payment & Status')->schema([
-    
-    // 1. SPLIT PAYMENT TOGGLE
-    Toggle::make('is_split_payment')
-        ->label('Enable Split Payment')
-        ->onColor('warning')
-        ->offColor('gray')
-        ->live()
-        ->columnSpanFull(),
 
-    // 2. STANDARD SINGLE PAYMENT (Hidden if Split is ON)
-    Select::make('payment_method')
-        ->label('Payment Method')
-        ->options(self::getPaymentOptions()) // Uses helper function
-        ->default('cash')
-        ->required(fn (Get $get) => ! $get('is_split_payment')) // Not required if split
-        ->visible(fn (Get $get) => ! $get('is_split_payment')), // Hide if split
+                            // 1. SPLIT PAYMENT TOGGLE
+                            Toggle::make('is_split_payment')
+                                ->label('Enable Split Payment')
+                                ->onColor('warning')
+                                ->offColor('gray')
+                                ->live()
+                                ->columnSpanFull(),
 
-    // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
-    // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
-    Group::make()->schema([
-        // --- METHOD 1 (Required if Split) ---
-        Grid::make(2)->schema([
-            Select::make('payment_method_1')
-                ->label('Method 1')
-                ->options(self::getPaymentOptions())
-                ->required(fn (Get $get) => $get('is_split_payment')),
-                
-            TextInput::make('payment_amount_1')
-                ->label('Amount 1')
-                ->numeric()
-                ->prefix('$')
-                ->default(fn (Get $get) => $get('final_total')) // Auto-fill total
-                ->required(fn (Get $get) => $get('is_split_payment'))
-                ->live(onBlur: true), // 👈 Makes balance update live when typing finishes
-        ]),
+                            // 2. STANDARD SINGLE PAYMENT (Hidden if Split is ON)
+                            Select::make('payment_method')
+                                ->label('Payment Method')
+                                ->options(self::getPaymentOptions()) // Uses helper function
+                                ->default('cash')
+                                ->required(fn(Get $get) => ! $get('is_split_payment')) // Not required if split
+                                ->visible(fn(Get $get) => ! $get('is_split_payment')), // Hide if split
 
-        // --- METHOD 2 (Required if Split) ---
-        Grid::make(2)->schema([
-            Select::make('payment_method_2')
-                ->label('Method 2')
-                ->options(self::getPaymentOptions())
-                ->required(fn (Get $get) => $get('is_split_payment')), // 👈 Now required for split!
-                
-            TextInput::make('payment_amount_2')
-                ->label('Amount 2')
-                ->numeric()
-                ->prefix('$')
-                ->required(fn (Get $get) => $get('is_split_payment')) // 👈 Now required for split!
-                ->live(onBlur: true), // 👈 Makes balance update live
-        ]),
+                            // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
+                            // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
+                            Group::make()->schema([
+                                // --- METHOD 1 (Required if Split) ---
+                                Grid::make(2)->schema([
+                                    Select::make('payment_method_1')
+                                        ->label('Method 1')
+                                        ->options(self::getPaymentOptions())
+                                        ->required(fn(Get $get) => $get('is_split_payment')),
 
-        // --- METHOD 3 (Optional) ---
-        Grid::make(2)->schema([
-            Select::make('payment_method_3')
-                ->label('Method 3')
-                ->options(self::getPaymentOptions()),
-                
-            TextInput::make('payment_amount_3')
-                ->label('Amount 3')
-                ->numeric()
-                ->prefix('$')
-                ->live(onBlur: true), // 👈 Makes balance update live
-        ]),
-        
-        // 🔹 Live Remaining Balance
-        Placeholder::make('split_calc')
-            ->label('Remaining Balance')
-            ->content(function (Get $get) {
-                $total = (float) $get('final_total');
-                $p1 = (float) ($get('payment_amount_1') ?: 0);
-                $p2 = (float) ($get('payment_amount_2') ?: 0);
-                $p3 = (float) ($get('payment_amount_3') ?: 0);
-                
-                $remaining = $total - ($p1 + $p2 + $p3);
-                
-                // Show green if perfectly balanced, red if money is still owed or overpaid
-                $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
-                
-                return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
-            }),
+                                    TextInput::make('payment_amount_1')
+                                        ->label('Amount 1')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->default(fn(Get $get) => $get('final_total')) // Auto-fill total
+                                        ->required(fn(Get $get) => $get('is_split_payment'))
+                                        ->live(onBlur: true), // 👈 Makes balance update live when typing finishes
+                                ]),
 
-    ])->visible(fn (Get $get) => $get('is_split_payment')),
+                                // --- METHOD 2 (Required if Split) ---
+                                Grid::make(2)->schema([
+                                    Select::make('payment_method_2')
+                                        ->label('Method 2')
+                                        ->options(self::getPaymentOptions())
+                                        ->required(fn(Get $get) => $get('is_split_payment')), // 👈 Now required for split!
 
-    Select::make('status')
-        ->label('Sale Status')
-        ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
-        ->default('completed')
-        ->required(),
-]),
+                                    TextInput::make('payment_amount_2')
+                                        ->label('Amount 2')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->required(fn(Get $get) => $get('is_split_payment')) // 👈 Now required for split!
+                                        ->live(onBlur: true), // 👈 Makes balance update live
+                                ]),
+
+                                // --- METHOD 3 (Optional) ---
+                                Grid::make(2)->schema([
+                                    Select::make('payment_method_3')
+                                        ->label('Method 3')
+                                        ->options(self::getPaymentOptions()),
+
+                                    TextInput::make('payment_amount_3')
+                                        ->label('Amount 3')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->live(onBlur: true), // 👈 Makes balance update live
+                                ]),
+
+                                // 🔹 Live Remaining Balance
+                                Placeholder::make('split_calc')
+                                    ->label('Remaining Balance')
+                                    ->content(function (Get $get) {
+                                        $total = (float) $get('final_total');
+                                        $p1 = (float) ($get('payment_amount_1') ?: 0);
+                                        $p2 = (float) ($get('payment_amount_2') ?: 0);
+                                        $p3 = (float) ($get('payment_amount_3') ?: 0);
+
+                                        $remaining = $total - ($p1 + $p2 + $p3);
+
+                                        // Show green if perfectly balanced, red if money is still owed or overpaid
+                                        $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
+
+                                        return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
+                                    }),
+
+                            ])->visible(fn(Get $get) => $get('is_split_payment')),
+
+                            Select::make('status')
+                                ->label('Sale Status')
+                                ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
+                                ->default('completed')
+                                ->required(),
+                        ]),
 
 
                         Section::make('Financial Summary')->schema([
@@ -543,10 +549,10 @@ class SaleResource extends Resource
                 TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
                 TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
                 TextColumn::make('sales_person_list')
-    ->label('Sales Staff')
-    ->badge() 
-    ->separator(',') 
-    ->searchable(),
+                    ->label('Sales Staff')
+                    ->badge()
+                    ->separator(',')
+                    ->searchable(),
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()

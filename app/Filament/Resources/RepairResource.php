@@ -11,7 +11,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\{Section, TextInput, Select, Toggle, Grid, Textarea};
-
+use Filament\Forms\Components\Actions\Action as FormAction;
 class RepairResource extends Resource
 {
     protected static ?string $model = Repair::class;
@@ -29,6 +29,11 @@ class RepairResource extends Resource
                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
                         ->searchable(['name', 'last_name', 'phone'])
                         ->preload()
+                         ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Click + to add a new customer')
+                        )
                         ->required()
                         ->columnSpan(1)
                         // 🚀 START: COPY-PASTED CUSTOMER CREATION LOGIC
@@ -38,6 +43,7 @@ class RepairResource extends Resource
                                 ->tabs([
                                     Forms\Components\Tabs\Tab::make('Contact')
                                         ->icon('heroicon-o-user')
+                                        
                                         ->schema([
                                             Forms\Components\Grid::make(2)->schema([
                                                 Forms\Components\TextInput::make('name')
