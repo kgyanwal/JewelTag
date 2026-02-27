@@ -6,17 +6,17 @@ use Illuminate\Console\Command;
 use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema; // 👈 Added for FK constraints
+use Illuminate\Support\Facades\Schema;
 
 class ImportOnSwimCustomers extends Command
 {
     /**
      * Signature includes the --rollback option.
-     * Usage: php artisan import:onswim-customers lxdiamond
-     * Rollback: php artisan import:onswim-customers lxdiamond --rollback
+     * Usage: php artisan import:onswim-customers thedsq
+     * Rollback: php artisan import:onswim-customers thedsq --rollback
      */
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers from OnSwim CSV with correct city mapping and FK-safe rollback';
+    protected $description = 'Import customers from OnSwim CSV with smart city/suburb mapping and FK-safe rollback';
 
     public function handle()
     {
@@ -35,12 +35,9 @@ class ImportOnSwimCustomers extends Command
             $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
             
             if ($this->confirm('This will delete ALL customers in this tenant. Are you sure?', false)) {
-                
-                // 🚀 THE FIX: Disable foreign key checks to allow truncate
+                // Disable foreign key checks to allow truncate despite 'laybuys' or 'sales' tables
                 Schema::disableForeignKeyConstraints();
-                
                 Customer::truncate();
-                
                 Schema::enableForeignKeyConstraints();
                 
                 $this->info("Customer table truncated successfully.");
@@ -66,6 +63,8 @@ class ImportOnSwimCustomers extends Command
         }
 
         $file = fopen($filePath, 'r');
+        
+        // 🚀 THE FIX: Trim headers to remove hidden spaces/tabs from the CSV export
         $headers = array_map('trim', fgetcsv($file));
 
         $this->info("Starting Full Customer Import for {$tenantId}...");
@@ -89,6 +88,13 @@ class ImportOnSwimCustomers extends Command
                     $existing = Customer::where('phone', $phone)->first();
                 }
 
+                // 🚀 SMART ADDRESS MAPPING
+                // Based on your data, 'Suburb/City' contains values like 'Lubbock'
+                // while 'City/Province' is often empty.
+                $cityValue = !empty(trim($data['City/Province'] ?? '')) 
+                                ? $data['City/Province'] 
+                                : ($data['Suburb/City'] ?? null);
+
                 Customer::updateOrCreate(
                     ['id' => $existing?->id ?? null],
                     [
@@ -99,13 +105,13 @@ class ImportOnSwimCustomers extends Command
                         'phone' => $phone,
                         'home_phone' => $data['Home Phone'] ?? null,
                         
-                        // 🔹 ADDRESS MAPPING (Matches OnSwim Headers Exactly)
                         'street'   => $data['Street'] ?? null,
                         'suburb'   => $data['Suburb/City'] ?? null,   
-                        'city'     => $data['City/Province'] ?? null, 
+                        'city'     => $cityValue, // 👈 Populates the field in your screenshot
                         'state'    => $data['State'] ?? null,
                         'postcode' => $data['Postcode'] ?? null,
                         'country'  => $data['Country'] ?? 'USA',
+
                         'dob' => $this->parseDate($data['Birthdate'] ?? null),
                         'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
                         'gender' => $data['Gender'] ?? null,
