@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 class ImportOnSwimSales extends Command
 {
     protected $signature = 'import:onswim-sales {tenant} {--rollback}';
-    protected $description = 'Import sales matching exact DB columns with dual-phone and split-payment support';
+    protected $description = 'Import sales and link them to customers using Sales CSV data';
 
     public function handle()
     {
@@ -30,32 +30,27 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-        // 1. SAFE ROLLBACK LOGIC
         if ($this->option('rollback')) {
             $this->warn("Rolling back sales for tenant: {$tenantId}...");
-            
-            if ($this->confirm('This will delete ALL sales and items. Are you sure?', false)) {
-                Schema::disableForeignKeyConstraints(); // 🚀 Prevents FK errors
-                SaleItem::truncate();
-                Sale::truncate();
-                Schema::enableForeignKeyConstraints();
-                $this->info("Sales and Items tables truncated successfully.");
-            }
+            Schema::disableForeignKeyConstraints();
+            SaleItem::truncate();
+            Sale::truncate();
+            Schema::enableForeignKeyConstraints();
+            $this->info("Sales and Items tables truncated successfully.");
             return;
         }
 
-        // 2. FILE & HEADER PROCESSING
         $directoryPath = storage_path("app/data/{$tenantId}");
         $filePath = "{$directoryPath}/sales_dsqdata_feb27_26.csv";
 
         if (!file_exists($filePath)) {
-            $this->error("File not found at: {$filePath}");
+            $this->error("Sales file not found at: {$filePath}");
             return;
         }
 
         $storeId = Store::first()?->id ?? 1;
         $file = fopen($filePath, 'r');
-        $headers = array_map('trim', fgetcsv($file)); // 🚀 Trim hidden spaces
+        $headers = array_map('trim', fgetcsv($file));
         
         $rows = [];
         while (($row = fgetcsv($file)) !== FALSE) {
@@ -71,17 +66,18 @@ class ImportOnSwimSales extends Command
         try {
             foreach ($salesGroups as $jobNo => $items) {
                 $firstItem = $items->first();
+                
+                // 🚀 LINKING LOGIC: Uses the customer data embedded in the sales row
                 $customer = $this->findCustomer($firstItem);
+                
                 $purchaseDate = !empty($firstItem['Purchase Date']) ? Carbon::parse($firstItem['Purchase Date']) : now();
                 $invoiceNo = 'D' . $purchaseDate->format('mdy') . str_pad($jobNo, 4, '0', STR_PAD_LEFT);
 
-                // 🚀 Double Sales Assistant Logic
                 $staff = array_filter([
                     trim($firstItem['Sales Assistant'] ?? null),
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                // 1. Create the Main Sale Record
                 $sale = Sale::updateOrCreate(
                     ['invoice_number' => $invoiceNo],
                     [
@@ -91,7 +87,7 @@ class ImportOnSwimSales extends Command
                         'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
                         'created_at' => $purchaseDate,
                         'payment_method' => 'cash',
-                        'is_split_payment' => false, // Defaulting to false for simple import
+                        'is_split_payment' => false,
                         'repair_number' => $firstItem['Repair Number'] ?? null,
                     ]
                 );
@@ -99,7 +95,6 @@ class ImportOnSwimSales extends Command
                 $sale->items()->delete();
                 $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
-                // 2. Process line items
                 foreach ($items as $item) {
                     $desc = strtoupper($item['Description'] ?? '');
                     
@@ -115,7 +110,6 @@ class ImportOnSwimSales extends Command
                     $taxAmount = floatval($item['Tax Amount'] ?? 0);
                     $discAmount = floatval($item['Discount Amount'] ?? 0);
 
-                    // 🚀 Lookup Repair ID if this is a repair service
                     $repairId = !empty($item['Repair Number']) 
                         ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
                         : null;
@@ -140,7 +134,6 @@ class ImportOnSwimSales extends Command
 
                 $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
 
-                // 🚀 3. Update Financials & Split Payment compatibility
                 $sale->update([
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxTotal,
@@ -150,7 +143,6 @@ class ImportOnSwimSales extends Command
                     'trade_in_description' => rtrim($tradeInDesc, '; '),
                     'trade_in_receipt_no' => $tradeInTotal > 0 ? 'TRD-' . $jobNo : null,
                     'final_total' => $finalTotal,
-                    // Populate Split fields so POS shows $0 balance remaining
                     'payment_method_1' => 'cash',
                     'payment_amount_1' => $finalTotal,
                 ]);
@@ -161,7 +153,7 @@ class ImportOnSwimSales extends Command
             DB::connection('tenant')->commit();
             $bar->finish();
             $this->newLine();
-            $this->info("Import successful.");
+            $this->info("Sales Import Successful.");
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
@@ -171,24 +163,28 @@ class ImportOnSwimSales extends Command
 
     private function findCustomer($data)
     {
-        $email = trim($data['Email'] ?? '');
-        
-        // 🚀 SMART PHONE LOOKUP (Mobile OR Customer Ph)
-        $rawPhone = !empty(trim($data['Mobile'] ?? '')) 
-            ? $data['Mobile'] 
-            : ($data['Customer Ph'] ?? null);
+        // 1. Search by Customer Number (Exact Match)
+        $onSwimCustNo = trim($data['Customer No.'] ?? '');
+        if (!empty($onSwimCustNo)) {
+            $found = Customer::where('customer_no', 'CUST-' . $onSwimCustNo)->first();
+            if ($found) return $found;
+        }
 
+        // 2. Search by Email
+        $email = trim($data['Email'] ?? '');
         if (!empty($email)) {
             $found = Customer::where('email', $email)->first();
             if ($found) return $found;
         }
 
+        // 3. Search by Mobile/Phone
+        $rawPhone = !empty(trim($data['Mobile'] ?? '')) ? $data['Mobile'] : ($data['Customer Ph'] ?? null);
         if (!empty($rawPhone)) {
             $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
             $found = Customer::where('phone', 'like', "%{$cleanPhone}%")->first();
             if ($found) return $found;
         }
 
-        return Customer::first(); // Fallback to avoid null errors
+        return null;
     }
 }
