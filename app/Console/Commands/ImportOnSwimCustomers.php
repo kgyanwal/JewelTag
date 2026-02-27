@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 class ImportOnSwimCustomers extends Command
 {
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Final version: Smart City mapping + Phone/ID conflict resolution';
+    protected $description = 'Import customers with recursive conflict resolution to prevent 1062 unique key errors';
 
     public function handle()
     {
@@ -31,7 +31,7 @@ class ImportOnSwimCustomers extends Command
                 Schema::disableForeignKeyConstraints();
                 Customer::truncate();
                 Schema::enableForeignKeyConstraints();
-                $this->info("Customer table truncated successfully.");
+                $this->info("Customer table truncated.");
             }
             return;
         }
@@ -45,7 +45,6 @@ class ImportOnSwimCustomers extends Command
         }
 
         $file = fopen($filePath, 'r');
-        // 🚀 TRIMMING HEADERS: Fixes column recognition issues
         $headers = array_map('trim', fgetcsv($file));
 
         $this->info("Starting Full Customer Import for {$tenantId}...");
@@ -61,24 +60,37 @@ class ImportOnSwimCustomers extends Command
                 if (empty($rawCustNo)) continue;
                 $fullCustNo = 'CUST-' . $rawCustNo;
 
-                // 🚀 CONFLICT RESOLUTION: Check Phone first to prevent SQL errors
-                $existing = null;
-                if (!empty($phone)) {
+                // 🚀 STEP 1: RESOLVE THE ID CONFLICT
+                // We prioritize finding by Customer Number because that is the primary unique key
+                $existing = Customer::where('customer_no', $fullCustNo)->first();
+
+                // If not found by number, try phone
+                if (!$existing && !empty($phone)) {
                     $existing = Customer::where('phone', $phone)->first();
                 }
-                if (!$existing) {
-                    $existing = Customer::where('customer_no', $fullCustNo)->first();
-                }
+
+                // If still not found, try email
                 if (!$existing && !empty($email)) {
                     $existing = Customer::where('email', $email)->first();
                 }
 
-                // 🚀 SMART CITY MAPPING: Fixes the "City not showing" issue
+                // 🚀 STEP 2: PREVENT SECONDARY PHONE CONFLICT
+                // If we found a record by ID/Email, but the PHONE in the CSV belongs to someone ELSE, 
+                // we must set the phone to null for this record to prevent the SQL error, 
+                // OR skip updating the phone.
+                if ($existing && !empty($phone)) {
+                    $phoneOwner = Customer::where('phone', $phone)->first();
+                    if ($phoneOwner && $phoneOwner->id !== $existing->id) {
+                        // Conflict: This phone belongs to another ID. 
+                        // To avoid the error, we keep the existing record's phone instead of the CSV's.
+                        $phone = $existing->phone; 
+                    }
+                }
+
                 $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                 ? $data['City/Province'] 
                                 : ($data['Suburb/City'] ?? null);
 
-                // 🚀 UPSERT DATA
                 Customer::updateOrCreate(
                     ['id' => $existing?->id ?? null], 
                     [
@@ -119,7 +131,7 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
             if (isset($file)) fclose($file);
-            $this->error("Error: " . $e->getMessage());
+            $this->error("Critical Error: " . $e->getMessage());
         }
     }
 
