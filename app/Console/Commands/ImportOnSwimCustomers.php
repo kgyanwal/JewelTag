@@ -10,8 +10,13 @@ use Illuminate\Support\Facades\Schema;
 
 class ImportOnSwimCustomers extends Command
 {
+    /**
+     * Signature includes the --rollback option.
+     * Usage: php artisan import:onswim-customers thedsq
+     * Rollback: php artisan import:onswim-customers thedsq --rollback
+     */
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers with multi-column conflict resolution (Phone/CustNo)';
+    protected $description = 'Import customers from OnSwim CSV with smart city/suburb mapping and FK-safe rollback';
 
     public function handle()
     {
@@ -25,29 +30,46 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
+        // 1. ROLLBACK LOGIC
         if ($this->option('rollback')) {
             $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
-            if ($this->confirm('This will delete ALL customers. Are you sure?', false)) {
+            
+            if ($this->confirm('This will delete ALL customers in this tenant. Are you sure?', false)) {
+                // Disable foreign key checks to allow truncate despite 'laybuys' or 'sales' tables
                 Schema::disableForeignKeyConstraints();
                 Customer::truncate();
                 Schema::enableForeignKeyConstraints();
-                $this->info("Customer table truncated.");
+                
+                $this->info("Customer table truncated successfully.");
+            } else {
+                $this->info("Rollback cancelled.");
             }
             return;
         }
 
+        // 2. DYNAMIC PATH LOGIC
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/customer_dsqdata_feb25_26.csv";
+        $fileName = 'customer_dsqdata_feb26_26.csv';
+        $filePath = "{$directoryPath}/{$fileName}";
+
+        if (!file_exists($directoryPath)) {
+            mkdir($directoryPath, 0775, true);
+        }
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
+            $this->info("Please ensure the file is uploaded to: {$filePath}");
             return;
         }
 
         $file = fopen($filePath, 'r');
+        
+        // 🚀 THE FIX: Trim headers to remove hidden spaces/tabs from the CSV export
         $headers = array_map('trim', fgetcsv($file));
 
         $this->info("Starting Full Customer Import for {$tenantId}...");
+
+        // Start a Transaction for safety
         DB::connection('tenant')->beginTransaction();
 
         try {
@@ -56,45 +78,40 @@ class ImportOnSwimCustomers extends Command
 
                 $email = trim($data['Email'] ?? '');
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
-                $rawCustNo = trim($data['Cust No.'] ?? '');
-                
-                if (empty($rawCustNo)) continue;
-                $fullCustNo = 'CUST-' . $rawCustNo;
+                $custNo = 'CUST-' . ($data['Cust No.'] ?? rand(1000, 9999));
 
-                // 🚀 THE STRATEGY: Find existing record by ANY unique key
-                // 1. Check by Customer Number
-                $existing = Customer::where('customer_no', $fullCustNo)->first();
-
-                // 2. If not found, check by Phone (to prevent the 1062 error you just saw)
+                $existing = null;
+                if (!empty($email)) {
+                    $existing = Customer::where('email', $email)->first();
+                }
                 if (!$existing && !empty($phone)) {
                     $existing = Customer::where('phone', $phone)->first();
                 }
 
-                // 3. If still not found, check by Email
-                if (!$existing && !empty($email)) {
-                    $existing = Customer::where('email', $email)->first();
-                }
-
+                // 🚀 SMART ADDRESS MAPPING
+                // Based on your data, 'Suburb/City' contains values like 'Lubbock'
+                // while 'City/Province' is often empty.
                 $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                 ? $data['City/Province'] 
                                 : ($data['Suburb/City'] ?? null);
 
-                // Use the ID of the found record to overwrite, or null to create new
                 Customer::updateOrCreate(
-                    ['id' => $existing?->id ?? null], 
+                    ['id' => $existing?->id ?? null],
                     [
-                        'customer_no' => $fullCustNo, // This will overwrite the old number if we matched by phone
+                        'customer_no' => $existing?->customer_no ?? $custNo,
                         'name' => $data['First Name'] ?? 'Walk-in',
                         'last_name' => $data['Last Name'] ?? null,
                         'email' => $email ?: ($existing?->email ?? null),
                         'phone' => $phone,
                         'home_phone' => $data['Home Phone'] ?? null,
+                        
                         'street'   => $data['Street'] ?? null,
                         'suburb'   => $data['Suburb/City'] ?? null,   
-                        'city'     => $cityValue,
+                        'city'     => $cityValue, // 👈 Populates the field in your screenshot
                         'state'    => $data['State'] ?? null,
                         'postcode' => $data['Postcode'] ?? null,
                         'country'  => $data['Country'] ?? 'USA',
+
                         'dob' => $this->parseDate($data['Birthdate'] ?? null),
                         'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
                         'gender' => $data['Gender'] ?? null,
@@ -120,7 +137,8 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
             if (isset($file)) fclose($file);
-            $this->error("Error: " . $e->getMessage());
+            $this->error("Error during import: " . $e->getMessage());
+            $this->error("Data has been rolled back to its original state.");
         }
     }
 
@@ -135,7 +153,10 @@ class ImportOnSwimCustomers extends Command
     private function parseDate($date)
     {
         if (empty($date) || trim($date) == '') return null;
-        try { return Carbon::parse($date)->format('Y-m-d'); } 
-        catch (\Exception $e) { return null; }
+        try { 
+            return Carbon::parse($date)->format('Y-m-d'); 
+        } catch (\Exception $e) { 
+            return null; 
+        }
     }
 }
