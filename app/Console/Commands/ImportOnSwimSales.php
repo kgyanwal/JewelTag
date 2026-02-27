@@ -7,16 +7,16 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Customer;
 use App\Models\ProductItem;
+use App\Models\Store;
+use App\Models\Repair;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ImportOnSwimSales extends Command
 {
-    /**
-     * Usage: php artisan import:onswim-sales lxdiamond
-     */
-    protected $signature = 'import:onswim-sales {tenant}';
-    protected $description = 'Import sales and items from OnSwim CSV for a specific tenant';
+    protected $signature = 'import:onswim-sales {tenant} {--rollback}';
+    protected $description = 'Import sales matching exact DB columns with dual-phone and split-payment support';
 
     public function handle()
     {
@@ -25,21 +25,37 @@ class ImportOnSwimSales extends Command
         try {
             $tenant = \App\Models\Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
-            $this->info("Tenant '{$tenantId}' initialized. Starting Sales Import...");
         } catch (\Exception $e) {
             $this->error("Could not find or initialize tenant: {$tenantId}");
             return;
         }
 
-        $filePath = getenv('HOME') . '/Downloads/example.csv';
+        // 1. SAFE ROLLBACK LOGIC
+        if ($this->option('rollback')) {
+            $this->warn("Rolling back sales for tenant: {$tenantId}...");
+            
+            if ($this->confirm('This will delete ALL sales and items. Are you sure?', false)) {
+                Schema::disableForeignKeyConstraints(); // 🚀 Prevents FK errors
+                SaleItem::truncate();
+                Sale::truncate();
+                Schema::enableForeignKeyConstraints();
+                $this->info("Sales and Items tables truncated successfully.");
+            }
+            return;
+        }
+
+        // 2. FILE & HEADER PROCESSING
+        $directoryPath = storage_path("app/data/{$tenantId}");
+        $filePath = "{$directoryPath}/sales_dsqdata_feb27_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
             return;
         }
 
+        $storeId = Store::first()?->id ?? 1;
         $file = fopen($filePath, 'r');
-        $headers = fgetcsv($file);
+        $headers = array_map('trim', fgetcsv($file)); // 🚀 Trim hidden spaces
         
         $rows = [];
         while (($row = fgetcsv($file)) !== FALSE) {
@@ -47,143 +63,132 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
-        // Group rows by 'Job No.' to keep multi-item receipts together
         $salesGroups = collect($rows)->groupBy('Job No.');
-
-        $this->info("Importing " . $salesGroups->count() . " unique transactions...");
         $bar = $this->output->createProgressBar($salesGroups->count());
-        $bar->start();
 
-        foreach ($salesGroups as $jobNo => $items) {
-            try {
+        DB::connection('tenant')->beginTransaction();
+
+        try {
+            foreach ($salesGroups as $jobNo => $items) {
                 $firstItem = $items->first();
-                $customer = $this->getOrCreateCustomer($firstItem);
-                $purchaseDate = $this->parseDate($firstItem['Purchase Date']);
-
-                // Generate a unique invoice number to avoid collisions
-                // Format: D + MMDDYY + JobNo (padded)
+                $customer = $this->findCustomer($firstItem);
+                $purchaseDate = !empty($firstItem['Purchase Date']) ? Carbon::parse($firstItem['Purchase Date']) : now();
                 $invoiceNo = 'D' . $purchaseDate->format('mdy') . str_pad($jobNo, 4, '0', STR_PAD_LEFT);
+
+                // 🚀 Double Sales Assistant Logic
+                $staff = array_filter([
+                    trim($firstItem['Sales Assistant'] ?? null),
+                    trim($firstItem['Sales Assistant 2'] ?? null)
+                ]);
 
                 // 1. Create the Main Sale Record
                 $sale = Sale::updateOrCreate(
                     ['invoice_number' => $invoiceNo],
                     [
-                        'customer_id' => $customer->id,
-                        'store_id' => 1,
+                        'customer_id' => $customer?->id,
+                        'store_id' => $storeId,
                         'status' => 'completed',
-                        'sales_person_list' => [$firstItem['Sales Assistant'] ?? 'System'],
+                        'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
                         'created_at' => $purchaseDate,
-                        'subtotal' => 0,
-                        'tax_amount' => 0,
-                        'final_total' => 0,
                         'payment_method' => 'cash',
+                        'is_split_payment' => false, // Defaulting to false for simple import
                         'repair_number' => $firstItem['Repair Number'] ?? null,
                     ]
                 );
 
-                // 2. Clear old items if re-running to prevent duplicates
                 $sale->items()->delete();
+                $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
-                $subtotal = 0;
-                $taxTotal = 0;
-                $tradeInTotal = 0;
-                $tradeInDesc = '';
-
-                // 3. Process each line item within the Job
+                // 2. Process line items
                 foreach ($items as $item) {
-                    $description = strtoupper($item['Description'] ?? '');
+                    $desc = strtoupper($item['Description'] ?? '');
                     
-                    // HANDLE TRADE-INS
-                    if (str_contains($description, 'TRADE IN')) {
+                    if (str_contains($desc, 'TRADE IN')) {
                         $val = abs(floatval($item['Discount Amount'] ?? 0));
                         $tradeInTotal += $val;
-                        $tradeInDesc .= ($item['Job Description'] ?: 'Trade-in Item') . '; ';
+                        $tradeInDesc .= ($item['Job Description'] ?? 'Trade-in') . '; ';
                         continue; 
                     }
 
-                    // HANDLE REGULAR ITEMS
                     $qty = floatval($item['Qty'] ?? 1);
                     $soldPrice = floatval($item['Sold Price'] ?? 0);
                     $taxAmount = floatval($item['Tax Amount'] ?? 0);
+                    $discAmount = floatval($item['Discount Amount'] ?? 0);
+
+                    // 🚀 Lookup Repair ID if this is a repair service
+                    $repairId = !empty($item['Repair Number']) 
+                        ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
+                        : null;
 
                     $sale->items()->create([
-                        'product_item_id' => $this->findProductId($item['Stock/Item No.']),
-                        'custom_description' => $item['Description'],
+                        'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
+                        'repair_id' => $repairId,
+                        'custom_description' => $item['Description'] ?? 'Item',
                         'job_description' => $item['Job Description'] ?? null,
                         'qty' => $qty,
                         'sold_price' => $soldPrice,
-                        'discount_amount' => floatval($item['Discount Amount'] ?? 0),
+                        'discount_amount' => $discAmount,
                         'discount_percent' => floatval($item['Discount'] ?? 0),
                         'is_manual' => empty($item['Stock/Item No.']),
-                        'store_id' => 1,
+                        'store_id' => $storeId,
                     ]);
 
                     $subtotal += ($soldPrice * $qty);
                     $taxTotal += $taxAmount;
+                    $discountTotal += $discAmount;
                 }
 
-                // 4. Update the final math on the Sale
+                $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
+
+                // 🚀 3. Update Financials & Split Payment compatibility
                 $sale->update([
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxTotal,
+                    'discount_amount' => $discountTotal,
                     'has_trade_in' => $tradeInTotal > 0,
                     'trade_in_value' => $tradeInTotal,
                     'trade_in_description' => rtrim($tradeInDesc, '; '),
                     'trade_in_receipt_no' => $tradeInTotal > 0 ? 'TRD-' . $jobNo : null,
-                    'final_total' => ($subtotal + $taxTotal) - $tradeInTotal,
+                    'final_total' => $finalTotal,
+                    // Populate Split fields so POS shows $0 balance remaining
+                    'payment_method_1' => 'cash',
+                    'payment_amount_1' => $finalTotal,
                 ]);
 
-            } catch (\Exception $e) {
-                $this->error("\nError importing Job #{$jobNo}: " . $e->getMessage());
-                // Continue to next Job instead of crashing
+                $bar->advance();
             }
 
-            $bar->advance();
-        }
+            DB::connection('tenant')->commit();
+            $bar->finish();
+            $this->newLine();
+            $this->info("Import successful.");
 
-        $bar->finish();
-        $this->newLine();
-        $this->info("Import process finished for {$tenantId}.");
-    }
-
-    /**
-     * Helper: Handles Unique Constraint for Phone Numbers
-     */
-    private function getOrCreateCustomer($data)
-    {
-        // 1. Identify Email
-        $email = !empty($data['Email']) ? $data['Email'] : 'no-email-' . ($data['Customer No.'] ?? rand(1000, 9999)) . '@example.com';
-
-        // 2. Identify Phone (Convert empty strings to NULL to avoid unique index crash)
-        $rawPhone = !empty($data['Mobile']) ? $data['Mobile'] : (!empty($data['Customer Ph']) ? $data['Customer Ph'] : null);
-        $phone = $rawPhone ?: null;
-
-        // 3. Return existing if found
-        $existing = Customer::where('email', $email)->first();
-        if ($existing) return $existing;
-
-        // 4. Create New
-        return Customer::create([
-            'email' => $email,
-            'name' => $data['Customer Name'] ?? 'Walk-in',
-            'customer_no' => 'CUST-' . ($data['Customer No.'] ?? rand(1000, 9999)),
-            'phone' => $phone,
-            'address' => $data['Customer Address'] ?? null,
-        ]);
-    }
-
-    private function findProductId($barcode)
-    {
-        if (empty($barcode)) return null;
-        return ProductItem::where('barcode', $barcode)->value('id');
-    }
-
-    private function parseDate($date)
-    {
-        try {
-            return Carbon::parse($date);
         } catch (\Exception $e) {
-            return now();
+            DB::connection('tenant')->rollBack();
+            $this->error("\nImport Error: " . $e->getMessage());
         }
+    }
+
+    private function findCustomer($data)
+    {
+        $email = trim($data['Email'] ?? '');
+        
+        // 🚀 SMART PHONE LOOKUP (Mobile OR Customer Ph)
+        $rawPhone = !empty(trim($data['Mobile'] ?? '')) 
+            ? $data['Mobile'] 
+            : ($data['Customer Ph'] ?? null);
+
+        if (!empty($email)) {
+            $found = Customer::where('email', $email)->first();
+            if ($found) return $found;
+        }
+
+        if (!empty($rawPhone)) {
+            $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
+            $found = Customer::where('phone', 'like', "%{$cleanPhone}%")->first();
+            if ($found) return $found;
+        }
+
+        return Customer::first(); // Fallback to avoid null errors
     }
 }

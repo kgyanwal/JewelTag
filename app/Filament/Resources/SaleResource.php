@@ -381,12 +381,16 @@ class SaleResource extends Resource
         // Save and return ID
         return \App\Models\Customer::create($data)->id;
     }),
-                            TextInput::make('sales_person_list')
-                                ->label('Sales Person')
-                                ->default(fn() => auth()->user()->name)
-                                ->readOnly()
-                                ->required()
-                                ->dehydrated(),
+                            Select::make('sales_person_list')
+        ->label('Sales Persons (Double Assistant)')
+        ->multiple() // 🚀 THIS ENABLES MULTIPLE SELECTION
+        ->searchable()
+        ->preload()
+        ->options(fn() => User::pluck('name', 'name')->toArray()) // Fetches your team list
+        ->default(fn() => [auth()->user()->name]) // Defaults to current user in an array
+        ->required()
+        ->helperText('Select one or more staff members for this sale.')
+        ->dehydrated(),
                         ]),
 
                         Section::make('Payment & Status')->schema([
@@ -538,6 +542,11 @@ class SaleResource extends Resource
             ->columns([
                 TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
                 TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
+                TextColumn::make('sales_person_list')
+    ->label('Sales Staff')
+    ->badge() 
+    ->separator(',') 
+    ->searchable(),
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()

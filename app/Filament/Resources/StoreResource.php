@@ -42,31 +42,24 @@ class StoreResource extends Resource
                 ])->columns(2),
 
                 Section::make('Location Details')->schema([
-                   GoogleAutocomplete::make('address_search')
+                    GoogleAutocomplete::make('address_search')
     ->label('Search Address')
     ->autocompletePlaceholder('Start typing address...')
     ->countries(['US'])
     ->placesApiNew()
     ->withFields([
 
-        TextInput::make('street_number')
-            ->extraInputAttributes([
-                'data-google-field' => 'street_number'
-            ])
-            ->hidden(),
-
-        TextInput::make('route')
-            ->extraInputAttributes([
-                'data-google-field' => 'route'
-            ])
-            ->hidden(),
-
         TextInput::make('address_line_1')
             ->label('Address Line 1')
-            ->required(),
+            ->required()
+            ->extraInputAttributes([
+                'data-google-field' => 'formatted_address'
+            ])
+            ->columnSpanFull(),
 
         TextInput::make('address_line_2')
-            ->label('Address Line 2'),
+            ->label('Address Line 2')
+            ->columnSpanFull(),
 
         TextInput::make('city')
             ->label('City')
@@ -91,19 +84,6 @@ class StoreResource extends Resource
                 'data-google-field' => 'postal_code'
             ]),
     ])
-    ->afterStateUpdated(function ($state, callable $set, $get) {
-
-        // Combine street number + route into address_line_1
-        $streetNumber = $get('street_number');
-        $route = $get('route');
-
-        $set('address_line_1', trim($streetNumber . ' ' . $route));
-
-        \Log::info('Google address selected', [
-            'street_number' => $streetNumber,
-            'route' => $route,
-        ]);
-    })
     ->columnSpanFull(),
                 ])->columns(2),
 
@@ -113,7 +93,7 @@ class StoreResource extends Resource
                         ->label('Store Timezone')
                         ->options(
                             collect(\DateTimeZone::listIdentifiers())
-                                ->mapWithKeys(fn ($tz) => [$tz => $tz])
+                                ->mapWithKeys(fn($tz) => [$tz => $tz])
                                 ->toArray()
                         )
                         ->searchable()
@@ -130,7 +110,7 @@ class StoreResource extends Resource
                         ->prefix('+1')
                         ->mask('999-999-9999')
                         ->dehydrateStateUsing(
-                            fn ($state) => $state
+                            fn($state) => $state
                                 ? '+1' . preg_replace('/\D/', '', $state)
                                 : null
                         ),
@@ -148,6 +128,12 @@ class StoreResource extends Resource
                         ->visibility('public')
                         ->columnSpanFull(),
                 ]),
+                TextInput::make('crm_url')
+    ->label('CRM Portal Link')
+    ->url()
+    ->placeholder('https://crm.yourdomain.com')
+    ->suffixIcon('heroicon-m-link')
+    ->helperText('The dynamic link used for the dashboard CRM tile.'),
             ]);
     }
 
