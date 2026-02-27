@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
 class ImportOnSwimCustomers extends Command
 {
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers and overwrite existing records based on Customer Number';
+    protected $description = 'Import customers with multi-column conflict resolution (Phone/CustNo)';
 
     public function handle()
     {
@@ -25,7 +25,6 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        // 1. ROLLBACK LOGIC
         if ($this->option('rollback')) {
             $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
             if ($this->confirm('This will delete ALL customers. Are you sure?', false)) {
@@ -37,7 +36,6 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        // 2. FILE PROCESSING
         $directoryPath = storage_path("app/data/{$tenantId}");
         $filePath = "{$directoryPath}/customer_dsqdata_feb25_26.csv";
 
@@ -58,26 +56,37 @@ class ImportOnSwimCustomers extends Command
 
                 $email = trim($data['Email'] ?? '');
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
-                
-                // 🚀 THE FIX: Identify the unique Customer Number from the CSV
                 $rawCustNo = trim($data['Cust No.'] ?? '');
-                if (empty($rawCustNo)) continue; // Skip if no number
+                
+                if (empty($rawCustNo)) continue;
                 $fullCustNo = 'CUST-' . $rawCustNo;
 
-                // City logic
+                // 🚀 THE STRATEGY: Find existing record by ANY unique key
+                // 1. Check by Customer Number
+                $existing = Customer::where('customer_no', $fullCustNo)->first();
+
+                // 2. If not found, check by Phone (to prevent the 1062 error you just saw)
+                if (!$existing && !empty($phone)) {
+                    $existing = Customer::where('phone', $phone)->first();
+                }
+
+                // 3. If still not found, check by Email
+                if (!$existing && !empty($email)) {
+                    $existing = Customer::where('email', $email)->first();
+                }
+
                 $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                 ? $data['City/Province'] 
                                 : ($data['Suburb/City'] ?? null);
 
-                // 🚀 UPDATED LOGIC: 
-                // We now use 'customer_no' as the unique key to find the record.
-                // If CUST-5532 exists, it will UPDATE. If not, it will INSERT.
+                // Use the ID of the found record to overwrite, or null to create new
                 Customer::updateOrCreate(
-                    ['customer_no' => $fullCustNo], 
+                    ['id' => $existing?->id ?? null], 
                     [
+                        'customer_no' => $fullCustNo, // This will overwrite the old number if we matched by phone
                         'name' => $data['First Name'] ?? 'Walk-in',
                         'last_name' => $data['Last Name'] ?? null,
-                        'email' => $email ?: null,
+                        'email' => $email ?: ($existing?->email ?? null),
                         'phone' => $phone,
                         'home_phone' => $data['Home Phone'] ?? null,
                         'street'   => $data['Street'] ?? null,
@@ -111,7 +120,7 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
             if (isset($file)) fclose($file);
-            $this->error("Error during import: " . $e->getMessage());
+            $this->error("Error: " . $e->getMessage());
         }
     }
 
@@ -126,10 +135,7 @@ class ImportOnSwimCustomers extends Command
     private function parseDate($date)
     {
         if (empty($date) || trim($date) == '') return null;
-        try { 
-            return Carbon::parse($date)->format('Y-m-d'); 
-        } catch (\Exception $e) { 
-            return null; 
-        }
+        try { return Carbon::parse($date)->format('Y-m-d'); } 
+        catch (\Exception $e) { return null; }
     }
 }
