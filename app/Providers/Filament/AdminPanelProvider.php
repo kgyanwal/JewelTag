@@ -389,5 +389,8 @@ HTML
             @endif
         '),
     );
+    \Illuminate\Support\Carbon::serializeUsing(function ($date) {
+        return $date->timezone(config('app.timezone'))->format('Y-m-d H:i:s');
+    });
 }
 }

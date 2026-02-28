@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\Sale;
 use App\Models\DailyClosing;
+use App\Models\Store;
 use Filament\Pages\Page;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -18,69 +19,126 @@ class EndOfDayClosing extends Page
     protected static string $view = 'filament.pages.end-of-day-closing';
 
     #[Url]
-    public $date; 
+    public $date;
 
     public $actualTotals = [];
     public $expectedTotals = [];
     public $isClosed = false;
+    public $paymentMethods = [];
 
     public function mount()
     {
-        // Force today's date for non-admins
-        if (!auth()->user()->hasRole('Superadmin')) {
-            $this->date = today()->format('Y-m-d');
-        } else {
-            $this->date ??= today()->format('Y-m-d');
-        }
+        $tz = Store::first()?->timezone ?? config('app.timezone');
+
+        $this->date = now()->setTimezone($tz)->format('Y-m-d');
 
         $this->loadData();
     }
 
     public function updatedDate()
     {
-        if (!auth()->user()->hasRole('Superadmin')) {
-            $this->date = today()->format('Y-m-d');
-        }
         $this->loadData();
     }
 
     public function loadData()
     {
-        $methods = [
-            'visa' => 'Visa',
-            'cash' => 'Cash',
-            'debit_card' => 'Debit Card',
-            'katapult' => 'Katapult',
-            'kafene' => 'Kafene',
-            'acima_finance' => 'Acima Finance',
-        ];
+        /*
+        |--------------------------------------------------------------------------
+        | 1. Load Payment Methods (STANDARDIZED KEYS)
+        |--------------------------------------------------------------------------
+        */
+        $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+        $rawMethods = $json ? json_decode($json, true) : $defaultMethods;
 
+        $this->paymentMethods = [];
+
+        foreach ($rawMethods as $methodName) {
+            $key = strtolower(trim($methodName)); // STANDARD KEY
+            $this->paymentMethods[$key] = strtoupper($methodName);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 2. Check If Day Already Closed
+        |--------------------------------------------------------------------------
+        */
         $record = DailyClosing::whereDate('closing_date', $this->date)->first();
 
         if ($record) {
-            // Once locked, everyone sees the truth for audit
             $this->expectedTotals = $record->expected_data;
-            $this->actualTotals = $record->actual_data;
-            $this->isClosed = true;
-        } else {
-            $this->isClosed = false;
-            
-            // Fetch live totals for calculation
-            $sales = Sale::whereDate('created_at', $this->date)
-                ->where('status', 'completed')
-                ->select('payment_method', DB::raw('SUM(final_total) as total'))
-                ->groupBy('payment_method')
-                ->pluck('total', 'payment_method');
+            $this->actualTotals   = $record->actual_data;
+            $this->isClosed       = true;
+            return;
+        }
 
-            foreach ($methods as $key => $label) {
-                // 🔹 BLIND LOGIC: Show 0.00 to Sales Assistant
-                if (auth()->user()->hasRole('Superadmin')) {
-                    $this->expectedTotals[$key] = (float)$sales->get($key, 0);
-                    $this->actualTotals[$key] = $this->expectedTotals[$key];
-                } else {
-                    $this->expectedTotals[$key] = 0.00; 
-                    $this->actualTotals[$key] = 0; // 🔹 This ensures the input is empty/zero
+        $this->isClosed = false;
+
+        /*
+        |--------------------------------------------------------------------------
+        | 3. Calculate Live System Totals
+        |--------------------------------------------------------------------------
+        */
+        $sales = Sale::whereDate('created_at', $this->date)
+            ->where('status', 'completed')
+            ->get();
+
+        $systemTotals = [];
+
+        foreach ($this->paymentMethods as $key => $label) {
+            $systemTotals[$key] = 0;
+        }
+
+        foreach ($sales as $sale) {
+
+            if ($sale->is_split_payment) {
+
+                if ($sale->payment_method_1) {
+                    $key = strtolower(trim($sale->payment_method_1));
+                    if (isset($systemTotals[$key])) {
+                        $systemTotals[$key] += (float) $sale->payment_amount_1;
+                    }
                 }
+
+                if ($sale->payment_method_2) {
+                    $key = strtolower(trim($sale->payment_method_2));
+                    if (isset($systemTotals[$key])) {
+                        $systemTotals[$key] += (float) $sale->payment_amount_2;
+                    }
+                }
+
+                if ($sale->payment_method_3) {
+                    $key = strtolower(trim($sale->payment_method_3));
+                    if (isset($systemTotals[$key])) {
+                        $systemTotals[$key] += (float) $sale->payment_amount_3;
+                    }
+                }
+
+            } else {
+
+                $key = strtolower(trim($sale->payment_method));
+
+                if (isset($systemTotals[$key])) {
+                    $systemTotals[$key] += (float) $sale->final_total;
+                }
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 4. Populate Totals Based on Role
+        |--------------------------------------------------------------------------
+        */
+        foreach ($this->paymentMethods as $key => $label) {
+
+            $systemVal = $systemTotals[$key] ?? 0;
+
+            if (auth()->user()->hasRole('Superadmin')) {
+                $this->expectedTotals[$key] = $systemVal;
+                $this->actualTotals[$key]   = $systemVal;
+            } else {
+                $this->expectedTotals[$key] = 0;
+                $this->actualTotals[$key]   = 0;
             }
         }
     }
@@ -89,34 +147,74 @@ class EndOfDayClosing extends Page
     {
         return [
             Action::make('post_closing')
-                ->label('POST CLOSING')
+                ->label('POST CLOSING & LOCK DAY')
                 ->color('success')
                 ->requiresConfirmation()
                 ->hidden(fn () => $this->isClosed)
                 ->action(function () {
-                    // Recalculate true system totals in background for the database
-                    $realSales = Sale::whereDate('created_at', $this->date)
+
+                    $this->loadData();
+
+                    $sales = Sale::whereDate('created_at', $this->date)
                         ->where('status', 'completed')
-                        ->select('payment_method', DB::raw('SUM(final_total) as total'))
-                        ->groupBy('payment_method')
-                        ->pluck('total', 'payment_method');
+                        ->get();
 
                     $finalExpected = [];
-                    foreach ($this->actualTotals as $key => $val) {
-                        $finalExpected[$key] = (float)$realSales->get($key, 0);
+
+                    foreach ($this->paymentMethods as $key => $label) {
+                        $finalExpected[$key] = 0;
+                    }
+
+                    foreach ($sales as $sale) {
+
+                        if ($sale->is_split_payment) {
+
+                            if ($sale->payment_method_1) {
+                                $key = strtolower(trim($sale->payment_method_1));
+                                if (isset($finalExpected[$key])) {
+                                    $finalExpected[$key] += (float) $sale->payment_amount_1;
+                                }
+                            }
+
+                            if ($sale->payment_method_2) {
+                                $key = strtolower(trim($sale->payment_method_2));
+                                if (isset($finalExpected[$key])) {
+                                    $finalExpected[$key] += (float) $sale->payment_amount_2;
+                                }
+                            }
+
+                            if ($sale->payment_method_3) {
+                                $key = strtolower(trim($sale->payment_method_3));
+                                if (isset($finalExpected[$key])) {
+                                    $finalExpected[$key] += (float) $sale->payment_amount_3;
+                                }
+                            }
+
+                        } else {
+
+                            $key = strtolower(trim($sale->payment_method));
+
+                            if (isset($finalExpected[$key])) {
+                                $finalExpected[$key] += (float) $sale->final_total;
+                            }
+                        }
                     }
 
                     DailyClosing::create([
-                        'closing_date' => $this->date,
+                        'closing_date'  => $this->date,
                         'expected_data' => $finalExpected,
-                        'actual_data' => $this->actualTotals,
-                        'total_expected' => array_sum($finalExpected),
-                        'total_actual' => array_sum($this->actualTotals),
-                        'user_id' => auth()->id(),
+                        'actual_data'   => $this->actualTotals,
+                        'total_expected'=> array_sum($finalExpected),
+                        'total_actual'  => array_sum($this->actualTotals),
+                        'user_id'       => auth()->id(),
                     ]);
 
-                    Notification::make()->title('Day Closed Successfully')->success()->send();
-                    $this->loadData(); // Refresh to lock UI
+                    Notification::make()
+                        ->title('Day Closed Successfully')
+                        ->success()
+                        ->send();
+
+                    $this->loadData();
                 }),
         ];
     }
