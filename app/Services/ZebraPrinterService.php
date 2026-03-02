@@ -12,6 +12,9 @@ class ZebraPrinterService
     protected $ZEBRA_PRINTER_IP;
 
     public function __construct() {
+        $dbIp = \Illuminate\Support\Facades\DB::table('site_settings')
+        ->where('key', 'zebra_printer_ip')
+        ->value('value');
         $this->ZEBRA_PRINTER_IP = config('services.zebra.ip', '192.168.1.60');
     }
 

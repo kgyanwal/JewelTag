@@ -143,7 +143,7 @@ class SaleResource extends Resource
                                         ->label('Item')
                                         ->readOnly()
                                         ->dehydrated(false)
-                                        ->columnSpan(2),
+                                        ->columnSpan(1),
 
                                     TextInput::make('custom_description')
                                         ->label('Description')
@@ -236,7 +236,19 @@ class SaleResource extends Resource
 
                                             self::updateTotals($get, $set);
                                         }),
+                                    Checkbox::make('is_tax_free')
+                                        ->label('No Tax')
+                                        ->columnSpan(1)
+                                        ->default(false) 
+                                        ->dehydrated(true)
+                                        ->live()
+                                        // 💡 Show message only when checked
+                                        ->hint(fn($state) => $state ? 'There is no tax involved here' : null)
+                                        ->hintColor('warning')
+                                        // 💡 Trigger the recalculation logic immediately
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 ])
+
                                 ->columns(12)
                                 ->addable(false)
                                 ->deletable(true)
@@ -387,11 +399,11 @@ class SaleResource extends Resource
                                 ->multiple() // 🚀 THIS ENABLES MULTIPLE SELECTION
                                 ->searchable()
                                 ->preload()
-                                 ->hintAction(
-                            FormAction::make('Help')
-                                ->icon('heroicon-o-information-circle')
-                                ->tooltip('Add SalesPerson for multi-people sales')
-                        )
+                                ->hintAction(
+                                    FormAction::make('Help')
+                                        ->icon('heroicon-o-information-circle')
+                                        ->tooltip('Add SalesPerson for multi-people sales')
+                                )
                                 ->options(fn() => User::pluck('name', 'name')->toArray()) // Fetches your team list
                                 ->default(fn() => [auth()->user()->name]) // Defaults to current user in an array
                                 ->required()
@@ -708,6 +720,7 @@ class SaleResource extends Resource
         $items = $get('items') ?? [];
         $shipping = floatval($get('shipping_charges') ?? 0);
         $subtotal = 0;
+        $taxableSubtotal = 0; // 🚀 Added to track only taxable items
 
         foreach ($items as $item) {
             $price = floatval($item['sold_price'] ?? 0);
@@ -715,12 +728,21 @@ class SaleResource extends Resource
             $percent = floatval($item['discount_percent'] ?? 0);
 
             $rowTotal = $price * $qty;
-            // This formula is still valid because percent is auto-updated when amount changes
-            $subtotal += ($rowTotal - ($rowTotal * ($percent / 100)));
+            $rowAfterDiscount = ($rowTotal - ($rowTotal * ($percent / 100)));
+
+            $subtotal += $rowAfterDiscount;
+
+            // 🚀 THE LOGIC: Check if the 'No Tax' checkbox is UNCHECKED
+            if (!($item['is_tax_free'] ?? false)) {
+                $taxableSubtotal += $rowAfterDiscount;
+            }
         }
 
         $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $tax = ($subtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
+
+        // 🚀 Tax now calculates ONLY on taxable items + shipping (if shipping is taxed)
+        $tax = ($taxableSubtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
+
         $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
         $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));

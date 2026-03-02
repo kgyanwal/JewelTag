@@ -134,20 +134,24 @@ protected function afterCreate(): void
             ]);
         }
 
-        if ($isLaybuy) {
-            \App\Models\Laybuy::create([
-                'laybuy_no' => 'LB-' . date('Ymd-His'),
-                'customer_id' => $sale->customer_id,
-                'sale_id' => $sale->id,
-                'sales_person' => $sale->sales_person_list,
-                'total_amount' => $sale->final_total,
-                'amount_paid' => 0,
-                'balance_due' => $sale->final_total,
-                'status' => 'in_progress', // 🔹 Set the plan status
-                'start_date' => now(),
-                'due_date' => now()->addDays(30),
-            ]);
-            
+       if ($isLaybuy) {
+    // 🚀 THE FIX: Convert the array of sales persons into a string
+    $salesPersonString = is_array($sale->sales_person_list) 
+        ? implode(', ', $sale->sales_person_list) 
+        : $sale->sales_person_list;
+
+    \App\Models\Laybuy::create([
+        'laybuy_no' => 'LB-' . date('Ymd-His'),
+        'customer_id' => $sale->customer_id,
+        'sale_id' => $sale->id,
+        'sales_person' => $salesPersonString, // 👈 Use the flattened string here
+        'total_amount' => $sale->final_total,
+        'amount_paid' => 0,
+        'balance_due' => $sale->final_total,
+        'status' => 'in_progress',
+        'start_date' => now(),
+        'due_date' => now()->addDays(30),
+    ]);
             // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
             // so the receipt button remains hidden.
             $sale->update(['status' => 'pending',]);
