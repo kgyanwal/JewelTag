@@ -43,6 +43,11 @@ protected function getFormActions(): array
                 // 3. THE LOGIC
                 ->action(function (array $data) {
                     // A. Get Active Staff
+                    $formState = $this->data;
+                    // If split is enabled, set the primary payment_method to "Split" for the table view
+    if ($formState['is_split_payment'] ?? false) {
+        $formState['payment_method'] = 'split';
+    }
                     $staff = Staff::user() ?? auth()->user();
 
                     if (!$staff) {
@@ -62,6 +67,7 @@ protected function getFormActions(): array
 
                     // C. Submit the Main Form
                     // This creates the record using the data currently in the main form
+                    $this->data = $formState;
                     $this->create(); 
                 }),
                 

@@ -23,11 +23,14 @@ use Filament\Support\Assets\Js;
 use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
+use App\Filament\Resources\SaleResource;
 use App\Models\Store;
 use Jeffgreco13\FilamentBreezy\BreezyCore;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Support\Facades\Blade;
 use App\Models\Announcement;
+use Filament\Navigation\NavigationItem;
+
 class AdminPanelProvider extends PanelProvider
 {
     /**
@@ -329,6 +332,16 @@ HTML
                 Authenticate::class,
                 \App\Http\Middleware\EnsureStaffSession::class,
             ])
+            ->navigationItems([
+    NavigationItem::make('New Sale')
+        ->label('New Sale')
+        ->group('Sales')
+        ->icon('heroicon-o-plus-circle')
+        ->activeIcon('heroicon-s-plus-circle')
+        ->url(fn (): string => SaleResource::getUrl('create'))
+        /* 🚀 THE FIX: Use a lower value to move it higher */
+        ->sort(-100), 
+])
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
                 NavigationGroup::make()->label('Vendors'),

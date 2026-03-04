@@ -17,6 +17,7 @@ class Sale extends Model
     protected $guarded = [];
     
     protected $casts = [
+        'split_payments' => 'array',
         'sales_person_list' => 'array'
     ];
 

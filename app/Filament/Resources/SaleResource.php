@@ -43,94 +43,102 @@ class SaleResource extends Resource
             ->schema([
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)->schema([
-                        Section::make('Stock Selection')->schema([
-                            Grid::make(4)->schema([
-                                Select::make('current_item_search')
-                                    ->label('Select Stock #')
-                                    ->searchable()
-                                    ->preload()
-                                    ->options(
-                                        fn() => ProductItem::where('qty', '>', 0)
-                                            ->where('status', 'in_stock')
-                                            ->get()
-                                            ->mapWithKeys(fn($item) => [
-                                                $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
-                                            ])
-                                    )
-                                    ->live()
-                                    ->dehydrated(false)
-                                    ->afterStateUpdated(function ($state, Set $set) {
-                                        if ($item = ProductItem::find($state)) {
-                                            $set('current_price', $item->retail_price);
-                                            $set('current_desc', $item->custom_description ?? $item->barcode);
-                                        }
-                                    })->columnSpan(3),
-                                TextInput::make('current_qty')->label('Qty')->numeric()->default(1)->dehydrated(false),
-                            ]),
-                            Forms\Components\Actions::make([
-                                Action::make('add_item')
-                                    ->label('ADD TO BILL')
-                                    ->color('primary')
-                                    ->button()
-                                    ->extraAttributes(['class' => 'w-full'])
-                                    ->action(function (Get $get, Set $set) {
-                                        $item = ProductItem::find($get('current_item_search'));
-                                        if (!$item) return;
+                       Section::make('Stock Selection')->schema([
+    Grid::make(4)->schema([
+        Select::make('current_item_search')
+            ->label('Select Stock #')
+            ->searchable()
+            ->preload()
+            ->options(
+                fn() => ProductItem::where('qty', '>', 0)
+                    ->where('status', 'in_stock')
+                    ->get()
+                    ->mapWithKeys(fn($item) => [
+                        $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
+                    ])
+            )
+            ->live()
+            ->dehydrated(false)
+            // 🚀 AUTOMATIC ADD LOGIC
+            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                if (!$state) return;
 
-                                        $currentItems = collect($get('items') ?? [])
-                                            ->filter(fn($row) => !empty($row['product_item_id']) || !empty($row['repair_id']))
-                                            ->toArray();
+                $item = ProductItem::find($state);
+                if (!$item) return;
 
-                                        $currentItems[] = [
-                                            'product_item_id' => $item->id,
-                                            'repair_id' => null,
-                                            'stock_no_display' => $item->barcode,
-                                            'custom_description' => $get('current_desc'),
-                                            'qty' => $get('current_qty') ?? 1,
-                                            'sold_price' => $get('current_price'),
-                                            'discount_percent' => 0,
-                                            'discount_amount' => 0,
-                                        ];
+                // 1. Get current items or empty array
+                $currentItems = $get('items') ?? [];
 
-                                        $set('items', $currentItems);
-                                        $set('current_item_search', null);
-                                        $set('current_qty', 1);
-                                        self::updateTotals($get, $set);
-                                    }),
-                            ]),
-                        ]),
+                // 2. Prepare the new row
+                $newRow = [
+                    'product_item_id' => $item->id,
+                    'repair_id' => null,
+                    'stock_no_display' => $item->barcode,
+                    'custom_description' => $item->custom_description ?? $item->barcode,
+                    'qty' => $get('current_qty') ?? 1,
+                    'sold_price' => $item->retail_price,
+                    'discount_percent' => 0,
+                    'discount_amount' => 0,
+                    'is_tax_free' => false,
+                ];
+
+                // 3. Push to repeater and reset search
+                $currentItems[] = $newRow;
+                
+                $set('items', $currentItems);
+                $set('current_item_search', null); // 🚀 Clears the search box for the next item
+                $set('current_qty', 1);
+
+                // 4. Trigger total calculation
+                self::updateTotals($get, $set);
+            })->columnSpan(3),
+
+        TextInput::make('current_qty')
+            ->label('Qty')
+            ->numeric()
+            ->default(1)
+            ->dehydrated(false)
+            ->live(),
+    ]),
+    // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
+]),
                         Section::make('Trade-In Details')
-                            ->schema([
-                                Select::make('has_trade_in')
-                                    ->label('Is there a Trade-In?')
-                                    ->options([1 => 'Yes', 0 => 'No'])
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+    ->schema([
+        Select::make('has_trade_in')
+            ->label('Is there a Trade-In?')
+            ->options([
+                1 => 'Yes',
+                0 => 'No'
+            ])
+            ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
+            ->required()
+            ->live()
+            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                                Grid::make(2)
-                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-                                    ->schema([
-                                        TextInput::make('trade_in_value')
-                                            ->label('Trade-In Value (Deduction)')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+        Grid::make(2)
+            ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+            ->schema([
+                TextInput::make('trade_in_value')
+                    ->label('Trade-In Value (Deduction)')
+                    ->numeric()
+                    ->prefix('$')
+                    ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                    ->live()
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                                        TextInput::make('trade_in_receipt_no')
-                                            ->label('Trade-In Tracking #')
-                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
-                                            ->readOnly(),
-                                        Forms\Components\Textarea::make('trade_in_description')
-                                            ->label('Item Description')
-                                            ->placeholder('e.g. 14k White Gold Diamond Band, 0.50ctw, Size 7')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                            ->columnSpanFull() // Spans across both columns for better typing space
-                                            ->rows(2),
-                                    ]),
-                            ]),
+                TextInput::make('trade_in_receipt_no')
+                    ->label('Trade-In Tracking #')
+                    ->default(fn() => 'TRD-' . date('Ymd-His'))
+                    ->readOnly(),
+
+                Forms\Components\Textarea::make('trade_in_description')
+                    ->label('Item Description')
+                    ->placeholder('e.g. 14k White Gold Diamond Band')
+                    ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                    ->columnSpanFull()
+                    ->rows(2),
+            ]),
+    ]),
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
                                 ->relationship('items')
@@ -239,7 +247,7 @@ class SaleResource extends Resource
                                     Checkbox::make('is_tax_free')
                                         ->label('No Tax')
                                         ->columnSpan(1)
-                                        ->default(false) 
+                                        ->default(false)
                                         ->dehydrated(true)
                                         ->live()
                                         // 💡 Show message only when checked
@@ -412,88 +420,59 @@ class SaleResource extends Resource
                         ]),
 
                         Section::make('Payment & Status')->schema([
-
-                            // 1. SPLIT PAYMENT TOGGLE
                             Toggle::make('is_split_payment')
                                 ->label('Enable Split Payment')
                                 ->onColor('warning')
-                                ->offColor('gray')
                                 ->live()
                                 ->columnSpanFull(),
 
-                            // 2. STANDARD SINGLE PAYMENT (Hidden if Split is ON)
+                            // Standard Payment (Hidden if Split is ON)
                             Select::make('payment_method')
                                 ->label('Payment Method')
-                                ->options(self::getPaymentOptions()) // Uses helper function
+                                ->options(self::getPaymentOptions())
                                 ->default('cash')
-                                ->required(fn(Get $get) => ! $get('is_split_payment')) // Not required if split
-                                ->visible(fn(Get $get) => ! $get('is_split_payment')), // Hide if split
+                                ->required(fn(Get $get) => !$get('is_split_payment'))
+                                ->visible(fn(Get $get) => !$get('is_split_payment')),
 
-                            // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
-                            // 3. SPLIT PAYMENT ROWS (Visible if Split is ON)
-                            Group::make()->schema([
-                                // --- METHOD 1 (Required if Split) ---
-                                Grid::make(2)->schema([
-                                    Select::make('payment_method_1')
-                                        ->label('Method 1')
-                                        ->options(self::getPaymentOptions())
-                                        ->required(fn(Get $get) => $get('is_split_payment')),
+                            // 🚀 NEW: Dynamic Split Payment Repeater
+                            Repeater::make('split_payments')
+                                ->label('Payment Breakdown')
+                                ->schema([
+                                    Grid::make(2)->schema([
+                                        Select::make('method')
+                                            ->options(self::getPaymentOptions())
+                                            ->required()
+                                            ->label('Method'),
+                                        TextInput::make('amount')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required()
+                                            ->label('Amount')
+                                            ->live(onBlur: true),
+                                    ]),
+                                ])
+                                ->visible(fn(Get $get) => $get('is_split_payment'))
+                                ->defaultItems(2) // 👈 Initially visible two
+                                ->maxItems(6)     // 👈 Limit to six
+                                ->addActionLabel('Add Another Payment Method') // 👈 Acts as "Load More"
+                                ->reorderable(false)
+                                ->live()
+                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                                    TextInput::make('payment_amount_1')
-                                        ->label('Amount 1')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->default(fn(Get $get) => $get('final_total')) // Auto-fill total
-                                        ->required(fn(Get $get) => $get('is_split_payment'))
-                                        ->live(onBlur: true), // 👈 Makes balance update live when typing finishes
-                                ]),
+                            // 🔹 Live Balance Calculation
+                            Placeholder::make('split_calc')
+                                ->label('Remaining Balance')
+                                ->content(function (Get $get) {
+                                    $total = (float) $get('final_total');
+                                    $payments = $get('split_payments') ?? [];
 
-                                // --- METHOD 2 (Required if Split) ---
-                                Grid::make(2)->schema([
-                                    Select::make('payment_method_2')
-                                        ->label('Method 2')
-                                        ->options(self::getPaymentOptions())
-                                        ->required(fn(Get $get) => $get('is_split_payment')), // 👈 Now required for split!
+                                    $sum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                    $remaining = $total - $sum;
 
-                                    TextInput::make('payment_amount_2')
-                                        ->label('Amount 2')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->required(fn(Get $get) => $get('is_split_payment')) // 👈 Now required for split!
-                                        ->live(onBlur: true), // 👈 Makes balance update live
-                                ]),
-
-                                // --- METHOD 3 (Optional) ---
-                                Grid::make(2)->schema([
-                                    Select::make('payment_method_3')
-                                        ->label('Method 3')
-                                        ->options(self::getPaymentOptions()),
-
-                                    TextInput::make('payment_amount_3')
-                                        ->label('Amount 3')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->live(onBlur: true), // 👈 Makes balance update live
-                                ]),
-
-                                // 🔹 Live Remaining Balance
-                                Placeholder::make('split_calc')
-                                    ->label('Remaining Balance')
-                                    ->content(function (Get $get) {
-                                        $total = (float) $get('final_total');
-                                        $p1 = (float) ($get('payment_amount_1') ?: 0);
-                                        $p2 = (float) ($get('payment_amount_2') ?: 0);
-                                        $p3 = (float) ($get('payment_amount_3') ?: 0);
-
-                                        $remaining = $total - ($p1 + $p2 + $p3);
-
-                                        // Show green if perfectly balanced, red if money is still owed or overpaid
-                                        $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
-
-                                        return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
-                                    }),
-
-                            ])->visible(fn(Get $get) => $get('is_split_payment')),
+                                    $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
+                                    return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
+                                })
+                                ->visible(fn(Get $get) => $get('is_split_payment')),
 
                             Select::make('status')
                                 ->label('Sale Status')
@@ -501,7 +480,6 @@ class SaleResource extends Resource
                                 ->default('completed')
                                 ->required(),
                         ]),
-
 
                         Section::make('Financial Summary')->schema([
                             self::totalRow('TAX TOTAL', 'tax_amount'),
