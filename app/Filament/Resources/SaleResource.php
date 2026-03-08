@@ -43,102 +43,102 @@ class SaleResource extends Resource
             ->schema([
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)->schema([
-                       Section::make('Stock Selection')->schema([
-    Grid::make(4)->schema([
-        Select::make('current_item_search')
-            ->label('Select Stock #')
-            ->searchable()
-            ->preload()
-            ->options(
-                fn() => ProductItem::where('qty', '>', 0)
-                    ->where('status', 'in_stock')
-                    ->get()
-                    ->mapWithKeys(fn($item) => [
-                        $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
-                    ])
-            )
-            ->live()
-            ->dehydrated(false)
-            // 🚀 AUTOMATIC ADD LOGIC
-            ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                if (!$state) return;
+                        Section::make('Stock Selection')->schema([
+                            Grid::make(4)->schema([
+                                Select::make('current_item_search')
+                                    ->label('Select Stock #')
+                                    ->searchable()
+                                    ->preload()
+                                    ->options(
+                                        fn() => ProductItem::where('qty', '>', 0)
+                                            ->where('status', 'in_stock')
+                                            ->get()
+                                            ->mapWithKeys(fn($item) => [
+                                                $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
+                                            ])
+                                    )
+                                    ->live()
+                                    ->dehydrated(false)
+                                    // 🚀 AUTOMATIC ADD LOGIC
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        if (!$state) return;
 
-                $item = ProductItem::find($state);
-                if (!$item) return;
+                                        $item = ProductItem::find($state);
+                                        if (!$item) return;
 
-                // 1. Get current items or empty array
-                $currentItems = $get('items') ?? [];
+                                        // 1. Get current items or empty array
+                                        $currentItems = $get('items') ?? [];
 
-                // 2. Prepare the new row
-                $newRow = [
-                    'product_item_id' => $item->id,
-                    'repair_id' => null,
-                    'stock_no_display' => $item->barcode,
-                    'custom_description' => $item->custom_description ?? $item->barcode,
-                    'qty' => $get('current_qty') ?? 1,
-                    'sold_price' => $item->retail_price,
-                    'discount_percent' => 0,
-                    'discount_amount' => 0,
-                    'is_tax_free' => false,
-                ];
+                                        // 2. Prepare the new row
+                                        $newRow = [
+                                            'product_item_id' => $item->id,
+                                            'repair_id' => null,
+                                            'stock_no_display' => $item->barcode,
+                                            'custom_description' => $item->custom_description ?? $item->barcode,
+                                            'qty' => $get('current_qty') ?? 1,
+                                            'sold_price' => $item->retail_price,
+                                            'discount_percent' => 0,
+                                            'discount_amount' => 0,
+                                            'is_tax_free' => false,
+                                        ];
 
-                // 3. Push to repeater and reset search
-                $currentItems[] = $newRow;
-                
-                $set('items', $currentItems);
-                $set('current_item_search', null); // 🚀 Clears the search box for the next item
-                $set('current_qty', 1);
+                                        // 3. Push to repeater and reset search
+                                        $currentItems[] = $newRow;
 
-                // 4. Trigger total calculation
-                self::updateTotals($get, $set);
-            })->columnSpan(3),
+                                        $set('items', $currentItems);
+                                        $set('current_item_search', null); // 🚀 Clears the search box for the next item
+                                        $set('current_qty', 1);
 
-        TextInput::make('current_qty')
-            ->label('Qty')
-            ->numeric()
-            ->default(1)
-            ->dehydrated(false)
-            ->live(),
-    ]),
-    // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
-]),
+                                        // 4. Trigger total calculation
+                                        self::updateTotals($get, $set);
+                                    })->columnSpan(3),
+
+                                TextInput::make('current_qty')
+                                    ->label('Qty')
+                                    ->numeric()
+                                    ->default(1)
+                                    ->dehydrated(false)
+                                    ->live(),
+                            ]),
+                            // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
+                        ]),
                         Section::make('Trade-In Details')
-    ->schema([
-        Select::make('has_trade_in')
-            ->label('Is there a Trade-In?')
-            ->options([
-                1 => 'Yes',
-                0 => 'No'
-            ])
-            ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
-            ->required()
-            ->live()
-            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                            ->schema([
+                                Select::make('has_trade_in')
+                                    ->label('Is there a Trade-In?')
+                                    ->options([
+                                        1 => 'Yes',
+                                        0 => 'No'
+                                    ])
+                                    ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-        Grid::make(2)
-            ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-            ->schema([
-                TextInput::make('trade_in_value')
-                    ->label('Trade-In Value (Deduction)')
-                    ->numeric()
-                    ->prefix('$')
-                    ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                    ->live()
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                Grid::make(2)
+                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                    ->schema([
+                                        TextInput::make('trade_in_value')
+                                            ->label('Trade-In Value (Deduction)')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                TextInput::make('trade_in_receipt_no')
-                    ->label('Trade-In Tracking #')
-                    ->default(fn() => 'TRD-' . date('Ymd-His'))
-                    ->readOnly(),
+                                        TextInput::make('trade_in_receipt_no')
+                                            ->label('Trade-In Tracking #')
+                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                            ->readOnly(),
 
-                Forms\Components\Textarea::make('trade_in_description')
-                    ->label('Item Description')
-                    ->placeholder('e.g. 14k White Gold Diamond Band')
-                    ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                    ->columnSpanFull()
-                    ->rows(2),
-            ]),
-    ]),
+                                        Forms\Components\Textarea::make('trade_in_description')
+                                            ->label('Item Description')
+                                            ->placeholder('e.g. 14k White Gold Diamond Band')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                                            ->columnSpanFull()
+                                            ->rows(2),
+                                    ]),
+                            ]),
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
                                 ->relationship('items')
@@ -315,110 +315,126 @@ class SaleResource extends Resource
                     ]),
 
                     Group::make()->columnSpan(4)->schema([
-                        Section::make('Customer & Personnel')->schema([
-                            Select::make('customer_id')
-                                ->label('Customer')
-                                ->relationship('customer', 'name')
-                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
-                                ->searchable(['name', 'last_name', 'phone'])
-                                ->preload()
-                                ->required()
-                                ->live()
-                                // 🆕 1. Auto-fills the customer if coming from the "Find Customer" page
-                                ->default(fn() => request()->query('customer_id'))
+                        Section::make('Customer & Personnel')
+                            ->description('Select a customer first to load profile and credits.')
+                            ->schema([
+                                Grid::make(1)->schema([
+                                    Select::make('customer_id')
+                                        ->label('Select Customer')
+                                        ->relationship('customer', 'name')
+                                        // 🚀 ENHANCED PREVIEW: Shows Name + Phone + Cust # to differentiate duplicates
+                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                        ->searchable(['name', 'last_name', 'phone', 'customer_no'])
+                                        ->preload()
+                                        ->required()
+                                        ->live()
+                                        ->columnSpanFull()
 
-                                // 🆕 2. Tells the client exactly how to add a customer
-                                ->helperText('Need a new customer? Click the "+" button.')
+                                        // 🚀 "SWIM-STYLE" POPUP: View selected customer details
+                                        ->hintAction(
+                                            FormAction::make('view_customer_details')
+                                                ->label('View Profile')
+                                                ->icon('heroicon-o-user-circle')
+                                                ->color('info')
+                                                ->visible(fn(Get $get) => $get('customer_id'))
+                                                ->modalHeading('Customer Profile Details')
+                                                ->modalSubmitAction(false) // View only
+                                                ->modalCancelActionLabel('Close')
+                                                ->slideOver() // 🚀 Opens like a 2nd window from the side
+                                                ->form(function (Get $get) {
+                                                    $customer = \App\Models\Customer::find($get('customer_id'));
+                                                    if (!$customer) return [];
 
-                                // 🆕 3. Adds a clear title to the popup modal
-                                ->createOptionModalHeading('Create New Customer')
-                                // 🚀 ENHANCED CUSTOMER CREATION MODAL
-                                ->createOptionForm([
-                                    Forms\Components\Tabs::make('New Customer')
-                                        ->tabs([
-                                            // 1. Essential Contact Info
-                                            Forms\Components\Tabs\Tab::make('Contact')
-                                                ->icon('heroicon-o-user')
-                                                ->schema([
-                                                    Forms\Components\Grid::make(2)->schema([
-                                                        Forms\Components\TextInput::make('name')
-                                                            ->label('First Name')
-                                                            ->required(),
-                                                        Forms\Components\TextInput::make('last_name')
-                                                            ->label('Last Name'),
-                                                    ]),
+                                                    return [
+                                                        Grid::make(2)->schema([
+                                                            Placeholder::make('img')
+                                                                ->label('')
+                                                                ->content(new HtmlString("
+                                            <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                <div>
+                                                    <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                    <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                    <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                        Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        "))->columnSpanFull(),
 
-                                                    Forms\Components\Grid::make(2)->schema([
-                                                        Forms\Components\TextInput::make('phone')
-                                                            ->label('Mobile Phone')
-                                                            ->tel()
-                                                            ->prefix('+1')
-                                                            ->mask('(999) 999-9999') // Auto-format
-                                                            ->stripCharacters(['(', ')', '-', ' '])
-                                                            ->required()
-                                                            ->unique('customers', 'phone'),
+                                                            TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
+                                                            TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
+                                                           TextInput::make('addr')
+                                        ->label('Full Address')
+                                        ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                        ->readOnly()
+                                        ->columnSpanFull(),
 
-                                                        Forms\Components\TextInput::make('email')
-                                                            ->label('Email')
-                                                            ->email(),
-                                                    ]),
+                                                            Placeholder::make('history')
+                                                                ->label('Last Sale Date')
+                                                                ->content($customer->sales()->latest()->first()?->created_at?->format('M d, Y') ?? 'No previous sales')
+                                                        ]),
+                                                    ];
+                                                })
+                                        )
 
-                                                    Forms\Components\Textarea::make('address')
-                                                        ->label('Address')
-                                                        ->rows(2)
-                                                        ->columnSpanFull(),
+                                        // 🚀 CREATE NEW OPTION (Remains Enhanced)
+                                        ->createOptionModalHeading('Quick Add New Customer')
+                                        ->createOptionForm([
+                                            Forms\Components\Tabs::make('New Customer')
+                                                ->tabs([
+                                                    Forms\Components\Tabs\Tab::make('Contact')
+                                                        ->icon('heroicon-o-user')
+                                                        ->schema([
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                                                                Forms\Components\TextInput::make('last_name')->label('Last Name'),
+                                                            ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('phone')
+                                                                    ->label('Mobile Phone')
+                                                                    ->tel()
+                                                                    ->required()
+                                                                    ->unique('customers', 'phone'),
+
+                                                                Forms\Components\Grid::make(2)->schema([
+                                                                    Forms\Components\DatePicker::make('dob')
+                                                                        ->label('Birth Date')
+                                                                        ->placeholder('Jan 01, 1990')
+                                                                        ->displayFormat('M d, Y')
+                                                                        ->native(false) // 🚀 Enables the custom calendar UI
+                                                                        ->live(), // 🚀 Ensures typing is registered
+
+                                                                    Forms\Components\DatePicker::make('wedding_anniversary')
+                                                                        ->label('Wedding Date')
+                                                                        ->placeholder('Jun 15, 2010')
+                                                                        ->displayFormat('M d, Y')
+                                                                        ->native(false)
+                                                                        ->live(),
+                                                                ]),
+                                                                Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                                            ]),
+                                                            Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
+                                                        ]),
                                                 ]),
+                                            Forms\Components\Hidden::make('customer_no')
+                                                ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                        ])
+                                        ->createOptionUsing(function (array $data) {
+                                            return \App\Models\Customer::create($data)->id;
+                                        }),
+                                ]),
 
-                                            // 2. Personal Details & Image
-                                            Forms\Components\Tabs\Tab::make('Profile')
-                                                ->icon('heroicon-o-camera')
-                                                ->schema([
-                                                    Forms\Components\FileUpload::make('image')
-                                                        ->label('Customer Photo')
-                                                        ->image()
-                                                        ->avatar()
-                                                        ->imageEditor()
-                                                        ->directory('customer-photos')
-                                                        ->visibility('public')
-                                                        ->columnSpanFull(),
-
-                                                    Forms\Components\Grid::make(2)->schema([
-                                                        Forms\Components\DatePicker::make('dob')
-                                                            ->label('Birthday')
-                                                            ->native(false),
-
-                                                        Forms\Components\DatePicker::make('wedding_anniversary')
-                                                            ->label('Anniversary')
-                                                            ->native(false),
-                                                    ]),
-                                                ]),
-                                        ]),
-
-                                    // Auto-generate customer number
-                                    Forms\Components\Hidden::make('customer_no')
-                                        ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
-                                ])
-                                ->createOptionUsing(function (array $data) {
-                                    // Save and return ID
-                                    return \App\Models\Customer::create($data)->id;
-                                }),
-                            Select::make('sales_person_list')
-                                ->label('Sales Persons (Double Assistant)')
-                                ->multiple() // 🚀 THIS ENABLES MULTIPLE SELECTION
-                                ->searchable()
-                                ->preload()
-                                ->hintAction(
-                                    FormAction::make('Help')
-                                        ->icon('heroicon-o-information-circle')
-                                        ->tooltip('Add SalesPerson for multi-people sales')
-                                )
-                                ->options(fn() => User::pluck('name', 'name')->toArray()) // Fetches your team list
-                                ->default(fn() => [auth()->user()->name]) // Defaults to current user in an array
-                                ->required()
-                                ->helperText('Select one or more staff members for this sale.')
-                                ->dehydrated(),
-                        ]),
-
+                                // 🚀 SALES PERSON LIST (Now follows customer selection)
+                                Select::make('sales_person_list')
+                                    ->label('Sales Staff')
+                                    ->multiple()
+                                    ->searchable()
+                                    ->preload()
+                                    ->options(fn() => User::pluck('name', 'name')->toArray())
+                                    ->default(fn() => [auth()->user()->name])
+                                    ->required(),
+                            ]),
                         Section::make('Payment & Status')->schema([
                             Toggle::make('is_split_payment')
                                 ->label('Enable Split Payment')
@@ -528,7 +544,9 @@ class SaleResource extends Resource
 
                 Hidden::make('repair_id')
                     ->dehydrated(false),
-            ]);
+            ])
+            ->statePath('data');
+        
     }
 
     public static function table(Table $table): Table

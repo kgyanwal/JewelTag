@@ -11,6 +11,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\Repeater;
 use Filament\Actions\Action;
+use Filament\Forms\Components\RichEditor;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 
@@ -50,6 +51,7 @@ class ManageSettings extends Page
             'payment_methods' => $formattedPayments, 
             'warranty_options' => $formattedWarranties, 
             'sub_department_prefixes' => $formattedPrefixes, 
+            'receipt_terms' => $settings['receipt_terms'] ?? 'All sales final. Returns accepted within 14 days...',
         ]);
     }
 
@@ -121,6 +123,27 @@ class ManageSettings extends Page
                                                 ->addActionLabel('Add Option')
                                                 ->grid(2),
                                         ]),
+
+                                     Section::make('Receipt Configuration')
+    ->description('Manage footer text for receipts with formatting.')
+    ->schema([
+        RichEditor::make('receipt_terms')
+            ->label('Terms & Conditions (Standard)')
+            ->toolbarButtons([
+                'bold',
+                'italic',
+                'bulletList',
+                'orderedList',
+            ]),
+        RichEditor::make('repair_terms')
+            ->label('Terms & Conditions (Repair)')
+            ->toolbarButtons([
+                'bold',
+                'italic',
+                'bulletList',
+                'orderedList',
+            ]),
+    ]),   
                                 ]),
                             ]),
 
@@ -178,7 +201,8 @@ class ManageSettings extends Page
         DB::table('site_settings')->updateOrInsert(['key' => 'payment_methods'], ['value' => json_encode($flatPayments), 'updated_at' => now()]);
         DB::table('site_settings')->updateOrInsert(['key' => 'warranty_options'], ['value' => json_encode($flatWarranties), 'updated_at' => now()]);
         DB::table('site_settings')->updateOrInsert(['key' => 'sub_department_prefixes'], ['value' => json_encode($state['sub_department_prefixes']), 'updated_at' => now()]);
-
+DB::table('site_settings')->updateOrInsert(['key' => 'receipt_terms'], ['value' => $state['receipt_terms'], 'updated_at' => now()]);
+DB::table('site_settings')->updateOrInsert(['key' => 'repair_terms'], ['value' => $state['repair_terms'] ?? '', 'updated_at' => now()]);
         Notification::make()->title('Configuration Updated Successfully')->success()->send();
     }
 }

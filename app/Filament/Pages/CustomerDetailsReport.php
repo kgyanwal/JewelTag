@@ -10,101 +10,109 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Forms\Components\{Section, Grid, Select, DatePicker, Toggle, CheckboxList, TextInput};
+use Filament\Forms\Components\{Section, Grid, DatePicker, CheckboxList, TextInput, Actions, Group};
 use Filament\Tables\Columns\TextColumn;
+use Filament\Forms\Set;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
-use Filament\Actions\Action;
 
 class CustomerDetailsReport extends Page implements HasForms, HasTable
 {
-    use InteractsWithForms;
-    use InteractsWithTable;
+    use InteractsWithForms, InteractsWithTable;
 
-   protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
-    
-    // 🔹 Level 1: The Main Group
+    protected static ?string $navigationIcon = 'heroicon-o-document-chart-bar';
     protected static ?string $navigationGroup = 'Analytics & Reports'; 
-    
-    
-    // 🔹 Level 2 & 3: Hierarchical Labeling
-    // This makes it appear as "Customer > CR007 - Details"
-    protected static ?string $navigationLabel = 'Customer_Details List';
-    
-    protected static ?int $navigationSort = 5; 
-
+    protected static ?string $navigationLabel = 'Customer Report Builder';
     protected static string $view = 'filament.pages.customer-details-report';
 
     public ?array $filterData = [];
-    public array $selectedFields = ['name', 'phone', 'email', 'city']; 
+    
+    // Controlled by the CheckboxList
+    public array $selectedFields = ['customer_no', 'name', 'phone', 'email', 'city']; 
 
     public function mount(): void
     {
         $this->form->fill();
     }
 
-    // 🔹 Logic for the Export Button
-    public function exportReport()
-    {
-        // Add your CSV/Excel logic here
-        $this->dispatch('notify', ['message' => 'Exporting Data...']);
-    }
-
-    // 🔹 Updated Form focusing only on 'name' and core filters
-    protected function getFormSchema(): array
+    protected function getColumnOptions(): array
     {
         return [
-            Section::make('Options')
+            'id' => 'System ID',
+            'customer_no' => 'Customer ID',
+            'name' => 'First Name',
+            'last_name' => 'Last Name',
+            'phone' => 'Mobile Phone',
+            'email' => 'Email Address',
+            'dob' => 'Date of Birth',
+            'wedding_anniversary' => 'Anniversary',
+            'address' => 'Full Address',
+            'city' => 'City',
+            'state' => 'State',
+            'postcode' => 'Postcode',
+            'loyalty_tier' => 'Loyalty Tier',
+            'gold_preference' => 'Gold Preference',
+            'gender' => 'Gender',
+            'spouse_name' => 'Spouse Name',
+            'lh_ring' => 'Left Ring Size',
+            'rh_ring' => 'Right Ring Size',
+            'is_active' => 'Status',
+            'created_at' => 'Date Created',
+        ];
+    }
+
+    public function form(Form $form): Form
+    {
+        return $form->schema([
+            Section::make('Report Configuration')
+                ->description('Configure dates and specific data points for extraction.')
                 ->schema([
                     Grid::make(3)->schema([
-                        DatePicker::make('birthday_from')->label('Birthdays From')->live(),
-                        DatePicker::make('birthday_to')->label('To')->live(),
-                        TextInput::make('postcode')->placeholder('Search Postcode')->live(),
+                        DatePicker::make('date_from')->label('Date Created From')->live(),
+                        DatePicker::make('date_to')->label('Date Created To')->live(),
+                        TextInput::make('postcode')->placeholder('Filter by Postcode')->live(),
                     ]),
-                ]),
-        ];
-    }
 
-    protected function getFieldsFormSchema(): array
-    {
-        return [
-            CheckboxList::make('selectedFields')
-                ->options([
-                    'name' => 'Customer Name', // Updated to use single name field
-                    'phone' => 'Phone',
-                    'email' => 'Email',
-                    'city' => 'City',
-                    'loyalty_tier' => 'Loyalty Tier',
-                    'gold_preference' => 'Gold Preference',
-                ])
-                ->reactive()
-                ->afterStateUpdated(fn ($state) => $this->selectedFields = $state),
-        ];
+                    Group::make()->schema([
+                        CheckboxList::make('selectedFields')
+                            ->label('Select Columns to Include')
+                            ->options($this->getColumnOptions())
+                            ->columns(4) // Clean 4-column grid
+                            ->bulkToggleable() // 🚀 The "Select All" functionality
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(fn ($state) => $this->selectedFields = $state),
+                    ])->extraAttributes(['class' => 'mt-6']),
+                ]),
+        ])->statePath('filterData');
     }
 
     public function table(Table $table): Table
     {
+        $allPossible = $this->getColumnOptions();
+        $columns = [];
+
+        foreach ($allPossible as $key => $label) {
+            $columns[] = TextColumn::make($key)
+                ->label(strtoupper($label))
+                ->visible(fn() => in_array($key, $this->selectedFields))
+                ->sortable();
+        }
+
         return $table
             ->query(Customer::query())
             ->modifyQueryUsing(fn (Builder $query) => $query
-                ->when($this->filterData['birthday_from'] ?? null, fn($q, $d) => $q->whereDate('dob', '>=', $d))
+                ->when($this->filterData['date_from'] ?? null, fn($q, $d) => $q->whereDate('created_at', '>=', $d))
+                ->when($this->filterData['date_to'] ?? null, fn($q, $d) => $q->whereDate('created_at', '<=', $d))
                 ->when($this->filterData['postcode'] ?? null, fn($q, $v) => $q->where('postcode', 'like', "%{$v}%"))
                 ->latest()
             )
-            ->columns([
-                TextColumn::make('name')->label('NAME')->visible(fn() => in_array('name', $this->selectedFields)),
-                TextColumn::make('phone')->label('PHONE')->visible(fn() => in_array('phone', $this->selectedFields)),
-                TextColumn::make('email')->label('EMAIL')->visible(fn() => in_array('email', $this->selectedFields)),
-                TextColumn::make('city')->label('CITY')->visible(fn() => in_array('city', $this->selectedFields)),
-                TextColumn::make('gold_preference')->label('GOLD PREF')->visible(fn() => in_array('gold_preference', $this->selectedFields)),
-            ])
+            ->columns($columns)
             ->paginated([10, 25, 50]);
     }
-    public static function shouldRegisterNavigation(): bool
-    {
-        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
-        $staff = \App\Helpers\Staff::user();
 
-        // Only allow specific roles to see the Administration menu
-        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+    public function exportReport()
+    {
+        Notification::make()->title('Export Initiated')->success()->send();
     }
 }

@@ -23,6 +23,7 @@ use Filament\Support\Assets\Js;
 use App\Filament\Pages\ManageSettings;
 use Filament\Navigation\MenuItem;
 use App\Filament\Resources\ActivityLogResource;
+use App\Filament\Resources\CustomerResource;
 use App\Filament\Resources\SaleResource;
 use App\Models\Store;
 use Jeffgreco13\FilamentBreezy\BreezyCore;
@@ -39,35 +40,38 @@ class AdminPanelProvider extends PanelProvider
     public function panel(Panel $panel): Panel
     {
         // 1. Dynamically fetch the store logo for the navigation bar
-        
+
 
         return $panel
             ->default()
             ->id('admin')
             ->path('admin')
-            
+
             ->login()
             ->topNavigation()
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
- ->brandLogo(function () {
-    if (function_exists('tenancy') && tenancy()->initialized) {
-        // Fetch the store settings from the tenant database
-        $store = \App\Models\Store::first();
-        
-        if ($store && $store->logo_path) {
-            // 💡 The tenant_asset helper prepends the tenant-specific path
-            return tenant_asset($store->logo_path);
-        }
-    }
-    // Fallback to global central logo
-    return asset('jeweltaglogo.png'); 
-})
-            ->brandLogoHeight('2.5rem') 
+            ->brandLogo(function () {
+                if (function_exists('tenancy') && tenancy()->initialized) {
+                    // Fetch the store settings from the tenant database
+                    $store = \App\Models\Store::first();
+
+                    if ($store && $store->logo_path) {
+                        // 💡 The tenant_asset helper prepends the tenant-specific path
+                        return tenant_asset($store->logo_path);
+                    }
+                }
+                // Fallback to global central logo
+                return asset('jeweltaglogo.png');
+            })
+            ->brandLogoHeight('2.5rem')
             ->brandName('JEWELTAG')
             ->renderHook(
+
                 PanelsRenderHook::GLOBAL_SEARCH_END,
-                fn (): string => view('filament.hooks.custom-logo')->render(),
+                fn(): string => view('filament.hooks.custom-logo')->render(),
+
             )
+
             ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
             ->colors([
@@ -274,7 +278,7 @@ HTML
                 \App\Filament\Resources\ProductItemResource::class,
                 \App\Filament\Resources\CustomerResource::class,
                 \App\Filament\Resources\SaleResource::class,
-                \App\Filament\Resources\LaybuyResource::class, 
+                \App\Filament\Resources\LaybuyResource::class,
                 \App\Filament\Resources\UserResource::class,
                 \App\Filament\Resources\RoleResource::class,
                 \App\Filament\Resources\PermissionResource::class,
@@ -288,7 +292,7 @@ HTML
                 \App\Filament\Resources\ArchivedStockResource::class,
                 \App\Filament\Resources\ArchivedSaleResource::class,
                 \App\Filament\Resources\InventoryAuditResource::class,
-                 \App\Filament\Resources\WishlistResource::class,
+                \App\Filament\Resources\WishlistResource::class,
             ])
             ->pages([
                 \App\Filament\Pages\Dashboard::class,
@@ -306,13 +310,13 @@ HTML
                 \App\Filament\Pages\MemoInventory::class,
                 \App\Filament\Pages\Analytics::class,
                 \App\Filament\Pages\StockAgingReport::class,
-                 \App\Filament\Pages\UpcomingFollowUps::class,
-                 \App\Filament\Pages\InactiveStockReport::class,
+                \App\Filament\Pages\UpcomingFollowUps::class,
+                \App\Filament\Pages\InactiveStockReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
-                 \App\Filament\Widgets\ScrapGoldCalculator::class,
-                 
+                \App\Filament\Widgets\ScrapGoldCalculator::class,
+
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -326,22 +330,30 @@ HTML
                 DispatchServingFilamentEvent::class,
                 \App\Http\Middleware\LogPageViews::class,
                 \Stancl\Tenancy\Middleware\InitializeTenancyByDomain::class,
-        \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
+                \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
             ])
             ->authMiddleware([
                 Authenticate::class,
                 \App\Http\Middleware\EnsureStaffSession::class,
             ])
             ->navigationItems([
-    NavigationItem::make('New Sale')
-        ->label('New Sale')
-        ->group('Sales')
-        ->icon('heroicon-o-plus-circle')
-        ->activeIcon('heroicon-s-plus-circle')
-        ->url(fn (): string => SaleResource::getUrl('create'))
-        /* 🚀 THE FIX: Use a lower value to move it higher */
-        ->sort(-100), 
-])
+                NavigationItem::make('New Sale')
+                    ->label('New Sale')
+                    ->group('Sales')
+                    ->icon('heroicon-o-plus-circle')
+                    ->activeIcon('heroicon-s-plus-circle')
+                    ->url(fn(): string => SaleResource::getUrl('create'))
+                    /* 🚀 THE FIX: Use a lower value to move it higher */
+                    ->sort(-100),
+
+                NavigationItem::make('New Customer')
+                    ->label('New Customer')
+                    ->group('Customer') // 👈 Matches your NavigationGroup label
+                    ->icon('heroicon-o-user-plus')
+                    ->activeIcon('heroicon-s-user-plus')
+                    ->url(fn(): string => CustomerResource::getUrl('create')) // 👈 Goes to /admin/customers/create
+                    ->sort(-100), // 👈 Forces it to the top of the Customer group
+            ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),
                 NavigationGroup::make()->label('Vendors'),
@@ -349,31 +361,38 @@ HTML
                 NavigationGroup::make()->label('Admin'),
                 NavigationGroup::make()->label('Analytics & Reports'),
             ])
-            
-            ->userMenuItems([
+
+         ->userMenuItems([
+                'switch_user' => MenuItem::make()
+                    ->label('Switch Associate PIN')
+                    ->icon('heroicon-o-arrows-right-left')
+                    ->color('warning')
+                    ->url(fn (): string => route('filament.admin.pages.pin-code-auth', ['switch' => true])),
+
                 'settings' => MenuItem::make()
                     ->label('Store Settings')
-                    ->url(fn (): string => ManageSettings::getUrl())
+                    ->url(fn(): string => ManageSettings::getUrl())
                     ->icon('heroicon-o-adjustments-horizontal')
-                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+                    ->visible(fn(): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
                 'activity_logs' => MenuItem::make()
                     ->label('Activity Logs')
                     ->icon('heroicon-o-finger-print')
-                    ->url(fn (): string => ActivityLogResource::getUrl())
-                    ->visible(fn (): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-            ])
-            ->plugins([
-            BreezyCore::make()
-                ->myProfile(shouldRegisterUserMenu: false) // Hides the profile menu
-                ->enableTwoFactorAuthentication(false),   // Explicitly turns off MFA
-        ]);
+                    ->url(fn(): string => ActivityLogResource::getUrl())
+                    ->visible(fn(): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
+           ])
+           // 🚀 THE FIX: Register the Breezy plugin here
+           ->plugins([
+                \Jeffgreco13\FilamentBreezy\BreezyCore::make()
+                    ->myProfile(shouldRegisterUserMenu: false) // Hides profile as requested
+                    ->enableTwoFactorAuthentication(false),
+           ]);
     }
     public function boot(): void
-{
-    FilamentView::registerRenderHook(
-        'panels::content.start',
-        fn (): string => Blade::render('
+    {
+        FilamentView::registerRenderHook(
+            'panels::content.start',
+            fn(): string => Blade::render('
             @php
                 // 💡 FORCE connection to central database to avoid 402/1146 error
                 try {
@@ -401,9 +420,9 @@ HTML
                 </div>
             @endif
         '),
-    );
-    \Illuminate\Support\Carbon::serializeUsing(function ($date) {
-        return $date->timezone(config('app.timezone'))->format('Y-m-d H:i:s');
-    });
-}
+        );
+        \Illuminate\Support\Carbon::serializeUsing(function ($date) {
+            return $date->timezone(config('app.timezone'))->format('Y-m-d H:i:s');
+        });
+    }
 }
