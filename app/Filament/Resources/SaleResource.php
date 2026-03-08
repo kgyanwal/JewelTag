@@ -374,6 +374,20 @@ class SaleResource extends Resource
                                                                 ->label('Last Sale Date')
                                                                 ->content($customer->sales()->latest()->first()?->created_at?->format('M d, Y') ?? 'No previous sales')
                                                         ]),
+
+                                                        Placeholder::make('full_details_link')
+                        ->label('')
+                        ->content(new HtmlString("
+                            <div class='mt-4 pt-4 border-t border-gray-200'>
+                                <a href='" . \App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $customer->id]) . "' 
+                                   target='_blank' 
+                                   class='inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary-600 rounded-lg hover:bg-primary-500 transition shadow-sm'>
+                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'></path></svg>
+                                    View All Details (Full Profile)
+                                </a>
+                                <p class='text-[10px] text-gray-400 mt-2 italic'>Opens in a new browser tab</p>
+                            </div>
+                        "))->columnSpanFull(),
                                                     ];
                                                 })
                                         )
