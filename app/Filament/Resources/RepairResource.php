@@ -11,7 +11,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\{Section, TextInput, Select, Toggle, Grid, Textarea};
-
+use Filament\Forms\Components\Actions\Action as FormAction;
 class RepairResource extends Resource
 {
     protected static ?string $model = Repair::class;
@@ -24,12 +24,86 @@ class RepairResource extends Resource
             Section::make('Repair Intake')
                 ->description('Record details for customer jewelry service.')
                 ->schema([
-                    Select::make('customer_id')
+                  Select::make('customer_id')
                         ->relationship('customer', 'name')
-                        ->searchable()
+                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
+                        ->searchable(['name', 'last_name', 'phone'])
                         ->preload()
+                         ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Click + to add a new customer')
+                        )
                         ->required()
-                        ->columnSpan(1),
+                        ->columnSpan(1)
+                        // 🚀 START: COPY-PASTED CUSTOMER CREATION LOGIC
+                        ->createOptionModalHeading('Create New Customer')
+                        ->createOptionForm([
+                            Forms\Components\Tabs::make('New Customer')
+                                ->tabs([
+                                    Forms\Components\Tabs\Tab::make('Contact')
+                                        ->icon('heroicon-o-user')
+                                        
+                                        ->schema([
+                                            Forms\Components\Grid::make(2)->schema([
+                                                Forms\Components\TextInput::make('name')
+                                                    ->label('First Name')
+                                                    ->required(),
+                                                Forms\Components\TextInput::make('last_name')
+                                                    ->label('Last Name'),
+                                            ]),
+                                            
+                                            Forms\Components\Grid::make(2)->schema([
+                                                Forms\Components\TextInput::make('phone')
+                                                    ->label('Mobile Phone')
+                                                    ->tel()
+                                                    ->prefix('+1')
+                                                    ->mask('(999) 999-9999')
+                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                    ->required()
+                                                    ->unique('customers', 'phone'),
+                                                    
+                                                Forms\Components\TextInput::make('email')
+                                                    ->label('Email')
+                                                    ->email(),
+                                            ]),
+
+                                            Forms\Components\Textarea::make('address')
+                                                ->label('Address')
+                                                ->rows(2)
+                                                ->columnSpanFull(),
+                                        ]),
+
+                                    Forms\Components\Tabs\Tab::make('Profile')
+                                        ->icon('heroicon-o-camera')
+                                        ->schema([
+                                            Forms\Components\FileUpload::make('image')
+                                                ->label('Customer Photo')
+                                                ->image()
+                                                ->avatar()
+                                                ->directory('customer-photos')
+                                                ->visibility('public')
+                                                ->columnSpanFull(),
+
+                                            Forms\Components\Grid::make(2)->schema([
+                                                Forms\Components\DatePicker::make('dob')
+                                                    ->label('Birthday')
+                                                    ->native(false),
+                                                    
+                                                Forms\Components\DatePicker::make('wedding_anniversary')
+                                                    ->label('Anniversary')
+                                                    ->native(false),
+                                            ]),
+                                        ]),
+                                ]),
+
+                            Forms\Components\Hidden::make('customer_no')
+                                ->default(fn() => 'CUST-' . strtoupper(bin2hex(random_bytes(3)))),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            return \App\Models\Customer::create($data)->id;
+                        }),
+                        // 🚀 END: CUSTOMER CREATION LOGIC
                     
                     Select::make('status')
                         ->options([

@@ -5,6 +5,8 @@ namespace App\Filament\Resources;
 use App\Models\Laybuy;
 use App\Models\Sale;
 use App\Models\User;
+use App\Models\ProductItem; // Added for stock selection
+use App\Models\Customer;    // Added for popup logic
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -12,11 +14,12 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Forms\Components\{TextInput, Select, Section, Grid, Placeholder, Textarea, DatePicker, Tabs, Tabs\Tab};
+use Filament\Forms\Components\{TextInput, Select, Section, Grid, Placeholder, Textarea, DatePicker, Tabs, Tabs\Tab, Repeater, Hidden};
 use App\Filament\Resources\LaybuyResource\Pages;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Actions\Action as FormAction; // Added for popup button
 
 class LaybuyResource extends Resource
 {
@@ -62,10 +65,48 @@ class LaybuyResource extends Resource
                                 Grid::make(2)->schema([
                                     Select::make('customer_id')
                                         ->relationship('customer', 'name')
-                                        ->searchable()
+                                        // 🚀 ADDED: Enhanced label to differentiate duplicate names
+                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                        ->searchable(['name', 'last_name', 'phone', 'customer_no'])
                                         ->preload()
                                         ->required()
-                                        ->disabledOn('edit'),
+                                        ->disabledOn('edit')
+                                        ->live()
+                                        // 🚀 ADDED: SWIM-STYLE CUSTOMER POPUP
+                                        ->hintAction(
+                                            FormAction::make('view_customer_details')
+                                                ->label('View Profile')
+                                                ->icon('heroicon-o-user-circle')
+                                                ->color('info')
+                                                ->visible(fn (Get $get) => $get('customer_id'))
+                                                ->slideOver()
+                                                ->modalSubmitAction(false)
+                                                ->form(function (Get $get) {
+                                                    $customer = Customer::find($get('customer_id'));
+                                                    if (!$customer) return [];
+                                                    return [
+                                                        Placeholder::make('summary')
+                                                            ->label('')
+                                                            ->content(new HtmlString("
+                                                                <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                                    <img src='" . ($customer->image ? asset('storage/'.$customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                    <div>
+                                                                        <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                        <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                            Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <div class='mt-4 space-y-2 text-sm'>
+                                                                    <p><strong>Phone:</strong> {$customer->phone}</p>
+                                                                    <p><strong>Email:</strong> {$customer->email}</p>
+                                                                    <p><strong>Address:</strong> {$customer->street}, {$customer->city} {$customer->postcode}</p>
+                                                                </div>
+                                                            ")),
+                                                    ];
+                                                })
+                                        ),
                                     
                                     TextInput::make('sales_person')
                                         ->label('Assigned Salesperson')
@@ -114,8 +155,63 @@ class LaybuyResource extends Resource
                         Tab::make('Items on Hold')
                             ->icon('heroicon-o-shopping-bag')
                             ->schema([
+                                // 🚀 ADDED: STOCK SELECTION (Only visible if no items exist/during creation)
+                                Section::make('New Stock Reservation')
+                                    ->description('If no items are linked yet, select stock items to reserve for this Layby.')
+                                    ->visible(fn ($record) => !$record || !$record->sale)
+                                    ->schema([
+                                        Select::make('item_search')
+                                            ->label('Select Stock #')
+                                            ->options(fn() => ProductItem::where('status', 'in_stock')->get()->mapWithKeys(fn($i) => [$i->id => "{$i->barcode} - {$i->custom_description} (\${$i->retail_price})"]))
+                                            ->searchable()
+                                            ->dehydrated(false)
+                                            ->live()
+                                            ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                                if (!$state) return;
+                                                $item = ProductItem::find($state);
+                                                $items = $get('layby_items') ?? [];
+                                                $items[] = [
+                                                    'product_item_id' => $item->id,
+                                                    'barcode' => $item->barcode,
+                                                    'description' => $item->custom_description,
+                                                    'price' => $item->retail_price,
+                                                    'qty' => 1,
+                                                ];
+                                                $set('layby_items', $items);
+                                                $set('item_search', null);
+                                                
+                                                // Update existing total_amount field logic
+                                                $total = collect($items)->sum(fn($i) => (float)$i['price']);
+                                                $set('total_amount', $total);
+                                                $set('balance_due', $total - (float)$get('amount_paid'));
+                                            }),
+
+                                        Repeater::make('layby_items')
+                                            ->label('Items added to this plan')
+                                            ->schema([
+                                                Grid::make(3)->schema([
+                                                    TextInput::make('barcode')->label('Stock #')->readOnly(),
+                                                    TextInput::make('description')->readOnly(),
+                                                    TextInput::make('price')->prefix('$')->numeric()->readOnly(),
+                                                ]),
+                                                Hidden::make('product_item_id'),
+                                            ])
+                                            ->addable(false)
+                                            ->reorderable(false)
+                                            ->deletable(true)
+                                            ->live()
+                                            ->afterStateUpdated(function (Get $get, Set $set) {
+                                                $items = $get('layby_items') ?? [];
+                                                $total = collect($items)->sum(fn($i) => (float)($i['price'] ?? 0));
+                                                $set('total_amount', $total);
+                                                $set('balance_due', $total - (float)$get('amount_paid'));
+                                            }),
+                                    ]),
+
+                                // 🚀 EXISTING LOGIC: Placeholder for saved records
                                 Placeholder::make('items_info')
                                     ->label('Products Currently Reserved')
+                                    ->visible(fn ($record) => $record && $record->sale)
                                     ->content(function ($record) {
                                         if (!$record || !$record->sale) {
                                             return 'No products linked to this plan.';

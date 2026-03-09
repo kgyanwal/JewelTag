@@ -45,6 +45,10 @@
         $receiptAccent = '#d4af37';
         $receiptBgLight = '#eff6ff';
     }
+    $settings = DB::table('site_settings')->pluck('value', 'key');
+    
+    $standardTerms = $settings['receipt_terms'] ?? 'All sales final. Returns accepted within 14 days for exchange/store credit only, item unworn with original receipt.';
+    $repairTerms = $settings['repair_terms'] ?? 'All repair services guaranteed for 90 days. Returns not accepted for completed repairs.';
     @endphp
     
     <meta charset="utf-8">
@@ -302,15 +306,16 @@
                         <div style="color: {{ $receiptColor }}; font-size: 9px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px; letter-spacing: 0.5px;">
                             <i class="fas fa-file-contract"></i> TERMS & CONDITIONS
                         </div>
-                        <p style="font-size: 8px; color: #546e7a; line-height: 1.4; margin: 0;">
-                            @if($receiptType == 'repair')
-                            All repair services guaranteed for 90 days. Returns not accepted for completed repairs. Additional issues must be reported within warranty period. By signing, you acknowledge receipt of items and agree to terms.
-                            @elseif($receiptType == 'custom')
-                            Custom orders are final sale - no returns/exchanges. All designs created to customer specifications. By signing, you approve the final design and acknowledge the final sale nature.
-                            @else
-                            All sales final. Returns accepted within 14 days for exchange/store credit only, item unworn with original receipt. By signing, you agree to store policy.
-                            @endif
-                        </p>
+                       <p style="font-size: 8px; color: #546e7a; line-height: 1.4; margin: 0;">
+
+    @if($receiptType == 'repair')
+        {!! $repairTerms !!}
+    @elseif($receiptType == 'custom')
+        Custom orders are final sale - no returns/exchanges. By signing, you approve the final design.
+    @else
+        {!! $standardTerms !!}
+    @endif
+</p>
                     </div>
 
                     @if(!isset($is_pdf) && !isset($is_email))

@@ -17,7 +17,11 @@ class Sale extends Model
     protected $guarded = [];
     
     protected $casts = [
-        'sales_person_list' => 'array'
+        'split_payments' => 'array',
+        'sales_person_list' => 'array',
+        'created_at' => 'datetime',
+    'updated_at' => 'datetime',
+    'deleted_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo 
@@ -37,13 +41,19 @@ class Sale extends Model
 
     public function store(): BelongsTo
     {
+        
         return $this->belongsTo(Store::class);
     }
     public function laybuy()
     {
         return $this->hasOne(Laybuy::class, 'sale_id');
     }
-
+protected function serializeDate(\DateTimeInterface $date)
+    {
+        return \Illuminate\Support\Carbon::instance($date)
+            ->setTimezone(config('app.timezone', 'America/Denver'))
+            ->format('Y-m-d H:i:s');
+    }
     /**
      * Model Boot Logic
      */
@@ -59,8 +69,8 @@ class Sale extends Model
                     ->value('value') ?? 'D';
 
                 // 2. Generate Date String: MMDDYY (e.g., 021326)
-                $datePart = now()->format('mdy');
-
+                $timezone = config('app.timezone') ?? 'America/Denver';
+            $datePart = now()->setTimezone($timezone)->format('mdy');
                 // 3. Find the highest sequence number for TODAY ONLY
                 $todayPattern = $prefix . $datePart . '%';
                 

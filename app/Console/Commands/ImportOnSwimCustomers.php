@@ -6,107 +6,147 @@ use Illuminate\Console\Command;
 use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ImportOnSwimCustomers extends Command
 {
-    /**
-     * The name and signature of the console command.
-     */
-    protected $signature = 'import:onswim-customers';
+    protected $signature = 'import:onswim-customers {tenant} {--rollback}';
+    protected $description = 'Import customers with recursive conflict resolution to prevent 1062 unique key errors';
 
-    /**
-     * The console command description.
-     */
-    protected $description = 'Import customers from OnSwim CSV in Downloads with duplicate phone protection';
-
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
-        // Path to your Mac Downloads folder
-        $home = getenv('HOME');
-        $filePath = $home . '/Downloads/dsq_customers_-1.csv';
+        $tenantId = $this->argument('tenant');
+        
+        try {
+            $tenant = \App\Models\Tenant::findOrFail($tenantId);
+            tenancy()->initialize($tenant);
+        } catch (\Exception $e) {
+            $this->error("Could not find or initialize tenant: {$tenantId}");
+            return;
+        }
+
+        if ($this->option('rollback')) {
+            $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
+            if ($this->confirm('This will delete ALL customers. Are you sure?', false)) {
+                Schema::disableForeignKeyConstraints();
+                Customer::truncate();
+                Schema::enableForeignKeyConstraints();
+                $this->info("Customer table truncated.");
+            }
+            return;
+        }
+
+        $directoryPath = storage_path("app/data/{$tenantId}");
+        $filePath = "{$directoryPath}/customer_dsqdata_feb26_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
             return;
         }
 
-        // Count lines for the progress bar (subtracting header)
-        $lines = file($filePath);
-        $lineCount = count($lines) - 1;
-        
         $file = fopen($filePath, 'r');
-        $headers = fgetcsv($file);
+        $headers = array_map('trim', fgetcsv($file));
 
-        $this->info("Starting Customer Import ($lineCount records)...");
-        $bar = $this->output->createProgressBar($lineCount);
-        $bar->start();
+        $this->info("Starting Full Customer Import for {$tenantId}...");
+        DB::connection('tenant')->beginTransaction();
 
-        while (($row = fgetcsv($file)) !== FALSE) {
-            $data = array_combine($headers, $row);
+        try {
+            while (($row = fgetcsv($file)) !== FALSE) {
+                $data = array_combine($headers, $row);
 
-            // 1. Clean and Format Phone Number with persistent +1 logic
-            $mobile = trim($data['Mobile'] ?? '');
-            if (!empty($mobile)) {
-                $digits = preg_replace('/[^0-9]/', '', $mobile);
-                // Avoid +11 if the user already typed 1 followed by 10 digits
-                if (str_starts_with($digits, '1') && strlen($digits) > 10) {
-                    $digits = substr($digits, 1);
+                $email = trim($data['Email'] ?? '');
+                $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
+                $rawCustNo = trim($data['Cust No.'] ?? '');
+                if (empty($rawCustNo)) continue;
+                $fullCustNo = 'CUST-' . $rawCustNo;
+
+                // 🚀 STEP 1: RESOLVE THE ID CONFLICT
+                // We prioritize finding by Customer Number because that is the primary unique key
+                $existing = Customer::where('customer_no', $fullCustNo)->first();
+
+                // If not found by number, try phone
+                if (!$existing && !empty($phone)) {
+                    $existing = Customer::where('phone', $phone)->first();
                 }
-                $mobile = '+1' . $digits;
-            } else {
-                // Since your DB column is now nullable, use null to avoid unique clash on empty string
-                $mobile = null;
-            }
 
-            // 2. Format Birthdate
-            $dob = null;
-            if (!empty($data['Birthdate'])) {
-                try {
-                    $dob = Carbon::parse($data['Birthdate'])->format('Y-m-d');
-                } catch (\Exception $e) {
-                    $dob = null;
+                // If still not found, try email
+                if (!$existing && !empty($email)) {
+                    $existing = Customer::where('email', $email)->first();
                 }
+
+                // 🚀 STEP 2: PREVENT SECONDARY PHONE CONFLICT
+                // If we found a record by ID/Email, but the PHONE in the CSV belongs to someone ELSE, 
+                // we must set the phone to null for this record to prevent the SQL error, 
+                // OR skip updating the phone.
+                if ($existing && !empty($phone)) {
+                    $phoneOwner = Customer::where('phone', $phone)->first();
+                    if ($phoneOwner && $phoneOwner->id !== $existing->id) {
+                        // Conflict: This phone belongs to another ID. 
+                        // To avoid the error, we keep the existing record's phone instead of the CSV's.
+                        $phone = $existing->phone; 
+                    }
+                }
+
+                $cityValue = !empty(trim($data['City/Province'] ?? '')) 
+                                ? $data['City/Province'] 
+                                : ($data['Suburb/City'] ?? null);
+
+                Customer::updateOrCreate(
+                    ['id' => $existing?->id ?? null], 
+                    [
+                        'customer_no' => $fullCustNo, 
+                        'name' => $data['First Name'] ?? 'Walk-in',
+                        'last_name' => $data['Last Name'] ?? null,
+                        'email' => $email ?: ($existing?->email ?? null),
+                        'phone' => $phone,
+                        'home_phone' => $data['Home Phone'] ?? null,
+                        'street'   => $data['Street'] ?? null,
+                        'suburb'   => $data['Suburb/City'] ?? null,   
+                        'city'     => $cityValue,
+                        'state'    => $data['State'] ?? null,
+                        'postcode' => $data['Postcode'] ?? null,
+                        'country'  => $data['Country'] ?? 'USA',
+                        'dob' => $this->parseDate($data['Birthdate'] ?? null),
+                        'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
+                        'gender' => $data['Gender'] ?? null,
+                        'gold_preference' => $data['Gold Preference'] ?? null,
+                        'lh_ring' => $data['Finger Size'] ?? null,
+                        'sales_person' => $data['Staff Assigned'] ?? null,
+                        'how_found_store' => $data['Referred By'] ?? null,
+                        'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
+                        'spouse_email' => $data['Spouse Email'] ?? null,
+                        'comments' => $data['Comments'] ?? null,
+                        'customer_alerts' => $data['Issues'] ?? null,
+                        'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
+                        'is_active' => true,
+                        'company' => $data['Company'] ?? null,
+                    ]
+                );
             }
 
-            // 3. Duplicate Protection Logic
-            // First, find if this person exists by Email
-            $existingCustomer = Customer::where('email', $data['Email'])->whereNotNull('email')->first();
+            DB::connection('tenant')->commit();
+            fclose($file);
+            $this->info("Customer import completed successfully.");
 
-            // If not found by email, find if the phone number is already taken
-            if (!$existingCustomer && !empty($mobile)) {
-                $existingCustomer = Customer::where('phone', $mobile)->first();
-            }
-
-            // 4. Update existing or create new
-            Customer::updateOrCreate(
-                ['id' => $existingCustomer?->id ?? 0], // If ID is 0, it creates a new record
-                [
-                    'email' => $data['Email'] ?: ($existingCustomer?->email ?? 'no-email-' . $data['Cust No.'] . '@example.com'),
-                    'customer_no' => $existingCustomer?->customer_no ?? 'CUST-' . $data['Cust No.'],
-                    'name' => $data['First Name'],
-                    'last_name' => $data['Last Name'],
-                    'phone' => $mobile,
-                    'home_phone' => $data['Home Phone'] ?? null,
-                    'street' => $data['Street'] ?? null,
-                    'suburb' => $data['Suburb/City'] ?? null,
-                    'city' => $data['City/Province'] ?? null,
-                    'postcode' => $data['Postcode'] ?? null,
-                    'dob' => $dob,
-                    'is_active' => true,
-                    'loyalty_tier' => 'standard',
-                ]
-            );
-
-            $bar->advance();
+        } catch (\Exception $e) {
+            DB::connection('tenant')->rollBack();
+            if (isset($file)) fclose($file);
+            $this->error("Critical Error: " . $e->getMessage());
         }
+    }
 
-        fclose($file);
-        $bar->finish();
-        
-        $this->newLine(2);
-        $this->info("Import completed: Processed {$lineCount} rows.");
+    private function formatPhone($phone)
+    {
+        $digits = preg_replace('/[^0-9]/', '', $phone);
+        if (empty($digits)) return null;
+        if (str_starts_with($digits, '1') && strlen($digits) === 11) return '+' . $digits;
+        return '+1' . $digits;
+    }
+
+    private function parseDate($date)
+    {
+        if (empty($date) || trim($date) == '') return null;
+        try { return Carbon::parse($date)->format('Y-m-d'); } 
+        catch (\Exception $e) { return null; }
     }
 }

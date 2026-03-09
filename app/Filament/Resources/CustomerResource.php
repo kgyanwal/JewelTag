@@ -65,21 +65,43 @@ class CustomerResource extends Resource
                                                 ]),
                                             TextInput::make('email')->email(),
                                         ]),
-                                        Grid::make(2)->schema([
-                                            Select::make('sales_person')
-                                                ->label('Sales Person')
-                                                ->options(function () {
-                                                    // 🔹 DEFENSIVE FIX: Only query roles that definitely exist in the DB
-                                                    $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales']; // Changed 'Sales Associate' to 'Sales' to match seeder
+                                        Grid::make(3)->schema([
+    Select::make('sales_person')
+        ->label('Sales Person')
+        ->options(function () {
+            $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales'];
 
-                                                    return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
-                                                        $q->whereIn('name', $validRoles);
-                                                    })->pluck('name', 'name');
-                                                })
-                                                ->searchable()
-                                                ->preload()
-                                            // TextInput::make('tax_number')->label('Tax Number'),
-                                        ]),
+            return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
+                $q->whereIn('name', $validRoles);
+            })->pluck('name', 'name');
+        })
+        ->searchable()
+        ->preload(),
+
+    DatePicker::make('dob')
+        ->label('Birth Date'),
+
+    DatePicker::make('wedding_anniversary')
+        ->label('Wedding Date'),
+]),
+
+Section::make('Address')
+    ->columns(2)
+    ->collapsible()
+    ->schema([
+        TextInput::make('street')->columnSpanFull(),
+        TextInput::make('city'),
+        TextInput::make('state'),
+        Select::make('country')
+            ->options([
+                'Australia' => 'Australia',
+                'United States' => 'United States',
+                'Canada' => 'Canada'
+            ])
+            ->default('United States')
+            ->searchable(),
+        TextInput::make('postcode'),
+    ]),
                                         Section::make('Address')
                                             ->columns(2)->collapsible()
                                             ->schema([
@@ -98,8 +120,7 @@ class CustomerResource extends Resource
                                     ->icon('heroicon-o-megaphone')
                                     ->schema([
                                         Grid::make(3)->schema([
-                                            DatePicker::make('dob')->label('Birth Date'),
-                                            DatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                           
                                             Select::make('gender')->options(['Male' => 'Male', 'Female' => 'Female', 'Others' => 'Others']),
                                         ]),
                                         Grid::make(3)->schema([

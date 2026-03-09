@@ -25,19 +25,48 @@ class TenantResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Section::make('Store Infrastructure')
-                    ->description('Manage the core database and domain settings for this store.')
+                    ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('id')
                             ->label('Database ID (Tenant ID)')
                             ->required()
                             ->disabled(fn ($record) => $record !== null)
+                            ->placeholder('e.g. lxdiamond')
                             ->unique(ignoreRecord: true),
                             
                         Forms\Components\TextInput::make('domain')
                             ->label('Primary Domain')
                             ->required()
-                            ->placeholder('storename.localhost')
-                            ->helperText('Changing this here will update the associated domain record.'),
+                            ->placeholder('lxdiamond.localhost')
+                            ->helperText('This creates the web address for the store.'),
+                    ]),
+
+                // 🚀 Initial Admin Section (Only visible on Create)
+                Forms\Components\Section::make('Initial Superadmin Account')
+                    ->description('This user will be created automatically inside the new tenant database.')
+                    ->visible(fn ($record) => $record === null) 
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('admin_name')
+                            ->label('Full Name')
+                            ->required()
+                            ->dehydrated(false),
+                        Forms\Components\TextInput::make('admin_email')
+                            ->label('Email Address')
+                            ->email()
+                            ->required()
+                            ->dehydrated(false),
+                        Forms\Components\TextInput::make('admin_password')
+                            ->label('Password')
+                            ->password()
+                            ->required()
+                            ->dehydrated(false),
+                        Forms\Components\TextInput::make('admin_pin')
+                            ->label('Access PIN')
+                            ->required()
+                            ->maxLength(4)
+                            ->default('1234')
+                            ->dehydrated(false),
                     ])
             ]);
     }
@@ -46,10 +75,7 @@ class TenantResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label('Store ID')
-                    ->searchable()
-                    ->weight('bold'),
+                TextColumn::make('id')->label('Store ID')->searchable()->weight('bold'),
 
                 TextColumn::make('domains.domain')
                     ->label('Web Address')
@@ -59,67 +85,44 @@ class TenantResource extends Resource
                         $domain = $record->domains->first()?->domain;
                         $protocol = app()->isLocal() ? 'http' : 'https';
                         $port = app()->isLocal() ? ':8001' : '';
-                        
                         return "{$protocol}://{$domain}{$port}/admin";
                     }, true),
 
-                // 🚀 Total Staff Count
                 TextColumn::make('users_count')
                     ->label('Staff')
                     ->getStateUsing(fn (Tenant $record) => $record->run(fn () => \App\Models\User::count()))
                     ->badge(),
 
-                // 🚀 Support Data: Superadmin Credentials
                 TextColumn::make('support_info')
-                    ->label('Admin Login (Support Only)')
+                    ->label('Admin Login')
                     ->description(fn (Tenant $record) => $record->run(function() {
-                        // 💡 FIX: Use whereHas to avoid "Role Not Found" Exception
                         $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
-                        
-                        return $admin 
-                            ? "User: {$admin->username} | PIN: " . ($admin->pin_code ?? 'N/A') 
-                            : 'No Superadmin Role Found';
+                        return $admin ? "User: {$admin->username} | PIN: {$admin->pin_code}" : 'No Admin Found';
                     }))
                     ->getStateUsing(fn (Tenant $record) => $record->run(function() {
-                        $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
-                        return $admin?->email ?? 'No Admin';
+                        return \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->value('email') ?? 'N/A';
                     }))
                     ->icon('heroicon-m-finger-print')
                     ->color('info'),
 
-                TextColumn::make('created_at')
-                    ->label('Launched')
-                    ->dateTime()
-                    ->sortable(),
+                TextColumn::make('created_at')->label('Launched')->dateTime()->sortable(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                
-                // 🚀 Emergency Support Action
                 Action::make('emergency_reset')
                     ->label('Force Reset')
                     ->icon('heroicon-o-lifebuoy')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalHeading('Reset Client Credentials')
-                    ->modalDescription('This will reset the Superadmin password to "jeweltag123" and PIN to "1234". Use this only for support requests.')
                     ->action(function (Tenant $record) {
                         $record->run(function () {
-                            // 💡 FIX: Use manual query to find admin
                             $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
-                            
                             if ($admin) {
-                                $admin->update([
-                                    'password' => Hash::make('jeweltag123'),
-                                    'pin_code' => '1234'
-                                ]);
-                            } else {
-                                Notification::make()->title('Error: Superadmin role not found in this store')->danger()->send();
+                                $admin->update(['password' => Hash::make('jeweltag123'), 'pin_code' => '1234']);
                             }
                         });
-                        Notification::make()->title('Credentials Reset Successfully')->success()->send();
+                        Notification::make()->title('Reset Successful')->success()->send();
                     }),
-
                 Tables\Actions\DeleteAction::make(),
             ]);
     }

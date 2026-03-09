@@ -46,6 +46,23 @@ protected $fillable = [
     'is_memo',
     'memo_vendor_id',
     'memo_status',
+    //new
+    'shape', 
+    'color', //fix this colour in migration
+    'clarity', 
+    'cut', 
+    'polish', 
+    'symmetry', 
+    'fluorescence', 
+    'measurements', 
+    'certificate_number', 
+    'certificate_agency',
+    'markup',
+    'web_item',
+    'date_in',
+    'inactivated_at',
+    'inactivated_by',
+    'inactivated_reason',
 ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty

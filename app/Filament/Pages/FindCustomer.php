@@ -3,7 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Models\Customer;
-use Filament\Forms\Components\Actions\Action;
+use App\Models\User;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -40,30 +40,44 @@ class FindCustomer extends Page implements HasTable
                 Section::make()
                     ->schema([
                         Grid::make(4)->schema([
-                            TextInput::make('customer_no')->label('Customer ID'),
-                            TextInput::make('last_name')->label('Last Name'),
-                            TextInput::make('name')->label('First Name'),
-                            TextInput::make('company')->label('Company'),
+                            TextInput::make('customer_no')
+                                ->label('Customer ID')
+                                ->live() // 🚀 Makes search real-time
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('last_name')
+                                ->label('Last Name')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('name')
+                                ->label('First Name')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('company')
+                                ->label('Company')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
                         ]),
                         Grid::make(4)->schema([
-                            TextInput::make('street')->label('Street'),
-                            TextInput::make('suburb')->label('Suburb'),
-                            TextInput::make('city')->label('City/Province'),
-                            TextInput::make('state')->label('State'),
-                        ]),
-                        Grid::make(4)->schema([
-                            TextInput::make('postcode')->label('Postcode'),
-                            TextInput::make('home_phone')->label('Home Phone'),
-                            TextInput::make('phone')->label('Mobile')->prefix('+1'),
-                            TextInput::make('email')->label('Email'),
-                        ]),
-                        Grid::make(4)->schema([
+                            TextInput::make('phone')
+                                ->label('Mobile')
+                                ->prefix('+1')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('email')
+                                ->label('Email')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('city')
+                                ->label('City')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
                             Select::make('sales_person')
-                                ->options([
-                                    'Aaron' => 'Aaron',
-                                    'Ben' => 'Ben',
-                                    'Simon' => 'Simon',
-                                ])->placeholder('Any'),
+                                ->label('Sales Person')
+                                // 🚀 FETCH DYNAMICALLY FROM USERS
+                                ->options(User::pluck('name', 'name'))
+                                ->placeholder('Any')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
                         ]),
                     ])->compact(),
             ])
@@ -73,48 +87,35 @@ class FindCustomer extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(Customer::query())
+            // 🚀 The query now correctly pulls from the Livewire data property
+            ->query(
+                Customer::query()
+                    ->when($this->data['customer_no'] ?? null, fn($q, $val) => $q->where('customer_no', 'like', "%$val%"))
+                    ->when($this->data['name'] ?? null, fn($q, $val) => $q->where('name', 'like', "%$val%"))
+                    ->when($this->data['last_name'] ?? null, fn($q, $val) => $q->where('last_name', 'like', "%$val%"))
+                    ->when($this->data['phone'] ?? null, fn($q, $val) => $q->where('phone', 'like', "%$val%"))
+                    ->when($this->data['email'] ?? null, fn($q, $val) => $q->where('email', 'like', "%$val%"))
+                    ->when($this->data['city'] ?? null, fn($q, $val) => $q->where('city', 'like', "%$val%"))
+                    ->when($this->data['sales_person'] ?? null, fn($q, $val) => $q->where('sales_person', $val))
+            )
             ->columns([
                 ImageColumn::make('image')->circular()->label(''),
                 TextColumn::make('customer_no')->label('ID')->sortable(),
-                TextColumn::make('name')->label('Name')->formatStateUsing(fn($record) => "$record->name $record->last_name"),
+                TextColumn::make('name')
+                    ->label('Name')
+                    ->getStateUsing(fn($record) => "{$record->name} {$record->last_name}"),
                 TextColumn::make('phone')->label('Mobile'),
                 TextColumn::make('city')->label('City'),
                 TextColumn::make('loyalty_tier')->badge(),
             ])
-            ->filters([]) // We use the form above for filtering
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
                     ->url(fn (Customer $record): string => "/admin/customers/{$record->id}/edit"),
                 \Filament\Tables\Actions\Action::make('new_sale')
-            ->label('New Sale')
-            ->icon('heroicon-o-shopping-cart')
-            ->color('success')
-            ->url(fn (Customer $record): string => \App\Filament\Resources\SaleResource::getUrl('create', ['customer_id' => $record->id])),    
+                    ->label('New Sale')
+                    ->icon('heroicon-o-shopping-cart')
+                    ->color('success')
+                    ->url(fn (Customer $record): string => \App\Filament\Resources\SaleResource::getUrl('create', ['customer_id' => $record->id])),    
             ]);
-    }
-protected function getTableQuery(): Builder
-{
-    $query = Customer::query();
-    $formData = $this->form->getState();
-
-    return $query
-        ->when($formData['customer_no'], fn($q, $val) => $q->where('customer_no', 'like', "%$val%"))
-        ->when($formData['name'], fn($q, $val) => $q->where('name', 'like', "%$val%"))
-        ->when($formData['last_name'], fn($q, $val) => $q->where('last_name', 'like', "%$val%"))
-        ->when($formData['phone'], fn($q, $val) => $q->where('phone', 'like', "%$val%"))
-        ->when($formData['email'], fn($q, $val) => $q->where('email', 'like', "%$val%"))
-        ->when($formData['sales_person'], fn($q, $val) => $q->where('sales_person', $val));
-}
-    public function applyFilters(): void
-    {
-        // This forces the table to refresh using the form data
-        $this->resetTable();
-    }
-
-    public function clearFilters(): void
-    {
-        $this->form->fill();
-        $this->applyFilters();
     }
 }

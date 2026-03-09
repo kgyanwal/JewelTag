@@ -1,54 +1,54 @@
 <x-filament-panels::page>
-    <div class="grid grid-cols-12 gap-6">
-        <div class="col-span-9 space-y-6">
-            {{-- Quick Month Selector (Diamond Square Style) --}}
-            <div class="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-                <div class="flex flex-wrap gap-2 mb-4">
-                    @foreach(['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'] as $m)
-                        <x-filament::button size="xs" color="gray" variant="outline">{{ $m }}</x-filament::button>
-                    @endforeach
-                </div>
-                {{ $this->form }}
+    <div class="space-y-6">
+        
+        {{-- Section 1: Top Control Bar --}}
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm">
+            <div>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">Customer Report Engine</h2>
+                <p class="text-sm text-gray-500">Extract precisely mapped customer data to CSV or Print.</p>
             </div>
-
-            {{-- Main Table View --}}
-            <div class="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-                {{ $this->table }}
-            </div>
-        </div>
-
-        {{-- Sidebar Actions --}}
-        <div class="col-span-3 space-y-6">
-            <div class="p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm">
-                <h3 class="text-xs font-bold uppercase text-gray-400 mb-4 tracking-widest">Select Fields</h3>
-                <form>
-                    {{ $this->makeForm()->schema($this->getFieldsFormSchema()) }}
-                </form>
-            </div>
-
-            <div class="p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl space-y-3">
-                {{-- 🔹 PREVIEW POPUP BUTTON --}}
-                <x-filament::modal id="preview-modal" width="6xl">
+            
+            <div class="flex items-center gap-3">
+                {{-- 🚀 PREVIEW POPUP (SLIDE-OVER) --}}
+                <x-filament::modal id="preview-modal" width="screen" slide-over>
                     <x-slot name="trigger">
-                        <x-filament::button icon="heroicon-m-eye" color="gray" class="w-full justify-start" variant="outline">
+                        <x-filament::button icon="heroicon-m-eye" color="info" size="lg" variant="outline">
                             PREVIEW POPUP
                         </x-filament::button>
                     </x-slot>
                     
-                    <x-slot name="heading">Report Data Preview</x-slot>
+                    <x-slot name="heading">Report Data Preview ({{ count($this->selectedFields) }} Fields)</x-slot>
+                    
                     <div class="py-4">
-                        {{ $this->table }}
+                        <div class="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+                            {{ $this->table }}
+                        </div>
                     </div>
-                </x-filament::button>
+                </x-filament::modal>
 
-                <x-filament::button wire:click="exportReport" icon="heroicon-m-arrow-down-tray" color="success" class="w-full justify-start">
-                    EXPORT CSV
-                </x-filament::button>
-
-                <x-filament::button onclick="window.print()" icon="heroicon-m-printer" color="info" class="w-full justify-start">
-                    PRINT
+                <x-filament::button wire:click="exportReport" icon="heroicon-m-arrow-down-tray" color="success" size="lg">
+                    DOWNLOAD CSV
                 </x-filament::button>
             </div>
         </div>
+
+        {{-- Section 2: The Main Config Form --}}
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm p-2">
+            <form wire:submit.prevent="save">
+                {{ $this->form }}
+            </form>
+        </div>
+
+        {{-- Section 3: Bottom Helper --}}
+        <div class="p-6 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-4">
+            <div class="bg-blue-500 p-2 rounded-lg">
+                <x-filament::icon icon="heroicon-o-information-circle" class="w-6 h-6 text-white" />
+            </div>
+            <div>
+                <h4 class="text-sm font-bold text-blue-900">How it works</h4>
+                <p class="text-xs text-blue-700">Select your date ranges and toggle columns. Click <strong>PREVIEW POPUP</strong> to verify the data layout before downloading.</p>
+            </div>
+        </div>
+
     </div>
 </x-filament-panels::page>
