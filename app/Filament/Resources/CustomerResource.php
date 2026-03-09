@@ -98,7 +98,7 @@ Section::make('Address')
                 'United States' => 'United States',
                 'Canada' => 'Canada'
             ])
-            ->default('Australia')
+            ->default('United States')
             ->searchable(),
         TextInput::make('postcode'),
     ]),

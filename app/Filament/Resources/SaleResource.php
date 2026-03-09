@@ -471,6 +471,7 @@ class SaleResource extends Resource
                                     Grid::make(2)->schema([
                                         Select::make('method')
                                             ->options(self::getPaymentOptions())
+                                            
                                             ->required()
                                             ->label('Method'),
                                         TextInput::make('amount')
