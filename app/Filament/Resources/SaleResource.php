@@ -47,12 +47,7 @@ class SaleResource extends Resource
                             Grid::make(4)->schema([
                                 Select::make('current_item_search')
                                     ->label('Select Stock #')
-                                    ->searchable(function (Builder $query, string $search) {
-                                        $query->where(function ($q) use ($search) {
-                                            $q->where('barcode', 'LIKE', "%{$search}%")
-                                              ->orWhere('custom_description', 'LIKE', "%{$search}%");
-                                        });
-                                    })
+                                    ->searchable()
                                     ->preload()
                                     ->options(
                                         fn() => ProductItem::where('qty', '>', 0)
@@ -329,15 +324,7 @@ class SaleResource extends Resource
                                         ->relationship('customer', 'name')
                                         // 🚀 ENHANCED PREVIEW: Shows Name + Phone + Cust # to differentiate duplicates
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
-                                        ->searchable(function (Builder $query, string $search) {
-                                            $query->where(function ($q) use ($search) {
-                                                $q->where('name', 'LIKE', "%{$search}%")
-                                                  ->orWhere('last_name', 'LIKE', "%{$search}%")
-                                                  ->orWhere('phone', 'LIKE', "%{$search}%")
-                                                  ->orWhere('customer_no', 'LIKE', "%{$search}%")
-                                                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"]);
-                                            });
-                                        })
+                                        ->searchable(['name', 'last_name', 'phone', 'customer_no'])
                                         ->preload()
                                         ->required()
                                         ->live()
@@ -456,10 +443,7 @@ class SaleResource extends Resource
                                 Select::make('sales_person_list')
                                     ->label('Sales Staff')
                                     ->multiple()
-                                    ->searchable(function (Builder $query, string $search) {
-                                        $query->where('name', 'LIKE', "%{$search}%")
-                                              ->orWhere('email', 'LIKE', "%{$search}%");
-                                    })
+                                    ->searchable()
                                     ->preload()
                                     ->options(fn() => User::pluck('name', 'name')->toArray())
                                     ->default(fn() => [auth()->user()->name])
@@ -586,23 +570,12 @@ class SaleResource extends Resource
             ->modifyQueryUsing(fn(Builder $query) => $query->where('status', '!=', 'void'))
             ->columns([
                 TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
-                TextColumn::make('customer.name')->label('Customer')
-                    ->searchable(function (Builder $query, string $search) {
-                        $query->whereHas('customer', function ($q) use ($search) {
-                            $q->where('name', 'LIKE', "%{$search}%")
-                              ->orWhere('last_name', 'LIKE', "%{$search}%")
-                              ->orWhere('phone', 'LIKE', "%{$search}%")
-                              ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"]);
-                        });
-                    })
-                    ->sortable(),
+                TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
                 TextColumn::make('sales_person_list')
                     ->label('Sales Staff')
                     ->badge()
                     ->separator(',')
-                    ->searchable(function (Builder $query, string $search) {
-                        $query->where('sales_person_list', 'LIKE', "%{$search}%");
-                    }),
+                    ->searchable(),
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()
