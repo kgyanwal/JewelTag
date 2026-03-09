@@ -8,17 +8,32 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Block 1: Ensure the dependency column exists first
+        if (Schema::hasTable('sale_items')) {
+            Schema::table('sale_items', function (Blueprint $table) {
+                if (!Schema::hasColumn('sale_items', 'discount_amount')) {
+                    // Create it if it's missing so the next block doesn't crash
+                    $table->decimal('discount_amount', 15, 2)->default(0)->after('sold_price');
+                }
+            });
+        }
+
+        // Block 2: Add your new POS features
         Schema::table('sale_items', function (Blueprint $table) {
-            // 1. First, create the missing dependency column if it doesn't exist
-            if (!Schema::hasColumn('sale_items', 'discount_amount')) {
-                $table->decimal('discount_amount', 10, 2)->default(0)->after('sold_price');
+            if (!Schema::hasColumn('sale_items', 'is_tax_free')) {
+                // We use nullable() and a default to ensure data integrity
+                $table->boolean('is_tax_free')->default(false)->nullable();
+            }
+            
+            if (!Schema::hasColumn('sale_items', 'sale_price_override')) {
+                $table->decimal('sale_price_override', 15, 2)->nullable();
             }
         });
 
-        Schema::table('sale_items', function (Blueprint $table) {
-            // 2. Then add the is_tax_free column, safely referencing discount_amount
-            if (!Schema::hasColumn('sale_items', 'is_tax_free')) {
-                $table->boolean('is_tax_free')->default(false)->after('discount_amount');
+        // Block 3: Fix Sales table soft deletes (referenced in your filename)
+        Schema::table('sales', function (Blueprint $table) {
+            if (!Schema::hasColumn('sales', 'deleted_at')) {
+                $table->softDeletes();
             }
         });
     }
@@ -26,8 +41,11 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('sale_items', function (Blueprint $table) {
-            $table->dropColumn(['is_tax_free']);
-            // We usually keep discount_amount if it was a missing dependency
+            $table->dropColumn(['is_tax_free', 'sale_price_override']);
+        });
+        
+        Schema::table('sales', function (Blueprint $table) {
+            $table->dropSoftDeletes();
         });
     }
 };
