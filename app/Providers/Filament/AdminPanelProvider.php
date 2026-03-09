@@ -421,8 +421,9 @@ HTML
             @endif
         '),
         );
-        \Illuminate\Support\Carbon::serializeUsing(function ($date) {
-            return $date->timezone(config('app.timezone'))->format('Y-m-d H:i:s');
+        \Filament\Tables\Columns\TextColumn::configureUsing(function (\Filament\Tables\Columns\TextColumn $column): void {
+        // Use a closure to ensure the timezone is evaluated at runtime
+        $column->timezone(fn() => config('app.timezone'));
         });
     }
 }

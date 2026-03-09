@@ -61,34 +61,38 @@ class CreateSale extends CreateRecord
 
                 // 3. THE LOGIC
                 ->action(function (array $data) {
-                    // A. Get Active Staff
-                    $formState = $this->data;
-                    // If split is enabled, set the primary payment_method to "Split" for the table view
-                    if ($formState['is_split_payment'] ?? false) {
-                        $formState['payment_method'] = 'split';
-                    }
-                    $staff = Staff::user() ?? auth()->user();
+    $formState = $this->data;
 
-                    if (!$staff) {
-                        Notification::make()->title('Error')->body('No active staff session found.')->danger()->send();
-                        return;
-                    }
+    // 🚀 THE FIX: Search the database for ANY active staff matching this PIN
+    $actualStaff = \App\Models\User::where('pin_code', $data['verification_pin'])
+        ->where('is_active', true)
+        ->first();
 
-                    // B. Verify PIN
-                    if ($staff->pin_code !== $data['verification_pin']) {
-                        Notification::make()
-                            ->title('Invalid PIN')
-                            ->body('Verification failed. Sale was not created.')
-                            ->danger()
-                            ->send();
-                        return; // 🛑 Stop execution
-                    }
+    // If no staff found with that PIN, throw the error
+    if (!$actualStaff) {
+        Notification::make()
+            ->title('Invalid PIN')
+            ->body('The entered PIN does not match any active staff member.')
+            ->danger()
+            ->send();
+        return; 
+    }
 
-                    // C. Submit the Main Form
-                    // This creates the record using the data currently in the main form
-                    $this->data = $formState;
-                    $this->create();
-                }),
+    // 🚀 SUCCESS: We found a staff member. Update the session so the 
+    // sale is attributed to the person who just entered their PIN.
+    Session::put([
+        'active_staff_id' => $actualStaff->id,
+        'active_staff_name' => $actualStaff->name,
+        'pin_verified_at' => now(),
+    ]);
+
+    if ($formState['is_split_payment'] ?? false) {
+        $formState['payment_method'] = 'split';
+    }
+
+    $this->data = $formState;
+    $this->create();
+}),
 
             // Optional: Keep the "Cancel" button
             parent::getCancelFormAction(),

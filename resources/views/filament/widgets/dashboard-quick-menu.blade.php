@@ -12,12 +12,14 @@
     $memoItems = $data['memoItems'] ?? 0;
     $tradeInRequests = $data['tradeInRequests'] ?? 0;
 
-    $timezone = $store->timezone ?? 'America/Denver';
+   $timezone = $store->timezone ?? 'America/Denver';
     $state = $store->state ?? 'NM';
-
+    
+    // 🚀 THE FIX: Create a single Carbon instance for this request
     $now = now()->setTimezone($timezone);
-
     $tzAbbreviation = $now->format('T');
+
+    
     @endphp
 
     <div class="ultimate-jewel-dashboard" style="margin-top: -1rem;">
@@ -73,10 +75,10 @@
                             </svg>
                             <span>{{ $tzAbbreviation }} • {{ $state }}</span>
                         </div>
-                        <div class="compact-time">
-                            <span class="time-display">{{ now()->setTimezone($timezone)->format('h:i:s A') }}</span>
-                            <span class="date-display">{{ now()->setTimezone($timezone)->format('M d') }}</span>
-                        </div>
+                      <div class="compact-time">
+    <span class="time-display">{{ $now->format('h:i:s A') }}</span>
+    <span class="date-display">{{ $now->format('M d') }}</span>
+</div>
                         <div class="system-dot" title="System Active"></div>
                     </div>
                 </div>

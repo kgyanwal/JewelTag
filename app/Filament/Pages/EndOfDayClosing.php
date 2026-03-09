@@ -10,6 +10,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
+use Illuminate\Support\Carbon;
 
 class EndOfDayClosing extends Page
 {
@@ -28,7 +29,8 @@ class EndOfDayClosing extends Page
 
     public function mount()
     {
-        $tz = Store::first()?->timezone ?? config('app.timezone');
+        // 🚀 Fetch dynamic timezone from store settings
+        $tz = Store::first()?->timezone ?? config('app.timezone', 'UTC');
 
         $this->date = now()->setTimezone($tz)->format('Y-m-d');
 
@@ -52,9 +54,8 @@ class EndOfDayClosing extends Page
         $rawMethods = $json ? json_decode($json, true) : $defaultMethods;
 
         $this->paymentMethods = [];
-
         foreach ($rawMethods as $methodName) {
-            $key = strtolower(trim($methodName)); // STANDARD KEY
+            $key = strtolower(trim($methodName)); 
             $this->paymentMethods[$key] = strtoupper($methodName);
         }
 
@@ -76,48 +77,45 @@ class EndOfDayClosing extends Page
 
         /*
         |--------------------------------------------------------------------------
-        | 3. Calculate Live System Totals
+        | 3. Calculate Live System Totals (TIMEZONE FIX)
         |--------------------------------------------------------------------------
         */
-        $sales = Sale::whereDate('created_at', $this->date)
+        $tz = Store::first()?->timezone ?? config('app.timezone', 'UTC');
+
+        // 🚀 THE FIX: Calculate the exact UTC start and end for the local day
+        $startUtc = Carbon::parse($this->date, $tz)->startOfDay()->setTimezone('UTC');
+        $endUtc = Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
+
+        // Use whereBetween to capture everything in that 24-hour UTC window
+        $sales = Sale::whereBetween('created_at', [$startUtc, $endUtc])
             ->where('status', 'completed')
             ->get();
 
-        $systemTotals = [];
-
-        foreach ($this->paymentMethods as $key => $label) {
-            $systemTotals[$key] = 0;
-        }
+        $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
 
         foreach ($sales as $sale) {
-
             if ($sale->is_split_payment) {
-
-                if ($sale->payment_method_1) {
-                    $key = strtolower(trim($sale->payment_method_1));
-                    if (isset($systemTotals[$key])) {
-                        $systemTotals[$key] += (float) $sale->payment_amount_1;
+                // Support for the new split_payments array
+                if (is_array($sale->split_payments)) {
+                    foreach ($sale->split_payments as $payment) {
+                        $key = strtolower(trim($payment['method'] ?? ''));
+                        if (isset($systemTotals[$key])) {
+                            $systemTotals[$key] += (float) ($payment['amount'] ?? 0);
+                        }
                     }
                 }
-
-                if ($sale->payment_method_2) {
-                    $key = strtolower(trim($sale->payment_method_2));
-                    if (isset($systemTotals[$key])) {
-                        $systemTotals[$key] += (float) $sale->payment_amount_2;
+                
+                // Fallback for legacy split columns
+                for ($i = 1; $i <= 3; $i++) {
+                    $methCol = "payment_method_{$i}";
+                    $amtCol = "payment_amount_{$i}";
+                    if ($sale->$methCol) {
+                        $key = strtolower(trim($sale->$methCol));
+                        if (isset($systemTotals[$key])) { $systemTotals[$key] += (float) $sale->$amtCol; }
                     }
                 }
-
-                if ($sale->payment_method_3) {
-                    $key = strtolower(trim($sale->payment_method_3));
-                    if (isset($systemTotals[$key])) {
-                        $systemTotals[$key] += (float) $sale->payment_amount_3;
-                    }
-                }
-
             } else {
-
                 $key = strtolower(trim($sale->payment_method));
-
                 if (isset($systemTotals[$key])) {
                     $systemTotals[$key] += (float) $sale->final_total;
                 }
@@ -130,7 +128,6 @@ class EndOfDayClosing extends Page
         |--------------------------------------------------------------------------
         */
         foreach ($this->paymentMethods as $key => $label) {
-
             $systemVal = $systemTotals[$key] ?? 0;
 
             if (auth()->user()->hasRole('Superadmin')) {
@@ -152,68 +149,18 @@ class EndOfDayClosing extends Page
                 ->requiresConfirmation()
                 ->hidden(fn () => $this->isClosed)
                 ->action(function () {
-
-                    $this->loadData();
-
-                    $sales = Sale::whereDate('created_at', $this->date)
-                        ->where('status', 'completed')
-                        ->get();
-
-                    $finalExpected = [];
-
-                    foreach ($this->paymentMethods as $key => $label) {
-                        $finalExpected[$key] = 0;
-                    }
-
-                    foreach ($sales as $sale) {
-
-                        if ($sale->is_split_payment) {
-
-                            if ($sale->payment_method_1) {
-                                $key = strtolower(trim($sale->payment_method_1));
-                                if (isset($finalExpected[$key])) {
-                                    $finalExpected[$key] += (float) $sale->payment_amount_1;
-                                }
-                            }
-
-                            if ($sale->payment_method_2) {
-                                $key = strtolower(trim($sale->payment_method_2));
-                                if (isset($finalExpected[$key])) {
-                                    $finalExpected[$key] += (float) $sale->payment_amount_2;
-                                }
-                            }
-
-                            if ($sale->payment_method_3) {
-                                $key = strtolower(trim($sale->payment_method_3));
-                                if (isset($finalExpected[$key])) {
-                                    $finalExpected[$key] += (float) $sale->payment_amount_3;
-                                }
-                            }
-
-                        } else {
-
-                            $key = strtolower(trim($sale->payment_method));
-
-                            if (isset($finalExpected[$key])) {
-                                $finalExpected[$key] += (float) $sale->final_total;
-                            }
-                        }
-                    }
+                    $this->loadData(); // Fresh calculation using the UTC window
 
                     DailyClosing::create([
                         'closing_date'  => $this->date,
-                        'expected_data' => $finalExpected,
+                        'expected_data' => $this->expectedTotals,
                         'actual_data'   => $this->actualTotals,
-                        'total_expected'=> array_sum($finalExpected),
+                        'total_expected'=> array_sum($this->expectedTotals),
                         'total_actual'  => array_sum($this->actualTotals),
                         'user_id'       => auth()->id(),
                     ]);
 
-                    Notification::make()
-                        ->title('Day Closed Successfully')
-                        ->success()
-                        ->send();
-
+                    Notification::make()->title('Day Closed Successfully')->success()->send();
                     $this->loadData();
                 }),
         ];

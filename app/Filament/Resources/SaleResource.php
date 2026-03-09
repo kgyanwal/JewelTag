@@ -589,7 +589,13 @@ class SaleResource extends Resource
                     ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
                 TextColumn::make('payment_method')->label('Method')->badge()->color('gray')->grow(false),
                 TextColumn::make('final_total')->label('Total')->money('USD')->weight('bold')->color('success')->alignRight(),
-                TextColumn::make('created_at')->label('Date')->dateTime('M d, y')->sortable()->grow(false),
+                Tables\Columns\TextColumn::make('created_at')
+    ->label('Date')
+    ->dateTime('M d, y')
+    // 🚀 THE FIX: Use a closure to grab the dynamic request timezone
+    ->timezone(fn() => config('app.timezone')) 
+    ->sortable()
+    ->grow(false),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('payment_method')->label('Payment Type')
