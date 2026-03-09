@@ -324,7 +324,29 @@ class SaleResource extends Resource
                                         ->relationship('customer', 'name')
                                         // 🚀 ENHANCED PREVIEW: Shows Name + Phone + Cust # to differentiate duplicates
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
-                                        ->searchable(['name', 'last_name', 'phone', 'customer_no'])
+                                        ->searchable()
+
+->getSearchResultsUsing(function (string $search) {
+    return \App\Models\Customer::query()
+        ->where(function ($q) use ($search) {
+
+            // first name + last name
+            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+
+            // last name + first name
+            ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+
+            ->orWhere('phone', 'like', "%{$search}%")
+            ->orWhere('customer_no', 'like', "%{$search}%");
+        })
+        ->limit(50)
+        ->get()
+        ->mapWithKeys(function ($customer) {
+            return [
+                $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+            ];
+        });
+})
                                         ->preload()
                                         ->required()
                                         ->live()
