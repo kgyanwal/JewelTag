@@ -12,6 +12,7 @@ use App\Models\Repair;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str; // Added for string truncation
 
 class ImportOnSwimSales extends Command
 {
@@ -90,7 +91,6 @@ class ImportOnSwimSales extends Command
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                // 🚀 FIX: Added default 0 values for required numeric fields
                 $sale = Sale::withoutEvents(function () use ($invoiceNo, $customer, $storeId, $staff, $purchaseDate, $firstItem) {
                     return Sale::create([
                         'invoice_number' => $invoiceNo,
@@ -102,10 +102,10 @@ class ImportOnSwimSales extends Command
                         'payment_method' => 'cash',
                         'is_split_payment' => false,
                         'repair_number' => $firstItem['Repair Number'] ?? null,
-                        'subtotal' => 0,      // Initialize to prevent SQL error
-                        'tax_amount' => 0,    // Initialize to prevent SQL error
-                        'final_total' => 0,   // Initialize to prevent SQL error
-                        'discount_amount' => 0 // Initialize to prevent SQL error
+                        'subtotal' => 0,
+                        'tax_amount' => 0,
+                        'final_total' => 0,
+                        'discount_amount' => 0
                     ]);
                 });
 
@@ -130,12 +130,15 @@ class ImportOnSwimSales extends Command
                         ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
                         : null;
 
-                    SaleItem::withoutEvents(function () use ($sale, $item, $repairId, $qty, $soldPrice, $discAmount, $storeId) {
+                    // 🚀 FIX: Truncate job_description to 250 chars to avoid SQL Truncation error
+                    $truncatedJobDesc = Str::limit(trim($item['Job Description'] ?? ''), 250, '');
+
+                    SaleItem::withoutEvents(function () use ($sale, $item, $repairId, $qty, $soldPrice, $discAmount, $storeId, $truncatedJobDesc) {
                         $sale->items()->create([
                             'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
                             'repair_id' => $repairId,
                             'custom_description' => $item['Description'] ?? 'Item',
-                            'job_description' => $item['Job Description'] ?? null,
+                            'job_description' => $truncatedJobDesc,
                             'qty' => $qty,
                             'sold_price' => $soldPrice,
                             'discount_amount' => $discAmount,
