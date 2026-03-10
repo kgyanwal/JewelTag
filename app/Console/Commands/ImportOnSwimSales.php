@@ -12,12 +12,12 @@ use App\Models\Repair;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str; // Added for string truncation
+use Illuminate\Support\Str;
 
 class ImportOnSwimSales extends Command
 {
     protected $signature = 'import:onswim-sales {tenant} {--rollback}';
-    protected $description = 'Import sales grouped by unique job/date/customer to prevent massive single-sale errors';
+    protected $description = 'Import sales with fallback for missing customers and string truncation';
 
     public function handle()
     {
@@ -34,13 +34,19 @@ class ImportOnSwimSales extends Command
             return;
         }
 
+        // 🚀 Ensure Fallback Customer exists
+        $walkInCustomer = Customer::firstOrCreate(
+            ['customer_no' => 'CUST-WALKIN'],
+            ['name' => 'Walk-in', 'last_name' => 'Customer', 'is_active' => true]
+        );
+
         if ($this->option('rollback')) {
             $this->warn("Rolling back sales for tenant: {$tenantId}...");
             Schema::disableForeignKeyConstraints();
             SaleItem::truncate();
             Sale::truncate();
             Schema::enableForeignKeyConstraints();
-            $this->info("Sales and Items tables truncated successfully.");
+            $this->info("Sales tables truncated.");
             return;
         }
 
@@ -78,6 +84,7 @@ class ImportOnSwimSales extends Command
             foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
                 $customer = $this->findCustomer($firstItem);
+                $customerId = $customer?->id ?? $walkInCustomer->id; // 🚀 Fallback applied here
                 
                 $purchaseDate = !empty($firstItem['Purchase Date']) 
                     ? Carbon::parse($firstItem['Purchase Date']) 
@@ -91,10 +98,10 @@ class ImportOnSwimSales extends Command
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                $sale = Sale::withoutEvents(function () use ($invoiceNo, $customer, $storeId, $staff, $purchaseDate, $firstItem) {
+                $sale = Sale::withoutEvents(function () use ($invoiceNo, $customerId, $storeId, $staff, $purchaseDate, $firstItem) {
                     return Sale::create([
                         'invoice_number' => $invoiceNo,
-                        'customer_id' => $customer?->id,
+                        'customer_id' => $customerId,
                         'store_id' => $storeId,
                         'status' => 'completed',
                         'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
@@ -130,7 +137,6 @@ class ImportOnSwimSales extends Command
                         ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
                         : null;
 
-                    // 🚀 FIX: Truncate job_description to 250 chars to avoid SQL Truncation error
                     $truncatedJobDesc = Str::limit(trim($item['Job Description'] ?? ''), 250, '');
 
                     SaleItem::withoutEvents(function () use ($sale, $item, $repairId, $qty, $soldPrice, $discAmount, $storeId, $truncatedJobDesc) {
@@ -175,7 +181,7 @@ class ImportOnSwimSales extends Command
             DB::connection('tenant')->commit();
             $bar->finish();
             $this->newLine();
-            $this->info("Individual Sales Imported Successfully.");
+            $this->info("Sales Imported Successfully.");
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
