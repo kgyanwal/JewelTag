@@ -68,7 +68,25 @@ class LaybuyResource extends Resource
                                         // 🚀 ADDED: Enhanced label to differentiate duplicate names
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
                                         ->searchable(['name', 'last_name', 'phone', 'customer_no'])
-                                        ->preload()
+                                        ->getSearchResultsUsing(function (string $search) {
+    return \App\Models\Customer::query()
+        ->where(function ($q) use ($search) {
+
+            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('customer_no', 'like', "%{$search}%");
+        })
+        ->limit(50)
+        ->get()
+        ->mapWithKeys(function ($customer) {
+            return [
+                $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+            ];
+        });
+})
+->preload()
+                                      
                                         ->required()
                                         ->disabledOn('edit')
                                         ->live()

@@ -45,7 +45,7 @@ class ImportOnSwimStock extends Command
 
         // 2. FILE PROCESSING
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/stock_dsqdata_feb27_26.csv";
+        $filePath = "{$directoryPath}/stock_lxddata_mar10_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
