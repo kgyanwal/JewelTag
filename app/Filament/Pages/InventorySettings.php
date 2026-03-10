@@ -28,7 +28,7 @@ class InventorySettings extends Page implements HasTable // 🚀 IMPLEMENT THIS
 
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
     protected static ?string $navigationGroup = 'Inventory';
-    protected static ?string $title = 'Inventory Management Settings';
+    protected static ?string $title = 'Inventory Settings';
     protected static string $view = 'filament.pages.inventory-settings';
 
     public ?array $data = [];

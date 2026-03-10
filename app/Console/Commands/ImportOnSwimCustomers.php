@@ -15,6 +15,10 @@ class ImportOnSwimCustomers extends Command
 
     public function handle()
     {
+        // 🚀 PREVENT TIMEOUTS: Ensures the script doesn't die during large CSV files
+        set_time_limit(0);
+        ini_set('memory_limit', '512M');
+
         $tenantId = $this->argument('tenant');
         
         try {
@@ -23,6 +27,12 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             $this->error("Could not find or initialize tenant: {$tenantId}");
             return;
+        }
+
+        // Keep your existing admin login logic as a fallback
+        $adminUser = \App\Models\User::first();
+        if ($adminUser) {
+            auth()->login($adminUser); 
         }
 
         if ($this->option('rollback')) {
@@ -37,7 +47,7 @@ class ImportOnSwimCustomers extends Command
         }
 
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/customer_dsqdata_feb26_26.csv";
+        $filePath = "{$directoryPath}/customer_lxddata_mar10_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
@@ -61,28 +71,20 @@ class ImportOnSwimCustomers extends Command
                 $fullCustNo = 'CUST-' . $rawCustNo;
 
                 // 🚀 STEP 1: RESOLVE THE ID CONFLICT
-                // We prioritize finding by Customer Number because that is the primary unique key
                 $existing = Customer::where('customer_no', $fullCustNo)->first();
 
-                // If not found by number, try phone
                 if (!$existing && !empty($phone)) {
                     $existing = Customer::where('phone', $phone)->first();
                 }
 
-                // If still not found, try email
                 if (!$existing && !empty($email)) {
                     $existing = Customer::where('email', $email)->first();
                 }
 
                 // 🚀 STEP 2: PREVENT SECONDARY PHONE CONFLICT
-                // If we found a record by ID/Email, but the PHONE in the CSV belongs to someone ELSE, 
-                // we must set the phone to null for this record to prevent the SQL error, 
-                // OR skip updating the phone.
                 if ($existing && !empty($phone)) {
                     $phoneOwner = Customer::where('phone', $phone)->first();
                     if ($phoneOwner && $phoneOwner->id !== $existing->id) {
-                        // Conflict: This phone belongs to another ID. 
-                        // To avoid the error, we keep the existing record's phone instead of the CSV's.
                         $phone = $existing->phone; 
                     }
                 }
@@ -91,37 +93,40 @@ class ImportOnSwimCustomers extends Command
                                 ? $data['City/Province'] 
                                 : ($data['Suburb/City'] ?? null);
 
-                Customer::updateOrCreate(
-                    ['id' => $existing?->id ?? null], 
-                    [
-                        'customer_no' => $fullCustNo, 
-                        'name' => $data['First Name'] ?? 'Walk-in',
-                        'last_name' => $data['Last Name'] ?? null,
-                        'email' => $email ?: ($existing?->email ?? null),
-                        'phone' => $phone,
-                        'home_phone' => $data['Home Phone'] ?? null,
-                        'street'   => $data['Street'] ?? null,
-                        'suburb'   => $data['Suburb/City'] ?? null,   
-                        'city'     => $cityValue,
-                        'state'    => $data['State'] ?? null,
-                        'postcode' => $data['Postcode'] ?? null,
-                        'country'  => $data['Country'] ?? 'USA',
-                        'dob' => $this->parseDate($data['Birthdate'] ?? null),
-                        'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
-                        'gender' => $data['Gender'] ?? null,
-                        'gold_preference' => $data['Gold Preference'] ?? null,
-                        'lh_ring' => $data['Finger Size'] ?? null,
-                        'sales_person' => $data['Staff Assigned'] ?? null,
-                        'how_found_store' => $data['Referred By'] ?? null,
-                        'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
-                        'spouse_email' => $data['Spouse Email'] ?? null,
-                        'comments' => $data['Comments'] ?? null,
-                        'customer_alerts' => $data['Issues'] ?? null,
-                        'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
-                        'is_active' => true,
-                        'company' => $data['Company'] ?? null,
-                    ]
-                );
+                // 🚀 WRAPPER: This ignores the Activity Log observer to prevent Foreign Key errors
+                Customer::withoutEvents(function () use ($existing, $fullCustNo, $data, $email, $phone, $cityValue) {
+                    Customer::updateOrCreate(
+                        ['id' => $existing?->id ?? null], 
+                        [
+                            'customer_no' => $fullCustNo, 
+                            'name' => $data['First Name'] ?? 'Walk-in',
+                            'last_name' => $data['Last Name'] ?? null,
+                            'email' => $email ?: ($existing?->email ?? null),
+                            'phone' => $phone,
+                            'home_phone' => $data['Home Phone'] ?? null,
+                            'street'   => $data['Street'] ?? null,
+                            'suburb'   => $data['Suburb/City'] ?? null,   
+                            'city'     => $cityValue,
+                            'state'    => $data['State'] ?? null,
+                            'postcode' => $data['Postcode'] ?? null,
+                            'country'  => $data['Country'] ?? 'USA',
+                            'dob' => $this->parseDate($data['Birthdate'] ?? null),
+                            'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
+                            'gender' => $data['Gender'] ?? null,
+                            'gold_preference' => $data['Gold Preference'] ?? null,
+                            'lh_ring' => $data['Finger Size'] ?? null,
+                            'sales_person' => $data['Staff Assigned'] ?? null,
+                            'how_found_store' => $data['Referred By'] ?? null,
+                            'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
+                            'spouse_email' => $data['Spouse Email'] ?? null,
+                            'comments' => $data['Comments'] ?? null,
+                            'customer_alerts' => $data['Issues'] ?? null,
+                            'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
+                            'is_active' => true,
+                            'company' => $data['Company'] ?? null,
+                        ]
+                    );
+                });
             }
 
             DB::connection('tenant')->commit();

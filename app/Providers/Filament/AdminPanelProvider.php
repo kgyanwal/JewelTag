@@ -312,6 +312,7 @@ HTML
                 \App\Filament\Pages\StockAgingReport::class,
                 \App\Filament\Pages\UpcomingFollowUps::class,
                 \App\Filament\Pages\InactiveStockReport::class,
+                \App\Filament\Pages\MySalesReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,

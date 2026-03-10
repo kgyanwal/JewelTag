@@ -128,7 +128,7 @@ class MasterPanelProvider extends PanelProvider
            ->plugins([
             BreezyCore::make()
                 ->myProfile(shouldRegisterUserMenu: true)
-                ->enableTwoFactorAuthentication(force: true), 
+                ->enableTwoFactorAuthentication(force: false), 
         ]);
     }
 }

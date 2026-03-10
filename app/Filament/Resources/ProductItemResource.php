@@ -186,15 +186,15 @@ class ProductItemResource extends Resource
                             ->afterStateUpdated(function (Get $get, Forms\Set $set, $state) {
                                 if ($get('is_memo')) $set('memo_vendor_id', $state);
                                 if ($state) {
-            // We fetch the code directly from the Supplier model (The master record)
-            // instead of searching through previous product items.
-            $vendor = \App\Models\Supplier::find($state);
-            
-            if ($vendor) {
-                // Assuming your Supplier model has a 'code' or 'supplier_code' column
-                $set('supplier_code', $vendor->code ?? $vendor->supplier_code);
-            }
-        }
+                                    // We fetch the code directly from the Supplier model (The master record)
+                                    // instead of searching through previous product items.
+                                    $vendor = \App\Models\Supplier::find($state);
+
+                                    if ($vendor) {
+                                        // Assuming your Supplier model has a 'code' or 'supplier_code' column
+                                        $set('supplier_code', $vendor->code ?? $vendor->supplier_code);
+                                    }
+                                }
                             })->columnSpan(4),
 
                         Toggle::make('is_memo')->label('Is this Memo?')->inline(false)->live()
@@ -233,59 +233,112 @@ class ProductItemResource extends Resource
 
                     TextInput::make('supplier_code')->label('Vendor Code')->columnSpan(3),
 
-                    Select::make('department')->label('Department')
-                        ->hintAction(
-                            FormAction::make('Help')
-                                ->icon('heroicon-o-information-circle')
-                                ->tooltip('Go to Inventory Settings → Categories to configure Department')
-                        )
-                        ->options(function () {
-                            $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
-                            return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
-                        })
-                        ->required()->searchable()->live()->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
-                        ->columnSpan(3),
+                    Select::make('department')
+    ->label('Department')
+    ->hintAction(
+        FormAction::make('Help')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure Department')
+    )
+    ->options(function () {
+        $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+        return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
+    })
+    ->required()
+    ->searchable()
+    ->live()
+    ->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+    ->columnSpan(3)
+    // 🚀 NEW: Quick Add Department
+    ->createOptionForm([
+        TextInput::make('name')->label('New Department Name')->required(),
+        TextInput::make('multiplier')->label('Pricing Multiplier')->numeric()->default(2.5),
+    ])
+    ->createOptionUsing(function (array $data) {
+        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'departments']);
+        $currentValue = $record->value ?? [];
+        $currentValue[] = ['name' => $data['name'], 'multiplier' => $data['multiplier']];
+        $record->update(['value' => $currentValue]);
+        return $data['name'];
+    }),
 
-                    // **2. Fix Sub-Department Select**
-                    Select::make('sub_department')
+Select::make('sub_department')
     ->label('Sub-Department')
     ->options(function () {
         $data = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
         return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
     })
     ->searchable()
-    ->live() // Triggers the update immediately
-    // 🚨 FIX: Changed 'Get' and 'Set' to 'Forms\Get' and 'Forms\Set'
-    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, $state) { 
-        // Generate new barcode based on selection
+    ->live()
+    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, $state) {
         $prefix = self::getPrefixForSubDepartment($state);
         $newBarcode = self::generatePersistentBarcode($prefix);
-        
-        // Push to the UI
         $set('barcode', $newBarcode);
     })
-    ->columnSpan(3),
-                    // **1. Fix Category Select**
-                    Select::make('category')
-                        ->label('Category')
-                        ->options(function () {
-                            $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
-                            // Ensure we use the string value as BOTH the key and the label
-                            return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
-                        })
-                        ->searchable()
-                        ->dehydrated()
-                        ->columnSpan(2),
+    ->columnSpan(3)
+    // 🚀 NEW: Quick Add Sub-Department
+    ->createOptionForm([
+        TextInput::make('name')->label('New Sub-Department')->required(),
+        TextInput::make('prefix')->label('Barcode Prefix')->required()->maxLength(3),
+    ])
+    ->createOptionUsing(function (array $data) {
+        $subDeptRecord = \App\Models\InventorySetting::firstOrCreate(['key' => 'sub_departments']);
+        $subs = $subDeptRecord->value ?? [];
+        $subs[] = $data['name'];
+        $subDeptRecord->update(['value' => $subs]);
 
-                    Select::make('metal_type')->label('Metal Karat')
-                        ->hintAction(
-                            FormAction::make('Help')
-                                ->icon('heroicon-o-information-circle')
-                                ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
-                        )
-                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->toArray())
-                        ->searchable()->columnSpan(2),
+        $siteSettings = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'sub_department_prefixes')->first();
+        $prefixes = $siteSettings ? json_decode($siteSettings->value, true) : [];
+        $prefixes[] = ['sub_department' => $data['name'], 'prefix' => strtoupper($data['prefix'])];
+        \Illuminate\Support\Facades\DB::table('site_settings')->updateOrInsert(
+            ['key' => 'sub_department_prefixes'],
+            ['value' => json_encode($prefixes), 'updated_at' => now()]
+        );
+        return $data['name'];
+    }),
 
+Select::make('category')
+    ->label('Category')
+    ->options(function () {
+        $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
+        return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+    })
+    ->searchable()
+    ->dehydrated()
+    ->columnSpan(2)
+    // 🚀 NEW: Quick Add Category
+    ->createOptionForm([
+        TextInput::make('name')->label('New Category Name')->required(),
+    ])
+    ->createOptionUsing(function (array $data) {
+        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'categories']);
+        $current = $record->value ?? [];
+        $current[] = $data['name'];
+        $record->update(['value' => $current]);
+        return $data['name'];
+    }),
+
+Select::make('metal_type')
+    ->label('Metal Karat')
+    ->hintAction(
+        FormAction::make('Help')
+            ->icon('heroicon-o-information-circle')
+            ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
+    )
+    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->toArray())
+    ->searchable()
+    ->columnSpan(2)
+    // 🚀 NEW: Quick Add Metal Karat
+    ->createOptionForm([
+        TextInput::make('name')->label('New Metal Karat (e.g. 14k White)')->required(),
+    ])
+    ->createOptionUsing(function (array $data) {
+        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'metal_types']);
+        $current = $record->value ?? [];
+        $current[] = $data['name'];
+        $record->update(['value' => $current]);
+        return $data['name'];
+    }),
                     TextInput::make('size')->columnSpan(2),
                     TextInput::make('metal_weight')->label('Metal Weight')->columnSpan(2),
                     TextInput::make('diamond_weight')->label('Diamond Weight (CTW)')->placeholder('1.25 CTW')->columnSpan(6),

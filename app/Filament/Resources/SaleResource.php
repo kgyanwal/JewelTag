@@ -102,43 +102,7 @@ class SaleResource extends Resource
                             ]),
                             // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
                         ]),
-                        Section::make('Trade-In Details')
-                            ->schema([
-                                Select::make('has_trade_in')
-                                    ->label('Is there a Trade-In?')
-                                    ->options([
-                                        1 => 'Yes',
-                                        0 => 'No'
-                                    ])
-                                    ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-
-                                Grid::make(2)
-                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-                                    ->schema([
-                                        TextInput::make('trade_in_value')
-                                            ->label('Trade-In Value (Deduction)')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-
-                                        TextInput::make('trade_in_receipt_no')
-                                            ->label('Trade-In Tracking #')
-                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
-                                            ->readOnly(),
-
-                                        Forms\Components\Textarea::make('trade_in_description')
-                                            ->label('Item Description')
-                                            ->placeholder('e.g. 14k White Gold Diamond Band')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                                            ->columnSpanFull()
-                                            ->rows(2),
-                                    ]),
-                            ]),
+                       
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
                                 ->relationship('items')
@@ -265,7 +229,43 @@ class SaleResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
+ Section::make('Trade-In Details')
+                            ->schema([
+                                Select::make('has_trade_in')
+                                    ->label('Is there a Trade-In?')
+                                    ->options([
+                                        1 => 'Yes',
+                                        0 => 'No'
+                                    ])
+                                    ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
+                                Grid::make(2)
+                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                    ->schema([
+                                        TextInput::make('trade_in_value')
+                                            ->label('Trade-In Value (Deduction)')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                        TextInput::make('trade_in_receipt_no')
+                                            ->label('Trade-In Tracking #')
+                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                            ->readOnly(),
+
+                                        Forms\Components\Textarea::make('trade_in_description')
+                                            ->label('Item Description')
+                                            ->placeholder('e.g. 14k White Gold Diamond Band')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
+                                            ->columnSpanFull()
+                                            ->rows(2),
+                                    ]),
+                            ]),
                         Section::make('Shipping & Handling')->schema([
                             Grid::make(4)->schema([
                                 TextInput::make('shipping_charges')
@@ -326,27 +326,27 @@ class SaleResource extends Resource
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
                                         ->searchable()
 
-->getSearchResultsUsing(function (string $search) {
-    return \App\Models\Customer::query()
-        ->where(function ($q) use ($search) {
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            return \App\Models\Customer::query()
+                                                ->where(function ($q) use ($search) {
 
-            // first name + last name
-            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                    // first name + last name
+                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
 
-            // last name + first name
-            ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                        // last name + first name
+                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
 
-            ->orWhere('phone', 'like', "%{$search}%")
-            ->orWhere('customer_no', 'like', "%{$search}%");
-        })
-        ->limit(50)
-        ->get()
-        ->mapWithKeys(function ($customer) {
-            return [
-                $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
-            ];
-        });
-})
+                                                        ->orWhere('phone', 'like', "%{$search}%")
+                                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(function ($customer) {
+                                                    return [
+                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                    ];
+                                                });
+                                        })
                                         ->preload()
                                         ->required()
                                         ->live()
@@ -386,11 +386,11 @@ class SaleResource extends Resource
 
                                                             TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
                                                             TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
-                                                           TextInput::make('addr')
-                                        ->label('Full Address')
-                                        ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
-                                        ->readOnly()
-                                        ->columnSpanFull(),
+                                                            TextInput::make('addr')
+                                                                ->label('Full Address')
+                                                                ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                ->readOnly()
+                                                                ->columnSpanFull(),
 
                                                             Placeholder::make('history')
                                                                 ->label('Last Sale Date')
@@ -398,8 +398,8 @@ class SaleResource extends Resource
                                                         ]),
 
                                                         Placeholder::make('full_details_link')
-                        ->label('')
-                        ->content(new HtmlString("
+                                                            ->label('')
+                                                            ->content(new HtmlString("
                             <div class='mt-4 pt-4 border-t border-gray-200'>
                                 <a href='" . \App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $customer->id]) . "' 
                                    target='_blank' 
@@ -430,8 +430,10 @@ class SaleResource extends Resource
                                                                 Forms\Components\TextInput::make('phone')
                                                                     ->label('Mobile Phone')
                                                                     ->tel()
-                                                                    ->required()
-                                                                    ->unique('customers', 'phone'),
+                                                                    ->prefix('+1')
+                                                                    ->mask('(999) 999-9999') // 👈 THIS ADDS THE FORMATTING
+                                                                    ->placeholder('(555) 555-5555') // Shows the user what to type
+                                                                    ->stripCharacters(['(', ')', '-', ' ']), // Optional: Removes format before saving to DB (saves as 5053750269)
 
                                                                 Forms\Components\Grid::make(2)->schema([
                                                                     Forms\Components\DatePicker::make('dob')
@@ -493,7 +495,7 @@ class SaleResource extends Resource
                                     Grid::make(2)->schema([
                                         Select::make('method')
                                             ->options(self::getPaymentOptions())
-                                            
+
                                             ->required()
                                             ->label('Method'),
                                         TextInput::make('amount')
@@ -583,7 +585,6 @@ class SaleResource extends Resource
                     ->dehydrated(false),
             ])
             ->statePath('data');
-        
     }
 
     public static function table(Table $table): Table
@@ -612,12 +613,12 @@ class SaleResource extends Resource
                 TextColumn::make('payment_method')->label('Method')->badge()->color('gray')->grow(false),
                 TextColumn::make('final_total')->label('Total')->money('USD')->weight('bold')->color('success')->alignRight(),
                 Tables\Columns\TextColumn::make('created_at')
-    ->label('Date')
-    ->dateTime('M d, y')
-    // 🚀 THE FIX: Use a closure to grab the dynamic request timezone
-    ->timezone(fn() => config('app.timezone')) 
-    ->sortable()
-    ->grow(false),
+                    ->label('Date')
+                    ->dateTime('M d, y')
+                    // 🚀 THE FIX: Use a closure to grab the dynamic request timezone
+                    ->timezone(fn() => config('app.timezone'))
+                    ->sortable()
+                    ->grow(false),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('payment_method')->label('Payment Type')
