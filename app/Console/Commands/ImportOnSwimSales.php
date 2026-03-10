@@ -20,6 +20,10 @@ class ImportOnSwimSales extends Command
 
     public function handle()
     {
+        // 🚀 PREVENT TIMEOUTS: Sales data is usually the heaviest
+        set_time_limit(0);
+        ini_set('memory_limit', '1G');
+
         $tenantId = $this->argument('tenant');
         
         try {
@@ -60,8 +64,7 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
-        // 🚀 THE FIX: Grouping by a combination of identifiers
-        // This ensures that even if Job No is missing, separate days or customers create separate sales.
+        // Grouping by a combination of identifiers
         $salesGroups = collect($rows)->groupBy(function ($item) {
             $job = trim($item['Job No.'] ?? '0');
             $date = trim($item['Purchase Date'] ?? '00-00-00');
@@ -77,41 +80,37 @@ class ImportOnSwimSales extends Command
         try {
             foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
-                
-                // Link Customer
                 $customer = $this->findCustomer($firstItem);
                 
-                // Format Date
                 $purchaseDate = !empty($firstItem['Purchase Date']) 
                     ? Carbon::parse($firstItem['Purchase Date']) 
                     : now();
 
-                // Generate a real invoice number based on the CSV data
                 $jobNo = trim($firstItem['Job No.'] ?? rand(1000, 9999));
                 $invoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
 
-                // Staff Array
                 $staff = array_filter([
                     trim($firstItem['Sales Assistant'] ?? null),
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                // Create the Individual Sale
-                $sale = Sale::create([
-                    'invoice_number' => $invoiceNo,
-                    'customer_id' => $customer?->id,
-                    'store_id' => $storeId,
-                    'status' => 'completed',
-                    'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
-                    'created_at' => $purchaseDate,
-                    'payment_method' => 'cash',
-                    'is_split_payment' => false,
-                    'repair_number' => $firstItem['Repair Number'] ?? null,
-                ]);
+                // 🚀 WRAPPER: Disable events for Sale and its items to skip Activity Logs
+                $sale = Sale::withoutEvents(function () use ($invoiceNo, $customer, $storeId, $staff, $purchaseDate, $firstItem) {
+                    return Sale::create([
+                        'invoice_number' => $invoiceNo,
+                        'customer_id' => $customer?->id,
+                        'store_id' => $storeId,
+                        'status' => 'completed',
+                        'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
+                        'created_at' => $purchaseDate,
+                        'payment_method' => 'cash',
+                        'is_split_payment' => false,
+                        'repair_number' => $firstItem['Repair Number'] ?? null,
+                    ]);
+                });
 
                 $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
-                // Process specific items for this sale group only
                 foreach ($items as $item) {
                     $desc = strtoupper($item['Description'] ?? '');
                     
@@ -131,18 +130,21 @@ class ImportOnSwimSales extends Command
                         ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
                         : null;
 
-                    $sale->items()->create([
-                        'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
-                        'repair_id' => $repairId,
-                        'custom_description' => $item['Description'] ?? 'Item',
-                        'job_description' => $item['Job Description'] ?? null,
-                        'qty' => $qty,
-                        'sold_price' => $soldPrice,
-                        'discount_amount' => $discAmount,
-                        'discount_percent' => floatval($item['Discount'] ?? 0),
-                        'is_manual' => empty($item['Stock/Item No.']),
-                        'store_id' => $storeId,
-                    ]);
+                    // 🚀 WRAPPER: Disable events for SaleItem
+                    SaleItem::withoutEvents(function () use ($sale, $item, $repairId, $qty, $soldPrice, $discAmount, $storeId) {
+                        $sale->items()->create([
+                            'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
+                            'repair_id' => $repairId,
+                            'custom_description' => $item['Description'] ?? 'Item',
+                            'job_description' => $item['Job Description'] ?? null,
+                            'qty' => $qty,
+                            'sold_price' => $soldPrice,
+                            'discount_amount' => $discAmount,
+                            'discount_percent' => floatval($item['Discount'] ?? 0),
+                            'is_manual' => empty($item['Stock/Item No.']),
+                            'store_id' => $storeId,
+                        ]);
+                    });
 
                     $subtotal += ($soldPrice * $qty);
                     $taxTotal += $taxAmount;
@@ -151,18 +153,20 @@ class ImportOnSwimSales extends Command
 
                 $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
 
-                // Update this specific sale with its calculated totals
-                $sale->update([
-                    'subtotal' => $subtotal,
-                    'tax_amount' => $taxTotal,
-                    'discount_amount' => $discountTotal,
-                    'has_trade_in' => $tradeInTotal > 0,
-                    'trade_in_value' => $tradeInTotal,
-                    'trade_in_description' => rtrim($tradeInDesc, '; '),
-                    'final_total' => $finalTotal,
-                    'payment_method_1' => 'cash',
-                    'payment_amount_1' => $finalTotal,
-                ]);
+                // 🚀 WRAPPER: Disable events for final total update
+                Sale::withoutEvents(function () use ($sale, $subtotal, $taxTotal, $discountTotal, $tradeInTotal, $tradeInDesc, $finalTotal) {
+                    $sale->update([
+                        'subtotal' => $subtotal,
+                        'tax_amount' => $taxTotal,
+                        'discount_amount' => $discountTotal,
+                        'has_trade_in' => $tradeInTotal > 0,
+                        'trade_in_value' => $tradeInTotal,
+                        'trade_in_description' => rtrim($tradeInDesc, '; '),
+                        'final_total' => $finalTotal,
+                        'payment_method_1' => 'cash',
+                        'payment_amount_1' => $finalTotal,
+                    ]);
+                });
 
                 $bar->advance();
             }
