@@ -34,11 +34,17 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-        // 🚀 Ensure Fallback Customer exists
-        $walkInCustomer = Customer::firstOrCreate(
-            ['customer_no' => 'CUST-WALKIN'],
-            ['name' => 'Walk-in', 'last_name' => 'Customer', 'is_active' => true]
-        );
+        // 🚀 FIX: Wrap Walk-in creation in withoutEvents to prevent activity_log error
+        $walkInCustomer = Customer::withoutEvents(function () {
+            return Customer::firstOrCreate(
+                ['customer_no' => 'CUST-WALKIN'],
+                [
+                    'name' => 'Walk-in', 
+                    'last_name' => 'Customer', 
+                    'is_active' => true
+                ]
+            );
+        });
 
         if ($this->option('rollback')) {
             $this->warn("Rolling back sales for tenant: {$tenantId}...");
@@ -84,7 +90,9 @@ class ImportOnSwimSales extends Command
             foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
                 $customer = $this->findCustomer($firstItem);
-                $customerId = $customer?->id ?? $walkInCustomer->id; // 🚀 Fallback applied here
+                
+                // 🚀 FALLBACK: Use Walk-in if customer not found to prevent NOT NULL error
+                $customerId = $customer?->id ?? $walkInCustomer->id; 
                 
                 $purchaseDate = !empty($firstItem['Purchase Date']) 
                     ? Carbon::parse($firstItem['Purchase Date']) 
