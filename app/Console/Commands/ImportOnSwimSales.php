@@ -20,7 +20,6 @@ class ImportOnSwimSales extends Command
 
     public function handle()
     {
-        // 🚀 PREVENT TIMEOUTS: Sales data is usually the heaviest
         set_time_limit(0);
         ini_set('memory_limit', '1G');
 
@@ -34,7 +33,6 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-        // 1. SAFE ROLLBACK
         if ($this->option('rollback')) {
             $this->warn("Rolling back sales for tenant: {$tenantId}...");
             Schema::disableForeignKeyConstraints();
@@ -45,7 +43,6 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-        // 2. LOAD FILE
         $directoryPath = storage_path("app/data/{$tenantId}");
         $filePath = "{$directoryPath}/sales_lxddata_mar10_26.csv";
 
@@ -64,7 +61,6 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
-        // Grouping by a combination of identifiers
         $salesGroups = collect($rows)->groupBy(function ($item) {
             $job = trim($item['Job No.'] ?? '0');
             $date = trim($item['Purchase Date'] ?? '00-00-00');
@@ -94,7 +90,7 @@ class ImportOnSwimSales extends Command
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
-                // 🚀 WRAPPER: Disable events for Sale and its items to skip Activity Logs
+                // 🚀 FIX: Added default 0 values for required numeric fields
                 $sale = Sale::withoutEvents(function () use ($invoiceNo, $customer, $storeId, $staff, $purchaseDate, $firstItem) {
                     return Sale::create([
                         'invoice_number' => $invoiceNo,
@@ -106,6 +102,10 @@ class ImportOnSwimSales extends Command
                         'payment_method' => 'cash',
                         'is_split_payment' => false,
                         'repair_number' => $firstItem['Repair Number'] ?? null,
+                        'subtotal' => 0,      // Initialize to prevent SQL error
+                        'tax_amount' => 0,    // Initialize to prevent SQL error
+                        'final_total' => 0,   // Initialize to prevent SQL error
+                        'discount_amount' => 0 // Initialize to prevent SQL error
                     ]);
                 });
 
@@ -130,7 +130,6 @@ class ImportOnSwimSales extends Command
                         ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
                         : null;
 
-                    // 🚀 WRAPPER: Disable events for SaleItem
                     SaleItem::withoutEvents(function () use ($sale, $item, $repairId, $qty, $soldPrice, $discAmount, $storeId) {
                         $sale->items()->create([
                             'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
@@ -153,7 +152,6 @@ class ImportOnSwimSales extends Command
 
                 $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
 
-                // 🚀 WRAPPER: Disable events for final total update
                 Sale::withoutEvents(function () use ($sale, $subtotal, $taxTotal, $discountTotal, $tradeInTotal, $tradeInDesc, $finalTotal) {
                     $sale->update([
                         'subtotal' => $subtotal,
