@@ -57,7 +57,7 @@
                 <span>${{ number_format($todaySales ?? 0, 2) }}</span>
             </template>
             <template x-if="!showSales">
-                <span>$ • • • •</span>
+                <span>$ • • •</span>
             </template>
         </span>
 
@@ -161,7 +161,7 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Laybuys <span class="badge" style="background: #065f46; color: white;">{{ $pendingLaybuys }}</span></h3>
+                            <h3>Layby <span class="badge" style="background: #065f46; color: white;">{{ $pendingLaybuys }}</span></h3>
                             <p>Active payment plans</p>
                         </div>
                         <div class="card-tag">Track</div>

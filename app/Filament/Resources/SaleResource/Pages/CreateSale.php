@@ -193,11 +193,14 @@ class CreateSale extends CreateRecord
                     ->send();
             }
         });
+        session()->forget('sale_draft');
     }
     public function mount(): void
     {
         parent::mount();
-
+ if (session()->has('sale_draft')) {
+        $this->data = session('sale_draft');
+    }
         // 1. Check for Repair or Custom Order in the URL
         $repairId = request()->get('repair_id');
         $customOrderId = request()->get('custom_order_id');
@@ -250,4 +253,9 @@ class CreateSale extends CreateRecord
     {
         return $this->getResource()::getUrl('index');
     }
+    public function updated($property): void
+{
+    // Save the entire form state in session
+    session(['sale_draft' => $this->data]);
+}
 }

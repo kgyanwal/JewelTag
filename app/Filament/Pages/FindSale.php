@@ -88,7 +88,16 @@ class FindSale extends Page implements HasForms, HasTable
             ->modifyQueryUsing(fn (Builder $query) => $query
                 ->when($this->data['invoice_number'] ?? null, fn ($q, $v) => $q->where('invoice_number', 'like', "%{$v}%"))
                 // 🔹 FIXED: Uses 'name' column instead of first/last name
-                ->when($this->data['customer_name'] ?? null, fn ($q, $v) => $q->whereHas('customer', fn($sq) => $sq->where('name', 'like', "%{$v}%")))
+               ->when($this->data['customer_name'] ?? null, function ($q, $v) {
+                $q->whereHas('customer', function ($sq) use ($v) {
+                    $sq->where(function ($sub) use ($v) {
+                        $sub->where('name', 'like', "%{$v}%")
+                            ->orWhere('last_name', 'like', "%{$v}%")
+                            // This allows searching for "John Doe" in one string
+                            ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$v}%"]);
+                    });
+                });
+            })
                 ->when($this->data['phone'] ?? null, fn ($q, $v) => $q->whereHas('customer', fn($sq) => $sq->where('phone', 'like', "%{$v}%")))
                 ->when($this->data['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
                 ->when($this->data['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))

@@ -61,37 +61,47 @@ class MySalesReport extends Page implements HasTable
                     ->badge()
                     ->separator(','),
 
-                TextColumn::make('subtotal')
-                    ->label('Subtotal (Ex. Tax)')
-                    ->alignRight()
-                    ->formatStateUsing(function ($state, $record) {
-                        $count = is_array($record->sales_person_list) ? count($record->sales_person_list) : 1;
-                        $perPerson = $state / $count;
-                        
-                        $html = "<div class='font-bold text-gray-900'>$" . number_format($state, 2) . "</div>";
-                        if ($count > 1) {
-                            $html .= "<div class='text-xs text-primary-600 italic'>$" . number_format($perPerson, 2) . " total sold amount</div>";
-                        }
-                        return new HtmlString($html);
-                    })
-                    ->summarize(
-                        Summarizer::make()
-                            ->label('Individual Split Total')
-                            ->using(function ($query) {
-                                $sales = $query->get();
-                                $totalIndividualShare = 0;
+              TextColumn::make('subtotal')
+    ->label('Subtotal (Individual Share)')
+    ->alignRight()
+    ->formatStateUsing(function ($state, $record) {
+        // 1. Calculate the split count
+        $count = is_array($record->sales_person_list) ? count($record->sales_person_list) : 1;
+        
+        // 2. Calculate the split amount (the $4,308.50 share)
+        $perPerson = $state / $count;
+        
+        // 🚀 THE FIX: Put the split amount in the BIG bold letters
+        $html = "<div class='font-bold text-gray-900 text-lg'>$" . number_format($perPerson, 2) . "</div>";
+        
+        // 3. Show the total invoice amount in small letters if there's a split
+        if ($count > 1) {
+            $html .= "<div class='text-xs text-gray-400'>Total Invoice: $" . number_format($state, 2) . "</div>";
+            $html .= "<div class='text-[10px] text-primary-600 font-medium uppercase tracking-wider'>Your Share (1/" . $count . ")</div>";
+        } else {
+            $html .= "<div class='text-[10px] text-gray-400 font-medium uppercase tracking-wider'>Full Sale Amount</div>";
+        }
+        
+        return new HtmlString($html);
+    })
+    ->summarize(
+        Summarizer::make()
+            ->label('Individual Split Total')
+            ->using(function ($query) {
+                $sales = $query->get();
+                $totalIndividualShare = 0;
 
-                                foreach ($sales as $sale) {
-                                    $staffList = is_string($sale->sales_person_list) 
-                                        ? json_decode($sale->sales_person_list, true) 
-                                        : $sale->sales_person_list;
-                                        
-                                    $count = is_array($staffList) ? count($staffList) : 1;
-                                    $totalIndividualShare += ($sale->subtotal / $count);
-                                }
-                                return "$" . number_format($totalIndividualShare, 2);
-                            })
-                    ),
+                foreach ($sales as $sale) {
+                    $staffList = is_string($sale->sales_person_list) 
+                        ? json_decode($sale->sales_person_list, true) 
+                        : $sale->sales_person_list;
+                        
+                    $count = is_array($staffList) ? count($staffList) : 1;
+                    $totalIndividualShare += ($sale->subtotal / $count);
+                }
+                return "$" . number_format($totalIndividualShare, 2);
+            })
+    ),
             ])
             ->filters([
                 Filter::make('created_at')

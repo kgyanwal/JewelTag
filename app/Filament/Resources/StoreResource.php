@@ -41,52 +41,25 @@ class StoreResource extends Resource
                         ->columnSpanFull(),
                 ])->columns(2),
 
-                Section::make('Location Details')->schema([
-                    GoogleAutocomplete::make('address_search')
-    ->label('Search Address')
-    ->autocompletePlaceholder('Start typing address...')
-    ->countries(['US'])
-    ->placesApiNew()
-    ->withFields([
-
-        TextInput::make('address_line_1')
-            ->label('Address Line 1')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'formatted_address'
-            ])
-            ->columnSpanFull(),
-
-        TextInput::make('address_line_2')
-            ->label('Address Line 2')
-            ->columnSpanFull(),
-
-        TextInput::make('city')
-            ->label('City')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'locality'
-            ]),
-
-        Select::make('state')
-            ->label('State')
-            ->options(LocationHelper::getUsStates())
-            ->searchable()
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'administrative_area_level_1_short'
-            ]),
-
-        TextInput::make('zip_code')
-            ->label('ZIP Code')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'postal_code'
-            ]),
-    ])
-    ->columnSpanFull(),
-                ])->columns(2),
-
+             Section::make('Location Details')
+    ->schema([
+        GoogleAutocomplete::make('address_search')
+            ->label('Search Address')
+            ->autocompletePlaceholder('Start typing address...')
+            ->countries(['US'])
+            ->dehydrated(false)
+            // 🚀 THE FIX: Pass the actual component objects, not strings
+            ->withFields([
+                TextInput::make('city')
+                    ->label('City')
+                    ->placeholder('City will auto-fill'),
+                
+                TextInput::make('state')
+                    ->label('State')
+                    ->placeholder('State will auto-fill'),
+            ], 'locality', 'administrative_area_level_1'), 
+            // The 2nd and 3rd arguments map the children to Google's locality/state keys
+    ])->columns(1), // Columns(1) looks better when fields are nested
                 Section::make('Timezone Settings')->schema([
 
                     Select::make('timezone')
@@ -129,11 +102,11 @@ class StoreResource extends Resource
                         ->columnSpanFull(),
                 ]),
                 TextInput::make('crm_url')
-    ->label('CRM Portal Link')
-    ->url()
-    ->placeholder('https://crm.yourdomain.com')
-    ->suffixIcon('heroicon-m-link')
-    ->helperText('The dynamic link used for the dashboard CRM tile.'),
+                    ->label('CRM Portal Link')
+                    ->url()
+                    ->placeholder('https://crm.yourdomain.com')
+                    ->suffixIcon('heroicon-m-link')
+                    ->helperText('The dynamic link used for the dashboard CRM tile.'),
             ]);
     }
 
@@ -161,11 +134,11 @@ class StoreResource extends Resource
         ];
     }
     public static function shouldRegisterNavigation(): bool
-{
-    // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
-    $staff = \App\Helpers\Staff::user();
+    {
+        // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
+        $staff = \App\Helpers\Staff::user();
 
-    // Only allow specific roles to see the Administration menu
-    return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
-}
+        // Only allow specific roles to see the Administration menu
+        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+    }
 }

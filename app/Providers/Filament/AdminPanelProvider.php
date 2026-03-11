@@ -313,6 +313,7 @@ HTML
                 \App\Filament\Pages\UpcomingFollowUps::class,
                 \App\Filament\Pages\InactiveStockReport::class,
                 \App\Filament\Pages\MySalesReport::class,
+                 \App\Filament\Pages\SoldStockReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,

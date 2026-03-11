@@ -117,8 +117,10 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->columnSpan(1),
 
-                                    TextInput::make('custom_description')
+                                    Forms\Components\Textarea::make('custom_description')
                                         ->label('Description')
+                                        ->maxLength(5000)
+                                        ->autosize()
                                         ->columnSpan(3), // Adjusted span to fit new field
 
                                     // 1. QUANTITY CHANGE: Update Line Total & Discount Amount

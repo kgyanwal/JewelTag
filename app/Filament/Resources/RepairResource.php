@@ -143,12 +143,15 @@ class RepairResource extends Resource
                             ->columnSpanFull(),
                     ]),
 
-                    TextInput::make('item_description')
-                        ->label('Item Name/Description')
-                        ->placeholder('e.g., Diamond Engagement Ring')
-                        ->required()
-                        ->columnSpanFull(),
-
+                Textarea::make('item_description')
+    ->label('Item Name/Description')
+    ->placeholder('e.g., Diamond Engagement Ring')
+    ->required()
+    ->maxLength(3000)
+    ->rows(3) // Better for longer descriptions
+    ->live()
+    ->helperText(fn ($state) => strlen($state ?? '') . ' / 3000 characters')
+    ->columnSpanFull(),
                     Textarea::make('reported_issue')
                         ->label('Issue Reported by Customer')
                         ->placeholder('Describe what needs to be fixed...')

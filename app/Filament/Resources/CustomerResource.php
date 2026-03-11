@@ -66,42 +66,42 @@ class CustomerResource extends Resource
                                             TextInput::make('email')->email(),
                                         ]),
                                         Grid::make(3)->schema([
-    Select::make('sales_person')
-        ->label('Sales Person')
-        ->options(function () {
-            $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales'];
+                                            Select::make('sales_person')
+                                                ->label('Sales Person')
+                                                ->options(function () {
+                                                    $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales'];
 
-            return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
-                $q->whereIn('name', $validRoles);
-            })->pluck('name', 'name');
-        })
-        ->searchable()
-        ->preload(),
+                                                    return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
+                                                        $q->whereIn('name', $validRoles);
+                                                    })->pluck('name', 'name');
+                                                })
+                                                ->searchable()
+                                                ->preload(),
 
-    DatePicker::make('dob')
-        ->label('Birth Date'),
+                                            DatePicker::make('dob')
+                                                ->label('Birth Date'),
 
-    DatePicker::make('wedding_anniversary')
-        ->label('Wedding Date'),
-]),
+                                            DatePicker::make('wedding_anniversary')
+                                                ->label('Wedding Date'),
+                                        ]),
 
-Section::make('Address')
-    ->columns(2)
-    ->collapsible()
-    ->schema([
-        TextInput::make('street')->columnSpanFull(),
-        TextInput::make('city'),
-        TextInput::make('state'),
-        Select::make('country')
-            ->options([
-                'Australia' => 'Australia',
-                'United States' => 'United States',
-                'Canada' => 'Canada'
-            ])
-            ->default('United States')
-            ->searchable(),
-        TextInput::make('postcode'),
-    ]),
+                                        Section::make('Address')
+                                            ->columns(2)
+                                            ->collapsible()
+                                            ->schema([
+                                                TextInput::make('street')->columnSpanFull(),
+                                                TextInput::make('city'),
+                                                TextInput::make('state'),
+                                                Select::make('country')
+                                                    ->options([
+                                                        'Australia' => 'Australia',
+                                                        'United States' => 'United States',
+                                                        'Canada' => 'Canada'
+                                                    ])
+                                                    ->default('United States')
+                                                    ->searchable(),
+                                                TextInput::make('postcode'),
+                                            ]),
                                         Section::make('Address')
                                             ->columns(2)->collapsible()
                                             ->schema([
@@ -120,7 +120,7 @@ Section::make('Address')
                                     ->icon('heroicon-o-megaphone')
                                     ->schema([
                                         Grid::make(3)->schema([
-                                           
+
                                             Select::make('gender')->options(['Male' => 'Male', 'Female' => 'Female', 'Others' => 'Others']),
                                         ]),
                                         Grid::make(3)->schema([
@@ -276,4 +276,3 @@ Section::make('Address')
         return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
     }
 }
-
