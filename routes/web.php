@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
 use App\Models\Tenant;
 
-$centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us'];
+$centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us','www.jeweltag.us'];
 
 foreach ($centralDomains as $domain) {
     Route::domain($domain)->middleware(['web'])->group(function () {
