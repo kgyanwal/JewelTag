@@ -33,7 +33,7 @@ class MasterPanelProvider extends PanelProvider
             | UI ENHANCEMENTS (REFIXED VISIBILITY)
             |--------------------------------------------------------------------------
             */
-            ->domains(['localhost', '127.0.0.1', 'jeweltag.us'])
+            ->domains(config('tenancy.central_domains'))
             ->renderHook(
                 'panels::head.done',
                 fn () => new HtmlString("
