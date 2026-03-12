@@ -63,6 +63,8 @@ protected $fillable = [
     'inactivated_at',
     'inactivated_by',
     'inactivated_reason',
+    
+    
 ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty

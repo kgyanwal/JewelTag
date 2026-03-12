@@ -2,36 +2,37 @@
 
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
+use App\Models\Tenant;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes (Central / Landlord Only)
-|--------------------------------------------------------------------------
-*/
+$centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us'];
 
-Route::middleware([
-    'web',
-    PreventAccessFromTenantDomains::class, // 🚀 Ensures tenant subdomains can't hit landlord routes
-])->group(function () {
+foreach ($centralDomains as $domain) {
+    Route::domain($domain)->middleware(['web'])->group(function () {
 
-    // 1. Redirect the main domain to the Master Panel
-    Route::redirect('/', '/master');
+        // Landing page
+        Route::get('/', function () {
+            return view('welcome'); // Central landing page
+        });
 
-    // 2. Dynamic Store Creation Route
-    Route::get('/create-store/{store_name}', function ($store_name) {
-        // Create the Tenant record
-        $tenant = App\Models\Tenant::create(['id' => $store_name]);
+        // Filament Welcome Page route
+        Route::get('/welcome-page', function () {
+            return \App\Filament\Master\Pages\Welcome::render();
+        });
 
-        // 🚀 SMART DOMAIN LOGIC
-        // Detects if we are on local or production
-        $baseDomain = app()->isLocal() ? 'localhost' : 'jeweltag.us';
-        $fullDomain = $store_name . '.' . $baseDomain;
+        // Master Login
+        Route::get('/master-login', function () {
+            return redirect('/master/login');
+        });
 
-        $tenant->domains()->create(['domain' => $fullDomain]);
-
-        $protocol = app()->isLocal() ? 'http' : 'https';
-        $port = app()->isLocal() ? ':8001' : '';
-
-        return "Success! Store '{$store_name}' created. Visit {$protocol}://{$fullDomain}{$port}/admin";
+        // Create Store
+        Route::middleware([PreventAccessFromTenantDomains::class])->group(function () {
+            Route::get('/create-store/{store_name}', function ($store_name) {
+                $tenant = Tenant::create(['id' => $store_name]);
+                $baseDomain = app()->isLocal() ? 'localhost' : 'jeweltag.us';
+                $fullDomain = $store_name . '.' . $baseDomain;
+                $tenant->domains()->create(['domain' => $fullDomain]);
+                return "Success! Store '{$store_name}' created.";
+            });
+        });
     });
-});
+}

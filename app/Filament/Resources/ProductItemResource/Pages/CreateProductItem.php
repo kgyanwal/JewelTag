@@ -117,7 +117,7 @@ class CreateProductItem extends CreateRecord
             $itemData['store_id'] = $storeId;
             $itemData['is_trade_in'] = ($tradeInNo !== null);
             $itemData['original_trade_in_no'] = $tradeInNo;
-
+$itemData['web_item'] = $itemData['web_item'] ?? false;
             // 🔹 Apply Prefix
             $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
 

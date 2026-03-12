@@ -17,9 +17,11 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
-use Filament\Actions\Action;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\Action as TableAction;
+use Filament\Actions\Action as HeaderAction;
 use Illuminate\Database\Eloquent\Builder;
-use App\Filament\Resources\ProductItemResource; 
+use App\Filament\Resources\ProductItemResource;
 
 class FindStock extends Page implements HasForms, HasTable
 {
@@ -39,164 +41,209 @@ class FindStock extends Page implements HasForms, HasTable
     }
 
     /**
-     * 🔹 Top Filter Form with Live Updates
+     * Auto refresh table when filters change
      */
-    public function form(Form $form): Form
+    public function updated($property): void
     {
-        $settings = InventorySetting::whereIn('key', ['departments', 'sub_departments', 'categories', 'metal_types'])
-            ->get()
-            ->pluck('value', 'key');
-
-        return $form
-            ->schema([
-                Section::make('Find stock at Your Store')
-                    ->description('The list below updates automatically as you type.')
-                    ->schema([
-                        Grid::make(6)
-                            ->schema([
-                                TextInput::make('stock_number')
-                                    ->label('Stock Number')
-                                    ->live()
-                                    ->debounce(500), // Waits 500ms after you stop typing
-                                
-                                TextInput::make('description')
-                                    ->label('Description')
-                                    ->live()
-                                    ->debounce(500),
-
-                                Select::make('department')
-                                    ->options($settings['departments'] ?? [])
-                                    ->searchable()
-                                    ->live(),
-
-                                Select::make('sub_department')
-                                    ->options($settings['sub_departments'] ?? [])
-                                    ->searchable()
-                                    ->live(),
-
-                                Select::make('category')
-                                    ->options($settings['categories'] ?? [])
-                                    ->searchable()
-                                    ->live(),
-
-                                Select::make('metal_type')
-                                    ->options($settings['metal_types'] ?? [])
-                                    ->searchable()
-                                    ->live(),
-
-                                Select::make('status')
-                                    ->label('Location')
-                                    ->options(['in_stock' => 'In Stock', 'sold' => 'Sold', 'on_hold' => 'On Hold'])
-                                    ->live(),
-
-                                Grid::make(2)->schema([
-                                    TextInput::make('price_from')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->live()
-                                        ->debounce(600),
-                                    TextInput::make('price_to')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->live()
-                                        ->debounce(600),
-                                ])->columnSpan(2),
-
-                                Select::make('supplier_id')
-                                    ->label('Supplier')
-                                    ->options(Supplier::pluck('company_name', 'id'))
-                                    ->searchable()
-                                    ->live(),
-
-                                TextInput::make('supplier_code')
-                                    ->label('Vendor Code')
-                                    ->live()
-                                    ->debounce(500),
-
-                                TextInput::make('serial_number')
-                                    ->label('Serial Number')
-                                    ->live()
-                                    ->debounce(500),
-
-                                Select::make('is_web_item')
-                                    ->options(['1' => 'Yes', '0' => 'No'])
-                                    ->live(),
-                            ]),
-                    ])->collapsible(),
-            ])
-            ->statePath('data');
+        if (str_starts_with($property, 'data.')) {
+            $this->resetTable();
+        }
     }
 
     /**
-     * 🔹 Simplified Header Actions
+     * FIX: add missing method so Blade buttons won't break
      */
+    public function applyFilters(): void
+    {
+        $this->resetTable();
+    }
+
+    public function form(Form $form): Form
+    {
+        $settings = InventorySetting::all()->pluck('value', 'key');
+
+        return $form
+            ->statePath('data')
+            ->schema([
+                Section::make('Find Stock')
+                    ->description('Filter results update automatically as you type.')
+                    ->schema([
+                        Grid::make(4)->schema([
+
+                            TextInput::make('stock_number')
+                                ->label('Stock #')
+                                ->live()
+                                ->debounce(500),
+
+                            TextInput::make('description')
+                                ->label('Description')
+                                ->live()
+                                ->debounce(500),
+
+                            Select::make('status')
+                                ->label('Location')
+                                ->options([
+                                    'in_stock' => 'In Stock',
+                                    'sold' => 'Sold',
+                                    'on_hold' => 'On Hold',
+                                ])
+                                ->live(),
+
+                            Select::make('department')
+                                ->options(fn() => collect($settings['departments'] ?? [])
+                                    ->pluck('name', 'name'))
+                                ->searchable()
+                                ->live(),
+
+                            Select::make('sub_department')
+                                ->options(fn() => collect($settings['sub_departments'] ?? [])
+                                    ->mapWithKeys(fn($i) => [$i => $i]))
+                                ->searchable()
+                                ->live(),
+
+                            Select::make('category')
+                                ->options(fn() => collect($settings['categories'] ?? [])
+                                    ->mapWithKeys(fn($i) => [$i => $i]))
+                                ->searchable()
+                                ->live(),
+
+                            Select::make('metal_type')
+                                ->options(fn() => collect($settings['metal_types'] ?? [])
+                                    ->mapWithKeys(fn($i) => [$i => $i]))
+                                ->searchable()
+                                ->live(),
+
+                            Select::make('supplier_id')
+                                ->label('Supplier')
+                                ->options(Supplier::pluck('company_name', 'id'))
+                                ->searchable()
+                                ->live(),
+
+                            TextInput::make('price_from')
+                                ->numeric()
+                                ->prefix('$')
+                                ->live()
+                                ->debounce(800),
+
+                            TextInput::make('price_to')
+                                ->numeric()
+                                ->prefix('$')
+                                ->live()
+                                ->debounce(800),
+
+                            TextInput::make('supplier_code')
+                                ->label('Vendor Code')
+                                ->live()
+                                ->debounce(500),
+
+                            TextInput::make('serial_number')
+                                ->label('Serial #')
+                                ->live()
+                                ->debounce(500),
+
+                        ]),
+                    ])
+                    ->collapsible(),
+            ]);
+    }
+
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('clear')
-                ->label('Clear All Filters')
+            HeaderAction::make('clear')
+                ->label('Clear All')
                 ->icon('heroicon-o-x-mark')
                 ->color('gray')
                 ->action(function () {
                     $this->form->fill();
+                    $this->resetTable();
                 }),
         ];
     }
 
-    /**
-     * 🔹 Filtered Table
-     */
     public function table(Table $table): Table
     {
         return $table
             ->query(ProductItem::query())
             ->modifyQueryUsing(function (Builder $query) {
-                $formData = $this->data; // Access the live state array
+
+                $f = $this->data;
 
                 return $query
-                    ->when($formData['stock_number'] ?? null, fn ($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
-                    ->when($formData['description'] ?? null, fn ($q, $v) => $q->where('custom_description', 'like', "%{$v}%"))
-                    ->when($formData['department'] ?? null, fn ($q, $v) => $q->where('department', $v))
-                    ->when($formData['sub_department'] ?? null, fn ($q, $v) => $q->where('sub_department', $v))
-                    ->when($formData['category'] ?? null, fn ($q, $v) => $q->where('category', $v))
-                    ->when($formData['metal_type'] ?? null, fn ($q, $v) => $q->where('metal_type', $v))
-                    ->when($formData['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-                    ->when($formData['supplier_id'] ?? null, fn ($q, $v) => $q->where('supplier_id', $v))
-                    ->when($formData['supplier_code'] ?? null, fn ($q, $v) => $q->where('supplier_code', 'like', "%{$v}%"))
-                    ->when($formData['serial_number'] ?? null, fn ($q, $v) => $q->where('serial_number', 'like', "%{$v}%"))
-                    ->when($formData['price_from'] ?? null, fn ($q, $v) => $q->where('retail_price', '>=', $v))
-                    ->when($formData['price_to'] ?? null, fn ($q, $v) => $q->where('retail_price', '<=', $v))
-                    ->when(filled($formData['is_web_item'] ?? null), function ($q) use ($formData) {
-                        return $q->where('is_web_item', $formData['is_web_item'] === '1');
-                    });
+                    ->when($f['stock_number'] ?? null,
+                        fn ($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
+
+                    ->when($f['description'] ?? null,
+                        fn ($q, $v) => $q->where('custom_description', 'like', "%{$v}%"))
+
+                    ->when($f['department'] ?? null,
+                        fn ($q, $v) => $q->where('department', $v))
+
+                    ->when($f['sub_department'] ?? null,
+                        fn ($q, $v) => $q->where('sub_department', $v))
+
+                    ->when($f['category'] ?? null,
+                        fn ($q, $v) => $q->where('category', $v))
+
+                    ->when($f['metal_type'] ?? null,
+                        fn ($q, $v) => $q->where('metal_type', $v))
+
+                    ->when($f['status'] ?? null,
+                        fn ($q, $v) => $q->where('status', $v))
+
+                    ->when($f['supplier_id'] ?? null,
+                        fn ($q, $v) => $q->where('supplier_id', $v))
+
+                    ->when($f['supplier_code'] ?? null,
+                        fn ($q, $v) => $q->where('supplier_code', 'like', "%{$v}%"))
+
+                    ->when($f['serial_number'] ?? null,
+                        fn ($q, $v) => $q->where('serial_number', 'like', "%{$v}%"))
+
+                    ->when($f['price_from'] ?? null,
+                        fn ($q, $v) => $q->where('retail_price', '>=', $v))
+
+                    ->when($f['price_to'] ?? null,
+                        fn ($q, $v) => $q->where('retail_price', '<=', $v));
             })
             ->columns([
-                TextColumn::make('barcode')->label('STOCK NUMBER')->sortable(),
-                TextColumn::make('qty')->label('QTY')->alignCenter(),
-                TextColumn::make('custom_description')->label('DESCRIPTION')->wrap()->limit(50),
-                TextColumn::make('retail_price')->label('SALES PRICE')->money('USD')->color('primary'),
-                TextColumn::make('department')->label('DEPARTMENT'),
-                TextColumn::make('sub_department')->label('SUB DEPARTMENT'),
-                TextColumn::make('category')->label('CATEGORY'),
-                TextColumn::make('metal_type')->label('METAL'),
-                TextColumn::make('supplier.company_name')->label('SUPPLIER'),
-                TextColumn::make('status')->label('LOCATION')
+
+                TextColumn::make('barcode')
+                    ->label('STOCK #')
+                    ->sortable()
+                    ->searchable()
+                    ->weight('bold'),
+
+                TextColumn::make('qty')
+                    ->label('QTY')
+                    ->alignCenter(),
+
+                TextColumn::make('custom_description')
+                    ->label('DESCRIPTION')
+                    ->wrap()
+                    ->limit(40),
+
+                TextColumn::make('retail_price')
+                    ->label('PRICE')
+                    ->money('USD')
+                    ->sortable()
+                    ->color('success'),
+
+                TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn ($state) => match ($state) {
                         'in_stock' => 'success',
                         'sold' => 'danger',
                         'on_hold' => 'warning',
                         default => 'gray',
                     }),
+
             ])
             ->actions([
-              
-          
-                
-                \Filament\Tables\Actions\EditAction::make()
-                    ->url(fn (ProductItem $record): string => ProductItemResource::getUrl('edit', ['record' => $record])),
+                EditAction::make()
+                    ->url(fn ($record) =>
+                        ProductItemResource::getUrl('edit', ['record' => $record])),
             ])
-            ->defaultSort('created_at', 'desc')
-            ->striped();
+            ->defaultSort('created_at', 'desc');
     }
 }

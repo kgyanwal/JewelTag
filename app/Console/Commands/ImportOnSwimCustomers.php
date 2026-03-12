@@ -73,13 +73,7 @@ class ImportOnSwimCustomers extends Command
                 // 🚀 STEP 1: RESOLVE THE ID CONFLICT
                 $existing = Customer::where('customer_no', $fullCustNo)->first();
 
-                if (!$existing && !empty($phone)) {
-                    $existing = Customer::where('phone', $phone)->first();
-                }
-
-                if (!$existing && !empty($email)) {
-                    $existing = Customer::where('email', $email)->first();
-                }
+              $existing = Customer::where('customer_no', $fullCustNo)->first();
 
                 // 🚀 STEP 2: PREVENT SECONDARY PHONE CONFLICT
                 if ($existing && !empty($phone)) {

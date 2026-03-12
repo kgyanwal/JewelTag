@@ -11,7 +11,9 @@ class Repair extends Model
     use LogsActivity;
     // 🔹 Ensure this is empty to allow all fields, or explicitly add 'reported_issue' to $fillable
     protected $guarded = []; 
-
+protected $casts = [
+    'notified_at' => 'datetime',
+];
     protected static function booted()
     {
         static::creating(function ($repair) {

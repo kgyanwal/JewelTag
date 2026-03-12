@@ -20,6 +20,7 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class CustomerResource extends Resource
 {
@@ -85,34 +86,47 @@ class CustomerResource extends Resource
                                                 ->label('Wedding Date'),
                                         ]),
 
-                                        Section::make('Address')
-                                            ->columns(2)
-                                            ->collapsible()
-                                            ->schema([
-                                                TextInput::make('street')->columnSpanFull(),
-                                                TextInput::make('city'),
-                                                TextInput::make('state'),
-                                                Select::make('country')
-                                                    ->options([
-                                                        'Australia' => 'Australia',
-                                                        'United States' => 'United States',
-                                                        'Canada' => 'Canada'
-                                                    ])
-                                                    ->default('United States')
-                                                    ->searchable(),
-                                                TextInput::make('postcode'),
-                                            ]),
-                                        Section::make('Address')
-                                            ->columns(2)->collapsible()
-                                            ->schema([
-                                                TextInput::make('street')->columnSpanFull(),
-                                                TextInput::make('city'),
-                                                TextInput::make('state'),
-                                                Select::make('country')
-                                                    ->options(['Australia' => 'Australia', 'United States' => 'United States', 'Canada' => 'Canada'])
-                                                    ->default('Australia')->searchable(),
-                                                TextInput::make('postcode'),
-                                            ]),
+                                       Section::make('Customer Address')
+    ->description('Search for an address to automatically fill the fields below.')
+    ->columns(2)
+    ->collapsible()
+    ->schema([
+        GoogleAutocomplete::make('address_search')
+            ->label('Search Address')
+            ->autocompletePlaceholder('Start typing address...')
+            ->countries(['US'])
+            ->dehydrated(false)
+            ->columnSpanFull()
+            // 🚀 THE FIX: We pass the COMPONENT OBJECTS here. 
+            // This makes them visible, live, and database-ready.
+            ->withFields([
+                TextInput::make('street')
+                    ->label('Street Address')
+                    ->columnSpanFull(),
+                TextInput::make('city')
+                    ->label('City'),
+                TextInput::make('state')
+                    ->label('State'),
+                TextInput::make('postcode')
+                    ->label('Zip Code'),
+            ], 
+            // Mapping keys: These must match the order of fields above
+            'formatted_address',           // Maps to street
+            'locality',                    // Maps to city
+            'administrative_area_level_1', // Maps to state
+            'postal_code'                  // Maps to postcode
+            ),
+
+        Select::make('country')
+            ->label('Country')
+            ->options([
+                'United States' => 'United States',
+                'Australia' => 'Australia',
+                'Canada' => 'Canada'
+            ])
+            ->default('United States')
+            ->searchable(),
+    ]),
                                     ]),
 
                                 // --- TAB 2: MARKETING & JEWELRY ---

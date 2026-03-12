@@ -114,8 +114,14 @@ class FindSale extends Page implements HasForms, HasTable
                     ->weight('bold')
                     ->color('primary'),
                 TextColumn::make('customer.name')
-                    ->label('CUSTOMER')
-                    ->description(fn($record) => $record->customer?->phone ?? 'Walk-in'),
+    ->label('CUSTOMER')
+    // 🚀 THE FIX: Concatenate first and last name for the display
+    ->formatStateUsing(function ($record) {
+        if (!$record->customer) return 'Walk-in';
+        return "{$record->customer->name} {$record->customer->last_name}";
+    })
+    ->description(fn($record) => $record->customer?->phone ?? null)
+    ->searchable(['name', 'last_name']), // Ensures table search box also hits last name
                 TextColumn::make('final_total')
                     ->label('TOTAL')
                     ->money('USD')

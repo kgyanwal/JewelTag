@@ -4,7 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CustomOrderResource\Pages;
 use App\Models\CustomOrder;
-use App\Models\User; 
+use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -14,9 +14,10 @@ use Filament\Forms\Components\{Section, Grid, Select, TextInput, Textarea, FileU
 use Filament\Notifications\Notification;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
-use Aws\Sns\SnsClient; 
+use Aws\Sns\SnsClient;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\HtmlString;
 
 class CustomOrderResource extends Resource
 {
@@ -30,7 +31,7 @@ class CustomOrderResource extends Resource
         return $form->schema([
             // 👈 LEFT COLUMN (Main Details)
             Forms\Components\Group::make()->schema([
-                
+
                 Section::make('Customer & Assignment')
                     ->description('Assign this custom piece to a customer and sales rep.')
                     ->icon('heroicon-o-user-group')
@@ -39,7 +40,7 @@ class CustomOrderResource extends Resource
                             Select::make('customer_id')
                                 ->label('Select Customer')
                                 ->relationship('customer', 'name')
-                                ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->name} {$record->last_name} ({$record->phone})")
+                                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} ({$record->phone})")
                                 ->searchable(['name', 'last_name', 'phone'])
                                 ->preload()
                                 ->prefixIcon('heroicon-o-user')
@@ -63,14 +64,14 @@ class CustomOrderResource extends Resource
                         Select::make('product_name')
                             ->label('Product / Jewelry Type')
                             ->placeholder('e.g. Diamond Tennis Bracelet')
-                            ->options(function() {
+                            ->options(function () {
                                 return CustomOrder::distinct()->whereNotNull('product_name')->pluck('product_name', 'product_name');
                             })
                             ->searchable()
                             ->createOptionForm([
                                 TextInput::make('new_product_name')->required()->label('New Product Name')
                             ])
-                            ->createOptionUsing(fn (array $data) => $data['new_product_name'])
+                            ->createOptionUsing(fn(array $data) => $data['new_product_name'])
                             ->prefixIcon('heroicon-o-tag')
                             ->required(),
 
@@ -78,7 +79,7 @@ class CustomOrderResource extends Resource
                             ->label('Detailed Design Notes')
                             ->rows(4)
                             ->placeholder('Describe stone placements, engraving, specific styles...'),
-                            
+
                         FileUpload::make('reference_image')
                             ->label('Reference Sketch / Photo')
                             ->image()
@@ -95,7 +96,7 @@ class CustomOrderResource extends Resource
                                 ->label('Vendor Name')
                                 ->prefixIcon('heroicon-o-building-storefront')
                                 ->placeholder('Who is making this?'),
-                            
+
                             TextInput::make('vendor_info')
                                 ->label('Vendor Contact/Info')
                                 ->prefixIcon('heroicon-o-phone'),
@@ -112,7 +113,7 @@ class CustomOrderResource extends Resource
 
             // 👉 RIGHT COLUMN (Specs & Status)
             Forms\Components\Group::make()->schema([
-                
+
                 Section::make('Material Specs')
                     ->icon('heroicon-o-beaker')
                     ->schema([
@@ -125,12 +126,12 @@ class CustomOrderResource extends Resource
                                 'platinum' => 'Platinum',
                                 'silver' => 'Silver',
                             ])->required(),
-                        
+
                         Grid::make(2)->schema([
                             TextInput::make('metal_weight')->label('Metal Wt.')->numeric()->suffix('g'),
                             TextInput::make('diamond_weight')->label('Diamond Wt.')->numeric()->suffix('ct'),
                         ]),
-                        
+
                         TextInput::make('size')->label('Size / Length')->placeholder('e.g. Size 7, 18"'),
                     ]),
 
@@ -138,27 +139,27 @@ class CustomOrderResource extends Resource
                     ->icon('heroicon-o-banknotes')
                     ->schema([
                         TextInput::make('budget')->label('Customer Budget')->numeric()->prefix('$'),
-                        
+
                         TextInput::make('quoted_price')
                             ->label('Final Quoted Price')
                             ->numeric()
                             ->prefix('$')
                             ->required()
                             ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
-                        
+
                         Select::make('status')
                             ->options([
                                 'draft' => 'Draft',
                                 'quoted' => 'Quoted',
                                 'approved' => 'Approved',
                                 'in_production' => 'In Production',
-                                'received' => 'Ready for Pickup', 
+                                'received' => 'Ready for Pickup',
                                 'completed' => 'Picked Up / Completed',
                             ])
                             ->default('draft')
                             ->live()
-                            ->extraAttributes(['class' => 'font-bold']), 
-                        
+                            ->extraAttributes(['class' => 'font-bold']),
+
                         Section::make('Communication Log')
                             ->schema([
                                 Toggle::make('is_customer_notified')
@@ -169,7 +170,7 @@ class CustomOrderResource extends Resource
                                     ->label('Last Notified Timestamp')
                                     ->readOnly(),
                             ])
-                            ->visible(fn (Get $get) => in_array($get('status'), ['received', 'completed'])) 
+                            ->visible(fn(Get $get) => in_array($get('status'), ['received', 'completed']))
                             ->compact(),
                     ]),
 
@@ -177,140 +178,173 @@ class CustomOrderResource extends Resource
         ])->columns(12);
     }
 
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('order_no')->label('ORDER #')->searchable()->sortable()->weight('bold'),
+   public static function table(Table $table): Table
+{
+    return $table
+        ->columns([
+            Tables\Columns\TextColumn::make('order_no')
+                ->label('ORDER #')
+                ->searchable()
+                ->sortable()
+                ->weight('bold'),
+            
+            Tables\Columns\TextColumn::make('customer.name')
+                ->label('CUSTOMER')
+                ->searchable()
+                ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
                 
-                Tables\Columns\TextColumn::make('customer.name')
-                    ->label('CUSTOMER')
-                    ->searchable()
-                    ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
+            Tables\Columns\TextColumn::make('staff.name')
+                ->label('SALES REP')
+                ->toggleable()
+                ->color('gray'), 
+
+            Tables\Columns\TextColumn::make('due_date')
+                ->date('M d, Y')
+                ->label('DUE DATE')
+                ->sortable()
+                ->color(fn ($state) => $state <= now() ? 'danger' : 'warning'),
+            
+            Tables\Columns\SelectColumn::make('status')
+                ->label('STATUS')
+                ->options([
+                    'draft' => 'Draft',
+                    'quoted' => 'Quoted',
+                    'approved' => 'Approved',
+                    'in_production' => 'In Production',
+                    'received' => 'Ready for Pickup',
+                    'completed' => 'Completed',
+                ])
+                ->selectablePlaceholder(false),
+
+            Tables\Columns\TextColumn::make('notified_at')
+                ->label('TIMESTAMP')
+                ->getStateUsing(fn ($record) => $record->is_customer_notified && $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
+                ->icon(fn ($state) => $state !== 'Not Notified' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
+                ->color(fn ($state) => $state !== 'Not Notified' ? 'success' : 'gray')
+                ->description(function ($record) {
+                    if (!$record->is_customer_notified) return null;
+                    return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Message Log</span>");
+                })
+                // 🚀 This action stays here because it is attached to the Column click
+                ->action(
+                    Tables\Actions\Action::make('viewMessageHistory')
+                        ->modalHeading('Communication History')
+                        ->modalWidth('lg')
+                        ->slideOver()
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->form([
+                            Forms\Components\Placeholder::make('history_log')
+                                ->label('')
+                                ->content(fn ($record) => new HtmlString("
+                                    <div class='space-y-4'>
+                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
+                                            <div class='flex justify-between items-center mb-2'>
+                                                <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification Content</span>
+                                                <span class='text-[10px] text-gray-400'>".($record->notified_at?->format('M d, Y h:i A') ?? 'N/A')."</span>
+                                            </div>
+                                            <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
+                                        </div>
+                                    </div>
+                                "))
+                        ])
+                )
+                ->extraAttributes(fn ($state) => $state !== 'Not Notified' ? ['class' => 'opacity-70'] : []),
+        ])
+        ->filters([
+            //
+        ])
+        ->actions([
+            // 🚀 MOVE YOUR BUTTON ACTIONS HERE
+            Tables\Actions\EditAction::make()->iconButton(),
+
+            Tables\Actions\Action::make('notifyDelay')
+                ->label('Delay')
+                ->icon('heroicon-o-clock')
+                ->color('danger') 
+                ->modalHeading('Notify Customer of Delay')
+                ->form([
+                    Select::make('notify_method')
+                        ->label('Notification Method')
+                        ->options([
+                            'sms' => 'SMS Only',
+                            'email' => 'Email Only',
+                            'both' => 'Both (SMS & Email)'
+                        ])
+                        ->default('sms')
+                        ->required(),
+                    Textarea::make('message')
+                        ->label('Message Content')
+                        ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
+                        ->rows(3)
+                        ->required()
+                ])
+                ->action(function (CustomOrder $record, array $data) {
+                    self::handleNotification($record, $data['notify_method'], $data['message']);
+                }),
+
+            Tables\Actions\Action::make('markReady')
+                ->label('Ready')
+                ->icon('heroicon-o-check-circle')
+                ->color('success') 
+                ->modalHeading('Mark Ready & Notify')
+                ->form([
+                    Select::make('notify_method')
+                        ->label('Notification Method')
+                        ->options([
+                            'sms' => 'SMS Only',
+                            'email' => 'Email Only',
+                            'both' => 'Both (SMS & Email)',
+                            'none' => 'Do not notify (Just update status)'
+                        ])
+                        ->default('both')
+                        ->required(),
+                    Textarea::make('message')
+                        ->label('Message Content')
+                        ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
+                        ->rows(3)
+                        ->required(fn(Get $get) => $get('notify_method') !== 'none')
+                        ->visible(fn(Get $get) => $get('notify_method') !== 'none')
+                ])
+                ->action(function (CustomOrder $record, array $data) {
+                    $record->update([
+                        'status' => 'received', 
+                        'is_customer_notified' => $data['notify_method'] !== 'none', 
+                        'notified_at' => $data['notify_method'] !== 'none' ? now() : null
+                    ]);
                     
-                Tables\Columns\TextColumn::make('staff.name')
-                    ->label('SALES REP')
-                    ->toggleable()
-                    ->color('gray'), 
-
-                Tables\Columns\TextColumn::make('due_date')
-                    ->date('M d, Y')
-                    ->label('DUE DATE')
-                    ->sortable()
-                    ->color(fn ($state) => $state <= now() ? 'danger' : 'warning'),
-                
-                Tables\Columns\SelectColumn::make('status')
-                    ->label('STATUS')
-                    ->options([
-                        'draft' => 'Draft',
-                        'quoted' => 'Quoted',
-                        'approved' => 'Approved',
-                        'in_production' => 'In Production',
-                        'received' => 'Ready for Pickup',
-                        'completed' => 'Completed',
-                    ])
-                    ->selectablePlaceholder(false),
-
-                // 🆕 TIMESTAMP COLUMN WITH TICK & TRANSPARENCY
-                Tables\Columns\TextColumn::make('notified_at')
-                    ->label('TIMESTAMP')
-                    ->getStateUsing(fn ($record) => $record->is_customer_notified && $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
-                    ->icon(fn ($state) => $state !== 'Not Notified' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
-                    ->color(fn ($state) => $state !== 'Not Notified' ? 'success' : 'gray')
-                    // Tailwind class to make the text slightly transparent
-                    ->extraAttributes(fn ($state) => $state !== 'Not Notified' ? ['class' => 'opacity-70'] : []),
-            ])
-            ->filters([])
-            ->actions([
-                Tables\Actions\EditAction::make()->iconButton(),
-                
-                // 🔴 DELAY ACTION (Dynamic SMS/Email)
-                Tables\Actions\Action::make('notifyDelay')
-                    ->label('Delay')
-                    ->icon('heroicon-o-clock')
-                    ->color('danger') 
-                    ->modalHeading('Notify Customer of Delay')
-                    ->form([
-                        Select::make('notify_method')
-                            ->label('Notification Method')
-                            ->options([
-                                'sms' => 'SMS Only',
-                                'email' => 'Email Only',
-                                'both' => 'Both (SMS & Email)'
-                            ])
-                            ->default('sms')
-                            ->required(),
-                        Textarea::make('message')
-                            ->label('Message Content')
-                            ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
-                            ->rows(3)
-                            ->required()
-                    ])
-                    ->action(function (CustomOrder $record, array $data) {
+                    if ($data['notify_method'] !== 'none') {
                         self::handleNotification($record, $data['notify_method'], $data['message']);
-                    }),
+                    } else {
+                        Notification::make()->title('Status updated. No notifications sent.')->success()->send();
+                    }
+                }),
 
-                // 🟢 READY ACTION (Dynamic SMS/Email)
-                Tables\Actions\Action::make('markReady')
-                    ->label('Ready')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success') 
-                    ->modalHeading('Mark Ready & Notify')
-                    ->form([
-                        Select::make('notify_method')
-                            ->label('Notification Method')
-                            ->options([
-                                'sms' => 'SMS Only',
-                                'email' => 'Email Only',
-                                'both' => 'Both (SMS & Email)',
-                                'none' => 'Do not notify (Just update status)'
-                            ])
-                            ->default('both')
-                            ->required(),
-                        Textarea::make('message')
-                            ->label('Message Content')
-                            ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
-                            ->rows(3)
-                            ->required(fn(Get $get) => $get('notify_method') !== 'none')
-                            ->visible(fn(Get $get) => $get('notify_method') !== 'none')
-                    ])
-                    ->action(function (CustomOrder $record, array $data) {
-                        // 1. Update Status
-                        $record->update([
-                            'status' => 'received', 
-                            'is_customer_notified' => $data['notify_method'] !== 'none', 
-                            'notified_at' => $data['notify_method'] !== 'none' ? now() : null
-                        ]);
-                        
-                        // 2. Send Notifications
-                        if ($data['notify_method'] !== 'none') {
-                            self::handleNotification($record, $data['notify_method'], $data['message']);
-                        } else {
-                            Notification::make()->title('Status updated. No notifications sent.')->success()->send();
-                        }
-                    }),
-
-                // 🔹 CONVERT TO SALE
-                Tables\Actions\Action::make('convertToSale')
-                    ->label('To Sale')
-                    ->icon('heroicon-o-shopping-cart')
-                    ->color('info')
-                    ->visible(fn (CustomOrder $record) => $record->status === 'received')
-                    ->action(function (CustomOrder $record) {
-                        return redirect()->route('filament.admin.resources.sales.create', [
-                            'customer_id' => $record->customer_id,
-                            'custom_order_id' => $record->id,
-                        ]);
-                    }),
-            ])
-            ->defaultSort('created_at', 'desc');
-    }
+            Tables\Actions\Action::make('convertToSale')
+                ->label('To Sale')
+                ->icon('heroicon-o-shopping-cart')
+                ->color('info')
+                ->visible(fn (CustomOrder $record) => $record->status === 'received')
+                ->action(function (CustomOrder $record) {
+                    return redirect()->route('filament.admin.resources.sales.create', [
+                        'customer_id' => $record->customer_id,
+                        'custom_order_id' => $record->id,
+                    ]);
+                }),
+        ])
+        ->defaultSort('created_at', 'desc');
+}
 
     /**
      * 📩 HELPER: Handles Both SMS and Email Routing
      */
     public static function handleNotification(CustomOrder $record, string $method, string $message)
     {
+        $record->update([
+            'last_message' => $message,
+            'notified_at' => now(),
+            'is_customer_notified' => true,
+        ]);
         $smsSuccess = false;
         $emailSuccess = false;
 
@@ -356,7 +390,7 @@ class CustomOrderResource extends Resource
                     // Send basic text email using Laravel Mail Facade
                     Mail::raw($message, function ($mail) use ($record) {
                         $mail->to($record->customer->email)
-                             ->subject("Update on your Custom Order #{$record->order_no}");
+                            ->subject("Update on your Custom Order #{$record->order_no}");
                     });
                     $emailSuccess = true;
                 } catch (\Exception $e) {
