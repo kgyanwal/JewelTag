@@ -42,24 +42,35 @@ class StoreResource extends Resource
                 ])->columns(2),
 
              Section::make('Location Details')
+    ->description('Search for an address to automatically fill the fields below.')
     ->schema([
         GoogleAutocomplete::make('address_search')
             ->label('Search Address')
             ->autocompletePlaceholder('Start typing address...')
             ->countries(['US'])
-            ->dehydrated(false)
-            // 🚀 THE FIX: Pass the actual component objects, not strings
+            ->columnSpanFull()
             ->withFields([
+                TextInput::make('street')
+                    ->label('Street Address')
+                    ->extraInputAttributes(['data-google-field' => 'formatted_address'])
+                    ->columnSpanFull(),
                 TextInput::make('city')
                     ->label('City')
-                    ->placeholder('City will auto-fill'),
-                
+                    ->extraInputAttributes(['data-google-field' => 'locality']),
                 TextInput::make('state')
                     ->label('State')
-                    ->placeholder('State will auto-fill'),
-            ], 'locality', 'administrative_area_level_1'), 
-            // The 2nd and 3rd arguments map the children to Google's locality/state keys
-    ])->columns(1), // Columns(1) looks better when fields are nested
+                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                TextInput::make('postcode')
+                    ->label('Zip Code')
+                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
+            ]),
+        Select::make('country')
+            ->label('Country')
+            ->default('United States')
+            ->searchable(),
+    ])
+    ->columns(2),
+
                 Section::make('Timezone Settings')->schema([
 
                     Select::make('timezone')

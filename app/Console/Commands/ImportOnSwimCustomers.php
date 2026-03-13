@@ -7,6 +7,7 @@ use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class ImportOnSwimCustomers extends Command
 {
@@ -15,7 +16,6 @@ class ImportOnSwimCustomers extends Command
 
     public function handle()
     {
-        // 🚀 PREVENT TIMEOUTS: Ensures the script doesn't die during large CSV files
         set_time_limit(0);
         ini_set('memory_limit', '512M');
 
@@ -29,7 +29,6 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        // Keep your existing admin login logic as a fallback
         $adminUser = \App\Models\User::first();
         if ($adminUser) {
             auth()->login($adminUser); 
@@ -58,74 +57,95 @@ class ImportOnSwimCustomers extends Command
         $headers = array_map('trim', fgetcsv($file));
 
         $this->info("Starting Full Customer Import for {$tenantId}...");
+        
+        $totalRows = 0;
+        $created = 0;
+        $updated = 0;
+        $tempIdsCreated = 0;
+
         DB::connection('tenant')->beginTransaction();
 
         try {
             while (($row = fgetcsv($file)) !== FALSE) {
+                $totalRows++;
                 $data = array_combine($headers, $row);
 
                 $email = trim($data['Email'] ?? '');
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
                 $rawCustNo = trim($data['Cust No.'] ?? '');
-                if (empty($rawCustNo)) continue;
-                $fullCustNo = 'CUST-' . $rawCustNo;
 
-                // 🚀 STEP 1: RESOLVE THE ID CONFLICT
-                $existing = Customer::where('customer_no', $fullCustNo)->first();
-
-              $existing = Customer::where('customer_no', $fullCustNo)->first();
-
-                // 🚀 STEP 2: PREVENT SECONDARY PHONE CONFLICT
-                if ($existing && !empty($phone)) {
-                    $phoneOwner = Customer::where('phone', $phone)->first();
-                    if ($phoneOwner && $phoneOwner->id !== $existing->id) {
-                        $phone = $existing->phone; 
-                    }
+                // 🚀 REASON FIX: If ID is empty, generate one instead of skipping!
+                if (empty($rawCustNo)) {
+                    $fullCustNo = 'CUST-TEMP-' . strtoupper(Str::random(6));
+                    $tempIdsCreated++;
+                } else {
+                    $fullCustNo = 'CUST-' . $rawCustNo;
                 }
 
-                $cityValue = !empty(trim($data['City/Province'] ?? '')) 
-                                ? $data['City/Province'] 
-                                : ($data['Suburb/City'] ?? null);
+                Customer::withoutEvents(function () use ($fullCustNo, $data, $email, $phone, &$created, &$updated) {
+                    // Check for existing by customer_no
+                    $customer = Customer::where('customer_no', $fullCustNo)->first();
 
-                // 🚀 WRAPPER: This ignores the Activity Log observer to prevent Foreign Key errors
-                Customer::withoutEvents(function () use ($existing, $fullCustNo, $data, $email, $phone, $cityValue) {
-                    Customer::updateOrCreate(
-                        ['id' => $existing?->id ?? null], 
-                        [
-                            'customer_no' => $fullCustNo, 
-                            'name' => $data['First Name'] ?? 'Walk-in',
-                            'last_name' => $data['Last Name'] ?? null,
-                            'email' => $email ?: ($existing?->email ?? null),
-                            'phone' => $phone,
-                            'home_phone' => $data['Home Phone'] ?? null,
-                            'street'   => $data['Street'] ?? null,
-                            'suburb'   => $data['Suburb/City'] ?? null,   
-                            'city'     => $cityValue,
-                            'state'    => $data['State'] ?? null,
-                            'postcode' => $data['Postcode'] ?? null,
-                            'country'  => $data['Country'] ?? 'USA',
-                            'dob' => $this->parseDate($data['Birthdate'] ?? null),
-                            'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
-                            'gender' => $data['Gender'] ?? null,
-                            'gold_preference' => $data['Gold Preference'] ?? null,
-                            'lh_ring' => $data['Finger Size'] ?? null,
-                            'sales_person' => $data['Staff Assigned'] ?? null,
-                            'how_found_store' => $data['Referred By'] ?? null,
-                            'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
-                            'spouse_email' => $data['Spouse Email'] ?? null,
-                            'comments' => $data['Comments'] ?? null,
-                            'customer_alerts' => $data['Issues'] ?? null,
-                            'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
-                            'is_active' => true,
-                            'company' => $data['Company'] ?? null,
-                        ]
-                    );
+                    if (!$customer) {
+                        $customer = new Customer();
+                        $customer->customer_no = $fullCustNo;
+                        $created++;
+                    } else {
+                        $updated++;
+                    }
+
+                    // Prevent phone conflict with OTHER records
+                    if (!empty($phone) && $phone !== $customer->phone) {
+                        $phoneExists = Customer::where('phone', $phone)->where('id', '!=', $customer->id)->exists();
+                        if ($phoneExists) {
+                            $phone = $customer->phone; // Keep old phone if new one belongs to someone else
+                        }
+                    }
+
+                    $cityValue = !empty(trim($data['City/Province'] ?? '')) 
+                                    ? $data['City/Province'] 
+                                    : ($data['Suburb/City'] ?? null);
+
+                    $customer->fill([
+                        'name' => $data['First Name'] ?? 'Walk-in',
+                        'last_name' => $data['Last Name'] ?? null,
+                        'email' => $email ?: $customer->email,
+                        'phone' => $phone,
+                        'home_phone' => $data['Home Phone'] ?? null,
+                        'street'   => $data['Street'] ?? null,
+                        'suburb'   => $data['Suburb/City'] ?? null,   
+                        'city'     => $cityValue,
+                        'state'    => $data['State'] ?? null,
+                        'postcode' => $data['Postcode'] ?? null,
+                        'country'  => $data['Country'] ?? 'USA',
+                        'dob' => $this->parseDate($data['Birthdate'] ?? null),
+                        'wedding_anniversary' => $this->parseDate($data['Wedding Date'] ?? null),
+                        'gender' => $data['Gender'] ?? null,
+                        'gold_preference' => $data['Gold Preference'] ?? null,
+                        'lh_ring' => $data['Finger Size'] ?? null,
+                        'sales_person' => $data['Staff Assigned'] ?? null,
+                        'how_found_store' => $data['Referred By'] ?? null,
+                        'spouse_name' => trim(($data['Spouse First Name'] ?? '') . ' ' . ($data['Spouse Last Name'] ?? '')),
+                        'spouse_email' => $data['Spouse Email'] ?? null,
+                        'comments' => $data['Comments'] ?? null,
+                        'customer_alerts' => $data['Issues'] ?? null,
+                        'exclude_from_mailing' => (strtolower($data['On Mailing List'] ?? '') === 'no'),
+                        'is_active' => true,
+                        'company' => $data['Company'] ?? null,
+                    ]);
+
+                    $customer->save();
                 });
             }
 
             DB::connection('tenant')->commit();
             fclose($file);
-            $this->info("Customer import completed successfully.");
+            
+            $this->info("Import finished!");
+            $this->table(
+                ['Processed Rows', 'Created', 'Updated', 'Generated Temp IDs'],
+                [[$totalRows, $created, $updated, $tempIdsCreated]]
+            );
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();

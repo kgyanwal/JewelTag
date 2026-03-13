@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use App\Traits\LogsActivity;
@@ -9,11 +10,14 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Repair extends Model
 {
     use LogsActivity;
-    // 🔹 Ensure this is empty to allow all fields, or explicitly add 'reported_issue' to $fillable
+
     protected $guarded = []; 
-protected $casts = [
-    'notified_at' => 'datetime',
-];
+
+    protected $casts = [
+        'notified_at' => 'datetime',
+        'repair_history' => 'array', // 🚀 CRITICAL: This allows us to store the message history
+    ];
+
     protected static function booted()
     {
         static::creating(function ($repair) {
@@ -21,7 +25,6 @@ protected $casts = [
             $repair->store_id = auth()->user()->store_id ?? 1;
             $repair->staff_id = auth()->id();
             
-            // 🔹 DEFAULT FALLBACK: In case the form field is empty
             if (empty($repair->reported_issue)) {
                 $repair->reported_issue = 'General Maintenance / Service';
             }
@@ -38,21 +41,20 @@ protected $casts = [
         return $this->belongsTo(Customer::class);
     }
 
-    public function saleItem()
-{
-    return $this->hasOne(SaleItem::class, 'repair_id');
-}
+    public function saleItem(): HasOne
+    {
+        return $this->hasOne(SaleItem::class, 'repair_id');
+    }
 
-public function sale()
-{
-    // Access the sale through the sale item
-    return $this->hasOneThrough(
-        \App\Models\Sale::class,
-        \App\Models\SaleItem::class,
-        'repair_id', // Foreign key on sale_items table
-        'id',        // Foreign key on sales table
-        'id',        // Local key on repairs table
-        'sale_id'    // Local key on sale_items table
-    );
-}
+    public function sale()
+    {
+        return $this->hasOneThrough(
+            \App\Models\Sale::class,
+            \App\Models\SaleItem::class,
+            'repair_id',
+            'id',
+            'id',
+            'sale_id'
+        );
+    }
 }

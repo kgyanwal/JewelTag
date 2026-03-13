@@ -10,7 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{Section, TextInput, Select, Toggle, Grid, Textarea, DateTimePicker};
+use Filament\Forms\Components\{Section, TextInput, Select, Toggle, Grid, Textarea, DateTimePicker, Placeholder};
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Notifications\Notification;
 use Illuminate\Support\HtmlString;
@@ -161,12 +161,12 @@ class RepairResource extends Resource
                         ->placeholder('Describe what needs to be fixed...')
                         ->required()
                         ->columnSpanFull(),
-
+                    
                     TextInput::make('estimated_cost')
                         ->label('Estimated Cost')
                         ->numeric()
                         ->prefix('$')
-                        ->default(0),
+                        ->nullable(),
 
                     TextInput::make('final_cost')
                         ->label('Final Cost')
@@ -190,7 +190,7 @@ class RepairResource extends Resource
                 Tables\Columns\TextColumn::make('customer.name')
                     ->label('Customer')
                     ->searchable()
-                    ->description(fn ($record) => Str::limit($record->item_description, 50)),
+                    ->description(fn($record) => Str::limit($record->item_description, 50)),
 
                 Tables\Columns\IconColumn::make('is_from_store_stock')
                     ->label('Store Stock')
@@ -203,7 +203,7 @@ class RepairResource extends Resource
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'received' => 'gray',
                         'in_progress' => 'info',
                         'ready' => 'success',
@@ -213,12 +213,12 @@ class RepairResource extends Resource
 
                 Tables\Columns\TextColumn::make('notified_at')
                     ->label('Last Notified')
-                    ->getStateUsing(fn ($record) => $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
-                    ->icon(fn ($record) => $record->notified_at ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
-                    ->color(fn ($record) => $record->notified_at ? 'success' : 'gray')
+                    ->getStateUsing(fn($record) => $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
+                    ->icon(fn($record) => $record->notified_at ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
+                    ->color(fn($record) => $record->notified_at ? 'success' : 'gray')
                     ->description(function ($record) {
-                        if (!$record->notified_at) return null;
-                        return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Message Log</span>");
+                        if (empty($record->repair_history)) return null;
+                        return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Full History</span>");
                     })
                     ->action(
                         Tables\Actions\Action::make('viewRepairLog')
@@ -227,17 +227,29 @@ class RepairResource extends Resource
                             ->slideOver()
                             ->modalSubmitAction(false)
                             ->form([
-                                Forms\Components\Placeholder::make('msg_content')
-                                    ->label('Sent Content')
-                                    ->content(fn ($record) => new HtmlString("
-                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
-                                            <div class='flex justify-between items-center mb-2'>
-                                                <span class='text-xs font-bold text-primary-600 uppercase'>Message Sent</span>
-                                                <span class='text-[10px] text-gray-400'>".$record->notified_at?->format('M d, Y h:i A')."</span>
-                                            </div>
-                                            <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
-                                        </div>
-                                    "))
+                                Forms\Components\Placeholder::make('history_display')
+                                    ->label('')
+                                    ->content(function ($record) {
+                                        if (empty($record->repair_history)) return 'No history available.';
+
+                                        $html = '<div class="space-y-4">';
+                                        foreach (array_reverse($record->repair_history) as $log) {
+                                            $date = \Carbon\Carbon::parse($log['sent_at'])->format('M d, Y h:i A');
+                                            $method = strtoupper($log['method'] ?? 'N/A');
+                                            $staff = $log['staff_name'] ?? 'System';
+                                            $html .= "
+                                                <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
+                                                    <div class='flex justify-between items-center mb-2'>
+                                                        <span class='text-xs font-bold text-primary-600 uppercase'>{$method}</span>
+                                                        <span class='text-[10px] text-gray-400'>{$date}</span>
+                                                    </div>
+                                                    <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$log['message']}\"</p>
+                                                    <div class='mt-2 text-[10px] text-gray-500'>Sent by: {$staff}</div>
+                                                </div>";
+                                        }
+                                        $html .= '</div>';
+                                        return new HtmlString($html);
+                                    })
                             ])
                     ),
 
@@ -303,16 +315,26 @@ class RepairResource extends Resource
 
     public static function handleRepairNotification(Repair $record, string $method, string $message)
     {
+        // 🚀 History Tracking Logic
+        $history = $record->repair_history ?? [];
+        $history[] = [
+            'sent_at' => now()->toDateTimeString(),
+            'method' => $method,
+            'message' => $message,
+            'staff_name' => auth()->user()->name ?? 'System',
+        ];
+
         $record->update([
             'last_message' => $message,
             'notified_at' => now(),
+            'repair_history' => $history,
         ]);
 
         if (in_array($method, ['sms', 'both']) && !empty($record->customer->phone)) {
             try {
                 $digits = preg_replace('/[^0-9]/', '', $record->customer->phone);
                 $formattedPhone = '+1' . (Str::startsWith($digits, '1') ? substr($digits, 1) : $digits);
-                
+
                 $sns = new SnsClient([
                     'version' => 'latest',
                     'region'  => config('services.sns.region'),

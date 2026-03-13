@@ -4,6 +4,9 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductItemResource\Pages;
 use App\Models\ProductItem;
+use App\Models\Supplier;
+use App\Models\Tenant;
+use App\Models\User;
 use App\Services\ZebraPrinterService;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -12,6 +15,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Forms\Set;
+use Illuminate\Support\Str;
 use Filament\Forms\Components\{
     Section,
     Grid,
@@ -32,6 +36,7 @@ use Filament\Tables\Actions\{
     ActionGroup
 };
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\DB;
 
 class ProductItemResource extends Resource
 {
@@ -114,6 +119,114 @@ class ProductItemResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
+            Section::make()
+    ->compact()
+    ->schema([
+        /* ───────── TOP RADIO TOGGLE ───────── */
+        Radio::make('entry_type')
+            ->label('')
+            ->options([
+                'new' => 'Assemble New Stock Item',
+                'copy' => 'Copy Existing Item',
+            ])
+            ->default('new')
+            ->inline()
+            ->live()
+            ->extraAttributes(['class' => 'font-bold text-lg'])
+            ->afterStateUpdated(fn (Set $set) => $set('template_item_id', null)),
+
+        /* ───────── ADVANCED FILTER BAR (Visible only when 'copy' is selected) ───────── */
+        Grid::make(12)
+            ->visible(fn (Get $get) => $get('entry_type') === 'copy')
+            ->schema([
+                
+                // 1. Filter by Vendor
+                Select::make('filter_vendor')
+                    ->label('Filter Vendor')
+                    ->options(\App\Models\Supplier::pluck('company_name', 'id'))
+                    ->searchable()
+                    ->placeholder('All Vendors')
+                    ->live()
+                    ->columnSpan(3),
+
+                // 2. Filter by Department
+                Select::make('filter_dept')
+                    ->label('Filter Dept')
+                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->pluck('name', 'name'))
+                    ->placeholder('All Depts')
+                    ->live()
+                    ->columnSpan(3),
+
+                // 3. Filter by Category
+                Select::make('filter_category')
+                    ->label('Filter Category')
+                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->mapWithKeys(fn($i)=>[$i=>$i]))
+                    ->placeholder('All Categories')
+                    ->live()
+                    ->columnSpan(3),
+
+                /* ───────── DYNAMIC STOCK SELECTOR (Filtered by above choices) ───────── */
+                Select::make('template_item_id')
+                    ->label('Select Stock:')
+                    ->placeholder('SEARCH FILTERED ITEMS...')
+                    // 🚀 THE LOGIC: This dropdown now changes based on the filters above
+                    ->options(function (Get $get) {
+                        $query = ProductItem::query();
+
+                        if ($get('filter_vendor')) $query->where('supplier_id', $get('filter_vendor'));
+                        if ($get('filter_dept')) $query->where('department', $get('filter_dept'));
+                        if ($get('filter_category')) $query->where('category', $get('filter_category'));
+
+                        return $query->latest()
+                            ->limit(50)
+                            ->get()
+                            ->mapWithKeys(fn($i) => [
+                                $i->id => "{$i->barcode} - " . Str::limit($i->custom_description, 30)
+                            ]);
+                    })
+                    ->searchable()
+                    ->live()
+                    ->required(fn(Get $get) => $get('entry_type') === 'copy')
+                    ->columnSpan(3)
+                    ->afterStateUpdated(function ($state, Set $set) {
+                        if (!$state) return;
+                        $item = ProductItem::find($state);
+                        if (!$item) return;
+
+                        // 📋 CLONE ALL FIELDS LIVE
+                        $set('supplier_id', $item->supplier_id);
+                        $set('supplier_code', $item->supplier_code);
+                        $set('is_memo', $item->is_memo);
+                        $set('memo_status', $item->memo_status);
+                        $set('department', $item->department);
+                        $set('sub_department', $item->sub_department);
+                        $set('category', $item->category);
+                        $set('metal_type', $item->metal_type);
+                        $set('metal_weight', $item->metal_weight);
+                        $set('diamond_weight', $item->diamond_weight);
+                        $set('size', $item->size);
+                        $set('custom_description', $item->custom_description);
+                        $set('cost_price', $item->cost_price);
+                        $set('retail_price', $item->retail_price);
+                        $set('web_price', $item->web_price);
+                        
+                        // CLONE JEWELRY SPECS (Hidden Fields)
+                        $set('certificate_number', $item->certificate_number);
+                        $set('certificate_agency', $item->certificate_agency);
+                        $set('shape', $item->shape);
+                        $set('color', $item->color);
+                        $set('clarity', $item->clarity);
+                        $set('cut', $item->cut);
+                        $set('polish', $item->polish);
+                        $set('symmetry', $item->symmetry);
+                        $set('fluorescence', $item->fluorescence);
+                        $set('measurements', $item->measurements);
+                        $set('is_lab_grown', $item->is_lab_grown);
+
+                        Notification::make()->title('Template Applied')->success()->send();
+                    }),
+            ]),
+    ]),
             Section::make('Assemble New Stock Item')
                 ->columns(12)
                 ->schema([
@@ -458,6 +571,73 @@ Hidden::make('web_item')->default(false),
             ])
             ->actions([
                 ActionGroup::make([
+                    Action::make('transferStock')
+                        ->label('Transfer Stock')
+                        ->icon('heroicon-o-truck')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->form([
+                            Select::make('target_tenant_id')
+                                ->label('Destination Store')
+                                ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
+                                ->required()
+                                ->searchable(),
+                        ])
+                        ->action(function (ProductItem $record, array $data) {
+                            $sourceTenantId = tenant('id');
+                            $targetTenantId = $data['target_tenant_id'];
+
+                            // 1. Capture source data before switching
+                            $itemData = $record->toArray();
+                            $barcode = $record->barcode;
+                            $sourceVendorName = $record->supplier?->company_name;
+                            $sourceVendorCode = $record->supplier_code;
+
+                            try {
+                                DB::transaction(function () use ($itemData, $targetTenantId, $sourceVendorName, $sourceVendorCode, $record, $sourceTenantId, $barcode) {
+                                    
+                                    // 2. Switch context to Destination
+                                    $targetTenant = Tenant::find($targetTenantId);
+                                    tenancy()->initialize($targetTenant);
+
+                                    // 3. Find Vendor in Destination
+                                    $targetSupplier = Supplier::where('company_name', $sourceVendorName)
+                                        ->orWhere('supplier_code', $sourceVendorCode)
+                                        ->first();
+
+                                    if (!$targetSupplier) {
+                                        throw new \Exception("Vendor '{$sourceVendorName}' not found in destination store.");
+                                    }
+
+                                    // 4. Prepare data
+                                    unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
+                                    $itemData['supplier_id'] = $targetSupplier->id; 
+                                    $itemData['status'] = 'in_stock';
+
+                                    // 5. Create item
+                                    ProductItem::create($itemData);
+
+                                    // 🚀 6. Notify Destination Store (All users with admin roles)
+                                    $recipients = User::role(['Superadmin', 'Administration', 'Manager'])->get();
+                                    Notification::make()
+                                        ->title('New Stock Transferred')
+                                        ->body("Stock #{$barcode} has arrived from Store {$sourceTenantId}.")
+                                        ->icon('heroicon-o-building-storefront')
+                                        ->success()
+                                        ->sendToDatabase($recipients);
+
+                                    // 7. Switch back and delete from source
+                                    tenancy()->initialize(Tenant::find($sourceTenantId));
+                                    $record->delete();
+                                }, 5); // 5 attempts for deadlock safety
+
+                                Notification::make()->title('Transfer Successful')->body("Item {$barcode} moved to {$targetTenantId}")->success()->send();
+
+                            } catch (\Exception $e) {
+                                tenancy()->initialize(Tenant::find($sourceTenantId));
+                                Notification::make()->title('Transfer Error')->body($e->getMessage())->danger()->persistent()->send();
+                            }
+                        }),
                     EditAction::make(),
                     ViewAction::make(),
                     Action::make('addToWishlist')
@@ -520,6 +700,7 @@ Hidden::make('web_item')->default(false),
                         }
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, true));
                     }),
+                    
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

@@ -1,8 +1,10 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
 use App\Models\Tenant;
+
 
 $centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us','www.jeweltag.us'];
 
@@ -36,3 +38,15 @@ foreach ($centralDomains as $domain) {
         });
     });
 }
+
+Route::get('/google-test', function () {
+
+    $address = "31-00 47th Avenue, Long Island City, NY";
+
+    $response = Http::get('https://maps.googleapis.com/maps/api/geocode/json', [
+        'address' => $address,
+        'key' => config('services.google.key'), // ✅ Use the key from services.php
+    ]);
+
+    return $response->json();
+});

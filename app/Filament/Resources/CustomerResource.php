@@ -86,47 +86,33 @@ class CustomerResource extends Resource
                                                 ->label('Wedding Date'),
                                         ]),
 
-                                       Section::make('Customer Address')
-    ->description('Search for an address to automatically fill the fields below.')
-    ->columns(2)
-    ->collapsible()
-    ->schema([
-        GoogleAutocomplete::make('address_search')
-            ->label('Search Address')
-            ->autocompletePlaceholder('Start typing address...')
-            ->countries(['US'])
-            ->dehydrated(false)
-            ->columnSpanFull()
-            // 🚀 THE FIX: We pass the COMPONENT OBJECTS here. 
-            // This makes them visible, live, and database-ready.
-            ->withFields([
-                TextInput::make('street')
-                    ->label('Street Address')
-                    ->columnSpanFull(),
-                TextInput::make('city')
-                    ->label('City'),
-                TextInput::make('state')
-                    ->label('State'),
-                TextInput::make('postcode')
-                    ->label('Zip Code'),
-            ], 
-            // Mapping keys: These must match the order of fields above
-            'formatted_address',           // Maps to street
-            'locality',                    // Maps to city
-            'administrative_area_level_1', // Maps to state
-            'postal_code'                  // Maps to postcode
-            ),
+                                        GoogleAutocomplete::make('address_search')
+                                            ->label('Search Address')
+                                            ->autocompletePlaceholder('Start typing address...')
+                                            ->countries(['US'])
 
-        Select::make('country')
-            ->label('Country')
-            ->options([
-                'United States' => 'United States',
-                'Australia' => 'Australia',
-                'Canada' => 'Canada'
-            ])
-            ->default('United States')
-            ->searchable(),
-    ]),
+                                            ->columnSpanFull()
+                                            ->withFields([
+                                                
+                                                TextInput::make('street')
+                                                    ->label('Street Address')
+                                                    ->extraInputAttributes(['data-google-field' => 'formatted_address'])  // Use full address or '{street_number} {route}'
+                                                    ->columnSpanFull(),
+                                                TextInput::make('city')
+                                                    ->label('City')
+                                                    ->extraInputAttributes(['data-google-field' => 'locality']),
+                                                TextInput::make('state')
+                                                    ->label('State')
+                                                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                TextInput::make('postcode')
+                                                    ->label('Zip Code')
+                                                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                            ]),
+                                        Select::make('country')
+                                            ->label('Country')
+                                            ->default('United States')
+                                            ->searchable(),
+
                                     ]),
 
                                 // --- TAB 2: MARKETING & JEWELRY ---
@@ -214,31 +200,69 @@ class CustomerResource extends Resource
             ])->columns(3);
     }
 
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\ImageColumn::make('image')->circular()->label(''),
-                Tables\Columns\TextColumn::make('customer_no')->label('ID')->sortable()->searchable(),
-                Tables\Columns\TextColumn::make('name')
-                    ->label('Customer Name')
-                    ->formatStateUsing(fn($record) => "{$record->name} {$record->last_name}")
-                    ->searchable(['name', 'last_name'])
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('phone')->label('Phone')->copyable(),
-                Tables\Columns\TextColumn::make('loyalty_tier')
-                    ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'gold' => 'warning',
-                        'silver' => 'gray',
-                        default => 'info',
-                    }),
-                Tables\Columns\IconColumn::make('is_active')->boolean()->label('Status'),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('loyalty_tier'),
-            ])
-            ->actions([
+   public static function table(Table $table): Table
+{
+    return $table
+        ->columns([
+            Tables\Columns\ImageColumn::make('image')
+                ->circular()
+                ->label(''),
+
+            Tables\Columns\TextColumn::make('customer_no')
+                ->label('ID')
+                ->sortable()
+                ->searchable()
+                ->color('gray'),
+
+            Tables\Columns\TextColumn::make('name')
+                ->label('Customer Name')
+                ->formatStateUsing(fn($record) => "{$record->name} {$record->last_name}")
+                ->description(fn($record) => $record->company) // Shows company name below the name
+                ->searchable(['name', 'last_name', 'company'])
+                ->sortable()
+                ->weight('bold'),
+
+            Tables\Columns\TextColumn::make('phone')
+                ->label('Phone')
+                ->icon('heroicon-m-phone')
+                ->copyable() // Click to copy number
+                ->searchable(),
+
+            Tables\Columns\TextColumn::make('email')
+                ->label('Email')
+                ->icon('heroicon-m-envelope')
+                ->copyable()
+                ->searchable()
+                ->toggleable(), // Allow users to hide this column if they want
+
+            Tables\Columns\TextColumn::make('city')
+                ->label('Location')
+                ->getStateUsing(fn($record) => $record->city && $record->state ? "{$record->city}, {$record->state}" : 'N/A')
+                ->sortable()
+                ->toggleable(),
+
+            Tables\Columns\TextColumn::make('loyalty_tier')
+                ->label('Tier')
+                ->badge()
+                ->color(fn(string $state): string => match ($state) {
+                    'gold' => 'warning',
+                    'silver' => 'gray',
+                    default => 'info',
+                })
+                ->sortable(),
+
+            Tables\Columns\IconColumn::make('is_active')
+                ->boolean()
+                ->label('Status')
+                ->sortable(),
+        ])
+        ->filters([
+            Tables\Filters\SelectFilter::make('loyalty_tier'),
+            Tables\Filters\TernaryFilter::make('is_active')
+                ->label('Active Status'),
+        ])
+        ->actions([
+            Tables\Actions\ActionGroup::make([ // Grouping actions keeps the UI clean
                 Tables\Actions\EditAction::make()
                     ->after(function ($record) {
                         if ($record->customer_alerts) {
@@ -251,8 +275,10 @@ class CustomerResource extends Resource
                         }
                     }),
                 Tables\Actions\DeleteAction::make(),
-            ]);
-    }
+            ]),
+        ])
+        ->defaultSort('created_at', 'desc');
+}
 
     private static function getFingerSizes(): array
     {
