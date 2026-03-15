@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\CustomerResource;
 use App\Models\Customer;
 use App\Models\User;
 use Filament\Forms\Components\Grid;
@@ -84,38 +85,82 @@ class FindCustomer extends Page implements HasTable
             ->statePath('data');
     }
 
-    public function table(Table $table): Table
+ public function table(Table $table): Table
     {
         return $table
-            // 🚀 The query now correctly pulls from the Livewire data property
-            ->query(
-                Customer::query()
-                    ->when($this->data['customer_no'] ?? null, fn($q, $val) => $q->where('customer_no', 'like', "%$val%"))
-                    ->when($this->data['name'] ?? null, fn($q, $val) => $q->where('name', 'like', "%$val%"))
-                    ->when($this->data['last_name'] ?? null, fn($q, $val) => $q->where('last_name', 'like', "%$val%"))
-                    ->when($this->data['phone'] ?? null, fn($q, $val) => $q->where('phone', 'like', "%$val%"))
-                    ->when($this->data['email'] ?? null, fn($q, $val) => $q->where('email', 'like', "%$val%"))
-                    ->when($this->data['city'] ?? null, fn($q, $val) => $q->where('city', 'like', "%$val%"))
-                    ->when($this->data['sales_person'] ?? null, fn($q, $val) => $q->where('sales_person', $val))
-            )
+            ->query(Customer::query())
+            ->modifyQueryUsing(function (Builder $query) {
+                $f = $this->data;
+
+                return $query
+                    // 1. Filter by Customer ID
+                    ->when($f['customer_no'] ?? null, fn ($q, $v) => $q->where('customer_no', 'like', "%{$v}%"))
+                    
+                    // 2. Filter by Name (Search both name and last_name)
+                    ->when($f['full_name'] ?? null, function ($q, $v) {
+                        $q->where(fn ($sub) => $sub->where('name', 'like', "%{$v}%")
+                            ->orWhere('last_name', 'like', "%{$v}%")
+                            ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$v}%"])
+                        );
+                    })
+
+                    // 3. Filter by Phone
+                    ->when($f['phone'] ?? null, fn ($q, $v) => $q->where('phone', 'like', "%{$v}%"))
+
+                    // 4. Filter by Email
+                    ->when($f['email'] ?? null, fn ($q, $v) => $q->where('email', 'like', "%{$v}%"))
+
+                    // 5. Filter by Address (Search across street, city, and postcode)
+                    ->when($f['address'] ?? null, function ($q, $v) {
+                        $q->where(fn ($sub) => $sub->where('street', 'like', "%{$v}%")
+                            ->orWhere('city', 'like', "%{$v}%")
+                            ->orWhere('postcode', 'like', "%{$v}%")
+                        );
+                    })
+                    ->latest();
+            })
             ->columns([
-                ImageColumn::make('image')->circular()->label(''),
-                TextColumn::make('customer_no')->label('ID')->sortable(),
+                TextColumn::make('customer_no')
+                    ->label('ID')
+                    ->copyable()
+                    ->sortable()
+                    ->fontFamily('mono'),
+
                 TextColumn::make('name')
-                    ->label('Name')
-                    ->getStateUsing(fn($record) => "{$record->name} {$record->last_name}"),
-                TextColumn::make('phone')->label('Mobile'),
-                TextColumn::make('city')->label('City'),
-                TextColumn::make('loyalty_tier')->badge(),
+                    ->label('FULL NAME')
+                    ->weight('bold')
+                    ->formatStateUsing(fn ($record) => "{$record->name} {$record->last_name}")
+                    ->searchable(['name', 'last_name']),
+
+                TextColumn::make('phone')
+                    ->label('MOBILE')
+                    ->icon('heroicon-m-phone')
+                    ->copyable(),
+
+                TextColumn::make('email')
+                    ->label('EMAIL')
+                    ->icon('heroicon-m-envelope')
+                    ->copyable()
+                    ->toggleable(),
+
+                TextColumn::make('full_address')
+                    ->label('ADDRESS')
+                    ->getStateUsing(fn ($record) => trim("{$record->street} {$record->city}, {$record->state} {$record->postcode}"))
+                    ->wrap()
+                    ->limit(50),
             ])
             ->actions([
-                \Filament\Tables\Actions\EditAction::make()
-                    ->url(fn (Customer $record): string => "/admin/customers/{$record->id}/edit"),
-                \Filament\Tables\Actions\Action::make('new_sale')
-                    ->label('New Sale')
-                    ->icon('heroicon-o-shopping-cart')
-                    ->color('success')
-                    ->url(fn (Customer $record): string => \App\Filament\Resources\SaleResource::getUrl('create', ['customer_id' => $record->id])),    
-            ]);
+                \Filament\Tables\Actions\Action::make('edit')
+                    ->label('Edit Profile')
+                    ->icon('heroicon-m-pencil-square')
+                    ->url(fn ($record) => CustomerResource::getUrl('edit', ['record' => $record])),
+            ])
+            ->defaultSort('created_at', 'desc');
+    }
+
+    public function resetFilters(): void
+    {
+        $this->form->fill();
+        $this->resetTable();
     }
 }

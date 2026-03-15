@@ -13,7 +13,7 @@ use App\Models\CustomOrder;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, Toggle};
+use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, DatePicker, Textarea, Toggle};
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -231,6 +231,45 @@ class SaleResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
+                       Section::make('Resize / Special Job')
+    ->description('Add resizing instructions for this sale.')
+    ->icon('heroicon-o-scissors')
+    ->collapsible()
+    ->schema([
+        Toggle::make('is_resize')
+            ->label('Enable Resize for this Sale?')
+            ->onIcon('heroicon-m-scissors')
+            ->onColor('warning')
+            ->live(),
+
+        Grid::make(3)
+            ->visible(fn(Get $get) => $get('is_resize'))
+            ->schema([
+                TextInput::make('current_size')
+                    ->label('Current Size')
+                    ->live()
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+
+                TextInput::make('target_size')
+                    ->label('Target Size')
+                    ->live()
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+
+                // Uses the existing date_required column in your DB
+                DatePicker::make('date_required')
+                    ->label('Completion Date')
+                    ->native(false)
+                    ->live()
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+
+                Textarea::make('notes')
+                    ->label('Instructions Summary')
+                    ->placeholder('Automatic instructions...')
+                    ->columnSpanFull()
+                    ->rows(2),
+            ]),
+  
+    ]),
                         Section::make('Trade-In Details')
                             ->schema([
                                 Select::make('has_trade_in')
@@ -317,54 +356,54 @@ class SaleResource extends Resource
                     ]),
 
                     Group::make()->columnSpan(4)->schema([
-                       Section::make('Customer & Personnel')
-    ->description('Select a customer first to load profile and credits.')
-    ->schema([
-        Grid::make(1)->schema([
-            Select::make('customer_id')
-                ->label('Select Customer')
-                ->relationship('customer', 'name')
-                ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
-                ->searchable()
-                ->getSearchResultsUsing(function (string $search) {
-                    return \App\Models\Customer::query()
-                        ->where(function ($q) use ($search) {
-                            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-                                ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
-                                ->orWhere('phone', 'like', "%{$search}%")
-                                ->orWhere('customer_no', 'like', "%{$search}%");
-                        })
-                        ->limit(50)
-                        ->get()
-                        ->mapWithKeys(function ($customer) {
-                            return [
-                                $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
-                            ];
-                        });
-                })
-                ->preload()
-                ->required()
-                ->live()
-                ->columnSpanFull()
-                ->hintAction(
-                    FormAction::make('view_customer_details')
-                        ->label('View Profile')
-                        ->icon('heroicon-o-user-circle')
-                        ->color('info')
-                        ->visible(fn(Get $get) => $get('customer_id'))
-                        ->modalHeading('Customer Profile Details')
-                        ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Close')
-                        ->slideOver()
-                        ->form(function (Get $get) {
-                            $customer = \App\Models\Customer::find($get('customer_id'));
-                            if (!$customer) return [];
+                        Section::make('Customer & Personnel')
+                            ->description('Select a customer first to load profile and credits.')
+                            ->schema([
+                                Grid::make(1)->schema([
+                                    Select::make('customer_id')
+                                        ->label('Select Customer')
+                                        ->relationship('customer', 'name')
+                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                        ->searchable()
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            return \App\Models\Customer::query()
+                                                ->where(function ($q) use ($search) {
+                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhere('phone', 'like', "%{$search}%")
+                                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(function ($customer) {
+                                                    return [
+                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                    ];
+                                                });
+                                        })
+                                        ->preload()
+                                        ->required()
+                                        ->live()
+                                        ->columnSpanFull()
+                                        ->hintAction(
+                                            FormAction::make('view_customer_details')
+                                                ->label('View Profile')
+                                                ->icon('heroicon-o-user-circle')
+                                                ->color('info')
+                                                ->visible(fn(Get $get) => $get('customer_id'))
+                                                ->modalHeading('Customer Profile Details')
+                                                ->modalSubmitAction(false)
+                                                ->modalCancelActionLabel('Close')
+                                                ->slideOver()
+                                                ->form(function (Get $get) {
+                                                    $customer = \App\Models\Customer::find($get('customer_id'));
+                                                    if (!$customer) return [];
 
-                            return [
-                                Grid::make(2)->schema([
-                                    Placeholder::make('img')
-                                        ->label('')
-                                        ->content(new HtmlString("
+                                                    return [
+                                                        Grid::make(2)->schema([
+                                                            Placeholder::make('img')
+                                                                ->label('')
+                                                                ->content(new HtmlString("
                                             <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
                                                 <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
                                                 <div>
@@ -376,20 +415,20 @@ class SaleResource extends Resource
                                                 </div>
                                             </div>
                                         "))->columnSpanFull(),
-                                    TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
-                                    TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
-                                    TextInput::make('addr')
-                                        ->label('Full Address')
-                                        ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
-                                        ->readOnly()
-                                        ->columnSpanFull(),
-                                    Placeholder::make('history')
-                                        ->label('Last Sale Date')
-                                        ->content($customer->sales()->latest()->first()?->created_at?->format('M d, Y') ?? 'No previous sales')
-                                ]),
-                                Placeholder::make('full_details_link')
-                                    ->label('')
-                                    ->content(new HtmlString("
+                                                            TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
+                                                            TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
+                                                            TextInput::make('addr')
+                                                                ->label('Full Address')
+                                                                ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                ->readOnly()
+                                                                ->columnSpanFull(),
+                                                            Placeholder::make('history')
+                                                                ->label('Last Sale Date')
+                                                                ->content($customer->sales()->latest()->first()?->created_at?->format('M d, Y') ?? 'No previous sales')
+                                                        ]),
+                                                        Placeholder::make('full_details_link')
+                                                            ->label('')
+                                                            ->content(new HtmlString("
                                         <div class='mt-4 pt-4 border-t border-gray-200'>
                                             <a href='" . \App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $customer->id]) . "' 
                                                target='_blank' 
@@ -400,92 +439,92 @@ class SaleResource extends Resource
                                             <p class='text-[10px] text-gray-400 mt-2 italic'>Opens in a new browser tab</p>
                                         </div>
                                     "))->columnSpanFull(),
-                            ];
-                        })
-                )
-                ->createOptionModalHeading('Quick Add New Customer')
-                ->createOptionForm([
-                    Forms\Components\Tabs::make('New Customer')
-                        ->tabs([
-                            Forms\Components\Tabs\Tab::make('Contact')
-                                ->icon('heroicon-o-user')
-                                ->schema([
-                                    Forms\Components\Grid::make(2)->schema([
-                                        Forms\Components\TextInput::make('name')->label('First Name')->required(),
-                                        Forms\Components\TextInput::make('last_name')->label('Last Name'),
-                                    ]),
-                                    Forms\Components\Grid::make(2)->schema([
-                                        Forms\Components\TextInput::make('phone')
-                                            ->label('Mobile Phone')
-                                            ->tel()
-                                            ->prefix('+1')
-                                            ->mask('(999) 999-9999')
-                                            ->placeholder('(555) 555-5555')
-                                            ->stripCharacters(['(', ')', '-', ' '])
-                                            ->rule('regex:/^[0-9]{10}$/')
-                                            ->afterStateHydrated(function ($component, $state) {
-                                                if ($state && preg_match('/^[0-9]{10}$/', $state)) {
-                                                    $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
-                                                }
-                                            }),
-                                        Forms\Components\TextInput::make('email')->label('Email')->email(),
-                                    ]),
-                                    Forms\Components\Grid::make(2)->schema([
-                                        Forms\Components\DatePicker::make('dob')
-                                            ->label('Birth Date')
-                                            ->placeholder('Jan 01, 1990')
-                                            ->displayFormat('M d, Y')
-                                            ->native(false)
-                                            ->live(),
-                                        Forms\Components\DatePicker::make('wedding_anniversary')
-                                            ->label('Wedding Date')
-                                            ->placeholder('Jun 15, 2010')
-                                            ->displayFormat('M d, Y')
-                                            ->native(false)
-                                            ->live(),
-                                    ]),
-                                    // 🚀 Google Autocomplete Address Section
-                                    Forms\Components\Section::make('Customer Address')
-                                        ->description('Search for an address to automatically fill the fields below.')
-                                        ->columns(2)
-                                        ->collapsible()
-                                        ->schema([
-                                           GoogleAutocomplete::make('address_search')
-                                                ->label('Search Address')
-                                                ->autocompletePlaceholder('Start typing address...')
-                                                ->countries(['US'])
-                                                ->columnSpanFull()
-                                                ->withFields([
-                                                    Forms\Components\TextInput::make('street')
-                                                        ->label('Street Address')
-                                                        ->extraInputAttributes(['data-google-field' => 'formatted_address'])
-                                                        ->columnSpanFull(),
-                                                    Forms\Components\TextInput::make('city')
-                                                        ->label('City')
-                                                        ->extraInputAttributes(['data-google-field' => 'locality']),
-                                                    Forms\Components\TextInput::make('state')
-                                                        ->label('State')
-                                                        ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
-                                                    Forms\Components\TextInput::make('postcode')
-                                                        ->label('Zip Code')
-                                                        ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                    ];
+                                                })
+                                        )
+                                        ->createOptionModalHeading('Quick Add New Customer')
+                                        ->createOptionForm([
+                                            Forms\Components\Tabs::make('New Customer')
+                                                ->tabs([
+                                                    Forms\Components\Tabs\Tab::make('Contact')
+                                                        ->icon('heroicon-o-user')
+                                                        ->schema([
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                                                                Forms\Components\TextInput::make('last_name')->label('Last Name'),
+                                                            ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('phone')
+                                                                    ->label('Mobile Phone')
+                                                                    ->tel()
+                                                                    ->prefix('+1')
+                                                                    ->mask('(999) 999-9999')
+                                                                    ->placeholder('(555) 555-5555')
+                                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                                    ->rule('regex:/^[0-9]{10}$/')
+                                                                    ->afterStateHydrated(function ($component, $state) {
+                                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                                        }
+                                                                    }),
+                                                                Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                                            ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\DatePicker::make('dob')
+                                                                    ->label('Birth Date')
+                                                                    ->placeholder('Jan 01, 1990')
+                                                                    ->displayFormat('M d, Y')
+                                                                    ->native(false)
+                                                                    ->live(),
+                                                                Forms\Components\DatePicker::make('wedding_anniversary')
+                                                                    ->label('Wedding Date')
+                                                                    ->placeholder('Jun 15, 2010')
+                                                                    ->displayFormat('M d, Y')
+                                                                    ->native(false)
+                                                                    ->live(),
+                                                            ]),
+                                                            // 🚀 Google Autocomplete Address Section
+                                                            Forms\Components\Section::make('Customer Address')
+                                                                ->description('Search for an address to automatically fill the fields below.')
+                                                                ->columns(2)
+                                                                ->collapsible()
+                                                                ->schema([
+                                                                    GoogleAutocomplete::make('address_search')
+                                                                        ->label('Search Address')
+                                                                        ->autocompletePlaceholder('Start typing address...')
+                                                                        ->countries(['US'])
+                                                                        ->columnSpanFull()
+                                                                        ->withFields([
+                                                                            Forms\Components\TextInput::make('street')
+                                                                                ->label('Street Address')
+                                                                                ->extraInputAttributes(['data-google-field' => 'formatted_address'])
+                                                                                ->columnSpanFull(),
+                                                                            Forms\Components\TextInput::make('city')
+                                                                                ->label('City')
+                                                                                ->extraInputAttributes(['data-google-field' => 'locality']),
+                                                                            Forms\Components\TextInput::make('state')
+                                                                                ->label('State')
+                                                                                ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                            Forms\Components\TextInput::make('postcode')
+                                                                                ->label('Zip Code')
+                                                                                ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                        ]),
+                                                                    Forms\Components\Select::make('country')
+                                                                        ->label('Country')
+                                                                        ->default('United States')
+                                                                        ->searchable(),
+                                                                ]),
+                                                        ]),
                                                 ]),
-                                            Forms\Components\Select::make('country')
-                                                ->label('Country')
-                                                ->default('United States')
-                                                ->searchable(),
-                                        ]),
+                                            Forms\Components\Hidden::make('customer_no')
+                                                ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                        ])
+                                        ->createOptionUsing(function (array $data) {
+                                            return \App\Models\Customer::create($data)->id;
+                                        }),
                                 ]),
-                        ]),
-                    Forms\Components\Hidden::make('customer_no')
-                        ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
-                ])
-                ->createOptionUsing(function (array $data) {
-                    return \App\Models\Customer::create($data)->id;
-                }),
-        ]),
-   
-                            
+
+
 
                                 // 🚀 SALES PERSON LIST (Now follows customer selection)
                                 Select::make('sales_person_list')
@@ -597,6 +636,7 @@ class SaleResource extends Resource
 
                     ]),
                 ]),
+                
                 Hidden::make('final_total'),
                 Hidden::make('subtotal'),
                 Hidden::make('tax_amount'),
@@ -778,7 +818,30 @@ class SaleResource extends Resource
             ])
             ->defaultSort('created_at', 'desc');
     }
+/**
+ * Formats resize data and pushes it into the 'notes' column of the sales table
+ */
+public static function mapResizeToNotes(Get $get, Set $set): void
+{
+    $current = $get('current_size');
+    $target = $get('target_size');
+    $date = $get('date_required');
 
+    $parts = [];
+    $parts[] = "RESIZE JOB:";
+    
+    if ($current) { $parts[] = "From {$current}"; }
+    if ($target) { $parts[] = "To {$target}"; }
+
+    if ($date) {
+        try {
+            $parts[] = "Due: " . \Carbon\Carbon::parse($date)->format('M d, Y');
+        } catch (\Exception $e) {}
+    }
+
+    // 🚀 Update the 'notes' field instead of 'job_description'
+    $set('notes', implode(' | ', $parts));
+}
     public static function updateTotals(Get $get, Set $set)
     {
         $items = $get('items') ?? [];
