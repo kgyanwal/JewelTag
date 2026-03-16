@@ -98,6 +98,9 @@ class CustomerResource extends Resource
                                                     ->label('Street Address')
                                                     ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
                                                     ->columnSpanFull(),
+                                                TextInput::make('address_line_2')
+                                                    ->label('Address2/Apt/Suite')
+                                                    ->columnSpanFull(),
                                                 TextInput::make('city')
                                                     ->label('City')
                                                     ->extraInputAttributes(['data-google-field' => 'locality']),
