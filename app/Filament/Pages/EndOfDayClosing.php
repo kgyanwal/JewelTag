@@ -127,17 +127,23 @@ class EndOfDayClosing extends Page
         | 4. Populate Totals Based on Role
         |--------------------------------------------------------------------------
         */
-        foreach ($this->paymentMethods as $key => $label) {
-            $systemVal = $systemTotals[$key] ?? 0;
+       foreach ($this->paymentMethods as $key => $label) {
 
-            if (auth()->user()->hasRole('Superadmin')) {
-                $this->expectedTotals[$key] = $systemVal;
-                $this->actualTotals[$key]   = $systemVal;
-            } else {
-                $this->expectedTotals[$key] = 0;
-                $this->actualTotals[$key]   = 0;
-            }
-        }
+    $systemVal = $systemTotals[$key] ?? 0;
+
+    // ❌ Skip methods that have no payments
+    if ($systemVal <= 0) {
+        continue;
+    }
+
+    if (auth()->user()->hasRole('Superadmin')) {
+        $this->expectedTotals[$key] = $systemVal;
+        $this->actualTotals[$key]   = $systemVal;
+    } else {
+        $this->expectedTotals[$key] = 0;
+        $this->actualTotals[$key]   = 0;
+    }
+}
     }
 
     protected function getHeaderActions(): array

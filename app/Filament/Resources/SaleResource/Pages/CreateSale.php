@@ -31,8 +31,78 @@ class CreateSale extends CreateRecord
     public function form(Form $form): Form
     {
         return parent::form($form)
-           ->statePath('data');
+            ->statePath('data');
     }
+  public function mount(): void
+{
+    parent::mount();
+
+    if (session()->has('sale_draft')) {
+        $this->data = session('sale_draft');
+    }
+
+    $repairId = request()->get('repair_id');
+    $customOrderId = request()->get('custom_order_id');
+
+    // --- HANDLE REPAIR ---
+    if ($repairId) {
+        $repair = \App\Models\Repair::find($repairId);
+        if ($repair) {
+            $this->data['customer_id'] = $repair->customer_id;
+            $this->data['items'] = [
+                [
+                    'product_item_id' => null,
+                    'repair_id' => $repair->id,
+                    'stock_no_display' => 'REPAIR #' . $repair->repair_no,
+                    'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
+                    'qty' => 1,
+                    'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
+                    'discount_percent' => 0,
+                ],
+            ];
+        }
+    }
+
+    // --- HANDLE CUSTOM ORDER ---
+    if ($customOrderId) {
+        $customOrder = \App\Models\CustomOrder::find($customOrderId);
+        if ($customOrder) {
+            $this->data['customer_id'] = $customOrder->customer_id;
+            $this->data['items'] = [
+                [
+                    'product_item_id' => null,
+                    'repair_id' => null,
+                    'custom_order_id' => $customOrder->id,
+                    'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
+                    'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
+                    'qty' => 1,
+                    'sold_price' => $customOrder->quoted_price ?? 0,
+                    'discount_percent' => 0,
+                ],
+            ];
+        }
+    }
+
+    // 🚀 THE FIX: Force Recalculate Totals after injecting repair/custom data
+    if ($repairId || $customOrderId) {
+        $this->recalculateFinancials();
+    }
+}
+
+protected function recalculateFinancials(): void
+{
+    // Simulate the $get and $set functions required by SaleResource::updateTotals
+    $set = function($path, $value) {
+        data_set($this->data, $path, $value);
+    };
+    
+    $get = function($path) {
+        return data_get($this->data, $path);
+    };
+
+    // Call the calculation logic from your Resource
+    SaleResource::updateTotals($get, $set);
+}
     protected function getFormActions(): array
     {
         return [
@@ -60,38 +130,29 @@ class CreateSale extends CreateRecord
                 ])
 
                 // 3. THE LOGIC
-                ->action(function (array $data) {
+               ->action(function (array $data) {
     $formState = $this->data;
 
-    // 🚀 THE FIX: Search the database for ANY active staff matching this PIN
     $actualStaff = \App\Models\User::where('pin_code', $data['verification_pin'])
         ->where('is_active', true)
         ->first();
 
-    // If no staff found with that PIN, throw the error
     if (!$actualStaff) {
-        Notification::make()
-            ->title('Invalid PIN')
-            ->body('The entered PIN does not match any active staff member.')
-            ->danger()
-            ->send();
+        Notification::make()->title('Invalid PIN')->danger()->send();
         return; 
     }
 
-    // 🚀 SUCCESS: We found a staff member. Update the session so the 
-    // sale is attributed to the person who just entered their PIN.
-    Session::put([
-        'active_staff_id' => $actualStaff->id,
-        'active_staff_name' => $actualStaff->name,
-        'pin_verified_at' => now(),
-    ]);
+    // 🚀 RECALCULATE ONE LAST TIME before saving to prevent NULL errors
+    $set = function($path, $value) use (&$formState) { $formState[$path] = $value; };
+    $get = function($path) use (&$formState) { return $formState[$path] ?? null; };
+    SaleResource::updateTotals($get, $set);
 
     if ($formState['is_split_payment'] ?? false) {
         $formState['payment_method'] = 'split';
     }
 
     $this->data = $formState;
-    $this->create();
+    $this->create(); // Now tax_amount and totals will be present
 }),
 
             // Optional: Keep the "Cancel" button
@@ -133,7 +194,6 @@ class CreateSale extends CreateRecord
                     );
                 }
             }
-           
         }
     }
 
@@ -195,67 +255,15 @@ class CreateSale extends CreateRecord
         });
         session()->forget('sale_draft');
     }
-    public function mount(): void
-    {
-        parent::mount();
- if (session()->has('sale_draft')) {
-        $this->data = session('sale_draft');
-    }
-        // 1. Check for Repair or Custom Order in the URL
-        $repairId = request()->get('repair_id');
-        $customOrderId = request()->get('custom_order_id');
+    
 
-        // --- HANDLE REPAIR ---
-        if ($repairId) {
-            $repair = \App\Models\Repair::find($repairId);
-            if ($repair) {
-                $this->data['customer_id'] = $repair->customer_id;
-                $this->data['items'] = [
-                    [
-                        'product_item_id' => null,
-                        'repair_id' => $repair->id,
-                        'stock_no_display' => 'REPAIR #' . $repair->repair_no,
-                        'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
-                        'qty' => 1,
-                        'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
-                        'discount_percent' => 0,
-                    ],
-                ];
-            }
-        }
-
-        // --- HANDLE CUSTOM ORDER (NEW LOGIC) ---
-        if ($customOrderId) {
-            $customOrder = \App\Models\CustomOrder::find($customOrderId);
-            if ($customOrder) {
-                // Auto-select the customer
-                $this->data['customer_id'] = $customOrder->customer_id;
-
-                // Inject the custom order into the POS bill
-                $this->data['items'] = [
-                    [
-                        'product_item_id' => null,
-                        'repair_id' => null,
-                        'custom_order_id' => $customOrder->id, // 🔥 THIS LINE
-                        'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
-                        'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
-                        'qty' => 1,
-                        'sold_price' => $customOrder->quoted_price ?? 0,
-                        'discount_percent' => 0,
-                    ],
-                ];
-            }
-        }
-    }
-   
-
- protected function getRedirectUrl(): string
+    protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
     }
     public function updated($property): void
-{
-    // Save the entire form state in session
-    session(['sale_draft' => $this->data]);
-}
+    {
+        // Save the entire form state in session
+        session(['sale_draft' => $this->data]);
+    }
 }

@@ -42,10 +42,9 @@ Route::middleware([
     });
 
     // 3. STORE-SPECIFIC FEATURES
-    Route::get('/sales/{record}/receipt', function (Sale $record) {
-        $record->load(['customer', 'items']);
-        return view('receipts.sale', ['sale' => $record]);
-    })->name('sales.receipt');
+   Route::get('/sales/{record}/receipt', [ReceiptController::class, 'show'])
+    ->name('sales.receipt')
+    ->middleware(['auth']);
 
     Route::get('/receipt/{sale}', [ReceiptController::class, 'show'])->name('receipt.show');
 

@@ -117,11 +117,15 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->columnSpan(1),
 
-                                    Forms\Components\Textarea::make('custom_description')
-                                        ->label('Description')
-                                        ->maxLength(5000)
-                                        ->autosize()
-                                        ->columnSpan(3), // Adjusted span to fit new field
+                                   Forms\Components\Textarea::make('custom_description')
+    ->label('Description')
+    ->maxLength(200)
+    ->rows(2)                 // fixed height
+    ->autosize(false)         // 🚀 stop auto expanding
+    ->extraInputAttributes([
+        'style' => 'max-height:60px; overflow-y:auto; resize:none;'
+    ])
+    ->columnSpan(3),
 
                                     // 1. QUANTITY CHANGE: Update Line Total & Discount Amount
                                     TextInput::make('qty')
@@ -231,45 +235,67 @@ class SaleResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
-                       Section::make('Resize / Special Job')
-    ->description('Add resizing instructions for this sale.')
-    ->icon('heroicon-o-scissors')
-    ->collapsible()
-    ->schema([
-        Toggle::make('is_resize')
-            ->label('Enable Resize for this Sale?')
-            ->onIcon('heroicon-m-scissors')
-            ->onColor('warning')
-            ->live(),
+                        Section::make('🛠️ Workshop / Special Job')
+                            ->description('Add custom work instructions (Resize, Solder, etc.)')
+                            ->icon('heroicon-o-wrench')
+                            ->collapsible()
+                            ->schema([
+                                Grid::make(3)->schema([
+                                    Select::make('job_type')
+                                        ->label('Service Type')
+                                        ->options([
+                                            'Resize' => 'Resize',
+                                            'Solder' => 'Solder / Weld',
+                                            'Bail Change' => 'Bail Change',
+                                            'Shorten' => 'Shortening',
+                                            'Stone Setting' => 'Stone Setting',
+                                            'Polishing' => 'Polishing / Rhodium',
+                                        ])
+                                        ->placeholder('Select Job Type')
+                                        ->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
 
-        Grid::make(3)
-            ->visible(fn(Get $get) => $get('is_resize'))
-            ->schema([
-                TextInput::make('current_size')
-                    ->label('Current Size')
-                    ->live()
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                                    Select::make('metal_type')
+                                        ->label('Metal')
+                                        ->options([
+                                            '10k' => '10k Gold',
+                                            '14k' => '14k Gold',
+                                            '18k' => '18k Gold',
+                                            'Platinum' => 'Platinum',
+                                            'Silver' => 'Sterling Silver',
+                                        ])
+                                        ->placeholder('Select Metal'),
 
-                TextInput::make('target_size')
-                    ->label('Target Size')
-                    ->live()
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                                    DatePicker::make('date_required')
+                                        ->label('Completion Date')
+                                        ->native(false)
+                                        ->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                                ]),
 
-                // Uses the existing date_required column in your DB
-                DatePicker::make('date_required')
-                    ->label('Completion Date')
-                    ->native(false)
-                    ->live()
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                                Grid::make(2)
+                                    ->visible(fn(Get $get) => $get('job_type') === 'Resize')
+                                    ->schema([
+                                        TextInput::make('current_size')
+                                            ->label('Current Size')
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
 
-                Textarea::make('notes')
-                    ->label('Instructions Summary')
-                    ->placeholder('Automatic instructions...')
-                    ->columnSpanFull()
-                    ->rows(2),
-            ]),
-  
-    ]),
+                                        TextInput::make('target_size')
+                                            ->label('Target Size')
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                                    ]),
+
+                                Textarea::make('job_instructions')
+                                    ->label('Bench Notes / Instructions')
+                                    ->placeholder('Describe exactly what the jeweler needs to do...')
+                                    ->columnSpanFull()
+                                    ->rows(3),
+
+                                // Hidden field to keep your summary sync logic
+                                Hidden::make('notes'),
+                            ]),
                         Section::make('Trade-In Details')
                             ->schema([
                                 Select::make('has_trade_in')
@@ -352,7 +378,16 @@ class SaleResource extends Resource
                                     ->native(false)
                                     ->displayFormat('M d, Y'),
                             ]),
+
                         ]),
+                        Section::make('Receipt Customization')
+                            ->schema([
+                                Textarea::make('notes')
+                                    ->label('Receipt Notes / Warranty')
+                                    ->placeholder('Add special notes to be printed on the invoice...')
+                                    ->rows(3)
+                                    ->helperText('This text will be saved in your database and printed on the customer receipt.'),
+                            ]),
                     ]),
 
                     Group::make()->columnSpan(4)->schema([
@@ -470,12 +505,8 @@ class SaleResource extends Resource
                                                                 Forms\Components\TextInput::make('email')->label('Email')->email(),
                                                             ]),
                                                             Forms\Components\Grid::make(2)->schema([
-                                                                Forms\Components\DatePicker::make('dob')
-                                                                    ->label('Birth Date')
-                                                                    ->placeholder('Jan 01, 1990')
-                                                                    ->displayFormat('M d, Y')
-                                                                    ->native(false)
-                                                                    ->live(),
+                                                                   DatePicker::make('dob')
+                                                ->label('Birth Date'),
                                                                 Forms\Components\DatePicker::make('wedding_anniversary')
                                                                     ->label('Wedding Date')
                                                                     ->placeholder('Jun 15, 2010')
@@ -495,25 +526,38 @@ class SaleResource extends Resource
                                                                         ->countries(['US'])
                                                                         ->columnSpanFull()
                                                                         ->withFields([
-                                                                            Forms\Components\TextInput::make('street')
+                                                                            TextInput::make('street')
                                                                                 ->label('Street Address')
-                                                                                ->extraInputAttributes(['data-google-field' => 'formatted_address'])
-                                                                                ->columnSpanFull(),
-                                                                            Forms\Components\TextInput::make('city')
+                                                                                ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+
+                                                                            TextInput::make('address_line_2')
+                                                                                ->label('Address 2 / Apt / Suite')
+                                                                                ->extraInputAttributes(['data-google-field' => 'subpremise']),
+
+                                                                            TextInput::make('city')
                                                                                 ->label('City')
-                                                                                ->extraInputAttributes(['data-google-field' => 'locality']),
-                                                                            Forms\Components\TextInput::make('state')
+                                                                                ->extraInputAttributes([
+                                                                                    'data-google-field' => 'locality',  // ✅ Single field only
+                                                                                    'data-google-value' => 'short_name'  // ✅ Gets "NYC" instead of "New York City"
+                                                                                ]),
+
+                                                                            TextInput::make('state')
                                                                                 ->label('State')
-                                                                                ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
-                                                                            Forms\Components\TextInput::make('postcode')
+                                                                                ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])
+                                                                                ->columnSpan(1),
+
+                                                                            TextInput::make('postcode')
                                                                                 ->label('Zip Code')
-                                                                                ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                                ->extraInputAttributes(['data-google-field' => 'postal_code'])
+                                                                                ->columnSpan(1),
                                                                         ]),
+
                                                                     Forms\Components\Select::make('country')
                                                                         ->label('Country')
                                                                         ->default('United States')
                                                                         ->searchable(),
                                                                 ]),
+
                                                         ]),
                                                 ]),
                                             Forms\Components\Hidden::make('customer_no')
@@ -636,7 +680,7 @@ class SaleResource extends Resource
 
                     ]),
                 ]),
-                
+
                 Hidden::make('final_total'),
                 Hidden::make('subtotal'),
                 Hidden::make('tax_amount'),
@@ -818,31 +862,41 @@ class SaleResource extends Resource
             ])
             ->defaultSort('created_at', 'desc');
     }
-/**
- * Formats resize data and pushes it into the 'notes' column of the sales table
- */
-public static function mapResizeToNotes(Get $get, Set $set): void
-{
-    $current = $get('current_size');
-    $target = $get('target_size');
-    $date = $get('date_required');
+    /**
+     * Formats resize data and pushes it into the 'notes' column of the sales table
+     */
+    public static function mapResizeToNotes(Get $get, Set $set): void
+    {
+        $type = $get('job_type');
+        $current = $get('current_size');
+        $target = $get('target_size');
+        $date = $get('date_required');
+        $instr = $get('job_instructions');
 
-    $parts = [];
-    $parts[] = "RESIZE JOB:";
-    
-    if ($current) { $parts[] = "From {$current}"; }
-    if ($target) { $parts[] = "To {$target}"; }
+        if (!$type) return;
 
-    if ($date) {
-        try {
-            $parts[] = "Due: " . \Carbon\Carbon::parse($date)->format('M d, Y');
-        } catch (\Exception $e) {}
+        $parts = [];
+        $parts[] = strtoupper($type) . " JOB:";
+
+        if ($type === 'Resize') {
+            if ($current) $parts[] = "From {$current}";
+            if ($target) $parts[] = "To {$target}";
+        }
+
+        if ($date) {
+            try {
+                $parts[] = "Due: " . \Carbon\Carbon::parse($date)->format('M d, Y');
+            } catch (\Exception $e) {
+            }
+        }
+
+        if ($instr) {
+            $parts[] = "Notes: {$instr}";
+        }
+
+        $set('notes', implode(' | ', $parts));
     }
-
-    // 🚀 Update the 'notes' field instead of 'job_description'
-    $set('notes', implode(' | ', $parts));
-}
-    public static function updateTotals(Get $get, Set $set)
+    public static function updateTotals($get, $set)
     {
         $items = $get('items') ?? [];
         $shipping = floatval($get('shipping_charges') ?? 0);
@@ -853,7 +907,13 @@ public static function mapResizeToNotes(Get $get, Set $set): void
             $price = floatval($item['sold_price'] ?? 0);
             $qty = intval($item['qty'] ?? 1);
             $percent = floatval($item['discount_percent'] ?? 0);
-
+            if (!empty($item['repair_id'])) {
+                $repair = Repair::find($item['repair_id']);
+                if ($repair && $repair->is_warranty) {
+                    $price = 0;
+                    $percent = 0;
+                }
+            }
             $rowTotal = $price * $qty;
             $rowAfterDiscount = ($rowTotal - ($rowTotal * ($percent / 100)));
 

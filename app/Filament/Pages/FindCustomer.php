@@ -9,14 +9,16 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
-use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\HtmlString;
 
 class FindCustomer extends Page implements HasTable
 {
@@ -38,19 +40,19 @@ class FindCustomer extends Page implements HasTable
     {
         return $form
             ->schema([
-                Section::make()
+                Section::make('Search Customers')
                     ->schema([
                         Grid::make(4)->schema([
                             TextInput::make('customer_no')
                                 ->label('Customer ID')
-                                ->live() // 🚀 Makes search real-time
-                                ->afterStateUpdated(fn() => $this->resetTable()),
-                            TextInput::make('last_name')
-                                ->label('Last Name')
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->resetTable()),
                             TextInput::make('name')
                                 ->label('First Name')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            TextInput::make('last_name')
+                                ->label('Last Name')
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->resetTable()),
                             TextInput::make('company')
@@ -74,7 +76,6 @@ class FindCustomer extends Page implements HasTable
                                 ->afterStateUpdated(fn() => $this->resetTable()),
                             Select::make('sales_person')
                                 ->label('Sales Person')
-                                // 🚀 FETCH DYNAMICALLY FROM USERS
                                 ->options(User::pluck('name', 'name'))
                                 ->placeholder('Any')
                                 ->live()
@@ -85,7 +86,7 @@ class FindCustomer extends Page implements HasTable
             ->statePath('data');
     }
 
- public function table(Table $table): Table
+    public function table(Table $table): Table
     {
         return $table
             ->query(Customer::query())
@@ -93,69 +94,86 @@ class FindCustomer extends Page implements HasTable
                 $f = $this->data;
 
                 return $query
-                    // 1. Filter by Customer ID
                     ->when($f['customer_no'] ?? null, fn ($q, $v) => $q->where('customer_no', 'like', "%{$v}%"))
-                    
-                    // 2. Filter by Name (Search both name and last_name)
-                    ->when($f['full_name'] ?? null, function ($q, $v) {
-                        $q->where(fn ($sub) => $sub->where('name', 'like', "%{$v}%")
-                            ->orWhere('last_name', 'like', "%{$v}%")
-                            ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$v}%"])
-                        );
-                    })
-
-                    // 3. Filter by Phone
+                    ->when($f['name'] ?? null, fn ($q, $v) => $q->where('name', 'like', "%{$v}%"))
+                    ->when($f['last_name'] ?? null, fn ($q, $v) => $q->where('last_name', 'like', "%{$v}%"))
+                    ->when($f['company'] ?? null, fn ($q, $v) => $q->where('company', 'like', "%{$v}%"))
                     ->when($f['phone'] ?? null, fn ($q, $v) => $q->where('phone', 'like', "%{$v}%"))
-
-                    // 4. Filter by Email
                     ->when($f['email'] ?? null, fn ($q, $v) => $q->where('email', 'like', "%{$v}%"))
-
-                    // 5. Filter by Address (Search across street, city, and postcode)
-                    ->when($f['address'] ?? null, function ($q, $v) {
-                        $q->where(fn ($sub) => $sub->where('street', 'like', "%{$v}%")
-                            ->orWhere('city', 'like', "%{$v}%")
-                            ->orWhere('postcode', 'like', "%{$v}%")
-                        );
-                    })
+                    ->when($f['city'] ?? null, fn ($q, $v) => $q->where('city', 'like', "%{$v}%"))
+                    ->when($f['sales_person'] ?? null, fn ($q, $v) => $q->where('sales_person', $v))
                     ->latest();
             })
             ->columns([
                 TextColumn::make('customer_no')
                     ->label('ID')
-                    ->copyable()
                     ->sortable()
-                    ->fontFamily('mono'),
+                    ->copyable(),
 
-                TextColumn::make('name')
+                TextColumn::make('full_name')
                     ->label('FULL NAME')
                     ->weight('bold')
-                    ->formatStateUsing(fn ($record) => "{$record->name} {$record->last_name}")
-                    ->searchable(['name', 'last_name']),
+                    ->getStateUsing(fn ($record) => "{$record->name} {$record->last_name}"),
 
                 TextColumn::make('phone')
                     ->label('MOBILE')
-                    ->icon('heroicon-m-phone')
                     ->copyable(),
 
                 TextColumn::make('email')
                     ->label('EMAIL')
-                    ->icon('heroicon-m-envelope')
                     ->copyable()
                     ->toggleable(),
 
-                TextColumn::make('full_address')
+                TextColumn::make('address')
                     ->label('ADDRESS')
                     ->getStateUsing(fn ($record) => trim("{$record->street} {$record->city}, {$record->state} {$record->postcode}"))
-                    ->wrap()
-                    ->limit(50),
+                    ->wrap(),
             ])
             ->actions([
+                // 🚀 VIEW DETAILS POPUP (Slide-over)
+                Action::make('view')
+                    ->label('Details')
+                    ->icon('heroicon-o-eye')
+                    ->color('info')
+                    ->slideOver()
+                    ->modalSubmitAction(false)
+                    ->form(fn ($record) => [
+                        Section::make('Customer Profile')
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    Placeholder::make('id')->label('Customer ID')->content($record->customer_no),
+                                    Placeholder::make('created')->label('Member Since')->content($record->created_at->format('M d, Y')),
+                                    Placeholder::make('name')->label('Name')->content("{$record->name} {$record->last_name}"),
+                                    Placeholder::make('phone')->label('Phone')->content($record->phone),
+                                    Placeholder::make('email')->label('Email')->content($record->email ?? 'N/A'),
+                                    Placeholder::make('tier')->label('Loyalty Tier')->content(strtoupper($record->loyalty_tier ?? 'Standard')),
+                                ]),
+                            ]),
+                        Section::make('Mailing Address')
+                            ->schema([
+                                Placeholder::make('full_address')
+                                    ->label('')
+                                    ->content(new HtmlString("
+                                        <div class='text-sm text-gray-600'>
+                                            {$record->street}<br>
+                                            {$record->city}, {$record->state} {$record->postcode}<br>
+                                            <strong>Country:</strong> {$record->country}
+                                        </div>
+                                    ")),
+                            ]),
+                    ]),
+
                 \Filament\Tables\Actions\Action::make('edit')
-                    ->label('Edit Profile')
+                    ->label('Edit')
                     ->icon('heroicon-m-pencil-square')
                     ->url(fn ($record) => CustomerResource::getUrl('edit', ['record' => $record])),
             ])
-            ->defaultSort('created_at', 'desc');
+            ->headerActions([
+                \Filament\Tables\Actions\Action::make('reset')
+                    ->label('Clear Filters')
+                    ->color('gray')
+                    ->action(fn() => $this->resetFilters()),
+            ]);
     }
 
     public function resetFilters(): void

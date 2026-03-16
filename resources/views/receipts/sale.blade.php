@@ -10,47 +10,48 @@
 
     // Check receipt type
     foreach($sale->items as $item) {
-        if($item->discount_percent > 0) {
-            $originalPrice = $item->sold_price / (1 - ($item->discount_percent / 100));
-            $totalSavings += ($originalPrice - $item->sold_price) * $item->qty;
-        }
-        
-        if($item->repair_id || $item->repair) $hasRepair = true;
-        if($item->custom_order_id || $item->customOrder) $hasCustom = true;
+    if($item->discount_percent > 0) {
+    $originalPrice = $item->sold_price / (1 - ($item->discount_percent / 100));
+    $totalSavings += ($originalPrice - $item->sold_price) * $item->qty;
+    }
+    $isSpecialJob = !empty($sale->job_type);
+    if($item->repair_id || $item->repair) $hasRepair = true;
+    if($item->custom_order_id || $item->customOrder) $hasCustom = true;
     }
 
     // Determine receipt type with colors
     if ($hasRepair) {
-        $receiptType = 'repair';
-        $receiptTitle = 'REPAIR RECEIPT';
-        $receiptTypeLabel = 'Service/Repair';
-        $receiptColor = '#249E94'; // REPAIR COLOR
-        $receiptDarkColor = '#1a7a72';
-        $receiptAccent = '#4fc1b7';
-        $receiptBgLight = '#f0f9f8';
+    $receiptType = 'repair';
+    $receiptTitle = 'REPAIR RECEIPT';
+    $receiptTypeLabel = 'Service/Repair';
+    $receiptColor = '#249E94'; // REPAIR COLOR
+    $receiptDarkColor = '#1a7a72';
+    $receiptAccent = '#4fc1b7';
+    $receiptBgLight = '#f0f9f8';
     } elseif ($hasCustom) {
-        $receiptType = 'custom';
-        $receiptTitle = 'CUSTOM ORDER RECEIPT';
-        $receiptTypeLabel = 'Custom Design';
-        $receiptColor = '#BB8ED0'; // CUSTOM ORDER COLOR
-        $receiptDarkColor = '#9a6fb3';
-        $receiptAccent = '#d4b3e6';
-        $receiptBgLight = '#f9f5fc';
+    $receiptType = 'custom';
+    $receiptTitle = 'CUSTOM ORDER RECEIPT';
+    $receiptTypeLabel = 'Custom Design';
+    $receiptColor = '#BB8ED0'; // CUSTOM ORDER COLOR
+    $receiptDarkColor = '#9a6fb3';
+    $receiptAccent = '#d4b3e6';
+    $receiptBgLight = '#f9f5fc';
     } else {
-        $receiptType = 'normal';
-        $receiptTitle = 'SALES RECEIPT';
-        $receiptTypeLabel = 'Product Sale';
-        $receiptColor = '#1a6b8c'; // Blue remains same
-        $receiptDarkColor = '#12506b';
-        $receiptAccent = '#d4af37';
-        $receiptBgLight = '#eff6ff';
+    $receiptType = 'normal';
+    $receiptTitle = 'SALES RECEIPT';
+    $receiptTypeLabel = 'Product Sale';
+    $receiptColor = '#1a6b8c'; // Blue remains same
+    $receiptDarkColor = '#12506b';
+    $receiptAccent = '#d4af37';
+    $receiptBgLight = '#eff6ff';
     }
     $settings = DB::table('site_settings')->pluck('value', 'key');
-    
+
     $standardTerms = $settings['receipt_terms'] ?? 'All sales final. Returns accepted within 14 days for exchange/store credit only, item unworn with original receipt.';
     $repairTerms = $settings['repair_terms'] ?? 'All repair services guaranteed for 90 days. Returns not accepted for completed repairs.';
+
     @endphp
-    
+
     <meta charset="utf-8">
     <title>{{ $receiptTitle }}: {{ $sale->invoice_number }} | Diamond Square</title>
 
@@ -82,7 +83,13 @@
         }
 
         .print-button {
-            background: {{ $receiptColor }};
+            background: {
+                    {
+                    $receiptColor
+                }
+            }
+
+            ;
             color: white;
             border: none;
             padding: 10px 20px;
@@ -93,7 +100,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         /* Print styles */
@@ -102,23 +109,30 @@
                 background: white;
                 padding: 0;
             }
+
             .invoice-container {
                 box-shadow: none !important;
                 padding: 20px !important;
                 max-width: 100% !important;
                 border-top: none !important;
             }
+
             .no-print {
                 display: none !important;
             }
-            .invoice-header-card, .totals-card, .items-table thead th {
+
+            .invoice-header-card,
+            .totals-card,
+            .items-table thead th {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
+
             @page {
                 margin: 0.3in;
                 size: auto;
             }
+
             a[href]:after {
                 content: none !important;
             }
@@ -137,14 +151,14 @@
     @endif
 
     <div class="invoice-container" id="receipt-content" style="max-width: 850px; margin: 0 auto; padding: 30px; background: #ffffff; border-radius: 10px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); border-top: 6px solid {{ $receiptColor }};">
-        
+
         @if($receiptType !== 'normal')
         <div style="margin: 10px 0 15px; padding: 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 1px; background: {{ $receiptBgLight }}; color: {{ $receiptColor }}; border: 1px solid {{ $receiptColor }}; font-size: 11px;">
             <i class="fas {{ $receiptType == 'repair' ? 'fa-wrench' : 'fa-palette' }}"></i>
             {{ $receiptTitle }}
         </div>
         @endif
-        
+
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 25px; border-bottom: 2px solid #e0e7ee; padding-bottom: 20px;">
             <tr>
                 <td width="60%" valign="top">
@@ -156,10 +170,11 @@
                     </div>
                     <div style="font-size: 10px; background: #f8fafc; padding: 10px; border-radius: 6px; border-left: 3px solid {{ $receiptAccent }}; color: #546e7a; line-height: 1.5;">
                         <div style="margin-bottom: 3px;">
-                            <i class="fas fa-map-marker-alt"></i> {{ optional($sale->store)->location ?? 'Your Location(insert from store)' }}
+                            <i class="fas fa-map-marker-alt"></i> 
+                           {{ $sale->store->street }},{{ $sale->store->state }} {{ $sale->store->postcode }}
                         </div>
                         <div style="margin-bottom: 3px;">
-                            <i class="fas fa-phone"></i> {{ optional($sale->store)->phone ?? '505-810-7222' }} &nbsp; | &nbsp; 
+                            <i class="fas fa-phone"></i> {{ optional($sale->store)->phone ?? '505-810-7222' }} &nbsp; | &nbsp;
                             <i class="fas fa-envelope"></i> {{ optional($sale->store)->email ?? 'info@example.com' }}
                         </div>
                         <div>
@@ -188,46 +203,48 @@
                         <i class="fas fa-user-circle"></i> Customer Information
                     </div>
                     <div style="font-size: 15px; font-weight: 700; color: {{ $receiptColor }}; margin-bottom: 5px;">
-                        {{ $sale->customer->name ?? 'Valued Customer' }}
+                        {{ $sale->customer->name ?? 'Valued' }} {{ $sale->customer->last_name ?? 'Customer' }}
                     </div>
                     <div style="color: #546e7a; line-height: 1.5; font-size: 10px;">
                         <div><i class="fas fa-phone"></i> {{ $sale->customer->phone ?? 'N/A' }}</div>
                         <div><i class="fas fa-envelope"></i> {{ $sale->customer->email ?? 'N/A' }}</div>
                     </div>
                 </td>
-                
+
                 <td width="4%"></td>
 
                 <td width="48%" valign="top" style="background: #f9fbfc; border-radius: 6px; padding: 15px; border: 1px solid #e0e7ee; border-left: 3px solid {{ $receiptColor }};">
                     <div style="font-size: 9px; color: {{ $receiptColor }}; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; letter-spacing: 0.5px;">
                         <i class="fas fa-credit-card"></i> Payment Summary
                     </div>
-                    
+
                     <table width="100%" cellpadding="0" cellspacing="0" style="line-height: 1.6; font-size: 10px;">
                         <tr>
                             <td valign="top" style="color: #2c3e50;">Payment Method:</td>
                             <td valign="top" align="right">
+                                @if($sale->final_total <= 0 && ($hasRepair || $isSpecialJob))
+                    <strong style="color: #10b981;">COVERED BY WARRANTY</strong>
                                 @if($sale->is_split_payment)
-                                    @if($sale->payment_amount_1 > 0)
-                                    <div style="margin-bottom: 2px;">
-                                        <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_1) }}:</span> 
-                                        <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_1, 2) }}</strong>
-                                    </div>
-                                    @endif
-                                    @if($sale->payment_amount_2 > 0)
-                                    <div style="margin-bottom: 2px;">
-                                        <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_2) }}:</span> 
-                                        <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_2, 2) }}</strong>
-                                    </div>
-                                    @endif
-                                    @if($sale->payment_amount_3 > 0)
-                                    <div>
-                                        <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_3) }}:</span> 
-                                        <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_3, 2) }}</strong>
-                                    </div>
-                                    @endif
+                                @elseif($sale->payment_amount_1 > 0)
+                                <div style="margin-bottom: 2px;">
+                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_1) }}:</span>
+                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_1, 2) }}</strong>
+                                </div>
+                                @endif
+                                @if($sale->payment_amount_2 > 0)
+                                <div style="margin-bottom: 2px;">
+                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_2) }}:</span>
+                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_2, 2) }}</strong>
+                                </div>
+                                @endif
+                                @if($sale->payment_amount_3 > 0)
+                                <div>
+                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_3) }}:</span>
+                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_3, 2) }}</strong>
+                                </div>
+                                @endif
                                 @else
-                                    <strong style="color: {{ $receiptColor }};">{{ strtoupper(str_replace('_', ' ', $sale->payment_method)) }}</strong>
+                                <strong style="color: {{ $receiptColor }};">{{ strtoupper(str_replace('_', ' ', $sale->payment_method)) }}</strong>
                                 @endif
                             </td>
                         </tr>
@@ -238,9 +255,9 @@
                             <td valign="top" style="padding-top: 5px; color: #2c3e50;">Status:</td>
                             <td valign="top" align="right" style="padding-top: 5px;">
                                 @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
-                                    <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
+                                <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
                                 @else
-                                    <strong style="color: #10b981;">PAID IN FULL</strong>
+                                <strong style="color: #10b981;">PAID IN FULL</strong>
                                 @endif
                             </td>
                         </tr>
@@ -250,7 +267,7 @@
         </table>
 
         <div style="font-size: 14px; font-weight: 700; color: {{ $receiptColor }}; margin-bottom: 10px;">
-            <i class="fas {{ $receiptType == 'repair' ? 'fa-wrench' : ($receiptType == 'custom' ? 'fa-palette' : 'fa-gem') }}"></i> 
+            <i class="fas {{ $receiptType == 'repair' ? 'fa-wrench' : ($receiptType == 'custom' ? 'fa-palette' : 'fa-gem') }}"></i>
             {{ $receiptType == 'repair' ? 'Repair Services' : ($receiptType == 'custom' ? 'Custom Order Items' : 'Purchased Items') }}
         </div>
 
@@ -277,9 +294,9 @@
                     </td>
                     <td style="padding: 10px 8px; border-bottom: 1px solid #eee; background: #fff;">
                         @if($item->repair_id || $item->repair)
-                            <div style="font-size: 8px; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; margin-bottom: 3px; display: inline-block; font-weight: 600; color: white; background-color: {{ $receiptColor }};">Service/Repair</div>
+                        <div style="font-size: 8px; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; margin-bottom: 3px; display: inline-block; font-weight: 600; color: white; background-color: {{ $receiptColor }};">Service/Repair</div>
                         @elseif($item->custom_order_id || $item->customOrder)
-                            <div style="font-size: 8px; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; margin-bottom: 3px; display: inline-block; font-weight: 600; color: white; background-color: {{ $receiptColor }};">Custom Design</div>
+                        <div style="font-size: 8px; text-transform: uppercase; padding: 2px 4px; border-radius: 2px; margin-bottom: 3px; display: inline-block; font-weight: 600; color: white; background-color: {{ $receiptColor }};">Custom Design</div>
                         @endif
                         <div style="font-weight: 700; color: #2c3e50; font-size: 12px;">{{ $item->custom_description }}</div>
                     </td>
@@ -302,20 +319,59 @@
         <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
                 <td width="55%" valign="top" style="padding-right: 20px;">
+                    @if($sale->notes)
+                    <div style="margin-bottom: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 12px; border-left: 5px solid #f59e0b;">
+                        <div style="color: #92400e; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+                            <i class="fas fa-info-circle"></i> SPECIAL INSTRUCTIONS / JOB NOTES
+                        </div>
+                        <div style="font-size: 11px; color: #78350f; line-height: 1.6; white-space: pre-wrap; text-align: left; padding-left: 2px;">
+                            {{ $sale->notes }}
+                        </div>
+                    </div>
+                    @endif
+                    @if($sale->notes || $sale->job_type)
+<div style="margin-bottom: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 12px; border-left: 5px solid #f59e0b;">
+    <div style="color: #92400e; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+        <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
+    </div>
+    
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; color: #78350f; margin-bottom: 8px;">
+        <tr>
+            <td width="50%"><strong>Service:</strong> {{ $sale->job_type ?? 'General Service' }}</td>
+            <td width="50%"><strong>Metal:</strong> {{ $sale->metal_type ?? 'N/A' }}</td>
+        </tr>
+        @if($sale->job_type === 'Resize')
+        <tr>
+            <td><strong>Current Size:</strong> {{ $sale->current_size }}</td>
+            <td><strong>Target Size:</strong> {{ $sale->target_size }}</td>
+        </tr>
+        @endif
+        @if($sale->date_required)
+        <tr>
+            <td colspan="2"><strong>Target Completion:</strong> {{ \Carbon\Carbon::parse($sale->date_required)->format('M d, Y') }}</td>
+        </tr>
+        @endif
+    </table>
+
+    <div style="font-size: 11px; color: #78350f; line-height: 1.6; border-top: 1px dashed #fef3c7; padding-top: 5px;">
+        <strong>Instructions:</strong> {{ $sale->job_instructions ?? $sale->notes }}
+    </div>
+</div>
+@endif
                     <div style="background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e0e7ee; margin-bottom: 15px;">
                         <div style="color: {{ $receiptColor }}; font-size: 9px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px; letter-spacing: 0.5px;">
                             <i class="fas fa-file-contract"></i> TERMS & CONDITIONS
                         </div>
-                       <p style="font-size: 8px; color: #546e7a; line-height: 1.4; margin: 0;">
+                        <p style="font-size: 8px; color: #546e7a; line-height: 1.4; margin: 0;">
 
-    @if($receiptType == 'repair')
-        {!! $repairTerms !!}
-    @elseif($receiptType == 'custom')
-        Custom orders are final sale - no returns/exchanges. By signing, you approve the final design.
-    @else
-        {!! $standardTerms !!}
-    @endif
-</p>
+                            @if($receiptType == 'repair')
+                            {!! $repairTerms !!}
+                            @elseif($receiptType == 'custom')
+                            Custom orders are final sale - no returns/exchanges. By signing, you approve the final design.
+                            @else
+                            {!! $standardTerms !!}
+                            @endif
+                        </p>
                     </div>
 
                     @if(!isset($is_pdf) && !isset($is_email))
@@ -335,11 +391,11 @@
                                         <i class="fab fa-facebook-square" style="color: {{ $receiptColor }}; width: 14px;"></i> Facebook
                                     </a>
                                     @endif
-                                     @if(!empty(optional($sale->store)->instagram_link))
-                        <a href="{{ $sale->store->instagram_link }}"style="text-decoration: none; color: #2c3e50; font-weight: 500; font-size: 9px; display: block; margin-bottom: 3px;" target="_blank">
-                            <i class="fab fa-instagram"></i> Instagram
-                        </a>
-                        @endif
+                                    @if(!empty(optional($sale->store)->instagram_link))
+                                    <a href="{{ $sale->store->instagram_link }}" style="text-decoration: none; color: #2c3e50; font-weight: 500; font-size: 9px; display: block; margin-bottom: 3px;" target="_blank">
+                                        <i class="fab fa-instagram"></i> Instagram
+                                    </a>
+                                    @endif
                                 </td>
                             </tr>
                         </table>
@@ -419,7 +475,7 @@
                         </div>
                     </div>
                     @endif
-                    
+
                     <div style="text-align: center; margin-top: 15px; color: {{ $receiptAccent }}; font-weight: 700; letter-spacing: 0.5px; font-size: 9px;">
                         THANK YOU FOR YOUR BUSINESS!
                     </div>
@@ -439,11 +495,11 @@
                 document.title = originalTitle;
             }, 1000);
         }
-        
+
         window.addEventListener('beforeprint', function() {
             document.body.classList.add('is-printing');
         });
-        
+
         window.addEventListener('afterprint', function() {
             document.body.classList.remove('is-printing');
         });

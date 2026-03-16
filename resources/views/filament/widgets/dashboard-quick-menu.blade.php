@@ -44,9 +44,12 @@
                         <h1 class="brand-name">
                             {{ strtoupper($store->name ?? 'StoreName') }}
                         </h1>
-                        <p class="brand-tag">
-                            {{ $store->location ?? 'Premium Jewelry Management Suite' }}
-                        </p>
+                       <p class="brand-tag">
+    {{ $store->street ?? '' }},
+    {{ $store->city ?? '' }},
+    {{ $store->state ?? '' }}
+    {{ $store->postcode ?? '' }}
+</p>
                     </div>
 
                     <div class="quick-stats-bar" style="display: flex; align-items: center; gap: 12px;">
