@@ -80,7 +80,8 @@ class CustomerResource extends Resource
                                                 ->preload(),
 
                                             DatePicker::make('dob')
-                                                ->label('Birth Date'),
+                                                                 ->rule('before_or_equal:today')
+                                                                    ->label('Birth Date'),
 
                                             DatePicker::make('wedding_anniversary')
                                                 ->label('Wedding Date'),

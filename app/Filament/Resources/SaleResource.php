@@ -520,7 +520,9 @@ class SaleResource extends Resource
                                                             ]),
                                                             Forms\Components\Grid::make(2)->schema([
                                                                 DatePicker::make('dob')
+                                                                 ->rule('before_or_equal:today')
                                                                     ->label('Birth Date'),
+                                                                    
                                                                 Forms\Components\DatePicker::make('wedding_anniversary')
                                                                     ->label('Wedding Date')
 
