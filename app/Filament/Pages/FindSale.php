@@ -48,12 +48,19 @@ class FindSale extends Page implements HasForms, HasTable
             ->statePath('data')
             ->schema([
                 Section::make('Advanced Sale Search')
-                    ->description('Filter by Customer, Date, or Pending Jobs')
+                    ->description('Filter by Customer details, Invoice #, or Job types')
                     ->aside()
                     ->schema([
-                        Grid::make(3)->schema([
+                        Grid::make(4)->schema([
                             TextInput::make('invoice_number')->label('Invoice / Job #')->live(),
-                            TextInput::make('customer_name')->label('Customer Name')->live(),
+                            TextInput::make('staff_name')
+                            ->label('Sales Staff')
+                            ->placeholder('e.g. Anthony')
+                            ->live(),
+                            // 🚀 SIMON'S REQUEST: Separate First and Last Name
+                            TextInput::make('first_name')->label('First Name')->live(),
+                            TextInput::make('last_name')->label('Last Name')->live(),
+
                             TextInput::make('phone')->label('Phone Number')->tel()->prefix('+1')->live(),
 
                             Select::make('payment_method')
@@ -62,7 +69,6 @@ class FindSale extends Page implements HasForms, HasTable
 
                             DatePicker::make('date_from')->label('Date From')->live(),
 
-                            // 🚀 FIXED: The key must match the database column 'job_type'
                             Select::make('job_type')
                                 ->label('Job Type')
                                 ->options([
@@ -87,10 +93,17 @@ class FindSale extends Page implements HasForms, HasTable
                 fn(Builder $query) => $query
                     ->with(['customer', 'items.productItem'])
                     ->when($this->data['invoice_number'] ?? null, fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%"))
-                    ->when($this->data['customer_name'] ?? null, function ($q, $v) {
-                        $q->whereHas('customer', fn($sq) => $sq->where('name', 'like', "%{$v}%")->orWhere('last_name', 'like', "%{$v}%"));
+                    ->when($this->data['staff_name'] ?? null, function ($q, $v) {
+                    $q->where('sales_person_list', 'like', "%{$v}%");
+                })
+                    // 🚀 UPDATED LOGIC: Filter by separate First and Last name fields
+                    ->when($this->data['first_name'] ?? null, function ($q, $v) {
+                        $q->whereHas('customer', fn($sq) => $sq->where('name', 'like', "%{$v}%"));
                     })
-                    // 🚀 FIXED: Querying the new job_type column
+                    ->when($this->data['last_name'] ?? null, function ($q, $v) {
+                        $q->whereHas('customer', fn($sq) => $sq->where('last_name', 'like', "%{$v}%"));
+                    })
+
                     ->when($this->data['job_type'] ?? null, fn($q, $v) => $q->where('job_type', $v))
                     ->when($this->data['date_from'] ?? null, fn($q, $v) => $q->whereDate('created_at', '>=', $v))
                     ->latest()
@@ -102,6 +115,7 @@ class FindSale extends Page implements HasForms, HasTable
 
                 TextColumn::make('customer.name')
                     ->label('CUSTOMER')
+                    // 🚀 Ensure full name is always displayed in the table
                     ->formatStateUsing(fn($record) => $record->customer ? "{$record->customer->name} {$record->customer->last_name}" : 'Walk-in')
                     ->description(fn($record) => $record->customer?->phone),
 
@@ -109,15 +123,19 @@ class FindSale extends Page implements HasForms, HasTable
                     ->label('ITEMS / DESCRIPTION')
                     ->getStateUsing(function ($record) {
                         $lines = $record->items->map(fn($i) => ($i->productItem?->barcode ?? 'Item') . ': ' . Str::limit($i->custom_description, 30))->toArray();
-                        
-                        // 🚀 FIXED: Check job_type instead of is_resize
                         if ($record->job_type) {
                             $lines[] = "🛠️ " . $record->job_type . ": " . Str::limit($record->notes, 40);
                         }
                         return $lines;
                     })
                     ->listWithLineBreaks()->bulleted()->color('gray')->size('xs'),
-
+TextColumn::make('sales_person_list')
+    ->label('SALES STAFF')
+    ->badge()
+    ->color('gray')
+    ->separator(',') // Handles multiple names like "Jeanette, Simon"
+    ->searchable()
+    ->toggleable(),
                 TextColumn::make('resize_info')
                     ->label('JOB STATUS')
                     ->getStateUsing(function ($record) {
@@ -133,12 +151,7 @@ class FindSale extends Page implements HasForms, HasTable
 
                 TextColumn::make('final_total')->label('TOTAL')->money('USD')->alignment('right')->weight('bold'),
 
-                TextColumn::make('status')->badge()
-                    ->color(fn(string $state) => match ($state) {
-                        'completed' => 'success',
-                        'pending' => 'warning',
-                        default => 'gray'
-                    }),
+                TextColumn::make('status')->badge(),
             ])
             ->actions([
                 Action::make('quick_view')
@@ -152,12 +165,12 @@ class FindSale extends Page implements HasForms, HasTable
                             ->schema([
                                 Grid::make(3)->schema([
                                     Placeholder::make('inv')->label('Invoice')->content($record->invoice_number),
-                                    Placeholder::make('cust')->label('Customer')->content($record->customer?->name ?? 'Walk-in'),
+                                    // 🚀 Ensure full name is shown in popup
+                                    Placeholder::make('cust')->label('Customer')->content($record->customer ? "{$record->customer->name} {$record->customer->last_name}" : 'Walk-in'),
                                     Placeholder::make('total')->label('Amount')->content('$' . number_format($record->final_total, 2)),
                                 ]),
                             ]),
                         
-                        // 🚀 FIXED: Detailed Workshop view in popup
                         Section::make('🛠️ Workshop Job Details')
                             ->visible(fn($record) => $record->job_type !== null)
                             ->schema([

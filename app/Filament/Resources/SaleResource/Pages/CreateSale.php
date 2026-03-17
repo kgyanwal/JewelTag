@@ -33,76 +33,76 @@ class CreateSale extends CreateRecord
         return parent::form($form)
             ->statePath('data');
     }
-  public function mount(): void
-{
-    parent::mount();
+    public function mount(): void
+    {
+        parent::mount();
 
-    if (session()->has('sale_draft')) {
-        $this->data = session('sale_draft');
-    }
+        if (session()->has('sale_draft')) {
+            $this->data = session('sale_draft');
+        }
 
-    $repairId = request()->get('repair_id');
-    $customOrderId = request()->get('custom_order_id');
+        $repairId = request()->get('repair_id');
+        $customOrderId = request()->get('custom_order_id');
 
-    // --- HANDLE REPAIR ---
-    if ($repairId) {
-        $repair = \App\Models\Repair::find($repairId);
-        if ($repair) {
-            $this->data['customer_id'] = $repair->customer_id;
-            $this->data['items'] = [
-                [
-                    'product_item_id' => null,
-                    'repair_id' => $repair->id,
-                    'stock_no_display' => 'REPAIR #' . $repair->repair_no,
-                    'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
-                    'qty' => 1,
-                    'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
-                    'discount_percent' => 0,
-                ],
-            ];
+        // --- HANDLE REPAIR ---
+        if ($repairId) {
+            $repair = \App\Models\Repair::find($repairId);
+            if ($repair) {
+                $this->data['customer_id'] = $repair->customer_id;
+                $this->data['items'] = [
+                    [
+                        'product_item_id' => null,
+                        'repair_id' => $repair->id,
+                        'stock_no_display' => 'REPAIR #' . $repair->repair_no,
+                        'custom_description' => $repair->item_description . ' — ' . $repair->reported_issue,
+                        'qty' => 1,
+                        'sold_price' => $repair->final_cost ?? $repair->estimated_cost ?? 0,
+                        'discount_percent' => 0,
+                    ],
+                ];
+            }
+        }
+
+        // --- HANDLE CUSTOM ORDER ---
+        if ($customOrderId) {
+            $customOrder = \App\Models\CustomOrder::find($customOrderId);
+            if ($customOrder) {
+                $this->data['customer_id'] = $customOrder->customer_id;
+                $this->data['items'] = [
+                    [
+                        'product_item_id' => null,
+                        'repair_id' => null,
+                        'custom_order_id' => $customOrder->id,
+                        'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
+                        'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
+                        'qty' => 1,
+                        'sold_price' => $customOrder->quoted_price ?? 0,
+                        'discount_percent' => 0,
+                    ],
+                ];
+            }
+        }
+
+        // 🚀 THE FIX: Force Recalculate Totals after injecting repair/custom data
+        if ($repairId || $customOrderId) {
+            $this->recalculateFinancials();
         }
     }
 
-    // --- HANDLE CUSTOM ORDER ---
-    if ($customOrderId) {
-        $customOrder = \App\Models\CustomOrder::find($customOrderId);
-        if ($customOrder) {
-            $this->data['customer_id'] = $customOrder->customer_id;
-            $this->data['items'] = [
-                [
-                    'product_item_id' => null,
-                    'repair_id' => null,
-                    'custom_order_id' => $customOrder->id,
-                    'stock_no_display' => 'CUSTOM #' . $customOrder->order_no,
-                    'custom_description' => "Custom Piece: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
-                    'qty' => 1,
-                    'sold_price' => $customOrder->quoted_price ?? 0,
-                    'discount_percent' => 0,
-                ],
-            ];
-        }
+    protected function recalculateFinancials(): void
+    {
+        // Simulate the $get and $set functions required by SaleResource::updateTotals
+        $set = function ($path, $value) {
+            data_set($this->data, $path, $value);
+        };
+
+        $get = function ($path) {
+            return data_get($this->data, $path);
+        };
+
+        // Call the calculation logic from your Resource
+        SaleResource::updateTotals($get, $set);
     }
-
-    // 🚀 THE FIX: Force Recalculate Totals after injecting repair/custom data
-    if ($repairId || $customOrderId) {
-        $this->recalculateFinancials();
-    }
-}
-
-protected function recalculateFinancials(): void
-{
-    // Simulate the $get and $set functions required by SaleResource::updateTotals
-    $set = function($path, $value) {
-        data_set($this->data, $path, $value);
-    };
-    
-    $get = function($path) {
-        return data_get($this->data, $path);
-    };
-
-    // Call the calculation logic from your Resource
-    SaleResource::updateTotals($get, $set);
-}
     protected function getFormActions(): array
     {
         return [
@@ -130,30 +130,32 @@ protected function recalculateFinancials(): void
                 ])
 
                 // 3. THE LOGIC
-               ->action(function (array $data) {
-    $formState = $this->data;
+                ->action(function (array $data) {
+                    $formState = $this->data;
 
-    $actualStaff = \App\Models\User::where('pin_code', $data['verification_pin'])
-        ->where('is_active', true)
-        ->first();
+                    $actualStaff = \App\Models\User::where('pin_code', $data['verification_pin'])
+                        ->where('is_active', true)
+                        ->first();
 
-    if (!$actualStaff) {
-        Notification::make()->title('Invalid PIN')->danger()->send();
-        return; 
-    }
+                    if (!$actualStaff) {
+                        Notification::make()->title('Invalid PIN')->danger()->send();
+                        return;
+                    }
 
-    // 🚀 RECALCULATE ONE LAST TIME before saving to prevent NULL errors
-    $set = function($path, $value) use (&$formState) { $formState[$path] = $value; };
-    $get = function($path) use (&$formState) { return $formState[$path] ?? null; };
-    SaleResource::updateTotals($get, $set);
+                    // 🚀 RECALCULATE ONE LAST TIME before saving to prevent NULL errors
+                    $get = fn($path) => data_get($formState, $path);
+                    $set = function ($path, $value) use (&$formState) {
+                        data_set($formState, $path, $value);
+                    };
+                    SaleResource::updateTotals($get, $set);
 
-    if ($formState['is_split_payment'] ?? false) {
-        $formState['payment_method'] = 'split';
-    }
+                    if ($formState['is_split_payment'] ?? false) {
+                        $formState['payment_method'] = 'split';
+                    }
 
-    $this->data = $formState;
-    $this->create(); // Now tax_amount and totals will be present
-}),
+                    $this->data = $formState;
+                    $this->create(); // Now tax_amount and totals will be present
+                }),
 
             // Optional: Keep the "Cancel" button
             parent::getCancelFormAction(),
@@ -254,8 +256,9 @@ protected function recalculateFinancials(): void
             }
         });
         session()->forget('sale_draft');
+    $this->data = [];
     }
-    
+
 
     protected function getRedirectUrl(): string
     {

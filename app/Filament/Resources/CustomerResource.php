@@ -111,10 +111,14 @@ class CustomerResource extends Resource
                                                     ->label('Zip Code')
                                                     ->extraInputAttributes(['data-google-field' => 'postal_code']),
                                             ]),
-                                        Select::make('country')
-                                            ->label('Country')
-                                            ->default('United States')
-                                            ->searchable(),
+                                       Select::make('country')
+    ->label('Country')
+    ->options([
+        'USA' => 'United States',
+    ])
+    ->default('USA')
+    ->searchable()
+    ->preload(),
 
                                     ]),
 

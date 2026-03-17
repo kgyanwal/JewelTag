@@ -31,7 +31,7 @@ use Filament\Support\Facades\FilamentView;
 use Illuminate\Support\Facades\Blade;
 use App\Models\Announcement;
 use Filament\Navigation\NavigationItem;
-
+use App\Helpers\Staff;
 class AdminPanelProvider extends PanelProvider
 {
     /**
@@ -365,6 +365,10 @@ HTML
             ])
 
          ->userMenuItems([
+            'account' => MenuItem::make()
+                ->label(fn () => Staff::user()?->username ?? auth()->user()->name)
+                ->icon('heroicon-o-user-circle'),
+      
                 'switch_user' => MenuItem::make()
                     ->label('Switch Associate PIN')
                     ->icon('heroicon-o-arrows-right-left')

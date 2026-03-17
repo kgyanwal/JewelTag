@@ -43,7 +43,20 @@ class SaleResource extends Resource
             ->schema([
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)->schema([
-                        Section::make('Stock Selection')->schema([
+                        Section::make('Stock Selection')
+                          ->headerActions([
+        FormAction::make('clear_draft')
+            ->label('Start Fresh / New Sale')
+            ->icon('heroicon-m-trash')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->action(function () {
+                session()->forget('sale_draft');
+                return redirect(static::getUrl('create'));
+            }),
+    ])
+                        ->schema([
+                            
                             Grid::make(4)->schema([
                                 Select::make('current_item_search')
                                     ->label('Select Stock #')
@@ -106,6 +119,7 @@ class SaleResource extends Resource
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
                                 ->relationship('items')
+                                ->live()
                                 ->schema([
                                     Hidden::make('product_item_id')->dehydrated(),
                                     Hidden::make('repair_id')->dehydrated(),
@@ -117,15 +131,15 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->columnSpan(1),
 
-                                   Forms\Components\Textarea::make('custom_description')
-    ->label('Description')
-    ->maxLength(200)
-    ->rows(2)                 // fixed height
-    ->autosize(false)         // 🚀 stop auto expanding
-    ->extraInputAttributes([
-        'style' => 'max-height:60px; overflow-y:auto; resize:none;'
-    ])
-    ->columnSpan(3),
+                                    Forms\Components\Textarea::make('custom_description')
+                                        ->label('Description')
+                                        ->maxLength(200)
+                                        ->rows(2)                 // fixed height
+                                        ->autosize(false)         // 🚀 stop auto expanding
+                                        ->extraInputAttributes([
+                                            'style' => 'max-height:60px; overflow-y:auto; resize:none;'
+                                        ])
+                                        ->columnSpan(3),
 
                                     // 1. QUANTITY CHANGE: Update Line Total & Discount Amount
                                     TextInput::make('qty')
@@ -505,14 +519,11 @@ class SaleResource extends Resource
                                                                 Forms\Components\TextInput::make('email')->label('Email')->email(),
                                                             ]),
                                                             Forms\Components\Grid::make(2)->schema([
-                                                                   DatePicker::make('dob')
-                                                ->label('Birth Date'),
+                                                                DatePicker::make('dob')
+                                                                    ->label('Birth Date'),
                                                                 Forms\Components\DatePicker::make('wedding_anniversary')
                                                                     ->label('Wedding Date')
-                                                                    ->placeholder('Jun 15, 2010')
-                                                                    ->displayFormat('M d, Y')
-                                                                    ->native(false)
-                                                                    ->live(),
+
                                                             ]),
                                                             // 🚀 Google Autocomplete Address Section
                                                             Forms\Components\Section::make('Customer Address')
@@ -693,6 +704,7 @@ class SaleResource extends Resource
                     ->dehydrated(false),
             ])
             ->statePath('data');
+            
     }
 
     public static function table(Table $table): Table

@@ -18,4 +18,12 @@ class Customer extends Model
     {
         return $this->hasMany(Sale::class);
     }
+    protected static function booted()
+{
+    static::saving(function ($customer) {
+        if (empty($customer->country)) {
+            $customer->country = 'USA';
+        }
+    });
+}
 }

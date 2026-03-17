@@ -60,7 +60,7 @@
                 <span>${{ number_format($todaySales ?? 0, 2) }}</span>
             </template>
             <template x-if="!showSales">
-                <span>$ • • •</span>
+                <span>$...</span>
             </template>
         </span>
 
