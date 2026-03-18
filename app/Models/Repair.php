@@ -14,6 +14,7 @@ class Repair extends Model
     protected $guarded = []; 
 
     protected $casts = [
+        'sales_person_list' => 'array',
         'notified_at' => 'datetime',
         'repair_history' => 'array', // 🚀 CRITICAL: This allows us to store the message history
     ];

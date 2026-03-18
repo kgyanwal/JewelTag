@@ -44,77 +44,81 @@ class SaleResource extends Resource
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)->schema([
                         Section::make('Stock Selection')
-                          ->headerActions([
-        FormAction::make('clear_draft')
-            ->label('Start Fresh / New Sale')
-            ->icon('heroicon-m-trash')
-            ->color('danger')
-            ->requiresConfirmation()
-            ->action(function () {
-                session()->forget('sale_draft');
-                return redirect(static::getUrl('create'));
-            }),
-    ])
-                        ->schema([
-                            
-                            Grid::make(4)->schema([
-                                Select::make('current_item_search')
-                                    ->label('Select Stock #')
-                                    ->searchable()
-                                    ->preload()
-                                    ->options(
-                                        fn() => ProductItem::where('qty', '>', 0)
-                                            ->where('status', 'in_stock')
-                                            ->get()
-                                            ->mapWithKeys(fn($item) => [
-                                                $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
-                                            ])
-                                    )
-                                    ->live()
-                                    ->dehydrated(false)
-                                    // 🚀 AUTOMATIC ADD LOGIC
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        if (!$state) return;
+                            ->headerActions([
+                                FormAction::make('clear_draft')
+                                    ->label('Start Fresh / New Sale')
+                                    ->icon('heroicon-m-trash')
+                                    ->color('danger')
+                                    ->requiresConfirmation()
+                                    ->action(function () {
+                                        session()->forget('sale_draft');
+                                        return redirect(static::getUrl('create'));
+                                    }),
+                            ])
+                            ->schema([
 
-                                        $item = ProductItem::find($state);
-                                        if (!$item) return;
+                                Grid::make(4)->schema([
+                                    Select::make('current_item_search')
+                                        ->label('Select Stock #')
+                                        ->searchable()
+                                        ->preload()
+                                        ->options(
+                                            fn() => ProductItem::where('qty', '>', 0)
+                                                ->where('status', 'in_stock')
+                                                ->get()
+                                                ->mapWithKeys(fn($item) => [
+                                                    $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
+                                                ])
+                                        )
+                                        ->live()
+                                        ->dehydrated(false)
+                                        // 🚀 AUTOMATIC ADD LOGIC
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            if (!$state) return;
 
-                                        // 1. Get current items or empty array
-                                        $currentItems = $get('items') ?? [];
+                                            $item = ProductItem::find($state);
+                                            if (!$item) return;
 
-                                        // 2. Prepare the new row
-                                        $newRow = [
-                                            'product_item_id' => $item->id,
-                                            'repair_id' => null,
-                                            'stock_no_display' => $item->barcode,
-                                            'custom_description' => $item->custom_description ?? $item->barcode,
-                                            'qty' => $get('current_qty') ?? 1,
-                                            'sold_price' => $item->retail_price,
-                                            'discount_percent' => 0,
-                                            'discount_amount' => 0,
-                                            'is_tax_free' => false,
-                                        ];
+                                            // 1. Get current items or empty array
+                                            $currentItems = $get('items') ?? [];
+$qty = $get('current_qty') ?? 1;
+    $price = $item->retail_price;
 
-                                        // 3. Push to repeater and reset search
-                                        $currentItems[] = $newRow;
+    // 🚀 THE FIX: Calculate initial override price (Price * Qty)
+    $initialTotal = $price * $qty;
+                                            // 2. Prepare the new row
+                                            $newRow = [
+                                                'product_item_id' => $item->id,
+                                                'repair_id' => null,
+                                                'stock_no_display' => $item->barcode,
+                                                'custom_description' => $item->custom_description ?? $item->barcode,
+                                                'qty' => $get('current_qty') ?? 1,
+                                                'sold_price' => $item->retail_price,
+                                                'discount_percent' => 0,
+                                                'discount_amount' => 0,
+                                                'is_tax_free' => false,
+                                            ];
 
-                                        $set('items', $currentItems);
-                                        $set('current_item_search', null); // 🚀 Clears the search box for the next item
-                                        $set('current_qty', 1);
+                                            // 3. Push to repeater and reset search
+                                            $currentItems[] = $newRow;
 
-                                        // 4. Trigger total calculation
-                                        self::updateTotals($get, $set);
-                                    })->columnSpan(3),
+                                            $set('items', $currentItems);
+                                            $set('current_item_search', null); // 🚀 Clears the search box for the next item
+                                            $set('current_qty', 1);
 
-                                TextInput::make('current_qty')
-                                    ->label('Qty')
-                                    ->numeric()
-                                    ->default(1)
-                                    ->dehydrated(false)
-                                    ->live(),
+                                            // 4. Trigger total calculation
+                                            self::updateTotals($get, $set);
+                                        })->columnSpan(3),
+
+                                    TextInput::make('current_qty')
+                                        ->label('Qty')
+                                        ->numeric()
+                                        ->default(1)
+                                        ->dehydrated(false)
+                                        ->live(),
+                                ]),
+                                // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
                             ]),
-                            // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
-                        ]),
 
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
@@ -171,63 +175,98 @@ class SaleResource extends Resource
                                     TextInput::make('sold_price')
                                         ->label('Price')
                                         ->numeric()
+                                        ->readOnly()
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            // Recalculate Discount Amount based on existing Percent
-                                            $qty = intval($get('qty'));
-                                            $percent = floatval($get('discount_percent'));
-                                            $lineTotal = floatval($state) * $qty;
-                                            $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
+                                            $qty = intval($get('qty') ?? 1);
+                                            $percent = floatval($get('discount_percent') ?? 0);
 
+                                            // Calculate new discount dollar amount based on the new price
+                                            $lineTotalBeforeDiscount = floatval($state) * $qty;
+                                            $newDiscountAmount = $lineTotalBeforeDiscount * ($percent / 100);
+
+                                            // 🚀 THE FIX: Explicitly set the discount amount so the UI updates
+                                            $set('discount_amount', number_format($newDiscountAmount, 2, '.', ''));
+
+                                            // Trigger the global subtotal/tax calculation
                                             self::updateTotals($get, $set);
                                         }),
+                                    TextInput::make('sale_price_override')
+    ->label('Sale Price')
+    ->numeric()
+    ->prefix('$')
+    ->live(onBlur: true)
+    ->columnSpan(2)
+    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+        $originalPrice = floatval($get('sold_price') ?? 0);
+        $qty = intval($get('qty') ?? 1);
+        $newFinalPrice = floatval($state ?? 0);
+        
+        $totalOriginal = $originalPrice * $qty;
 
+        if ($totalOriginal > 0) {
+            $discountAmount = $totalOriginal - $newFinalPrice;
+            $discountPercent = ($discountAmount / $totalOriginal) * 100;
+
+            // 🚀 Force update all fields so the UI reflects the math perfectly
+            $set('discount_amount', number_format($discountAmount, 2, '.', ''));
+            $set('discount_percent', number_format($discountPercent, 2, '.', ''));
+        }
+
+        static::updateTotals($get, $set);
+    }),
                                     // 3. PERCENT CHANGE: Calculate Amount ($)
-                                    TextInput::make('discount_percent')
-                                        ->label('Disc %')
-                                        ->numeric()
-                                        ->suffix('%')
-                                        ->default(0)
-                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
-                                        ->live(onBlur: true)
-                                        ->columnSpan(2)
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('sold_price'));
-                                            $qty = intval($get('qty'));
-                                            $lineTotal = $price * $qty;
+                                   TextInput::make('discount_percent')
+    ->label('Disc %')
+    ->numeric()
+    ->suffix('%')
+    ->default(0)
+    ->live(onBlur: true)
+    ->columnSpan(2)
+    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+        $price = floatval($get('sold_price') ?? 0);
+        $qty = intval($get('qty') ?? 1);
+        $lineTotalBeforeDiscount = $price * $qty;
 
-                                            // Calculate $ Amount from %
-                                            $amount = $lineTotal * (floatval($state) / 100);
-                                            $set('discount_amount', number_format($amount, 2, '.', ''));
+        $percent = floatval($state ?? 0);
+        
+        // Calculate the dollar amount of the discount
+        
+        $discountAmount = $lineTotalBeforeDiscount * ($percent / 100);
+        $finalPrice = $lineTotalBeforeDiscount - $discountAmount;
 
-                                            self::updateTotals($get, $set);
-                                        }),
+        // 🚀 Update the sibling fields
+        $set('discount_amount', number_format($discountAmount, 2, '.', ''));
+        $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
 
-                                    // 4. NEW FIELD: AMOUNT CHANGE: Calculate Percent (%)
+        static::updateTotals($get, $set);
+    }),
+
+                                    // 4. AMOUNT CHANGE: Calculate Percent (%)
                                     TextInput::make('discount_amount')
-                                        ->label('Disc $')
-                                        ->numeric()
-                                        ->default(0)
-                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
-                                        ->prefix('$')
-                                        ->live(onBlur: true)
-                                        ->columnSpan(2)
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('sold_price'));
-                                            $qty = intval($get('qty'));
-                                            $lineTotal = $price * $qty;
+    ->label('Disc $')
+    ->numeric()
+    ->default(0)
+    ->prefix('$')
+    ->live(onBlur: true)
+    ->columnSpan(2)
+    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+        $price = floatval($get('sold_price') ?? 0);
+        $qty = intval($get('qty') ?? 1);
+        $lineTotalBeforeDiscount = $price * $qty;
+        $discountAmount = floatval($state ?? 0);
 
-                                            if ($lineTotal > 0) {
-                                                // Calculate % from $ Amount
-                                                $percent = (floatval($state) / $lineTotal) * 100;
-                                                $set('discount_percent', number_format($percent, 2, '.', ''));
-                                            } else {
-                                                $set('discount_percent', 0);
-                                            }
+        if ($lineTotalBeforeDiscount > 0) {
+            $percent = ($discountAmount / $lineTotalBeforeDiscount) * 100;
+            $set('discount_percent', number_format($percent, 2, '.', ''));
+        }
 
-                                            self::updateTotals($get, $set);
-                                        }),
+        // 🚀 Update the final sale price override
+        $set('sale_price_override', number_format($lineTotalBeforeDiscount - $discountAmount, 2, '.', ''));
+
+        static::updateTotals($get, $set);
+    }),
                                     Checkbox::make('is_tax_free')
                                         ->label('No Tax')
                                         ->columnSpan(1)
@@ -520,9 +559,9 @@ class SaleResource extends Resource
                                                             ]),
                                                             Forms\Components\Grid::make(2)->schema([
                                                                 DatePicker::make('dob')
-                                                                 ->rule('before_or_equal:today')
+                                                                    ->rule('before_or_equal:today')
                                                                     ->label('Birth Date'),
-                                                                    
+
                                                                 Forms\Components\DatePicker::make('wedding_anniversary')
                                                                     ->label('Wedding Date')
 
@@ -624,6 +663,8 @@ class SaleResource extends Resource
                                             ->required()
                                             ->label('Amount')
                                             ->live(onBlur: true),
+
+
                                     ]),
                                 ])
                                 ->visible(fn(Get $get) => $get('is_split_payment'))
@@ -661,6 +702,7 @@ class SaleResource extends Resource
                             self::totalRow('SUBTOTAL', 'subtotal'),
                             Placeholder::make('total_display')
                                 ->label('BALANCE DUE')
+                               ->live()
                                 ->content(fn(Get $get) => '$' . (number_format((float)($get('final_total') ?? 0), 2)))
                                 ->extraAttributes(['class' => 'text-red-600 font-bold text-3xl']),
 
@@ -706,7 +748,6 @@ class SaleResource extends Resource
                     ->dehydrated(false),
             ])
             ->statePath('data');
-            
     }
 
     public static function table(Table $table): Table
@@ -748,131 +789,185 @@ class SaleResource extends Resource
                 Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
-                Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
-                Tables\Actions\DeleteAction::make()
-                    ->label('Archive')
-                    ->icon('heroicon-o-archive-box-arrow-down')
-                    ->modalHeading('Delete Sale')
-                    ->modalDescription('Are you sure? Items will return to stock and this sale will move to Archives.')
-                    // 🔒 Security Check: Only allow Superadmin OR Administration
-                    ->visible(fn() => auth()->user()->hasAnyRole(['Superadmin', 'Administration'])),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
+
+                // 🚀 MAIN GROUP (Receipt + Share)
+                Tables\Actions\ActionGroup::make([
+
+                    // ===============================
+                    // 🖨️ PRINT OPTIONS
+                    // ===============================
+
+                    Tables\Actions\Action::make('printStandard')
+    ->label('Print Standard Receipt')
+    ->icon('heroicon-o-printer')
+    ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
+    ->openUrlInNewTab()
+    ->extraAttributes([
+        // 🚀 This triggers the browser print dialog immediately
+        'onclick' => "setTimeout(() => { let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); } }, 100); return false;"
+    ]),
+
+                    Tables\Actions\Action::make('printGift')
+                        ->label('Print Gift Receipt')
+                        ->icon('heroicon-o-gift')
+                        ->color('success')
+                        ->url(fn(Sale $record) => route('sales.receipt', [
+                            'record' => $record,
+                            'type' => 'gift'
+                        ]))
+                        ->openUrlInNewTab(),
+
+                    Tables\Actions\Action::make('printJob')
+                        ->label('Print Workshop Card')
+                        ->icon('heroicon-o-wrench')
+                        ->color('warning')
+                        ->url(fn(Sale $record) => route('sales.receipt', [
+                            'record' => $record,
+                            'type' => 'job'
+                        ]))
+                        ->openUrlInNewTab(),
+
+                    // ===============================
+                    // 📧 EMAIL RECEIPT
+                    // ===============================
+
+                    Tables\Actions\Action::make('emailReceipt')
+                        ->label('Email to Customer')
+                        ->icon('heroicon-o-envelope')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->action(function (Sale $record) {
+
+                            if (!$record->customer || empty($record->customer->email)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Missing')
+                                    ->body('Customer has no email address.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $mailable = new \App\Mail\CustomerReceipt($record);
+                            $sent = $mailable->sendDirectly();
+
+                            if ($sent) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Receipt Sent')
+                                    ->body("Successfully emailed to {$record->customer->email}")
+                                    ->success()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Error')
+                                    ->body('Check Laravel logs for SES details.')
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+
+                    // ===============================
+                    // 📱 SMS RECEIPT
+                    // ===============================
+
+                    Tables\Actions\Action::make('smsReceipt')
+                        ->label('Send via SMS')
+                        ->icon('heroicon-o-device-phone-mobile')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Send Receipt via SMS')
+                        ->action(function (Sale $record) {
+
+                            // 1. Get Customer Phone
+                            $phone = $record->customer->phone ?? null;
+
+                            if (empty($phone)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')
+                                    ->body('Customer has no phone number.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            // 2. Format Phone
+                            $digits = preg_replace('/[^0-9]/', '', $phone);
+
+                            if (\Illuminate\Support\Str::startsWith($digits, '1') && strlen($digits) === 11) {
+                                $digits = substr($digits, 1);
+                            }
+
+                            $formattedPhone = '+1' . $digits;
+
+                            // 3. Generate Dynamic Link
+                            $store = $record->store;
+
+                            $baseUrl = $store && !empty($store->domain_url)
+                                ? rtrim($store->domain_url, '/')
+                                : config('app.url');
+
+                            $link = $baseUrl . "/receipt/" . $record->id;
+
+                            // 4. Message
+                            $storeName = $store->name ?? 'Diamond Square';
+                            $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
+
+                            // 5. Send SMS
+                            try {
+                                $sns = new \Aws\Sns\SnsClient([
+                                    'version' => 'latest',
+                                    'region'  => config('services.sns.region'),
+                                    'credentials' => [
+                                        'key'    => config('services.sns.key'),
+                                        'secret' => config('services.sns.secret'),
+                                    ],
+                                ]);
+
+                                $sns->publish([
+                                    'Message' => $message,
+                                    'PhoneNumber' => $formattedPhone,
+                                    'MessageAttributes' => [
+                                        'OriginationNumber' => [
+                                            'DataType' => 'String',
+                                            'StringValue' => config('services.sns.sms_from'),
+                                        ],
+                                    ],
+                                ]);
+
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Sent')
+                                    ->success()
+                                    ->send();
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Failed')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+
+                ])
+                    ->label('Receipt / Share')
+                    ->icon('heroicon-m-printer')
+                    ->color('gray')
+                    ->button()
+                    ->outlined(),
+
+                // ===============================
+                // 💰 REFUND
+                // ===============================
 
                 Tables\Actions\Action::make('refund')
                     ->label('Refund')
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('danger')
-                    ->requiresConfirmation()
                     ->visible(fn(Sale $record) => $record->status === 'completed')
-                    ->url(fn(Sale $record): string => RefundResource::getUrl('create', [
-                        'sale_id' => $record->id,
+                    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', [
+                        'sale_id' => $record->id
                     ])),
-                Tables\Actions\Action::make('printReceipt')->label('Receipt')->icon('heroicon-o-printer')->color('info')
-                    ->url(fn(Sale $record): string => route('sales.receipt', $record))->openUrlInNewTab(),
-                // Inside SaleResource.php table actions
-                Tables\Actions\Action::make('emailReceipt')
-                    ->label('Email Receipt')
-                    ->icon('heroicon-o-envelope')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->action(function (Sale $record) {
-                        if (!$record->customer || empty($record->customer->email)) {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Email Missing')
-                                ->body('Customer has no email address.')
-                                ->danger()
-                                ->send();
-                            return;
-                        }
 
-                        // Initialize mailable and call the direct send method
-                        $mailable = new \App\Mail\CustomerReceipt($record);
-                        $sent = $mailable->sendDirectly();
-
-                        if ($sent) {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Receipt Sent')
-                                ->body("Successfully emailed to {$record->customer->email}")
-                                ->success()
-                                ->send();
-                        } else {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Email Error')
-                                ->body('Check Laravel logs for SES details.')
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-
-
-                Tables\Actions\Action::make('smsReceipt')
-                    ->label('SMS Receipt')
-                    ->icon('heroicon-o-device-phone-mobile')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->modalHeading('Send Receipt via SMS')
-                    ->action(function (Sale $record) {
-                        // 1. Get Customer Phone
-                        $phone = $record->customer->phone;
-                        if (empty($phone)) {
-                            Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
-                            return;
-                        }
-
-                        // 2. Format Phone (+1 for USA)
-                        $digits = preg_replace('/[^0-9]/', '', $phone);
-
-                        // 🔹 FIX: Used 'Str::' instead of 'Illuminate\Support\Str::'
-                        if (Str::startsWith($digits, '1') && strlen($digits) === 11) {
-                            $digits = substr($digits, 1);
-                        }
-                        $formattedPhone = '+1' . $digits;
-
-                        // ---------------------------------------------------------
-                        // 3. GENERATE DYNAMIC LINK BASED ON STORE
-                        // ---------------------------------------------------------
-
-                        $store = $record->store;
-
-                        $baseUrl = $store && !empty($store->domain_url)
-                            ? rtrim($store->domain_url, '/')
-                            : config('app.url');
-
-                        $link = $baseUrl . "/receipt/" . $record->id;
-
-                        // ---------------------------------------------------------
-
-                        // 4. Create Message
-                        $storeName = $store->name ?? 'Diamond Square';
-                        $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
-
-                        // 5. Send via AWS SNS
-                        try {
-                            $sns = new SnsClient([
-                                'version' => 'latest',
-                                'region'  => config('services.sns.region'),
-                                'credentials' => [
-                                    'key'    => config('services.sns.key'),
-                                    'secret' => config('services.sns.secret'),
-                                ],
-                            ]);
-
-                            $sns->publish([
-                                'Message' => $message,
-                                'PhoneNumber' => $formattedPhone,
-                                'MessageAttributes' => [
-                                    'OriginationNumber' => [
-                                        'DataType' => 'String',
-                                        'StringValue' => config('services.sns.sms_from'),
-                                    ],
-                                ],
-                            ]);
-
-                            Notification::make()->title('SMS Sent')->success()->send();
-                        } catch (\Exception $e) {
-                            Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
-                        }
-                    }),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -910,46 +1005,64 @@ class SaleResource extends Resource
 
         $set('notes', implode(' | ', $parts));
     }
-    public static function updateTotals($get, $set)
-    {
-        $items = $get('items') ?? [];
-        $shipping = floatval($get('shipping_charges') ?? 0);
-        $subtotal = 0;
-        $taxableSubtotal = 0; // 🚀 Added to track only taxable items
 
-        foreach ($items as $item) {
+// 🚀 CHANGE: Use 'callable|Get' for the first argument
+public static function updateTotals(callable|Get $get, callable|Set $set): void
+{
+    // Create a helper to handle whether $get is the object or a closure
+    $getValue = function($path) use ($get) {
+        return is_callable($get) ? $get($path) : $get($path);
+    };
+
+    // Use $getValue() instead of $get() throughout the function
+    $items = $getValue('items') ?? $getValue('../../items') ?? [];
+    
+    $shipping = floatval($getValue('shipping_charges') ?? $getValue('../../shipping_charges') ?? 0);
+    $isShippingTaxed = (bool) ($getValue('shipping_taxed') ?? $getValue('../../shipping_taxed') ?? false);
+    
+    $itemsTotal = 0;
+    $taxableItemsTotal = 0;
+
+    foreach ($items as $item) {
+        $qty = intval($item['qty'] ?? 1);
+        
+        if (!empty($item['sale_price_override'])) {
+            $rowTotal = floatval($item['sale_price_override']);
+        } else {
             $price = floatval($item['sold_price'] ?? 0);
-            $qty = intval($item['qty'] ?? 1);
-            $percent = floatval($item['discount_percent'] ?? 0);
-            if (!empty($item['repair_id'])) {
-                $repair = Repair::find($item['repair_id']);
-                if ($repair && $repair->is_warranty) {
-                    $price = 0;
-                    $percent = 0;
-                }
-            }
-            $rowTotal = $price * $qty;
-            $rowAfterDiscount = ($rowTotal - ($rowTotal * ($percent / 100)));
-
-            $subtotal += $rowAfterDiscount;
-
-            // 🚀 THE LOGIC: Check if the 'No Tax' checkbox is UNCHECKED
-            if (!($item['is_tax_free'] ?? false)) {
-                $taxableSubtotal += $rowAfterDiscount;
-            }
+            $discount = floatval($item['discount_amount'] ?? 0);
+            $rowTotal = ($price * $qty) - $discount;
         }
 
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-
-        // 🚀 Tax now calculates ONLY on taxable items + shipping (if shipping is taxed)
-        $tax = ($taxableSubtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
-
-        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-
-        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-        $set('tax_amount', number_format($tax, 2, '.', ''));
-        $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
+        $itemsTotal += $rowTotal;
+        
+        if (!($item['is_tax_free'] ?? false)) {
+            $taxableItemsTotal += $rowTotal;
+        }
     }
+
+    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = floatval($dbTax) / 100;
+
+    $taxableBasis = $taxableItemsTotal + ($isShippingTaxed ? $shipping : 0);
+    $totalTax = $taxableBasis * $taxRate;
+
+    // Use $getValue here too
+    $tradeIn = ($getValue('has_trade_in') == 1 || $getValue('../../has_trade_in') == 1) 
+        ? floatval($getValue('trade_in_value') ?? $getValue('../../trade_in_value') ?? 0) 
+        : 0;
+
+    // 🚀 Keep $set as is (Filament handles set paths automatically)
+    $set('../../subtotal', number_format($itemsTotal, 2, '.', ''));
+    $set('../../tax_amount', number_format($totalTax, 2, '.', ''));
+    
+    $finalTotal = ($itemsTotal + $shipping + $totalTax) - $tradeIn;
+    $set('../../final_total', number_format($finalTotal, 2, '.', ''));
+    
+    $set('subtotal', number_format($itemsTotal, 2, '.', ''));
+    $set('tax_amount', number_format($totalTax, 2, '.', ''));
+    $set('final_total', number_format($finalTotal, 2, '.', ''));
+}
 
     public static function getPaymentOptions(): array
     {

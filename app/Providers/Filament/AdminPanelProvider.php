@@ -49,6 +49,7 @@ class AdminPanelProvider extends PanelProvider
 
             ->login()
             ->topNavigation()
+            ->globalSearch() 
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
             ->brandLogo(function () {
                 if (function_exists('tenancy') && tenancy()->initialized) {
@@ -347,6 +348,15 @@ HTML
                     ->url(fn(): string => SaleResource::getUrl('create'))
                     /* 🚀 THE FIX: Use a lower value to move it higher */
                     ->sort(-100),
+
+                   NavigationItem::make('Edit Sale')
+    ->label('Edit Sales') // 👈 This satisfies the client's request
+    ->group('Sales')
+    ->icon('heroicon-o-pencil-square')
+    ->activeIcon('heroicon-s-pencil-square')
+    /* 🚀 Point this to the MAIN LIST of sales where the edit buttons are */
+    ->url(fn(): string => SaleResource::getUrl('index')) 
+    ->sort(-99), 
 
                 NavigationItem::make('New Customer')
                     ->label('New Customer')

@@ -110,13 +110,18 @@ class CreateSale extends CreateRecord
                 ->label('Complete Sale')
                 ->color('success')
                 ->icon('heroicon-o-check')
-                ->extraAttributes(['class' => 'w-full md:w-auto'])
+                ->extraAttributes([
+                'class' => 'w-full md:w-auto',
+                'wire:loading.attr' => 'disabled', // Disables button while server is busy
+                'wire:target' => 'complete_sale',  // Specifically targets this action
+            ])
 
                 // 1. POPUP CONFIGURATION
                 ->requiresConfirmation()
                 ->modalHeading('Staff Verification')
                 ->modalDescription('Please enter your PIN to certify and finalize this sale.')
                 ->modalSubmitActionLabel('Verify & Save')
+                ->modalSubmitAction(fn ($action) => $action->extraAttributes(['wire:loading.attr' => 'disabled']))
 
                 // 2. PIN FORM
                 ->form([
@@ -246,7 +251,10 @@ class CreateSale extends CreateRecord
                 ]);
                 // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
                 // so the receipt button remains hidden.
-                $sale->update(['status' => 'pending',]);
+                $sale->update([
+    'status' => 'completed',
+    'completed_at' => now(), // This captures TODAY'S date for the report
+]);
 
                 \Filament\Notifications\Notification::make()
                     ->title('Stock Reserved')

@@ -202,10 +202,14 @@ TextColumn::make('sales_person_list')
 
                 \Filament\Tables\Actions\ActionGroup::make([
                     \Filament\Tables\Actions\Action::make('printStandard')
-                        ->label('Standard Receipt')
-                        ->icon('heroicon-o-printer')
-                        ->url(fn (Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
-                        ->openUrlInNewTab(),
+                      ->label('Standard Receipt')
+        ->icon('heroicon-o-printer')
+        ->url(fn (Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
+        ->openUrlInNewTab()
+        // 🚀 THE MAGIC: This triggers the print dialog as soon as the new tab opens
+        ->extraAttributes([
+            'onclick' => "let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); }; return false;"
+        ]),
 
                     \Filament\Tables\Actions\Action::make('printGift')
                         ->label('Gift Receipt')

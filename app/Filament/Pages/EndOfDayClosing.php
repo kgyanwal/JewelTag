@@ -87,9 +87,9 @@ class EndOfDayClosing extends Page
         $endUtc = Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
 
         // Use whereBetween to capture everything in that 24-hour UTC window
-        $sales = Sale::whereBetween('created_at', [$startUtc, $endUtc])
-            ->where('status', 'completed')
-            ->get();
+       $sales = Sale::whereBetween('created_at', [$startUtc, $endUtc])
+    ->where('status', 'completed') // 🚀 Correct: Filters out pending/inprogress/void
+    ->get();
 
         $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
 

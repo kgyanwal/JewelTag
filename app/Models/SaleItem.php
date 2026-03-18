@@ -36,6 +36,12 @@ public function store(): BelongsTo
     }
    protected static function booted()
 {
+    static::creating(function ($saleItem) {
+            $saleItem->discount_amount = $saleItem->discount_amount ?? 0;
+            $saleItem->discount_percent = $saleItem->discount_percent ?? 0;
+            $saleItem->discount = $saleItem->discount ?? 0; // Fixed because it's in your schema
+            $saleItem->is_tax_free = $saleItem->is_tax_free ?? false;
+        });
     static::created(function ($saleItem) {
         if ($saleItem->product_item_id && $saleItem->productItem) {
             $saleItem->productItem->update(['status' => 'sold']);

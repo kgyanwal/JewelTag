@@ -33,8 +33,24 @@ class RepairResource extends Resource
                 ->schema([
                     Select::make('customer_id')
                         ->relationship('customer', 'name')
-                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name}")
-                        ->searchable(['name', 'last_name', 'phone'])
+                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                        ->searchable()
+                        ->getSearchResultsUsing(function (string $search) {
+                            return \App\Models\Customer::query()
+                                ->where(function ($q) use ($search) {
+                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                        ->orWhere('phone', 'like', "%{$search}%")
+                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                })
+                                ->limit(50)
+                                ->get()
+                                ->mapWithKeys(function ($customer) {
+                                    return [
+                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                    ];
+                                });
+                        })
                         ->preload()
                         ->hintAction(
                             FormAction::make('Help')
@@ -43,92 +59,92 @@ class RepairResource extends Resource
                         )
                         ->required()
                         ->columnSpan(1)
-                         ->createOptionForm([
-                                            Forms\Components\Tabs::make('New Customer')
-                                                ->tabs([
-                                                    Forms\Components\Tabs\Tab::make('Contact')
-                                                        ->icon('heroicon-o-user')
-                                                        ->schema([
-                                                            Forms\Components\Grid::make(2)->schema([
-                                                                Forms\Components\TextInput::make('name')->label('First Name')->required(),
-                                                                Forms\Components\TextInput::make('last_name')->label('Last Name'),
-                                                            ]),
-                                                            Forms\Components\Grid::make(2)->schema([
-                                                                Forms\Components\TextInput::make('phone')
-                                                                    ->label('Mobile Phone')
-                                                                    ->tel()
-                                                                    ->prefix('+1')
-                                                                    ->mask('(999) 999-9999')
-                                                                    ->placeholder('(555) 555-5555')
-                                                                    ->stripCharacters(['(', ')', '-', ' '])
-                                                                    ->rule('regex:/^[0-9]{10}$/')
-                                                                    ->afterStateHydrated(function ($component, $state) {
-                                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
-                                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
-                                                                        }
-                                                                    }),
-                                                                Forms\Components\TextInput::make('email')->label('Email')->email(),
-                                                            ]),
-                                                            Forms\Components\Grid::make(2)->schema([
-                                                               DatePicker::make('dob')
-                                                                 ->rule('before_or_equal:today')
-                                                                    ->label('Birth Date'),
-                                                  
-                                                                      DatePicker::make('wedding_anniversary')
-                                                ->label('Wedding Date'),
-                                                            ]),
-                                                            // 🚀 Google Autocomplete Address Section
-                                                            Forms\Components\Section::make('Customer Address')
-                                                                ->description('Search for an address to automatically fill the fields below.')
-                                                                ->columns(2)
-                                                                ->collapsible()
-                                                                ->schema([
-                                                                    GoogleAutocomplete::make('address_search')
-                                                                        ->label('Search Address')
-                                                                        ->autocompletePlaceholder('Start typing address...')
-                                                                        ->countries(['US'])
-                                                                        ->columnSpanFull()
-                                                                        ->withFields([
-                                                                            TextInput::make('street')
-                                                                                ->label('Street Address')
-                                                                                ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                        ->createOptionForm([
+                            Forms\Components\Tabs::make('New Customer')
+                                ->tabs([
+                                    Forms\Components\Tabs\Tab::make('Contact')
+                                        ->icon('heroicon-o-user')
+                                        ->schema([
+                                            Forms\Components\Grid::make(2)->schema([
+                                                Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                                                Forms\Components\TextInput::make('last_name')->label('Last Name'),
+                                            ]),
+                                            Forms\Components\Grid::make(2)->schema([
+                                                Forms\Components\TextInput::make('phone')
+                                                    ->label('Mobile Phone')
+                                                    ->tel()
+                                                    ->prefix('+1')
+                                                    ->mask('(999) 999-9999')
+                                                    ->placeholder('(555) 555-5555')
+                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                    ->rule('regex:/^[0-9]{10}$/')
+                                                    ->afterStateHydrated(function ($component, $state) {
+                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                        }
+                                                    }),
+                                                Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                            ]),
+                                            Forms\Components\Grid::make(2)->schema([
+                                                DatePicker::make('dob')
+                                                    ->rule('before_or_equal:today')
+                                                    ->label('Birth Date'),
 
-                                                                            TextInput::make('address_line_2')
-                                                                                ->label('Address 2 / Apt / Suite')
-                                                                                ->extraInputAttributes(['data-google-field' => 'subpremise']),
+                                                DatePicker::make('wedding_anniversary')
+                                                    ->label('Wedding Date'),
+                                            ]),
+                                            // 🚀 Google Autocomplete Address Section
+                                            Forms\Components\Section::make('Customer Address')
+                                                ->description('Search for an address to automatically fill the fields below.')
+                                                ->columns(2)
+                                                ->collapsible()
+                                                ->schema([
+                                                    GoogleAutocomplete::make('address_search')
+                                                        ->label('Search Address')
+                                                        ->autocompletePlaceholder('Start typing address...')
+                                                        ->countries(['US'])
+                                                        ->columnSpanFull()
+                                                        ->withFields([
+                                                            TextInput::make('street')
+                                                                ->label('Street Address')
+                                                                ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
 
-                                                                            TextInput::make('city')
-                                                                                ->label('City')
-                                                                                ->extraInputAttributes([
-                                                                                    'data-google-field' => 'locality',  // ✅ Single field only
-                                                                                    'data-google-value' => 'short_name'  // ✅ Gets "NYC" instead of "New York City"
-                                                                                ]),
+                                                            TextInput::make('address_line_2')
+                                                                ->label('Address 2 / Apt / Suite')
+                                                                ->extraInputAttributes(['data-google-field' => 'subpremise']),
 
-                                                                            TextInput::make('state')
-                                                                                ->label('State')
-                                                                                ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])
-                                                                                ->columnSpan(1),
-
-                                                                            TextInput::make('postcode')
-                                                                                ->label('Zip Code')
-                                                                                ->extraInputAttributes(['data-google-field' => 'postal_code'])
-                                                                                ->columnSpan(1),
-                                                                        ]),
-
-                                                                    Forms\Components\Select::make('country')
-                                                                        ->label('Country')
-                                                                        ->default('United States')
-                                                                        ->searchable(),
+                                                            TextInput::make('city')
+                                                                ->label('City')
+                                                                ->extraInputAttributes([
+                                                                    'data-google-field' => 'locality',  // ✅ Single field only
+                                                                    'data-google-value' => 'short_name'  // ✅ Gets "NYC" instead of "New York City"
                                                                 ]),
 
+                                                            TextInput::make('state')
+                                                                ->label('State')
+                                                                ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])
+                                                                ->columnSpan(1),
+
+                                                            TextInput::make('postcode')
+                                                                ->label('Zip Code')
+                                                                ->extraInputAttributes(['data-google-field' => 'postal_code'])
+                                                                ->columnSpan(1),
                                                         ]),
+
+                                                    Forms\Components\Select::make('country')
+                                                        ->label('Country')
+                                                        ->default('United States')
+                                                        ->searchable(),
                                                 ]),
-                                            Forms\Components\Hidden::make('customer_no')
-                                                ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
-                                        ])
-                                        ->createOptionUsing(function (array $data) {
-                                            return \App\Models\Customer::create($data)->id;
-                                        }),
+
+                                        ]),
+                                ]),
+                            Forms\Components\Hidden::make('customer_no')
+                                ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            return \App\Models\Customer::create($data)->id;
+                        }),
 
                     Select::make('status')
                         ->options([
@@ -143,16 +159,16 @@ class RepairResource extends Resource
 
                     Grid::make(2)->schema([
                         Toggle::make('is_warranty')
-                ->label('Covered Under Warranty?')
-                ->helperText('Turning this on will set the cost to $0.00')
-                ->onColor('success')
-                ->live()
-                ->afterStateUpdated(function ($state, Forms\Set $set) {
-                    if ($state) {
-                        $set('estimated_cost', 0);
-                        $set('final_cost', 0);
-                    }
-                }),
+                            ->label('Covered Under Warranty?')
+                            ->helperText('Turning this on will set the cost to $0.00')
+                            ->onColor('success')
+                            ->live()
+                            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                if ($state) {
+                                    $set('estimated_cost', 0);
+                                    $set('final_cost', 0);
+                                }
+                            }),
                         Toggle::make('is_from_store_stock')
                             ->label('Was this bought from our store?')
                             ->live()
@@ -194,7 +210,20 @@ class RepairResource extends Resource
                         ->placeholder('Describe what needs to be fixed...')
                         ->required()
                         ->columnSpanFull(),
-                    
+                    Select::make('sales_person_list')
+    ->label('Sales Staff')
+    ->multiple()
+    ->searchable()
+    ->preload()
+    ->options(\App\Models\User::pluck('name', 'id')) 
+    ->default([auth()->id()])
+    ->required()
+    ->live()
+    ->afterStateUpdated(function ($state, Forms\Set $set) {
+        // Use collect() or a simple check to avoid errors if $state is null/empty
+        $firstId = !empty($state) ? $state[0] : null;
+        $set('sales_person_id', $firstId);
+    }),
                     TextInput::make('estimated_cost')
                         ->label('Estimated Cost')
                         ->numeric()
@@ -225,6 +254,10 @@ class RepairResource extends Resource
                     ->searchable()
                     ->description(fn($record) => Str::limit($record->item_description, 50)),
 
+                Tables\Columns\TextColumn::make('salesPerson.name')
+                    ->label('STAFF')
+                    ->badge()
+                    ->color('gray'),
                 Tables\Columns\IconColumn::make('is_from_store_stock')
                     ->label('Store Stock')
                     ->boolean()
@@ -233,13 +266,13 @@ class RepairResource extends Resource
                     ->trueColor('success')
                     ->alignCenter()
                     ->toggleable(),
-Tables\Columns\IconColumn::make('is_warranty')
-    ->label('Warranty')
-    ->boolean()
-    ->trueIcon('heroicon-o-shield-check')
-    ->falseIcon('heroicon-o-minus-circle')
-    ->trueColor('success')
-    ->falseColor('gray'),
+                Tables\Columns\IconColumn::make('is_warranty')
+                    ->label('Warranty')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-shield-check')
+                    ->falseIcon('heroicon-o-minus-circle')
+                    ->trueColor('success')
+                    ->falseColor('gray'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {

@@ -80,6 +80,7 @@ class CustomerResource extends Resource
                                                 ->preload(),
 
                                             DatePicker::make('dob')
+                                            ->maxDate(now())
                                                                  ->rule('before_or_equal:today')
                                                                     ->label('Birth Date'),
 

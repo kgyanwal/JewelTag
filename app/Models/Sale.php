@@ -83,6 +83,12 @@ class Sale extends Model
             $sale->invoice_number = $prefix . $nextNumber;
         }
     });
+    static::saving(function ($sale) {
+            // 🚀 Automatically set completed_at when status changes to completed
+            if ($sale->status === 'completed' && empty($sale->completed_at)) {
+                $sale->completed_at = now();
+            }
+        });
 }
 
     public function getCustomerNameAttribute(): string
