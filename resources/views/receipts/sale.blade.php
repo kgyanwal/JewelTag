@@ -251,16 +251,24 @@
                         <tr>
                             <td colspan="2" style="border-top: 1px dashed #eee; height: 5px;"></td>
                         </tr>
-                        <tr>
-                            <td valign="top" style="padding-top: 5px; color: #2c3e50;">Status:</td>
-                            <td valign="top" align="right" style="padding-top: 5px;">
-                                @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
-                                <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
-                                @else
-                                <strong style="color: #10b981;">PAID IN FULL</strong>
-                                @endif
-                            </td>
-                        </tr>
+                      <tr>
+    <td valign="top" style="padding-top: 5px; color: #2c3e50;">Status:</td>
+    <td valign="top" align="right" style="padding-top: 5px;">
+        @php
+            // Calculate the actual balance
+            $totalPaid = $sale->payments->sum('amount');
+            $balance = floatval($sale->final_total) - $totalPaid;
+        @endphp
+
+        @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
+            <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
+        @elseif($balance > 0.01) {{-- Using 0.01 to avoid rounding/float issues --}}
+            <strong style="color: #f59e0b;">PARTIAL PAYMENT (${{ number_format($balance, 2) }} DUE)</strong>
+        @else
+            <strong style="color: #10b981;">PAID IN FULL</strong>
+        @endif
+    </td>
+</tr>
                     </table>
                 </td>
             </tr>
