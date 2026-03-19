@@ -47,7 +47,9 @@ Route::middleware([
     ->middleware(['auth']);
 
     Route::get('/receipt/{sale}', [ReceiptController::class, 'show'])->name('receipt.show');
-
+Route::get('/repairs/{repair}/print', [ReceiptController::class, 'printRepair'])
+    ->name('repair.print')
+    ->middleware(['auth']);
     // Label Layouts
     Route::prefix('label-layout')->group(function () {
         Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);

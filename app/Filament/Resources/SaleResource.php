@@ -28,6 +28,7 @@ use Aws\Sns\SnsClient;
 use Illuminate\Support\Str;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action as FormAction;
+use Illuminate\Support\Facades\Session;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class SaleResource extends Resource
@@ -36,7 +37,29 @@ class SaleResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'Quick Sale';
+protected static ?string $recordTitleAttribute = 'invoice_number';
 
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['invoice_number', 'customer.name', 'customer.phone', 'customer.last_name'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        $customer = $record->customer;
+        $name = $customer ? "{$customer->name} {$customer->last_name}" : 'Unknown';
+        return "Invoice #{$record->invoice_number} — {$name}";
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Customer' => $record->customer?->name . ' ' . $record->customer?->last_name,
+            'Total'    => '$' . number_format($record->final_total, 2),
+            'Status'   => ucfirst($record->status),
+            'Date'     => $record->created_at?->format('M d, Y'),
+        ];
+    }
     public static function form(Form $form): Form
     {
         return $form
@@ -81,11 +104,11 @@ class SaleResource extends Resource
 
                                             // 1. Get current items or empty array
                                             $currentItems = $get('items') ?? [];
-$qty = $get('current_qty') ?? 1;
-    $price = $item->retail_price;
+                                            $qty = $get('current_qty') ?? 1;
+                                            $price = $item->retail_price;
 
-    // 🚀 THE FIX: Calculate initial override price (Price * Qty)
-    $initialTotal = $price * $qty;
+                                            // 🚀 THE FIX: Calculate initial override price (Price * Qty)
+                                            $initialTotal = $price * $qty;
                                             // 2. Prepare the new row
                                             $newRow = [
                                                 'product_item_id' => $item->id,
@@ -193,80 +216,76 @@ $qty = $get('current_qty') ?? 1;
                                             self::updateTotals($get, $set);
                                         }),
                                     TextInput::make('sale_price_override')
-    ->label('Sale Price')
-    ->numeric()
-    ->prefix('$')
-    ->live(onBlur: true)
-    ->columnSpan(2)
-    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-        $originalPrice = floatval($get('sold_price') ?? 0);
-        $qty = intval($get('qty') ?? 1);
-        $newFinalPrice = floatval($state ?? 0);
-        
-        $totalOriginal = $originalPrice * $qty;
+                                        ->label('Sale Price')
+                                        ->columnSpan(2)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $unitPrice = floatval($get('sold_price') ?? 0);
+                                            $qty = intval($get('qty') ?? 1);
+                                            $totalOriginal = $unitPrice * $qty;
+                                            $newFinalTotal = floatval($state ?? 0);
 
-        if ($totalOriginal > 0) {
-            $discountAmount = $totalOriginal - $newFinalPrice;
-            $discountPercent = ($discountAmount / $totalOriginal) * 100;
+                                            if ($totalOriginal > 0) {
+                                                $diff = $totalOriginal - $newFinalTotal;
+                                                $percent = ($diff / $totalOriginal) * 100;
 
-            // 🚀 Force update all fields so the UI reflects the math perfectly
-            $set('discount_amount', number_format($discountAmount, 2, '.', ''));
-            $set('discount_percent', number_format($discountPercent, 2, '.', ''));
-        }
-
-        static::updateTotals($get, $set);
-    }),
+                                                // 🚀 FORCE UI UPDATE
+                                                $set('discount_amount', number_format($diff, 2, '.', ''));
+                                                $set('discount_percent', number_format($percent, 2, '.', ''));
+                                            }
+                                            static::updateTotals($get, $set);
+                                        }),
                                     // 3. PERCENT CHANGE: Calculate Amount ($)
-                                   TextInput::make('discount_percent')
-    ->label('Disc %')
-    ->numeric()
-    ->suffix('%')
-    ->default(0)
-    ->live(onBlur: true)
-    ->columnSpan(2)
-    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-        $price = floatval($get('sold_price') ?? 0);
-        $qty = intval($get('qty') ?? 1);
-        $lineTotalBeforeDiscount = $price * $qty;
+                                    TextInput::make('discount_percent')
+                                        ->label('Disc %')
+                                        ->numeric()
+                                        ->suffix('%')
+                                        ->default(0)
+                                        ->live(onBlur: true)
+                                        ->columnSpan(2)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $price = floatval($get('sold_price') ?? 0);
+                                            $qty = intval($get('qty') ?? 1);
+                                            $lineTotalBeforeDiscount = $price * $qty;
 
-        $percent = floatval($state ?? 0);
-        
-        // Calculate the dollar amount of the discount
-        
-        $discountAmount = $lineTotalBeforeDiscount * ($percent / 100);
-        $finalPrice = $lineTotalBeforeDiscount - $discountAmount;
+                                            $percent = floatval($state ?? 0);
 
-        // 🚀 Update the sibling fields
-        $set('discount_amount', number_format($discountAmount, 2, '.', ''));
-        $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
+                                            // Calculate the dollar amount of the discount
 
-        static::updateTotals($get, $set);
-    }),
+                                            $discountAmount = $lineTotalBeforeDiscount * ($percent / 100);
+                                            $finalPrice = $lineTotalBeforeDiscount - $discountAmount;
+
+                                            // 🚀 Update the sibling fields
+                                            $set('discount_amount', number_format($discountAmount, 2, '.', ''));
+                                            $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
+
+                                            static::updateTotals($get, $set);
+                                        }),
 
                                     // 4. AMOUNT CHANGE: Calculate Percent (%)
                                     TextInput::make('discount_amount')
-    ->label('Disc $')
-    ->numeric()
-    ->default(0)
-    ->prefix('$')
-    ->live(onBlur: true)
-    ->columnSpan(2)
-    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-        $price = floatval($get('sold_price') ?? 0);
-        $qty = intval($get('qty') ?? 1);
-        $lineTotalBeforeDiscount = $price * $qty;
-        $discountAmount = floatval($state ?? 0);
+                                        ->label('Disc $')
+                                        ->numeric()
+                                        ->default(0)
+                                        ->prefix('$')
+                                        ->live(onBlur: true)
+                                        ->columnSpan(2)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $price = floatval($get('sold_price') ?? 0);
+                                            $qty = intval($get('qty') ?? 1);
+                                            $lineTotalBeforeDiscount = $price * $qty;
+                                            $discountAmount = floatval($state ?? 0);
 
-        if ($lineTotalBeforeDiscount > 0) {
-            $percent = ($discountAmount / $lineTotalBeforeDiscount) * 100;
-            $set('discount_percent', number_format($percent, 2, '.', ''));
-        }
+                                            if ($lineTotalBeforeDiscount > 0) {
+                                                $percent = ($discountAmount / $lineTotalBeforeDiscount) * 100;
+                                                $set('discount_percent', number_format($percent, 2, '.', ''));
+                                            }
 
-        // 🚀 Update the final sale price override
-        $set('sale_price_override', number_format($lineTotalBeforeDiscount - $discountAmount, 2, '.', ''));
+                                            // 🚀 Update the final sale price override
+                                            $set('sale_price_override', number_format($lineTotalBeforeDiscount - $discountAmount, 2, '.', ''));
 
-        static::updateTotals($get, $set);
-    }),
+                                            static::updateTotals($get, $set);
+                                        }),
                                     Checkbox::make('is_tax_free')
                                         ->label('No Tax')
                                         ->columnSpan(1)
@@ -370,7 +389,7 @@ $qty = $get('current_qty') ?? 1;
                                             ->numeric()
                                             ->prefix('$')
                                             ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                                            ->live()
+                                            ->live(onBlur: true)
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
                                         TextInput::make('trade_in_receipt_no')
@@ -389,7 +408,7 @@ $qty = $get('current_qty') ?? 1;
                         Section::make('Shipping & Handling')->schema([
                             Grid::make(4)->schema([
                                 TextInput::make('shipping_charges')
-                                    ->label('Charges')->numeric()->prefix('$')->default(0)->required()->live()
+                                    ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
                                 Select::make('carrier')->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])->default('No carrier'),
@@ -629,7 +648,9 @@ $qty = $get('current_qty') ?? 1;
                                     ->searchable()
                                     ->preload()
                                     ->options(fn() => User::pluck('name', 'name')->toArray())
-                                    ->default(fn() => [auth()->user()->name])
+                                    ->default(fn() => [
+                                        Session::get('active_staff_name') ?? auth()->user()->name
+                                    ])
                                     ->required(),
                             ]),
                         Section::make('Payment & Status')->schema([
@@ -681,11 +702,13 @@ $qty = $get('current_qty') ?? 1;
                                 ->content(function (Get $get) {
                                     $total = (float) $get('final_total');
                                     $payments = $get('split_payments') ?? [];
-
                                     $sum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                     $remaining = $total - $sum;
 
-                                    $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
+                                    if ($remaining < 0) {
+                                        return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
+                                    }
+                                    $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
                                     return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
                                 })
                                 ->visible(fn(Get $get) => $get('is_split_payment')),
@@ -700,11 +723,25 @@ $qty = $get('current_qty') ?? 1;
                         Section::make('Financial Summary')->schema([
                             self::totalRow('TAX TOTAL', 'tax_amount'),
                             self::totalRow('SUBTOTAL', 'subtotal'),
-                            Placeholder::make('total_display')
+                            Placeholder::make('balance_due_display')
                                 ->label('BALANCE DUE')
-                               ->live()
-                                ->content(fn(Get $get) => '$' . (number_format((float)($get('final_total') ?? 0), 2)))
-                                ->extraAttributes(['class' => 'text-red-600 font-bold text-3xl']),
+                                ->content(function (Get $get) {
+                                    $total = floatval($get('final_total') ?? 0);
+
+                                    // If split payment is OFF, Balance Due is simply the Grand Total
+                                    if (!$get('is_split_payment')) {
+                                        return new HtmlString("<span class='text-red-600 font-bold text-3xl'>$" . number_format($total, 2) . "</span>");
+                                    }
+
+                                    // If split payment is ON, subtract the sum of payments entered
+                                    $payments = $get('split_payments') ?? [];
+                                    $paidSum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                    $remaining = $total - $paidSum;
+
+                                    $color = round($remaining, 2) <= 0 ? 'text-green-600' : 'text-red-600';
+                                    return new HtmlString("<span class='{$color} font-bold text-3xl'>$" . number_format($remaining, 2) . "</span>");
+                                })
+                                ->live(),
 
                             Forms\Components\Actions::make([
                                 // Action::make('complete')
@@ -749,7 +786,15 @@ $qty = $get('current_qty') ?? 1;
             ])
             ->statePath('data');
     }
-
+    public function recordNewPayment(Sale $sale, $amount, $method)
+    {
+        \App\Models\Payment::create([
+            'sale_id' => $sale->id,
+            'amount' => $amount,
+            'method' => $method,
+            'paid_at' => now(), // This makes it show up in today's closing!
+        ]);
+    }
     public static function table(Table $table): Table
     {
         return $table
@@ -773,8 +818,40 @@ $qty = $get('current_qty') ?? 1;
                         })->toArray();
                     })
                     ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
-                TextColumn::make('payment_method')->label('Method')->badge()->color('gray')->grow(false),
-                TextColumn::make('final_total')->label('Total')->money('USD')->weight('bold')->color('success')->alignRight(),
+
+                TextColumn::make('status')
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'completed' => 'success',
+                        'refunded' => 'danger',            // This will now catch the 'refunded' status
+                        'partially_refunded' => 'warning',
+                        'cancelled' => 'gray',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn(string $state) => ucfirst($state)),
+                TextColumn::make('payment_method')
+                    ->label('Method')
+                    ->formatStateUsing(fn($record) => $record->is_split_payment ? 'SPLIT' : $record->payment_method)
+                    ->badge()
+                    ->color(fn($state) => $state === 'SPLIT' ? 'warning' : 'gray'),
+                TextColumn::make('payment_status_summary')
+                    ->label('PAYMENT SUMMARY')
+                    ->getStateUsing(function ($record) {
+                        $total = $record->final_total;
+                        $paid = $record->payments->sum('amount'); // Summing all payments for this sale
+                        $balance = $total - $paid;
+
+                        $html = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+
+                        if ($balance > 0) {
+                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+                        } else {
+                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+                        }
+
+                        return new HtmlString($html);
+                    }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Date')
                     ->dateTime('M d, y')
@@ -790,7 +867,7 @@ $qty = $get('current_qty') ?? 1;
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
-                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
+                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin', 'Administration', 'Manager', 'Sales')),
 
                 // 🚀 MAIN GROUP (Receipt + Share)
                 Tables\Actions\ActionGroup::make([
@@ -800,14 +877,14 @@ $qty = $get('current_qty') ?? 1;
                     // ===============================
 
                     Tables\Actions\Action::make('printStandard')
-    ->label('Print Standard Receipt')
-    ->icon('heroicon-o-printer')
-    ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
-    ->openUrlInNewTab()
-    ->extraAttributes([
-        // 🚀 This triggers the browser print dialog immediately
-        'onclick' => "setTimeout(() => { let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); } }, 100); return false;"
-    ]),
+                        ->label('Print Standard Receipt')
+                        ->icon('heroicon-o-printer')
+                        ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
+                        ->openUrlInNewTab()
+                        ->extraAttributes([
+                            // 🚀 This triggers the browser print dialog immediately
+                            'onclick' => "setTimeout(() => { let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); } }, 100); return false;"
+                        ]),
 
                     Tables\Actions\Action::make('printGift')
                         ->label('Print Gift Receipt')
@@ -1006,63 +1083,58 @@ $qty = $get('current_qty') ?? 1;
         $set('notes', implode(' | ', $parts));
     }
 
-// 🚀 CHANGE: Use 'callable|Get' for the first argument
-public static function updateTotals(callable|Get $get, callable|Set $set): void
-{
-    // Create a helper to handle whether $get is the object or a closure
-    $getValue = function($path) use ($get) {
-        return is_callable($get) ? $get($path) : $get($path);
-    };
+    // 🚀 CHANGE: Use 'callable|Get' for the first argument
+    public static function updateTotals(callable|Get $get, callable|Set $set): void
+    {
+        // 1. Get Items (Handling different nesting levels)
+        $items = $get('items') ?? [];
 
-    // Use $getValue() instead of $get() throughout the function
-    $items = $getValue('items') ?? $getValue('../../items') ?? [];
-    
-    $shipping = floatval($getValue('shipping_charges') ?? $getValue('../../shipping_charges') ?? 0);
-    $isShippingTaxed = (bool) ($getValue('shipping_taxed') ?? $getValue('../../shipping_taxed') ?? false);
-    
-    $itemsTotal = 0;
-    $taxableItemsTotal = 0;
+        // 2. Get Global Fees/Deductions
+        $shipping = floatval($get('shipping_charges') ?? 0);
+        $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
+        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
-    foreach ($items as $item) {
-        $qty = intval($item['qty'] ?? 1);
-        
-        if (!empty($item['sale_price_override'])) {
-            $rowTotal = floatval($item['sale_price_override']);
-        } else {
-            $price = floatval($item['sold_price'] ?? 0);
-            $discount = floatval($item['discount_amount'] ?? 0);
-            $rowTotal = ($price * $qty) - $discount;
+        $itemsSubtotal = 0;
+        $taxableBasis = 0;
+
+        // 3. Calculate Line Items
+        foreach ($items as $item) {
+            $qty = intval($item['qty'] ?? 1);
+
+            // Use override if present, otherwise calculate Price * Qty - Discount
+            if (!empty($item['sale_price_override'])) {
+                $rowTotal = floatval($item['sale_price_override']);
+            } else {
+                $price = floatval($item['sold_price'] ?? 0);
+                $discount = floatval($item['discount_amount'] ?? 0);
+                $rowTotal = ($price * $qty) - $discount;
+            }
+
+            $itemsSubtotal += $rowTotal;
+
+            if (!($item['is_tax_free'] ?? false)) {
+                $taxableBasis += $rowTotal;
+            }
         }
 
-        $itemsTotal += $rowTotal;
-        
-        if (!($item['is_tax_free'] ?? false)) {
-            $taxableItemsTotal += $rowTotal;
+        // 4. Calculate Tax
+        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = floatval($dbTax) / 100;
+
+        if ($isShippingTaxed) {
+            $taxableBasis += $shipping;
         }
+
+        $totalTax = $taxableBasis * $taxRate;
+
+        // 5. Final Calculations
+        $grandTotal = ($itemsSubtotal + $shipping + $totalTax) - $tradeIn;
+
+        // 6. Set State (Ensuring fields stay updated)
+        $set('subtotal', number_format($itemsSubtotal, 2, '.', ''));
+        $set('tax_amount', number_format($totalTax, 2, '.', ''));
+        $set('final_total', number_format($grandTotal, 2, '.', ''));
     }
-
-    $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxRate = floatval($dbTax) / 100;
-
-    $taxableBasis = $taxableItemsTotal + ($isShippingTaxed ? $shipping : 0);
-    $totalTax = $taxableBasis * $taxRate;
-
-    // Use $getValue here too
-    $tradeIn = ($getValue('has_trade_in') == 1 || $getValue('../../has_trade_in') == 1) 
-        ? floatval($getValue('trade_in_value') ?? $getValue('../../trade_in_value') ?? 0) 
-        : 0;
-
-    // 🚀 Keep $set as is (Filament handles set paths automatically)
-    $set('../../subtotal', number_format($itemsTotal, 2, '.', ''));
-    $set('../../tax_amount', number_format($totalTax, 2, '.', ''));
-    
-    $finalTotal = ($itemsTotal + $shipping + $totalTax) - $tradeIn;
-    $set('../../final_total', number_format($finalTotal, 2, '.', ''));
-    
-    $set('subtotal', number_format($itemsTotal, 2, '.', ''));
-    $set('tax_amount', number_format($totalTax, 2, '.', ''));
-    $set('final_total', number_format($finalTotal, 2, '.', ''));
-}
 
     public static function getPaymentOptions(): array
     {

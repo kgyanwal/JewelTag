@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Aws\Sns\SnsClient;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
-
+use Illuminate\Support\Facades\Session;
 class RepairResource extends Resource
 {
     protected static ?string $model = Repair::class;
@@ -87,6 +87,7 @@ class RepairResource extends Resource
                                             ]),
                                             Forms\Components\Grid::make(2)->schema([
                                                 DatePicker::make('dob')
+                                                ->maxDate(now())
                                                     ->rule('before_or_equal:today')
                                                     ->label('Birth Date'),
 
@@ -216,7 +217,9 @@ class RepairResource extends Resource
     ->searchable()
     ->preload()
     ->options(\App\Models\User::pluck('name', 'id')) 
-    ->default([auth()->id()])
+   ->default(fn() => [
+        Session::get('active_staff_name') ?? auth()->user()->name
+    ])
     ->required()
     ->live()
     ->afterStateUpdated(function ($state, Forms\Set $set) {
@@ -235,7 +238,18 @@ class RepairResource extends Resource
                         ->numeric()
                         ->prefix('$')
                         ->helperText('Leave blank until repair is finished.'),
-                ])->columns(2)
+                        
+                ])->columns(2),
+                Section::make('Workflow')
+    ->description('Printing and Notifications')
+    ->schema([
+        Forms\Components\Toggle::make('auto_print')
+            ->label('Print Job Packet after saving?')
+            ->default(true)
+            ->dehydrated(false)
+            ->inline(false) // Makes it look more like a big action button
+            ->live(),
+    ])->columnSpan(1),
         ]);
     }
 
@@ -380,6 +394,14 @@ class RepairResource extends Resource
                         ->icon('heroicon-o-currency-dollar')
                         ->color('success')
                         ->url(fn(Repair $record) => route('filament.admin.resources.sales.create', ['repair_id' => $record->id, 'customer_id' => $record->customer_id])),
+
+                    Tables\Actions\Action::make('printJobPacket')
+    ->label('Print Job Packet')
+    ->icon('heroicon-o-printer')
+    ->color('info')
+    // This opens the print view in a new tab
+    ->url(fn (Repair $record): string => route('repair.print', $record))
+    ->openUrlInNewTab(),    
                 ])
             ])
             ->defaultSort('created_at', 'desc');

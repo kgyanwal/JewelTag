@@ -148,6 +148,16 @@ class RefundResource extends Resource
                                     }
                                 }
                             }
+                           $sale = $record->sale;
+if ($sale) {
+    $totalItemsInSale = $sale->items()->count();
+    // Use collect to ensure we can count even if it's a raw array
+    $totalItemsRefunded = collect($record->refunded_items)->count();
+
+    $newStatus = ($totalItemsRefunded >= $totalItemsInSale) ? 'refunded' : 'partially_refunded';
+    
+    $sale->update(['status' => $newStatus]);
+}
                             $record->update(['status' => 'approved', 'approved_by' => auth()->id()]);
                         });
                         Notification::make()->title('Refund Approved & Item is now In Stock.')->success()->send();

@@ -44,6 +44,12 @@ class ProductItemResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-archive-box';
     protected static ?string $navigationLabel = 'Assemble Stock';
     protected static ?string $navigationGroup = 'Inventory';
+   protected static ?string $recordTitleAttribute = 'barcode';
+
+  public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+{
+    return "{$record->barcode} — " . \Illuminate\Support\Str::limit($record->custom_description, 40);
+}
 
     /**
      * Converts RFID Hex to a short alphanumeric tag (Option 2)
@@ -331,7 +337,7 @@ class ProductItemResource extends Resource
 
                     CheckboxList::make('print_options')
                         ->options(['print_tag' => 'Print Barcode Tag', 'print_rfid' => 'Print RFID Tag', 'encode_rfid' => 'Encode RFID Data'])
-                        ->columns(3)->columnSpan(12),
+                        ->columns(3)->dehydrated(false)->columnSpan(12),
 
                     Toggle::make('enable_rfid_tracking')->label('Enable RFID Tracking')->default(true)->live()->columnSpan(6),
 

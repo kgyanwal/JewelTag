@@ -107,7 +107,10 @@ class Sale extends Model
     {
         return "Invoice: " . $this->invoice_number;
     }
-
+public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
+{
+    return $this->hasMany(Payment::class);
+}
     public function getGlobalSearchResultDetails(): array
     {
         return [

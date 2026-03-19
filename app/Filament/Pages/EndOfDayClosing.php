@@ -87,40 +87,19 @@ class EndOfDayClosing extends Page
         $endUtc = Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
 
         // Use whereBetween to capture everything in that 24-hour UTC window
-       $sales = Sale::whereBetween('created_at', [$startUtc, $endUtc])
-    ->where('status', 'completed') // 🚀 Correct: Filters out pending/inprogress/void
+    $payments = \App\Models\Payment::whereBetween('paid_at', [$startUtc, $endUtc])
     ->get();
 
         $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
 
-        foreach ($sales as $sale) {
-            if ($sale->is_split_payment) {
-                // Support for the new split_payments array
-                if (is_array($sale->split_payments)) {
-                    foreach ($sale->split_payments as $payment) {
-                        $key = strtolower(trim($payment['method'] ?? ''));
-                        if (isset($systemTotals[$key])) {
-                            $systemTotals[$key] += (float) ($payment['amount'] ?? 0);
-                        }
-                    }
-                }
-                
-                // Fallback for legacy split columns
-                for ($i = 1; $i <= 3; $i++) {
-                    $methCol = "payment_method_{$i}";
-                    $amtCol = "payment_amount_{$i}";
-                    if ($sale->$methCol) {
-                        $key = strtolower(trim($sale->$methCol));
-                        if (isset($systemTotals[$key])) { $systemTotals[$key] += (float) $sale->$amtCol; }
-                    }
-                }
-            } else {
-                $key = strtolower(trim($sale->payment_method));
-                if (isset($systemTotals[$key])) {
-                    $systemTotals[$key] += (float) $sale->final_total;
-                }
-            }
-        }
+        $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
+
+foreach ($payments as $payment) {
+    $key = strtolower(trim($payment->method));
+    if (isset($systemTotals[$key])) {
+        $systemTotals[$key] += (float) $payment->amount;
+    }
+}
 
         /*
         |--------------------------------------------------------------------------

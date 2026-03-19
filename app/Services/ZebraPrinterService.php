@@ -196,4 +196,31 @@ class ZebraPrinterService
             return false;
         }
     }
+
+    public function bulkPrintJewelryTags($records, $useRFID = true) 
+{
+    try {
+        $combinedZpl = "";
+        
+        foreach ($records as $record) {
+            $combinedZpl .= $this->getZplCode($record, $useRFID) . "\n";
+        }
+
+        if (empty($combinedZpl)) return false;
+
+        $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, 5);
+        if (!$socket) {
+            Log::error("Zebra Bulk Connection Failed: $errstr ($errno)");
+            return false;
+        }
+
+        fwrite($socket, $combinedZpl);
+        fflush($socket);
+        fclose($socket);
+        return true;
+    } catch (\Exception $e) {
+        Log::error("Zebra Bulk Print Error: " . $e->getMessage());
+        return false;
+    }
+}
 }

@@ -28,6 +28,27 @@ class CustomerResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Customer';
     protected static ?int $navigationSort = 1;
+  protected static ?string $recordTitleAttribute = 'name';
+
+  
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['name', 'last_name', 'phone', 'email'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return trim("{$record->name} {$record->last_name}");
+    }
+
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Phone' => $record->phone,
+            'Email' => $record->email,
+        ];
+    }
     public static function form(Form $form): Form
     {
         return $form
@@ -78,11 +99,23 @@ class CustomerResource extends Resource
                                                 })
                                                 ->searchable()
                                                 ->preload(),
-
-                                            DatePicker::make('dob')
-                                            ->maxDate(now())
-                                                                 ->rule('before_or_equal:today')
-                                                                    ->label('Birth Date'),
+TextInput::make('dob')
+    ->label('Birth Date')
+    ->placeholder('MM / DD / YYYY')
+    ->mask('99/99/9999')
+    ->rule('before_or_equal:today')
+    ->rule('date_format:m/d/Y')
+    ->dehydrateStateUsing(fn($state) => $state 
+        ? \Carbon\Carbon::createFromFormat('m/d/Y', $state)->format('Y-m-d') 
+        : null
+    )
+    ->afterStateHydrated(function ($component, $state) {
+        if ($state) {
+            $component->state(
+                \Carbon\Carbon::parse($state)->format('m/d/Y')
+            );
+        }
+    }),
 
                                             DatePicker::make('wedding_anniversary')
                                                 ->label('Wedding Date'),

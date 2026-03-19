@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Repair;
 use App\Models\Sale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -29,4 +30,13 @@ class ReceiptController extends Controller
         $filename = strtoupper($type) . "_{$record->invoice_number}.pdf";
         return $pdf->stream($filename);
     }
+
+
+  public function printRepair(Repair $repair)
+{
+    // Load necessary relationships
+    $repair->load(['customer', 'salesPerson', 'originalProduct', 'store']);
+
+    return view('receipts.repair-job-packet', compact('repair'));
+}
 }

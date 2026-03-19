@@ -31,7 +31,17 @@ class Repair extends Model
             }
         });
     }
+public function salesPerson(): BelongsTo
+    {
+        // This links the 'staff_id' (or sales_person_id) to the User model
+        return $this->belongsTo(User::class, 'staff_id'); 
+    }
 
+    // 🚀 ADD THIS RELATIONSHIP (Needed for the header logo/info)
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
     public function originalProduct(): BelongsTo
     {
         return $this->belongsTo(ProductItem::class, 'original_product_id');

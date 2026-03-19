@@ -443,6 +443,7 @@ class FindStock extends Page implements HasForms, HasTable
                 ]),
             ])
             ->bulkActions([
+                
                 BulkAction::make('bulk_hold')
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
@@ -464,6 +465,33 @@ class FindStock extends Page implements HasForms, HasTable
                             $this->performStockTransfer($record, $data['target_tenant_id']);
                         }
                     }),
+
+                \Filament\Tables\Actions\BulkAction::make('bulk_print_tags')
+        ->label('Print Selected Tags')
+        ->icon('heroicon-o-printer')
+        ->color('success')
+        ->requiresConfirmation()
+        ->modalHeading('Print Jewelry Tags')
+        ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
+        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+            $service = new \App\Services\ZebraPrinterService();
+            
+            $success = $service->bulkPrintJewelryTags($records);
+
+            if ($success) {
+                \Filament\Notifications\Notification::make()
+                    ->title('Printing Started')
+                    ->body(count($records) . ' tags sent to printer.')
+                    ->success()
+                    ->send();
+            } else {
+                \Filament\Notifications\Notification::make()
+                    ->title('Print Error')
+                    ->body('Could not connect to Zebra printer at ' . config('services.zebra.ip'))
+                    ->danger()
+                    ->send();
+            }
+        }),    
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No stock matches your criteria');

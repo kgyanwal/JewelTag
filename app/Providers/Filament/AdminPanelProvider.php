@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Blade;
 use App\Models\Announcement;
 use Filament\Navigation\NavigationItem;
 use App\Helpers\Staff;
+
 class AdminPanelProvider extends PanelProvider
 {
     /**
@@ -49,7 +50,10 @@ class AdminPanelProvider extends PanelProvider
 
             ->login()
             ->topNavigation()
-            ->globalSearch() 
+            ->globalSearch(true)
+->globalSearchKeyBindings(['command+k', 'ctrl+k'])
+// 🚀 Add this if search feels "empty" or slow
+->globalSearchDebounce('500ms')
             // 2. Set the dynamic brand logo and height to fix the "bad gap"
             ->brandLogo(function () {
                 if (function_exists('tenancy') && tenancy()->initialized) {
@@ -72,7 +76,36 @@ class AdminPanelProvider extends PanelProvider
                 fn(): string => view('filament.hooks.custom-logo')->render(),
 
             )
-
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_END,
+                fn(): string => Blade::render('
+        @php
+            $staffUser = \App\Helpers\Staff::user();
+            $name = $staffUser?->username ?? $staffUser?->name ?? null;
+        @endphp
+        @if($name)
+            <div style="
+                display: flex;
+                align-items: center;
+                gap: px;
+                background: rgba(13,148,136,0.12);
+                border: 1.5px solid #0d9488;
+                border-radius: 999px;
+                padding: 4px 14px 4px 10px;
+                margin-right: 8px;
+                font-size: 0.6rem;
+                font-weight: 700;
+                color: #0f766e;
+                white-space: nowrap;
+            ">
+                <svg xmlns="http://www.w3.org/2000/svg" style="width:8px;height:8px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+                </svg>
+                {{ $name }}
+            </div>
+        @endif
+    '),
+            )
             ->favicon(asset('jeweltaglogo.png'))
             ->darkMode(false, false)
             ->colors([
@@ -229,21 +262,17 @@ section.fi-section {
 #zebra-status-dot { 
     width: 14px; 
     height: 14px; 
-    
-    /* 🔹 FIX: Prevent it from disappearing/shrinking */
     min-width: 14px; 
     min-height: 14px;
     flex-shrink: 0; 
-    
-    /* 🔹 FIX: Ensure it sits on top of other layers */
     z-index: 9999;
-    position: relative;
-
+    position: fixed;
+    top: 18px;
+    right: 16px;
     border-radius: 50%; 
     background-color: #94a3b8; 
     border: 2px solid white; 
-    display: inline-block; 
-    margin-left: 70px; 
+    display: block; 
     cursor: help; 
     transition: all 0.5s ease;
     box-shadow: 0 0 8px rgba(0,0,0,0.2);
@@ -314,7 +343,7 @@ HTML
                 \App\Filament\Pages\UpcomingFollowUps::class,
                 \App\Filament\Pages\InactiveStockReport::class,
                 \App\Filament\Pages\MySalesReport::class,
-                 \App\Filament\Pages\SoldStockReport::class,
+                \App\Filament\Pages\SoldStockReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
@@ -349,14 +378,14 @@ HTML
                     /* 🚀 THE FIX: Use a lower value to move it higher */
                     ->sort(-100),
 
-                   NavigationItem::make('Edit Sale')
-    ->label('Edit Sales') // 👈 This satisfies the client's request
-    ->group('Sales')
-    ->icon('heroicon-o-pencil-square')
-    ->activeIcon('heroicon-s-pencil-square')
-    /* 🚀 Point this to the MAIN LIST of sales where the edit buttons are */
-    ->url(fn(): string => SaleResource::getUrl('index')) 
-    ->sort(-99), 
+                NavigationItem::make('Edit Sale')
+                    ->label('Edit Sales') // 👈 This satisfies the client's request
+                    ->group('Sales')
+                    ->icon('heroicon-o-pencil-square')
+                    ->activeIcon('heroicon-s-pencil-square')
+                    /* 🚀 Point this to the MAIN LIST of sales where the edit buttons are */
+                    ->url(fn(): string => SaleResource::getUrl('index'))
+                    ->sort(-99),
 
                 NavigationItem::make('New Customer')
                     ->label('New Customer')
@@ -374,16 +403,16 @@ HTML
                 NavigationGroup::make()->label('Analytics & Reports'),
             ])
 
-         ->userMenuItems([
-            'account' => MenuItem::make()
-                ->label(fn () => Staff::user()?->username ?? auth()->user()->name)
-                ->icon('heroicon-o-user-circle'),
-      
+            ->userMenuItems([
+                'account' => MenuItem::make()
+                    ->label(fn() => Staff::user()?->username ?? auth()->user()->name)
+                    ->icon('heroicon-o-user-circle'),
+
                 'switch_user' => MenuItem::make()
                     ->label('Switch Associate PIN')
                     ->icon('heroicon-o-arrows-right-left')
                     ->color('warning')
-                    ->url(fn (): string => route('filament.admin.pages.pin-code-auth', ['switch' => true])),
+                    ->url(fn(): string => route('filament.admin.pages.pin-code-auth', ['switch' => true])),
 
                 'settings' => MenuItem::make()
                     ->label('Store Settings')
@@ -396,13 +425,13 @@ HTML
                     ->icon('heroicon-o-finger-print')
                     ->url(fn(): string => ActivityLogResource::getUrl())
                     ->visible(fn(): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
-           ])
-           // 🚀 THE FIX: Register the Breezy plugin here
-           ->plugins([
+            ])
+            // 🚀 THE FIX: Register the Breezy plugin here
+            ->plugins([
                 \Jeffgreco13\FilamentBreezy\BreezyCore::make()
                     ->myProfile(shouldRegisterUserMenu: false) // Hides profile as requested
                     ->enableTwoFactorAuthentication(false),
-           ]);
+            ]);
     }
     public function boot(): void
     {
@@ -438,8 +467,8 @@ HTML
         '),
         );
         \Filament\Tables\Columns\TextColumn::configureUsing(function (\Filament\Tables\Columns\TextColumn $column): void {
-        // Use a closure to ensure the timezone is evaluated at runtime
-        $column->timezone(fn() => config('app.timezone'));
+            // Use a closure to ensure the timezone is evaluated at runtime
+            $column->timezone(fn() => config('app.timezone'));
         });
     }
 }

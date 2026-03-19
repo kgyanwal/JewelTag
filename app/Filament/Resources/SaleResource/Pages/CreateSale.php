@@ -111,17 +111,17 @@ class CreateSale extends CreateRecord
                 ->color('success')
                 ->icon('heroicon-o-check')
                 ->extraAttributes([
-                'class' => 'w-full md:w-auto',
-                'wire:loading.attr' => 'disabled', // Disables button while server is busy
-                'wire:target' => 'complete_sale',  // Specifically targets this action
-            ])
+                    'class' => 'w-full md:w-auto',
+                    'wire:loading.attr' => 'disabled', // Disables button while server is busy
+                    'wire:target' => 'complete_sale',  // Specifically targets this action
+                ])
 
                 // 1. POPUP CONFIGURATION
                 ->requiresConfirmation()
                 ->modalHeading('Staff Verification')
                 ->modalDescription('Please enter your PIN to certify and finalize this sale.')
                 ->modalSubmitActionLabel('Verify & Save')
-                ->modalSubmitAction(fn ($action) => $action->extraAttributes(['wire:loading.attr' => 'disabled']))
+                ->modalSubmitAction(fn($action) => $action->extraAttributes(['wire:loading.attr' => 'disabled']))
 
                 // 2. PIN FORM
                 ->form([
@@ -147,7 +147,7 @@ class CreateSale extends CreateRecord
                         return;
                     }
 
-                    // 🚀 RECALCULATE ONE LAST TIME before saving to prevent NULL errors
+                    // Recalculate
                     $get = fn($path) => data_get($formState, $path);
                     $set = function ($path, $value) use (&$formState) {
                         data_set($formState, $path, $value);
@@ -159,7 +159,13 @@ class CreateSale extends CreateRecord
                     }
 
                     $this->data = $formState;
-                    $this->create(); // Now tax_amount and totals will be present
+
+                    // ADD THIS: Prevent any chance of double-fire
+                    if ($this->record) {
+                        return; // Already saved, bail out
+                    }
+
+                    $this->create();
                 }),
 
             // Optional: Keep the "Cancel" button
@@ -167,49 +173,93 @@ class CreateSale extends CreateRecord
         ];
     }
 
-    protected function beforeCreate(): void
-    {
-        $items = $this->data['items'] ?? [];
+  protected function beforeCreate(): void
+{
+    // 🛡️ DUPLICATE GUARD
+    $existingDuplicate = \App\Models\Sale::where('customer_id', $this->data['customer_id'])
+        ->where('final_total', $this->data['final_total'])
+        ->where('created_at', '>=', now()->subSeconds(30))
+        ->exists();
 
-        foreach ($items as $item) {
-            // 🔹 FIX: Skip empty entries added by the Repeater
-            if (
-                empty($item['product_item_id']) &&
-                empty($item['repair_id']) &&
-                empty($item['custom_order_id'])
-            ) {
-                continue;
+    if ($existingDuplicate) {
+        Notification::make()
+            ->title('Duplicate Sale Blocked')
+            ->body('This sale was already saved. Please refresh the page.')
+            ->danger()
+            ->send();
+        $this->halt();
+        return;
+    }
+
+    $items = $this->data['items'] ?? [];
+
+    foreach ($items as $item) {
+        if (
+            empty($item['product_item_id']) &&
+            empty($item['repair_id']) &&
+            empty($item['custom_order_id'])
+        ) {
+            continue;
+        }
+
+        if (!empty($item['product_item_id'])) {
+            $productItem = ProductItem::lockForUpdate()->find($item['product_item_id']);
+
+            if (!$productItem) {
+                Notification::make()
+                    ->title('Product Not Found')
+                    ->body('A product in your cart was not found in inventory.')
+                    ->danger()
+                    ->send();
+                $this->halt();
+                return;
             }
 
-            // 2. ONLY run this block if there is a physical product ID
-            if (!empty($item['product_item_id'])) {
-                $productItem = ProductItem::lockForUpdate()->find($item['product_item_id']);
+            if ($productItem->qty < $item['qty']) {
+                Notification::make()
+                    ->title('Insufficient Stock')
+                    ->body("Only {$productItem->qty} left for {$productItem->barcode}.")
+                    ->danger()
+                    ->send();
+                $this->halt();
+                return;
+            }
 
-                if (!$productItem) {
-                    throw new \Exception('Product not found in inventory.');
-                }
-
-                if ($productItem->qty < $item['qty']) {
-                    throw new \Exception(
-                        "Insufficient stock for {$productItem->barcode}. Available: {$productItem->qty}"
-                    );
-                }
-
-                if ($productItem->status === 'sold') {
-                    throw new \Exception(
-                        "Item {$productItem->barcode} is already sold."
-                    );
-                }
+            if ($productItem->status === 'sold') {
+                Notification::make()
+                    ->title('Item Already Sold')
+                    ->body("{$productItem->barcode} is no longer available.")
+                    ->danger()
+                    ->send();
+                $this->halt();
+                return;
             }
         }
     }
+}
 
     protected function afterCreate(): void
     {
         DB::transaction(function () {
             $sale = $this->record;
             $isLaybuy = $sale->payment_method === 'laybuy';
-
+if ($sale->is_split_payment) {
+            foreach ($sale->split_payments as $payment) {
+                \App\Models\Payment::create([
+                    'sale_id' => $sale->id,
+                    'amount' => $payment['amount'],
+                    'method' => $payment['method'],
+                    'paid_at' => now(),
+                ]);
+            }
+        } else {
+            \App\Models\Payment::create([
+                'sale_id' => $sale->id,
+                'amount' => $sale->final_total,
+                'method' => $sale->payment_method,
+                'paid_at' => now(),
+            ]);
+        }
             foreach ($sale->items as $saleItem) {
                 if (!$saleItem->product_item_id) continue;
 
@@ -252,9 +302,9 @@ class CreateSale extends CreateRecord
                 // 🔹 FIX: Update the SALE status to 'inprogress' or 'pending' 
                 // so the receipt button remains hidden.
                 $sale->update([
-    'status' => 'completed',
-    'completed_at' => now(), // This captures TODAY'S date for the report
-]);
+                    'status' => 'completed',
+                    'completed_at' => now(), // This captures TODAY'S date for the report
+                ]);
 
                 \Filament\Notifications\Notification::make()
                     ->title('Stock Reserved')
@@ -264,7 +314,7 @@ class CreateSale extends CreateRecord
             }
         });
         session()->forget('sale_draft');
-    $this->data = [];
+        $this->data = [];
     }
 
 
