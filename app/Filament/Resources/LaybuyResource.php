@@ -33,10 +33,10 @@ class LaybuyResource extends Resource
         return $form
             ->schema([
                 Grid::make(12)->schema([
-                    
+
                     /* ─── LEFT COLUMN: INVENTORY & LEDGER (8/12) ─── */
                     Group::make()->columnSpan(8)->schema([
-                        
+
                         // 1. DYNAMIC STOCK SELECTION
                         Section::make('Stock Reservation (Items on Hold)')
                             ->description('Scan or search items to put aside for this customer.')
@@ -53,7 +53,7 @@ class LaybuyResource extends Resource
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if (!$state) return;
-                                        
+
                                         $item = ProductItem::find($state);
                                         $items = $get('layby_items') ?? [];
 
@@ -63,7 +63,7 @@ class LaybuyResource extends Resource
                                             $set('item_search', null);
                                             return;
                                         }
-                                        
+
                                         $items[] = [
                                             'product_item_id' => $item->id,
                                             'barcode' => $item->barcode,
@@ -105,12 +105,12 @@ class LaybuyResource extends Resource
                                         if (!$record || $record->payments->isEmpty()) {
                                             return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
                                         }
-                                        
+
                                         $rows = $record->payments->sortByDesc('created_at')->map(fn($p) => "
                                             <tr class='border-b border-gray-100'>
                                                 <td class='py-3 text-sm font-medium'>{$p->created_at->format('M d, Y')}</td>
                                                 <td class='py-3 text-sm uppercase text-gray-500'>{$p->payment_method}</td>
-                                                <td class='py-3 text-right text-sm font-bold text-green-600'>$".number_format($p->amount, 2)."</td>
+                                                <td class='py-3 text-right text-sm font-bold text-green-600'>$" . number_format($p->amount, 2) . "</td>
                                             </tr>
                                         ")->implode('');
 
@@ -132,7 +132,7 @@ class LaybuyResource extends Resource
 
                     /* ─── RIGHT COLUMN: CUSTOMER & STATUS (4/12) ─── */
                     Group::make()->columnSpan(4)->schema([
-                        
+
                         Section::make('Customer Context')
                             ->schema([
                                 Select::make('customer_id')
@@ -177,7 +177,7 @@ class LaybuyResource extends Resource
 
                                 Placeholder::make('progress_bar')
                                     ->label('Payment Progress')
-                                    ->content(function(Get $get){
+                                    ->content(function (Get $get) {
                                         $total = (float)$get('total_amount');
                                         $paid = (float)$get('amount_paid');
                                         $perc = $total > 0 ? min(100, round(($paid / $total) * 100)) : 0;
@@ -212,7 +212,7 @@ class LaybuyResource extends Resource
         $items = $get('layby_items') ?? [];
         $paid = (float)($get('amount_paid') ?? 0);
         $total = collect($items)->sum(fn($i) => (float)($i['price'] ?? 0));
-        
+
         $set('total_amount', $total);
         $set('balance_due', max(0, $total - $paid));
     }
@@ -232,20 +232,66 @@ class LaybuyResource extends Resource
                     ->label('Add Payment')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
+                    ->visible(fn (Laybuy $record) => $record->balance_due > 0)
                     ->form([
-                        TextInput::make('amount')->numeric()->required()->prefix('$'),
-                        Select::make('payment_method')->options(['cash'=>'CASH', 'visa'=>'VISA', 'debit'=>'DEBIT'])->default('cash')->required(),
+                        TextInput::make('amount')
+                            ->numeric()
+                            ->required()
+                            ->prefix('$')
+                            // Suggest the remaining balance as the default amount
+                            ->default(fn(Laybuy $record) => $record->balance_due), 
+                        Select::make('payment_method')
+                            ->options([
+                                'cash' => 'CASH', 
+                                'visa' => 'VISA', 
+                                'mastercard' => 'MASTERCARD', 
+                                'amex' => 'AMEX'
+                            ])
+                            ->default('cash')
+                            ->required(),
                     ])
                     ->action(function (Laybuy $record, array $data) {
                         DB::transaction(function () use ($record, $data) {
-                            $record->payments()->create($data);
-                            $record->increment('amount_paid', $data['amount']);
-                            $record->decrement('balance_due', $data['amount']);
-                            if ($record->balance_due <= 0) $record->update(['status' => 'completed']);
+                            
+                            $amountPaid = (float) $data['amount'];
+                            
+                            // 1. Write to the main payments table so EOD closing picks it up
+                            if ($record->sale_id) {
+                                \App\Models\Payment::create([
+                                    'sale_id' => $record->sale_id,
+                                    'amount' => $amountPaid,
+                                    'method' => $data['payment_method'],
+                                    'paid_at' => now(),
+                                ]);
+                            }
+
+                            // 2. Update the Laybuy record math
+                            $newAmountPaid = $record->amount_paid + $amountPaid;
+                            $newBalance = max(0, $record->total_amount - $newAmountPaid);
+                            $newStatus = $newBalance <= 0 ? 'completed' : 'in_progress';
+
+                            $record->update([
+                                'amount_paid' => $newAmountPaid,
+                                'balance_due' => $newBalance,
+                                'status' => $newStatus,
+                            ]);
+
+                            // 3. Also update the parent sale's status if fully paid
+                            if ($newBalance <= 0 && $record->sale_id) {
+                                \App\Models\Sale::where('id', $record->sale_id)->update([
+                                    'status' => 'completed',
+                                    'completed_at' => now(),
+                                ]);
+                            }
                         });
-                        Notification::make()->title('Payment Recorded')->success()->send();
-                    })
-                    ->visible(fn ($record) => $record->balance_due > 0),
+
+                        Notification::make()
+                            ->title('Payment Recorded Successfully')
+                            ->body('The balance has been updated.')
+                            ->success()
+                            ->send();
+                    }),
+                
                 Tables\Actions\EditAction::make(),
             ]);
     }

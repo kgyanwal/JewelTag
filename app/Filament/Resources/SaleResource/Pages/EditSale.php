@@ -3,12 +3,12 @@
 namespace App\Filament\Resources\SaleResource\Pages;
 
 use App\Filament\Resources\SaleResource;
-use App\Models\SaleEditRequest;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Actions;
 use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Model;
 use App\Helpers\Staff;
+use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 
 class EditSale extends EditRecord
 {
@@ -21,7 +21,7 @@ class EditSale extends EditRecord
             Actions\DeleteAction::make()
                 ->visible(fn () => Staff::user()?->hasRole('Superadmin') || $this->record->status !== 'completed'),
             
-            // 🚀 Keep the Manual Completion Action for Admins
+            // Manual Completion Action for Admins
             Actions\Action::make('complete_sale')
                 ->label('Finalize Sale (Today)')
                 ->color('success')
@@ -40,40 +40,64 @@ class EditSale extends EditRecord
         ];
     }
 
-    protected function handleRecordUpdate(Model $record, array $data): Model
+    protected function mutateFormDataBeforeSave(array $data): array
     {
-        $staff = Staff::user();
-
-        // 1. NON-ADMIN LOGIC: Create Request and Halt Update
-        if (!$staff?->hasAnyRole(['Superadmin', 'Administration'])) {
-            
-            SaleEditRequest::create([
-                'sale_id' => $record->id,
-                'user_id' => $staff->id,
-                'proposed_changes' => $data, 
-                'status' => 'pending',
-            ]);
-
-            Notification::make()
-                ->title('Request Sent')
-                ->body('Your changes have been sent to Administration for approval.')
-                ->warning()
-                ->persistent() // Keeps it visible so they read it
-                ->send();
-
-            // Halt the process and go back to list
-            $this->halt(); 
-            return $record;
-        }
-
-        // 2. ADMIN LOGIC: Standard Update + Ensure completed_at stays accurate
-        if ($data['status'] === 'completed' && !$record->completed_at) {
+        // Ensure completed_at is set if status is being changed to completed
+        if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
             $data['completed_at'] = now();
         }
 
-        $record->update($data);
+        return $data;
+    }
 
-        return $record;
+    /**
+     * 🚀 TRIGGER AFTER SAVE: Sync the Payments table!
+     */
+    protected function afterSave(): void
+    {
+        DB::transaction(function () {
+            $sale = $this->record;
+            
+            // 1. Force the Sale model to fetch the new items and run its math hook
+            $sale->load('items');
+            $sale->save(); 
+
+            // 2. Grab the original payment date. 
+            // We do this so editing yesterday's sale doesn't move the money into today's drawer!
+            $originalPaymentDate = $sale->payments()->min('paid_at') ?? now();
+
+            // 3. Wipe the old, incorrect payment records
+            $sale->payments()->delete();
+
+            // 4. Re-create the payment records with the NEW amounts
+            if ($sale->is_split_payment) {
+                $splits = is_string($sale->split_payments) ? json_decode($sale->split_payments, true) : $sale->split_payments;
+                
+                if (is_array($splits)) {
+                    foreach ($splits as $payment) {
+                        Payment::create([
+                            'sale_id' => $sale->id,
+                            'amount'  => $payment['amount'],
+                            'method'  => $payment['method'],
+                            'paid_at' => $originalPaymentDate, 
+                        ]);
+                    }
+                }
+            } else {
+                // If standard payment, use the freshly calculated final_total!
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'amount'  => $sale->final_total, 
+                    'method'  => $sale->payment_method,
+                    'paid_at' => $originalPaymentDate, 
+                ]);
+            }
+        });
+
+        Notification::make()
+            ->title('Sale & Payments Synchronized')
+            ->success()
+            ->send();
     }
 
     protected function getRedirectUrl(): string

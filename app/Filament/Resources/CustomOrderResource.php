@@ -135,206 +135,306 @@ class CustomOrderResource extends Resource
                         TextInput::make('size')->label('Size / Length')->placeholder('e.g. Size 7, 18"'),
                     ]),
 
-                Section::make('Financials & Status')
-                    ->icon('heroicon-o-banknotes')
-                    ->schema([
-                        TextInput::make('budget')->label('Customer Budget')->numeric()->prefix('$'),
+               Section::make('Financials & Status')
+    ->icon('heroicon-o-banknotes')
+    ->schema([
+        TextInput::make('budget')->label('Customer Budget')->numeric()->prefix('$'),
 
-                        TextInput::make('quoted_price')
-                            ->label('Final Quoted Price')
-                            ->numeric()
-                            ->prefix('$')
-                            ->required()
-                            ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
+        TextInput::make('quoted_price')
+            ->label('Final Quoted Price')
+            ->numeric()
+            ->prefix('$')
+            ->required()
+            ->live(onBlur: true)
+            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+            ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
 
-                        Select::make('status')
-                            ->options([
-                                'draft' => 'Draft',
-                                'quoted' => 'Quoted',
-                                'approved' => 'Approved',
-                                'in_production' => 'In Production',
-                                'received' => 'Ready for Pickup',
-                                'completed' => 'Picked Up / Completed',
-                            ])
-                            ->default('draft')
-                            ->live()
-                            ->extraAttributes(['class' => 'font-bold']),
+        // 🚀 THE DEPOSIT FIELD
+        TextInput::make('amount_paid')
+            ->label('Initial Deposit / Amount Paid')
+            ->numeric()
+            ->prefix('$')
+            ->default(0)
+            ->live(onBlur: true)
+            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+            ->readOnly(fn (string $operation) => $operation === 'edit') 
+            ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
 
-                        Section::make('Communication Log')
-                            ->schema([
-                                Toggle::make('is_customer_notified')
-                                    ->label('Mark as Notified')
-                                    ->onColor('success')
-                                    ->offColor('gray'),
-                                DateTimePicker::make('notified_at')
-                                    ->label('Last Notified Timestamp')
-                                    ->readOnly(),
-                            ])
-                            ->visible(fn(Get $get) => in_array($get('status'), ['received', 'completed']))
-                            ->compact(),
-                    ]),
+        // 🚀 NEW: DYNAMIC PAYMENT METHOD SELECTOR
+        Select::make('initial_payment_method')
+            ->label('Deposit Payment Method')
+            ->options(self::getPaymentOptions()) // 👈 DYNAMIC NOW
+            ->default('cash')
+            ->required(fn(Get $get) => floatval($get('amount_paid')) > 0)
+            ->visible(fn (string $operation, Get $get) => $operation === 'create' && floatval($get('amount_paid')) > 0),
+            
+
+        TextInput::make('balance_due')
+            ->label('Remaining Balance')
+            ->numeric()
+            ->prefix('$')
+            ->default(0)
+            ->readOnly()
+            ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
+
+        Select::make('status')
+            ->options([
+                'draft' => 'Draft',
+                'quoted' => 'Quoted',
+                'approved' => 'Approved',
+                'in_production' => 'In Production',
+                'received' => 'Ready for Pickup',
+                'completed' => 'Picked Up / Completed',
+            ])
+            ->default('draft')
+            ->live()
+            ->extraAttributes(['class' => 'font-bold']),
+
+        Section::make('Communication Log')
+            ->schema([
+                Toggle::make('is_customer_notified')
+                    ->label('Mark as Notified')
+                    ->onColor('success')
+                    ->offColor('gray'),
+                DateTimePicker::make('notified_at')
+                    ->label('Last Notified Timestamp')
+                    ->readOnly(),
+            ])
+            ->visible(fn(Get $get) => in_array($get('status'), ['received', 'completed']))
+            ->compact(),
+    ]),
 
             ])->columnSpan(['lg' => 4]),
         ])->columns(12);
     }
 
-   public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
-            Tables\Columns\TextColumn::make('order_no')
-                ->label('ORDER #')
-                ->searchable()
-                ->sortable()
-                ->weight('bold'),
-            
-            Tables\Columns\TextColumn::make('customer.name')
-                ->label('CUSTOMER')
-                ->searchable()
-                ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
-                
-            Tables\Columns\TextColumn::make('staff.name')
-                ->label('SALES REP')
-                ->toggleable()
-                ->color('gray'), 
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('order_no')
+                    ->label('ORDER #')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold'),
 
-            Tables\Columns\TextColumn::make('due_date')
-                ->date('M d, Y')
-                ->label('DUE DATE')
-                ->sortable()
-                ->color(fn ($state) => $state <= now() ? 'danger' : 'warning'),
-            
-            Tables\Columns\SelectColumn::make('status')
-                ->label('STATUS')
-                ->options([
-                    'draft' => 'Draft',
-                    'quoted' => 'Quoted',
-                    'approved' => 'Approved',
-                    'in_production' => 'In Production',
-                    'received' => 'Ready for Pickup',
-                    'completed' => 'Completed',
-                ])
-                ->selectablePlaceholder(false),
+                Tables\Columns\TextColumn::make('customer.name')
+                    ->label('CUSTOMER')
+                    ->searchable()
+                    ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
 
-            Tables\Columns\TextColumn::make('notified_at')
-                ->label('TIMESTAMP')
-                ->getStateUsing(fn ($record) => $record->is_customer_notified && $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
-                ->icon(fn ($state) => $state !== 'Not Notified' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
-                ->color(fn ($state) => $state !== 'Not Notified' ? 'success' : 'gray')
-                ->description(function ($record) {
-                    if (!$record->is_customer_notified) return null;
-                    return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Message Log</span>");
-                })
-                // 🚀 This action stays here because it is attached to the Column click
-                ->action(
-                    Tables\Actions\Action::make('viewMessageHistory')
-                        ->modalHeading('Communication History')
-                        ->modalWidth('lg')
-                        ->slideOver()
-                        ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Close')
-                        ->form([
-                            Forms\Components\Placeholder::make('history_log')
-                                ->label('')
-                                ->content(fn ($record) => new HtmlString("
+                Tables\Columns\TextColumn::make('staff.name')
+                    ->label('SALES REP')
+                    ->toggleable()
+                    ->color('gray'),
+
+                Tables\Columns\TextColumn::make('due_date')
+                    ->date('M d, Y')
+                    ->label('DUE DATE')
+                    ->sortable()
+                    ->color(fn($state) => $state <= now() ? 'danger' : 'warning'),
+                Tables\Columns\TextColumn::make('balance_due')
+                    ->label('BALANCE')
+                    ->money('USD')
+                    ->sortable()
+                    ->color(fn($state) => $state > 0 ? 'danger' : 'success')
+                    ->weight('bold'),
+
+                Tables\Columns\SelectColumn::make('status')
+                    ->label('STATUS')
+                    ->options([
+                        'draft' => 'Draft',
+                        'quoted' => 'Quoted',
+                        'approved' => 'Approved',
+                        'in_production' => 'In Production',
+                        'received' => 'Ready for Pickup',
+                        'completed' => 'Completed',
+                    ])
+                    ->selectablePlaceholder(false),
+
+                Tables\Columns\TextColumn::make('notified_at')
+                    ->label('TIMESTAMP')
+                    ->getStateUsing(fn($record) => $record->is_customer_notified && $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
+                    ->icon(fn($state) => $state !== 'Not Notified' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
+                    ->color(fn($state) => $state !== 'Not Notified' ? 'success' : 'gray')
+                    ->description(function ($record) {
+                        if (!$record->is_customer_notified) return null;
+                        return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Message Log</span>");
+                    })
+                    // 🚀 This action stays here because it is attached to the Column click
+                    ->action(
+                        Tables\Actions\Action::make('viewMessageHistory')
+                            ->modalHeading('Communication History')
+                            ->modalWidth('lg')
+                            ->slideOver()
+                            ->modalSubmitAction(false)
+                            ->modalCancelActionLabel('Close')
+                            ->form([
+                                Forms\Components\Placeholder::make('history_log')
+                                    ->label('')
+                                    ->content(fn($record) => new HtmlString("
                                     <div class='space-y-4'>
                                         <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
                                             <div class='flex justify-between items-center mb-2'>
                                                 <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification Content</span>
-                                                <span class='text-[10px] text-gray-400'>".($record->notified_at?->format('M d, Y h:i A') ?? 'N/A')."</span>
+                                                <span class='text-[10px] text-gray-400'>" . ($record->notified_at?->format('M d, Y h:i A') ?? 'N/A') . "</span>
                                             </div>
                                             <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
                                         </div>
                                     </div>
                                 "))
-                        ])
-                )
-                ->extraAttributes(fn ($state) => $state !== 'Not Notified' ? ['class' => 'opacity-70'] : []),
-        ])
-        ->filters([
-            //
-        ])
-        ->actions([
-            // 🚀 MOVE YOUR BUTTON ACTIONS HERE
-            Tables\Actions\EditAction::make()->iconButton(),
+                            ])
+                    )
+                    ->extraAttributes(fn($state) => $state !== 'Not Notified' ? ['class' => 'opacity-70'] : []),
+            ])
+            ->filters([
+                //
+            ])
+            ->actions([
+                // 🚀 MOVE YOUR BUTTON ACTIONS HERE
+                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\Action::make('recordPayment')
+            ->label('Add Deposit/Payment')
+            ->icon('heroicon-o-currency-dollar')
+            ->color('success')
+            ->visible(fn(CustomOrder $record) => $record->balance_due > 0)
+            ->form([
+                TextInput::make('amount')
+                    ->label('Payment Amount')
+                    ->numeric()
+                    ->required()
+                    ->prefix('$')
+                    ->default(fn(CustomOrder $record) => $record->balance_due), 
 
-            Tables\Actions\Action::make('notifyDelay')
-                ->label('Delay')
-                ->icon('heroicon-o-clock')
-                ->color('danger') 
-                ->modalHeading('Notify Customer of Delay')
-                ->form([
-                    Select::make('notify_method')
-                        ->label('Notification Method')
-                        ->options([
-                            'sms' => 'SMS Only',
-                            'email' => 'Email Only',
-                            'both' => 'Both (SMS & Email)'
-                        ])
-                        ->default('sms')
-                        ->required(),
-                    Textarea::make('message')
-                        ->label('Message Content')
-                        ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
-                        ->rows(3)
-                        ->required()
-                ])
-                ->action(function (CustomOrder $record, array $data) {
-                    self::handleNotification($record, $data['notify_method'], $data['message']);
-                }),
+                Select::make('payment_method')
+                    ->options(self::getPaymentOptions()) // 👈 DYNAMIC NOW
+                    ->default('cash')
+                    ->required(),
+            ])
+                    ->action(function (CustomOrder $record, array $data) {
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+                            $amountPaid = (float) $data['amount'];
 
-            Tables\Actions\Action::make('markReady')
-                ->label('Ready')
-                ->icon('heroicon-o-check-circle')
-                ->color('success') 
-                ->modalHeading('Mark Ready & Notify')
-                ->form([
-                    Select::make('notify_method')
-                        ->label('Notification Method')
-                        ->options([
-                            'sms' => 'SMS Only',
-                            'email' => 'Email Only',
-                            'both' => 'Both (SMS & Email)',
-                            'none' => 'Do not notify (Just update status)'
-                        ])
-                        ->default('both')
-                        ->required(),
-                    Textarea::make('message')
-                        ->label('Message Content')
-                        ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
-                        ->rows(3)
-                        ->required(fn(Get $get) => $get('notify_method') !== 'none')
-                        ->visible(fn(Get $get) => $get('notify_method') !== 'none')
-                ])
-                ->action(function (CustomOrder $record, array $data) {
-                    $record->update([
-                        'status' => 'received', 
-                        'is_customer_notified' => $data['notify_method'] !== 'none', 
-                        'notified_at' => $data['notify_method'] !== 'none' ? now() : null
-                    ]);
-                    
-                    if ($data['notify_method'] !== 'none') {
+                            // 1. Update the Custom Order's math
+                            $newAmountPaid = $record->amount_paid + $amountPaid;
+                            $newBalance = max(0, $record->quoted_price - $newAmountPaid);
+
+                            $record->update([
+                                'amount_paid' => $newAmountPaid,
+                                'balance_due' => $newBalance,
+                            ]);
+
+                           \App\Models\Payment::create([
+    'custom_order_id' => $record->id,
+    'amount'          => $amountPaid,
+    'method'          => strtolower($data['payment_method']),
+    'paid_at'         => now(),
+]);
+                        });
+
+                        Notification::make()
+                            ->title('Payment Recorded')
+                            ->body('The custom order balance has been updated.')
+                            ->success()
+                            ->send();
+                    }),
+                Tables\Actions\Action::make('notifyDelay')
+                    ->label('Delay')
+                    ->icon('heroicon-o-clock')
+                    ->color('danger')
+                    ->modalHeading('Notify Customer of Delay')
+                    ->form([
+                        Select::make('notify_method')
+                            ->label('Notification Method')
+                            ->options([
+                                'sms' => 'SMS Only',
+                                'email' => 'Email Only',
+                                'both' => 'Both (SMS & Email)'
+                            ])
+                            ->default('sms')
+                            ->required(),
+                        Textarea::make('message')
+                            ->label('Message Content')
+                            ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
+                            ->rows(3)
+                            ->required()
+                    ])
+                    ->action(function (CustomOrder $record, array $data) {
                         self::handleNotification($record, $data['notify_method'], $data['message']);
-                    } else {
-                        Notification::make()->title('Status updated. No notifications sent.')->success()->send();
-                    }
-                }),
+                    }),
 
-            Tables\Actions\Action::make('convertToSale')
-                ->label('To Sale')
-                ->icon('heroicon-o-shopping-cart')
-                ->color('info')
-                ->visible(fn (CustomOrder $record) => $record->status === 'received')
-                ->action(function (CustomOrder $record) {
-                    return redirect()->route('filament.admin.resources.sales.create', [
-                        'customer_id' => $record->customer_id,
-                        'custom_order_id' => $record->id,
-                    ]);
-                }),
-        ])
-        ->defaultSort('created_at', 'desc');
-}
+                Tables\Actions\Action::make('markReady')
+                    ->label('Ready')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->modalHeading('Mark Ready & Notify')
+                    ->form([
+                        Select::make('notify_method')
+                            ->label('Notification Method')
+                            ->options([
+                                'sms' => 'SMS Only',
+                                'email' => 'Email Only',
+                                'both' => 'Both (SMS & Email)',
+                                'none' => 'Do not notify (Just update status)'
+                            ])
+                            ->default('both')
+                            ->required(),
+                        Textarea::make('message')
+                            ->label('Message Content')
+                            ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
+                            ->rows(3)
+                            ->required(fn(Get $get) => $get('notify_method') !== 'none')
+                            ->visible(fn(Get $get) => $get('notify_method') !== 'none')
+                    ])
+                    ->action(function (CustomOrder $record, array $data) {
+                        $record->update([
+                            'status' => 'received',
+                            'is_customer_notified' => $data['notify_method'] !== 'none',
+                            'notified_at' => $data['notify_method'] !== 'none' ? now() : null
+                        ]);
 
+                        if ($data['notify_method'] !== 'none') {
+                            self::handleNotification($record, $data['notify_method'], $data['message']);
+                        } else {
+                            Notification::make()->title('Status updated. No notifications sent.')->success()->send();
+                        }
+                    }),
+
+                Tables\Actions\Action::make('convertToSale')
+                    ->label('To Sale')
+                    ->icon('heroicon-o-shopping-cart')
+                    ->color('info')
+                    ->visible(fn(CustomOrder $record) => $record->status === 'received')
+                    ->action(function (CustomOrder $record) {
+                        return redirect()->route('filament.admin.resources.sales.create', [
+                            'customer_id' => $record->customer_id,
+                            'custom_order_id' => $record->id,
+                        ]);
+                    }),
+            ])
+            ->defaultSort('created_at', 'desc');
+    }
+    public static function getPaymentOptions(): array
+    {
+        $json = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+        $methods = $json ? json_decode($json, true) : $defaultMethods;
+        $options = [];
+
+        foreach ($methods as $method) {
+            // We usually exclude LAYBUY for deposits, but you can add it back if needed
+            if (strtoupper($method) !== 'LAYBUY') {
+                $options[strtolower($method)] = strtoupper($method);
+            }
+        }
+        return $options;
+    }
+    public static function calculateBalance(Get $get, Set $set)
+    {
+        $quoted = floatval($get('quoted_price') ?? 0);
+        $paid = floatval($get('amount_paid') ?? 0);
+        $set('balance_due', max(0, $quoted - $paid));
+    }
     /**
      * 📩 HELPER: Handles Both SMS and Email Routing
      */

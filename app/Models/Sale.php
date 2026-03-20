@@ -15,23 +15,23 @@ class Sale extends Model
     use LogsActivity;
 
     protected $guarded = [];
-    
+
     protected $casts = [
         'split_payments' => 'array',
         'sales_person_list' => 'array',
         'created_at' => 'datetime',
-    'updated_at' => 'datetime',
-    'deleted_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
-    public function customer(): BelongsTo 
-    { 
-        return $this->belongsTo(Customer::class); 
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
-    public function items(): HasMany 
-    { 
-        return $this->hasMany(SaleItem::class); 
+    public function items(): HasMany
+    {
+        return $this->hasMany(SaleItem::class);
     }
 
     public function productItem()
@@ -41,7 +41,7 @@ class Sale extends Model
 
     public function store(): BelongsTo
     {
-        
+
         return $this->belongsTo(Store::class);
     }
     public function laybuy()
@@ -53,43 +53,43 @@ class Sale extends Model
      * Model Boot Logic
      */
     protected static function booted()
-{
-    static::creating(function ($sale) {
-        $sale->store_id = $sale->store_id ?? 1;
+    {
+        static::creating(function ($sale) {
+            $sale->store_id = $sale->store_id ?? 1;
 
-        if (empty($sale->invoice_number)) {
-            // 1. Get Prefix (e.g., 'D')
-            $prefix = DB::table('site_settings')
-                ->where('key', 'barcode_prefix')
-                ->value('value') ?? 'D';
+            if (empty($sale->invoice_number)) {
+                // 1. Get Prefix (e.g., 'D')
+                $prefix = DB::table('site_settings')
+                    ->where('key', 'barcode_prefix')
+                    ->value('value') ?? 'D';
 
-            // 2. Find the latest invoice that is NOT a long date string
-            // We look for numbers where the length is small (e.g., Prefix + 4 digits = 5)
-            $lastSale = self::withTrashed()
-                ->where('invoice_number', 'LIKE', "{$prefix}%")
-                ->whereRaw("LENGTH(invoice_number) < 9") // 🚀 IGNORES D31126005 (length 9)
-                ->orderByRaw('CAST(REPLACE(invoice_number, ?, "") AS UNSIGNED) DESC', [$prefix])
-                ->first();
+                // 2. Find the latest invoice that is NOT a long date string
+                // We look for numbers where the length is small (e.g., Prefix + 4 digits = 5)
+                $lastSale = self::withTrashed()
+                    ->where('invoice_number', 'LIKE', "{$prefix}%")
+                    ->whereRaw("LENGTH(invoice_number) < 9") // 🚀 IGNORES D31126005 (length 9)
+                    ->orderByRaw('CAST(REPLACE(invoice_number, ?, "") AS UNSIGNED) DESC', [$prefix])
+                    ->first();
 
-            if ($lastSale) {
-                // Strip prefix and increment
-                $lastNumber = (int) str_replace($prefix, '', $lastSale->invoice_number);
-                $nextNumber = $lastNumber + 1;
-            } else {
-                // 🚀 STARTING POINT
-                $nextNumber = 5001; 
-            }
+                if ($lastSale) {
+                    // Strip prefix and increment
+                    $lastNumber = (int) str_replace($prefix, '', $lastSale->invoice_number);
+                    $nextNumber = $lastNumber + 1;
+                } else {
+                    // 🚀 STARTING POINT
+                    $nextNumber = 5001;
+                }
 
-            $sale->invoice_number = $prefix . $nextNumber;
-        }
-    });
-    static::saving(function ($sale) {
-            // 🚀 Automatically set completed_at when status changes to completed
-            if ($sale->status === 'completed' && empty($sale->completed_at)) {
-                $sale->completed_at = now();
+                $sale->invoice_number = $prefix . $nextNumber;
             }
         });
-}
+       static::saving(function ($sale) {
+    // Only set completed_at when status becomes completed
+    if ($sale->status === 'completed' && empty($sale->completed_at)) {
+        $sale->completed_at = now();
+    }
+});
+    }
 
     public function getCustomerNameAttribute(): string
     {
@@ -107,10 +107,10 @@ class Sale extends Model
     {
         return "Invoice: " . $this->invoice_number;
     }
-public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
-{
-    return $this->hasMany(Payment::class);
-}
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
     public function getGlobalSearchResultDetails(): array
     {
         return [

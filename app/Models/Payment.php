@@ -24,4 +24,8 @@ class Payment extends Model
     {
         return $this->belongsTo(Sale::class);
     }
+    public function customOrder()
+    {
+        return $this->belongsTo(CustomOrder::class);
+    }
 }

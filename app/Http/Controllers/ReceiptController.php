@@ -32,11 +32,21 @@ class ReceiptController extends Controller
     }
 
 
-  public function printRepair(Repair $repair)
+public function printRepair(Repair $repair)
 {
-    // Load necessary relationships
+    // 1. Load necessary relationships for the packet
     $repair->load(['customer', 'salesPerson', 'originalProduct', 'store']);
 
-    return view('receipts.repair-job-packet', compact('repair'));
+    // 2. Load the specific repair-job-packet view
+    $pdf = Pdf::loadView('receipts.repair-job-packet', [
+        'repair' => $repair,
+    ]);
+
+    // 3. Set paper size to Letter (common for workshop packets)
+    $pdf->setPaper('letter', 'portrait');
+
+    // 4. Stream the PDF to the browser with a clean filename
+    $filename = "REPAIR_{$repair->repair_no}.pdf";
+    return $pdf->stream($filename);
 }
 }

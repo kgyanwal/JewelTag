@@ -185,7 +185,7 @@ class FindSale extends Page implements HasForms, HasTable
         ->label('Edit')
         ->url(fn (Sale $record): string => SaleResource::getUrl('edit', ['record' => $record])),
                 Action::make('quick_view')
-                    ->label('View Details')
+                    ->label('View')
                     ->icon('heroicon-o-eye')
                     ->color('info')
                     ->slideOver()

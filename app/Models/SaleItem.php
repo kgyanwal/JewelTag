@@ -34,25 +34,32 @@ public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
-   protected static function booted()
-{
-    static::creating(function ($saleItem) {
-            $saleItem->discount_amount = $saleItem->discount_amount ?? 0;
-            $saleItem->discount_percent = $saleItem->discount_percent ?? 0;
-            $saleItem->discount = $saleItem->discount ?? 0; // Fixed because it's in your schema
+protected static function booted()
+    {
+        // 🚀 CHANGED TO 'saving' SO IT WORKS ON EDITS TOO
+        static::saving(function ($saleItem) {
+            // Force null or empty strings to be strict 0 floats
+            $saleItem->discount_amount = floatval($saleItem->discount_amount ?? 0);
+            $saleItem->discount_percent = floatval($saleItem->discount_percent ?? 0);
+            $saleItem->discount = floatval($saleItem->discount ?? 0); 
+            
+            // Ensure sale_price_override doesn't pass null if cleared
+            $saleItem->sale_price_override = $saleItem->sale_price_override ? floatval($saleItem->sale_price_override) : null;
+            
             $saleItem->is_tax_free = $saleItem->is_tax_free ?? false;
         });
-    static::created(function ($saleItem) {
-        if ($saleItem->product_item_id && $saleItem->productItem) {
-            $saleItem->productItem->update(['status' => 'sold']);
-        }
-    });
 
-    static::deleted(function ($saleItem) {
-        if ($saleItem->product_item_id && $saleItem->productItem) {
-            $saleItem->productItem->update(['status' => 'in_stock']);
-        }
-    });
-}
+        static::created(function ($saleItem) {
+            if ($saleItem->product_item_id && $saleItem->productItem) {
+                $saleItem->productItem->update(['status' => 'sold']);
+            }
+        });
+
+        static::deleted(function ($saleItem) {
+            if ($saleItem->product_item_id && $saleItem->productItem) {
+                $saleItem->productItem->update(['status' => 'in_stock']);
+            }
+        });
+    }
 
 }

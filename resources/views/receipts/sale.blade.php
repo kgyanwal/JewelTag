@@ -170,8 +170,8 @@
                     </div>
                     <div style="font-size: 10px; background: #f8fafc; padding: 10px; border-radius: 6px; border-left: 3px solid {{ $receiptAccent }}; color: #546e7a; line-height: 1.5;">
                         <div style="margin-bottom: 3px;">
-                            <i class="fas fa-map-marker-alt"></i> 
-                           {{ $sale->store->street }},{{ $sale->store->state }} {{ $sale->store->postcode }}
+                            <i class="fas fa-map-marker-alt"></i>
+                            {{ $sale->store->street }},{{ $sale->store->state }} {{ $sale->store->postcode }}
                         </div>
                         <div style="margin-bottom: 3px;">
                             <i class="fas fa-phone"></i> {{ optional($sale->store)->phone ?? '505-810-7222' }} &nbsp; | &nbsp;
@@ -223,52 +223,42 @@
                             <td valign="top" style="color: #2c3e50;">Payment Method:</td>
                             <td valign="top" align="right">
                                 @if($sale->final_total <= 0 && ($hasRepair || $isSpecialJob))
-                    <strong style="color: #10b981;">COVERED BY WARRANTY</strong>
-                                @if($sale->is_split_payment)
-                                @elseif($sale->payment_amount_1 > 0)
-                                <div style="margin-bottom: 2px;">
-                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_1) }}:</span>
-                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_1, 2) }}</strong>
-                                </div>
-                                @endif
-                                @if($sale->payment_amount_2 > 0)
-                                <div style="margin-bottom: 2px;">
-                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_2) }}:</span>
-                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_2, 2) }}</strong>
-                                </div>
-                                @endif
-                                @if($sale->payment_amount_3 > 0)
-                                <div>
-                                    <span style="font-size: 9px; color: #666;">{{ strtoupper($sale->payment_method_3) }}:</span>
-                                    <strong style="color: {{ $receiptColor }};">${{ number_format($sale->payment_amount_3, 2) }}</strong>
-                                </div>
-                                @endif
+                                    <strong style="color: #10b981;">COVERED BY WARRANTY</strong>
+                                  @elseif($sale->payments && $sale->payments->count() > 0)
+                                    {{-- 🚀 NEW: Dynamically loop through all payments in the new model --}}
+                                    @foreach($sale->payments as $payment)
+                                        <div style="margin-bottom: 2px;">
+                                            <span style="font-size: 9px; color: #666;">{{ strtoupper(str_replace('_', ' ', $payment->method)) }}:</span>
+                                            <strong style="color: {{ $receiptColor }};">${{ number_format($payment->amount, 2) }}</strong>
+                                        </div>
+                                    @endforeach
                                 @else
-                                <strong style="color: {{ $receiptColor }};">{{ strtoupper(str_replace('_', ' ', $sale->payment_method)) }}</strong>
+                                    {{-- Fallback if no payments are logged yet --}}
+                                    <strong style="color: {{ $receiptColor }};">{{ strtoupper(str_replace('_', ' ', $sale->payment_method ?? 'UNPAID')) }}</strong>
                                 @endif
                             </td>
                         </tr>
                         <tr>
                             <td colspan="2" style="border-top: 1px dashed #eee; height: 5px;"></td>
                         </tr>
-                      <tr>
-    <td valign="top" style="padding-top: 5px; color: #2c3e50;">Status:</td>
-    <td valign="top" align="right" style="padding-top: 5px;">
-        @php
-            // Calculate the actual balance
-            $totalPaid = $sale->payments->sum('amount');
-            $balance = floatval($sale->final_total) - $totalPaid;
-        @endphp
+                        <tr>
+                            <td valign="top" style="padding-top: 5px; color: #2c3e50;">Status:</td>
+                            <td valign="top" align="right" style="padding-top: 5px;">
+                                @php
+                                // Calculate the actual balance
+                                $totalPaid = $sale->payments->sum('amount');
+                                $balance = floatval($sale->final_total) - $totalPaid;
+                                @endphp
 
-        @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
-            <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
-        @elseif($balance > 0.01) {{-- Using 0.01 to avoid rounding/float issues --}}
-            <strong style="color: #f59e0b;">PARTIAL PAYMENT (${{ number_format($balance, 2) }} DUE)</strong>
-        @else
-            <strong style="color: #10b981;">PAID IN FULL</strong>
-        @endif
-    </td>
-</tr>
+                                @if($sale->payment_method === 'laybuy' && ($sale->laybuy->balance_due ?? 1) > 0)
+                                <strong style="color: #f59e0b;">LAYBY ACTIVE</strong>
+                                @elseif($balance > 0.01) {{-- Using 0.01 to avoid rounding/float issues --}}
+                                <strong style="color: #f59e0b;">PARTIAL PAYMENT (${{ number_format($balance, 2) }} DUE)</strong>
+                                @else
+                                <strong style="color: #10b981;">PAID IN FULL</strong>
+                                @endif
+                            </td>
+                        </tr>
                     </table>
                 </td>
             </tr>
@@ -338,34 +328,34 @@
                     </div>
                     @endif
                     @if($sale->notes || $sale->job_type)
-<div style="margin-bottom: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 12px; border-left: 5px solid #f59e0b;">
-    <div style="color: #92400e; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
-        <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
-    </div>
-    
-    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; color: #78350f; margin-bottom: 8px;">
-        <tr>
-            <td width="50%"><strong>Service:</strong> {{ $sale->job_type ?? 'General Service' }}</td>
-            <td width="50%"><strong>Metal:</strong> {{ $sale->metal_type ?? 'N/A' }}</td>
-        </tr>
-        @if($sale->job_type === 'Resize')
-        <tr>
-            <td><strong>Current Size:</strong> {{ $sale->current_size }}</td>
-            <td><strong>Target Size:</strong> {{ $sale->target_size }}</td>
-        </tr>
-        @endif
-        @if($sale->date_required)
-        <tr>
-            <td colspan="2"><strong>Target Completion:</strong> {{ \Carbon\Carbon::parse($sale->date_required)->format('M d, Y') }}</td>
-        </tr>
-        @endif
-    </table>
+                    <div style="margin-bottom: 15px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 12px; border-left: 5px solid #f59e0b;">
+                        <div style="color: #92400e; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+                            <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
+                        </div>
 
-    <div style="font-size: 11px; color: #78350f; line-height: 1.6; border-top: 1px dashed #fef3c7; padding-top: 5px;">
-        <strong>Instructions:</strong> {{ $sale->job_instructions ?? $sale->notes }}
-    </div>
-</div>
-@endif
+                        <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; color: #78350f; margin-bottom: 8px;">
+                            <tr>
+                                <td width="50%"><strong>Service:</strong> {{ $sale->job_type ?? 'General Service' }}</td>
+                                <td width="50%"><strong>Metal:</strong> {{ $sale->metal_type ?? 'N/A' }}</td>
+                            </tr>
+                            @if($sale->job_type === 'Resize')
+                            <tr>
+                                <td><strong>Current Size:</strong> {{ $sale->current_size }}</td>
+                                <td><strong>Target Size:</strong> {{ $sale->target_size }}</td>
+                            </tr>
+                            @endif
+                            @if($sale->date_required)
+                            <tr>
+                                <td colspan="2"><strong>Target Completion:</strong> {{ \Carbon\Carbon::parse($sale->date_required)->format('M d, Y') }}</td>
+                            </tr>
+                            @endif
+                        </table>
+
+                        <div style="font-size: 11px; color: #78350f; line-height: 1.6; border-top: 1px dashed #fef3c7; padding-top: 5px;">
+                            <strong>Instructions:</strong> {{ $sale->job_instructions ?? $sale->notes }}
+                        </div>
+                    </div>
+                    @endif
                     <div style="background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e0e7ee; margin-bottom: 15px;">
                         <div style="color: {{ $receiptColor }}; font-size: 9px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px; letter-spacing: 0.5px;">
                             <i class="fas fa-file-contract"></i> TERMS & CONDITIONS

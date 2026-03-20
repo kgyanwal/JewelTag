@@ -11,7 +11,7 @@ class CustomOrder extends Model
     use LogsActivity;
     
     protected $guarded = [];
-
+protected bool $hasUnsavedDataChangesAlert = true;
     // 🔹 VITAL: Cast dates and booleans for Filament
     protected $casts = [
         'due_date' => 'date',
@@ -32,5 +32,9 @@ class CustomOrder extends Model
             $order->store_id = auth()->user()->store_id ?? 1;
             $order->staff_id = auth()->id();
         });
+    }
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
     }
 }

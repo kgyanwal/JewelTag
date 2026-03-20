@@ -205,7 +205,7 @@
     </div>
 </div>
 
-<div class="document-title">CUSTOMER RECEIPT COPY</div>
+<div class="document-title">CUSTOMER RECEIPT</div>
 
 <table class="meta-table">
     <tr>
@@ -266,7 +266,7 @@
     </div>
 </div>
 
-<div class="document-title">WORKSHOP / BENCH COPY</div>
+<div class="document-title">Merchant Receipt</div>
 
 <table class="meta-table">
     <tr>

@@ -37,7 +37,7 @@ class SaleResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'Quick Sale';
-protected static ?string $recordTitleAttribute = 'invoice_number';
+    protected static ?string $recordTitleAttribute = 'invoice_number';
 
     public static function getGloballySearchableAttributes(): array
     {
@@ -866,8 +866,10 @@ protected static ?string $recordTitleAttribute = 'invoice_number';
                 Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
             ])
             ->actions([
-                Tables\Actions\EditAction::make()
-                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
+Tables\Actions\EditAction::make(),
+                // I am commenting out because this is for sale edit request
+                // Tables\Actions\EditAction::make()
+                //     ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
 
                 // 🚀 MAIN GROUP (Receipt + Share)
                 Tables\Actions\ActionGroup::make([

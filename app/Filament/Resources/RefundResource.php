@@ -57,34 +57,34 @@ class RefundResource extends Resource
 
                     // 🔹 Dynamic Checkbox List for Item Selection
                     Forms\Components\CheckboxList::make('refunded_items')
-    ->label('Select Items to Refund')
-    ->options(function (Get $get, ?Refund $record) {
-        $saleId = $get('sale_id');
-        if (!$saleId) return [];
-        
-        $sale = Sale::find($saleId);
-        if (!$sale) return [];
+                        ->label('Select Items to Refund')
+                        ->options(function (Get $get, ?Refund $record) {
+                            $saleId = $get('sale_id');
+                            if (!$saleId) return [];
 
-        // 1. Get IDs of items already refunded for this sale
-        $alreadyRefundedIds = Refund::where('sale_id', $saleId)
-            ->where('status', 'approved')
-            // Exclude the current record if we are in Edit mode
-            ->when($record, fn ($query) => $query->where('id', '!=', $record->id))
-            ->get()
-            ->pluck('refunded_items')
-            ->flatten()
-            ->toArray();
+                            $sale = Sale::find($saleId);
+                            if (!$sale) return [];
 
-        // 2. Filter the options to only show items NOT yet refunded
-        return $sale->items
-            ->whereNotIn('id', $alreadyRefundedIds)
-            ->mapWithKeys(fn ($item) => [
-                $item->id => ($item->productItem->barcode ?? 'Stock') . " | " . $item->custom_description . " ($" . number_format($item->sold_price, 2) . ")"
-            ]);
-    })
-    ->visible(fn (Get $get) => $get('sale_id'))
-    ->live()
-    ->columns(2),
+                            // 1. Get IDs of items already refunded for this sale
+                            $alreadyRefundedIds = Refund::where('sale_id', $saleId)
+                                ->where('status', 'approved')
+                                // Exclude the current record if we are in Edit mode
+                                ->when($record, fn($query) => $query->where('id', '!=', $record->id))
+                                ->get()
+                                ->pluck('refunded_items')
+                                ->flatten()
+                                ->toArray();
+
+                            // 2. Filter the options to only show items NOT yet refunded
+                            return $sale->items
+                                ->whereNotIn('id', $alreadyRefundedIds)
+                                ->mapWithKeys(fn($item) => [
+                                    $item->id => ($item->productItem->barcode ?? 'Stock') . " | " . $item->custom_description . " ($" . number_format($item->sold_price, 2) . ")"
+                                ]);
+                        })
+                        ->visible(fn(Get $get) => $get('sale_id'))
+                        ->live()
+                        ->columns(2),
 
                     Forms\Components\Select::make('quality_check')
                         ->options([
@@ -148,16 +148,22 @@ class RefundResource extends Resource
                                     }
                                 }
                             }
-                           $sale = $record->sale;
-if ($sale) {
-    $totalItemsInSale = $sale->items()->count();
-    // Use collect to ensure we can count even if it's a raw array
-    $totalItemsRefunded = collect($record->refunded_items)->count();
+                            $sale = $record->sale;
+                            if ($sale) {
+                                $totalItemsInSale = $sale->items()->count();
+                                // Use collect to ensure we can count even if it's a raw array
+                                $totalItemsRefunded = collect($record->refunded_items)->count();
 
-    $newStatus = ($totalItemsRefunded >= $totalItemsInSale) ? 'refunded' : 'partially_refunded';
-    
-    $sale->update(['status' => $newStatus]);
-}
+                                $newStatus = ($totalItemsRefunded >= $totalItemsInSale) ? 'refunded' : 'partially_refunded';
+
+                                $sale->update(['status' => $newStatus]);
+                            }
+                             \App\Models\Payment::create([
+            'sale_id'  => $record->sale_id,
+            'amount'   => -abs($record->refund_amount), // negative to reduce daily total
+            'method'   => $record->sale?->payment_method ?? 'cash',
+            'paid_at'  => now(),
+        ]);
                             $record->update(['status' => 'approved', 'approved_by' => auth()->id()]);
                         });
                         Notification::make()->title('Refund Approved & Item is now In Stock.')->success()->send();

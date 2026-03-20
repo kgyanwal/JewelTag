@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Mail;
 use Aws\Sns\SnsClient;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 use Illuminate\Support\Facades\Session;
+
 class RepairResource extends Resource
 {
     protected static ?string $model = Repair::class;
@@ -87,7 +88,7 @@ class RepairResource extends Resource
                                             ]),
                                             Forms\Components\Grid::make(2)->schema([
                                                 DatePicker::make('dob')
-                                                ->maxDate(now())
+                                                    ->maxDate(now())
                                                     ->rule('before_or_equal:today')
                                                     ->label('Birth Date'),
 
@@ -212,21 +213,21 @@ class RepairResource extends Resource
                         ->required()
                         ->columnSpanFull(),
                     Select::make('sales_person_list')
-    ->label('Sales Staff')
-    ->multiple()
-    ->searchable()
-    ->preload()
-    ->options(\App\Models\User::pluck('name', 'id')) 
-   ->default(fn() => [
-        Session::get('active_staff_name') ?? auth()->user()->name
-    ])
-    ->required()
-    ->live()
-    ->afterStateUpdated(function ($state, Forms\Set $set) {
-        // Use collect() or a simple check to avoid errors if $state is null/empty
-        $firstId = !empty($state) ? $state[0] : null;
-        $set('sales_person_id', $firstId);
-    }),
+                        ->label('Sales Staff')
+                        ->multiple()
+                        ->searchable()
+                        ->preload()
+                        ->options(\App\Models\User::pluck('name', 'id'))
+                        ->default(fn() => [
+                            Session::get('active_staff_name') ?? auth()->user()->name
+                        ])
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function ($state, Forms\Set $set) {
+                            // Use collect() or a simple check to avoid errors if $state is null/empty
+                            $firstId = !empty($state) ? $state[0] : null;
+                            $set('sales_person_id', $firstId);
+                        }),
                     TextInput::make('estimated_cost')
                         ->label('Estimated Cost')
                         ->numeric()
@@ -238,18 +239,18 @@ class RepairResource extends Resource
                         ->numeric()
                         ->prefix('$')
                         ->helperText('Leave blank until repair is finished.'),
-                        
+
                 ])->columns(2),
-                Section::make('Workflow')
-    ->description('Printing and Notifications')
-    ->schema([
-        Forms\Components\Toggle::make('auto_print')
-            ->label('Print Job Packet after saving?')
-            ->default(true)
-            ->dehydrated(false)
-            ->inline(false) // Makes it look more like a big action button
-            ->live(),
-    ])->columnSpan(1),
+            Section::make('Workflow')
+                ->description('Printing and Notifications')
+                ->schema([
+                    Forms\Components\Toggle::make('auto_print')
+                        ->label('Print Job Packet after saving?')
+                        ->default(true)
+                        ->dehydrated(false)
+                        ->inline(false) // Makes it look more like a big action button
+                        ->live(),
+                ])->columnSpan(1),
         ]);
     }
 
@@ -396,12 +397,12 @@ class RepairResource extends Resource
                         ->url(fn(Repair $record) => route('filament.admin.resources.sales.create', ['repair_id' => $record->id, 'customer_id' => $record->customer_id])),
 
                     Tables\Actions\Action::make('printJobPacket')
-    ->label('Print Job Packet')
-    ->icon('heroicon-o-printer')
-    ->color('info')
-    // This opens the print view in a new tab
-    ->url(fn (Repair $record): string => route('repair.print', $record))
-    ->openUrlInNewTab(),    
+                        ->label('Print Job Packet')
+                        ->icon('heroicon-o-printer')
+                        ->color('info')
+                        // This opens the print view in a new tab
+                        ->url(fn(Repair $record): string => route('repair.print', $record))
+                        ->openUrlInNewTab(),
                 ])
             ])
             ->defaultSort('created_at', 'desc');
