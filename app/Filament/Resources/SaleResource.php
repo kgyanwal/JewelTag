@@ -867,7 +867,7 @@ protected static ?string $recordTitleAttribute = 'invoice_number';
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
-                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin', 'Administration', 'Manager', 'Sales')),
+                    ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
 
                 // 🚀 MAIN GROUP (Receipt + Share)
                 Tables\Actions\ActionGroup::make([
