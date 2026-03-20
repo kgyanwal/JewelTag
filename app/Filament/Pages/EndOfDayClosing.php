@@ -74,6 +74,10 @@ class EndOfDayClosing extends Page
         }
 
         $this->isClosed = false;
+        
+        // 🚀 THE FIX: Reset the arrays so old data doesn't carry over to the new date!
+        $this->expectedTotals = [];
+        $this->actualTotals   = [];
 
         /*
         |--------------------------------------------------------------------------
@@ -82,47 +86,44 @@ class EndOfDayClosing extends Page
         */
         $tz = Store::first()?->timezone ?? config('app.timezone', 'UTC');
 
-        // 🚀 THE FIX: Calculate the exact UTC start and end for the local day
+        // Calculate the exact UTC start and end for the local day
         $startUtc = Carbon::parse($this->date, $tz)->startOfDay()->setTimezone('UTC');
         $endUtc = Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
 
         // Use whereBetween to capture everything in that 24-hour UTC window
-    $payments = \App\Models\Payment::whereBetween('paid_at', [$startUtc, $endUtc])
-    ->get();
+        $payments = \App\Models\Payment::whereBetween('paid_at', [$startUtc, $endUtc])->get();
 
         $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
 
-        $systemTotals = array_fill_keys(array_keys($this->paymentMethods), 0);
-
-foreach ($payments as $payment) {
-    $key = strtolower(trim($payment->method));
-    if (isset($systemTotals[$key])) {
-        $systemTotals[$key] += (float) $payment->amount;
-    }
-}
+        foreach ($payments as $payment) {
+            $key = strtolower(trim($payment->method));
+            if (isset($systemTotals[$key])) {
+                $systemTotals[$key] += (float) $payment->amount;
+            }
+        }
 
         /*
         |--------------------------------------------------------------------------
         | 4. Populate Totals Based on Role
         |--------------------------------------------------------------------------
         */
-       foreach ($this->paymentMethods as $key => $label) {
+        foreach ($this->paymentMethods as $key => $label) {
 
-    $systemVal = $systemTotals[$key] ?? 0;
+            $systemVal = $systemTotals[$key] ?? 0;
 
-    // ❌ Skip methods that have no payments
-    if ($systemVal <= 0) {
-        continue;
-    }
+            // ❌ Skip methods that have no payments
+            if ($systemVal <= 0) {
+                continue;
+            }
 
-    if (auth()->user()->hasRole('Superadmin')) {
-        $this->expectedTotals[$key] = $systemVal;
-        $this->actualTotals[$key]   = $systemVal;
-    } else {
-        $this->expectedTotals[$key] = 0;
-        $this->actualTotals[$key]   = 0;
-    }
-}
+            if (auth()->user()->hasRole('Superadmin')) {
+                $this->expectedTotals[$key] = $systemVal;
+                $this->actualTotals[$key]   = $systemVal;
+            } else {
+                $this->expectedTotals[$key] = 0;
+                $this->actualTotals[$key]   = 0;
+            }
+        }
     }
 
     protected function getHeaderActions(): array
@@ -132,7 +133,7 @@ foreach ($payments as $payment) {
                 ->label('POST CLOSING & LOCK DAY')
                 ->color('success')
                 ->requiresConfirmation()
-                ->hidden(fn () => $this->isClosed)
+                ->hidden(fn() => $this->isClosed)
                 ->action(function () {
                     $this->loadData(); // Fresh calculation using the UTC window
 
@@ -140,7 +141,7 @@ foreach ($payments as $payment) {
                         'closing_date'  => $this->date,
                         'expected_data' => $this->expectedTotals,
                         'actual_data'   => $this->actualTotals,
-                        'total_expected'=> array_sum($this->expectedTotals),
+                        'total_expected' => array_sum($this->expectedTotals),
                         'total_actual'  => array_sum($this->actualTotals),
                         'user_id'       => auth()->id(),
                     ]);

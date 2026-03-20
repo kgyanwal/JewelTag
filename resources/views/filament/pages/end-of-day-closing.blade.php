@@ -2,12 +2,30 @@
     <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-4 border border-gray-200 dark:border-gray-700">
         <div class="flex items-center gap-4">
             @if(auth()->user()->hasRole('Superadmin'))
-                <label class="font-bold text-sm uppercase tracking-wider">Historical Audit:</label>
-                <input type="date" wire:model.live="date" class="border-gray-300 rounded-lg dark:bg-gray-900 focus:ring-primary-500">
+                <label class="font-bold text-sm uppercase tracking-wider text-gray-700 dark:text-gray-300">Historical Audit:</label>
+                
+                {{-- 🚀 THE MAGIC CSS HACK: Invisible native input layered over a formatted text box --}}
+                <div class="relative flex items-center group">
+                    
+                    <div class="flex items-center justify-between w-40 px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm dark:bg-gray-900 dark:border-gray-600 group-hover:border-primary-500 transition">
+                        <span class="text-sm font-medium text-gray-900 dark:text-white">
+                            {{ \Carbon\Carbon::parse($date)->format('m/d/Y') }}
+                        </span>
+                        <x-filament::icon icon="heroicon-o-calendar" class="w-5 h-5 text-gray-400" />
+                    </div>
+
+                    <input 
+                        type="date" 
+                        wire:model.live="date" 
+                        max="{{ now()->format('Y-m-d') }}"
+                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    >
+                </div>
+
             @else
                 <div class="flex items-center gap-2">
                     <x-filament::icon icon="heroicon-m-calendar" class="w-5 h-5 text-gray-400" />
-                    <span class="font-bold text-gray-700 dark:text-gray-200">Date: {{ \Carbon\Carbon::parse($date)->format('M d, Y') }}</span>
+                    <span class="font-bold text-gray-700 dark:text-gray-200">Date: {{ \Carbon\Carbon::parse($date)->format('m/d/Y') }}</span>
                 </div>
             @endif
         </div>
