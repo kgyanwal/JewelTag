@@ -181,115 +181,118 @@ class FindSale extends Page implements HasForms, HasTable
                     ->formatStateUsing(fn(string $state) => strtoupper(str_replace('_', ' ', $state))),
             ])
             ->actions([
-               Action::make('quick_view')
-    ->label('View Details')
-    ->icon('heroicon-o-eye')
-    ->color('info')
-    ->slideOver()
-    ->modalSubmitAction(false)
-    ->modalCancelActionLabel('Close')
-    // 🚀 Pass the $record to the form closure
-    ->form(fn (Sale $record): array => [
-        Group::make()
-            ->schema([
-                // ── CUSTOMER & SALE HEADER ──────────────────────────────
-                Grid::make(3)
-                    ->schema([
-                        Section::make('Customer Info')
-                            ->columnSpan(2)
-                            ->columns(2)
+                \Filament\Tables\Actions\EditAction::make()
+        ->label('Edit')
+        ->url(fn (Sale $record): string => SaleResource::getUrl('edit', ['record' => $record])),
+                Action::make('quick_view')
+                    ->label('View Details')
+                    ->icon('heroicon-o-eye')
+                    ->color('info')
+                    ->slideOver()
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    // 🚀 Pass the $record to the form closure
+                    ->form(fn(Sale $record): array => [
+                        Group::make()
                             ->schema([
-                                Placeholder::make('c_name')->label('Name')
-                                    ->content($record->customer ? "{$record->customer->name} {$record->customer->last_name}" : 'Walk-in'),
-                                Placeholder::make('c_phone')->label('Phone')
-                                    ->content($record->customer?->phone ?? '—'),
-                                Placeholder::make('c_email')->label('Email')
-                                    ->content($record->customer?->email ?? '—'),
-                                Placeholder::make('c_address')->label('Address')
-                                    ->content($record->customer?->address_line_1 ?? '—'),
-                            ]),
-                        Section::make('Quick Status')
-                            ->columnSpan(1)
-                            ->schema([
-                                Placeholder::make('s_invoice')->label('Invoice #')
-                                    ->content(new HtmlString("<span class='font-mono font-bold text-lg text-primary-600'>{$record->invoice_number}</span>")),
-                                Placeholder::make('s_status')->label('Status')
-                                    ->content(fn() => new HtmlString(
-                                        "<span class='px-2 py-1 rounded text-xs font-bold uppercase " . 
-                                        match($record->status) {
-                                            'completed' => 'bg-success-100 text-success-700',
-                                            'refunded' => 'bg-danger-100 text-danger-700',
-                                            'partially_refunded' => 'bg-warning-100 text-warning-700',
-                                            default => 'bg-gray-100 text-gray-700'
-                                        } . "'>{$record->status}</span>"
-                                    )),
-                            ]),
-                    ]),
+                                // ── CUSTOMER & SALE HEADER ──────────────────────────────
+                                Grid::make(3)
+                                    ->schema([
+                                        Section::make('Customer Info')
+                                            ->columnSpan(2)
+                                            ->columns(2)
+                                            ->schema([
+                                                Placeholder::make('c_name')->label('Name')
+                                                    ->content($record->customer ? "{$record->customer->name} {$record->customer->last_name}" : 'Walk-in'),
+                                                Placeholder::make('c_phone')->label('Phone')
+                                                    ->content($record->customer?->phone ?? '—'),
+                                                Placeholder::make('c_email')->label('Email')
+                                                    ->content($record->customer?->email ?? '—'),
+                                                Placeholder::make('c_address')->label('Address')
+                                                    ->content($record->customer?->address_line_1 ?? '—'),
+                                            ]),
+                                        Section::make('Quick Status')
+                                            ->columnSpan(1)
+                                            ->schema([
+                                                Placeholder::make('s_invoice')->label('Invoice #')
+                                                    ->content(new HtmlString("<span class='font-mono font-bold text-lg text-primary-600'>{$record->invoice_number}</span>")),
+                                                Placeholder::make('s_status')->label('Status')
+                                                    ->content(fn() => new HtmlString(
+                                                        "<span class='px-2 py-1 rounded text-xs font-bold uppercase " .
+                                                            match ($record->status) {
+                                                                'completed' => 'bg-success-100 text-success-700',
+                                                                'refunded' => 'bg-danger-100 text-danger-700',
+                                                                'partially_refunded' => 'bg-warning-100 text-warning-700',
+                                                                default => 'bg-gray-100 text-gray-700'
+                                                            } . "'>{$record->status}</span>"
+                                                    )),
+                                            ]),
+                                    ]),
 
-                // ── ITEM TABLE ────────────────────────────────────
-                Section::make('Bill Items')
-                    ->schema([
-                        Placeholder::make('items_html')
-                            ->label('')
-                            ->content(function() use ($record) {
-                                $html = '<table class="w-full text-sm text-left border-collapse">';
-                                $html .= '<thead class="bg-gray-50 text-gray-600 uppercase text-[10px]"><tr>';
-                                $html .= '<th class="p-2">SKU/Barcode</th><th class="p-2">Description</th><th class="p-2 text-right">Price</th><th class="p-2 text-right">Disc</th><th class="p-2 text-right">Total</th>';
-                                $html .= '</tr></thead><tbody>';
-                                
-                                foreach($record->items as $item) {
-                                    $price = floatval($item->sold_price);
-                                    $disc = floatval($item->discount_amount);
-                                    $rowTotal = ($price * ($item->qty ?? 1)) - $disc;
-                                    
-                                    $html .= "<tr class='border-b border-gray-100'>";
-                                    $html .= "<td class='p-2 font-mono text-primary-600'>" . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
-                                    $html .= "<td class='p-2 text-gray-600'>{$item->custom_description}</td>";
-                                    $html .= "<td class='p-2 text-right'>$" . number_format($price, 2) . "</td>";
-                                    $html .= "<td class='p-2 text-right text-danger-600'>-$" . number_format($disc, 2) . "</td>";
-                                    $html .= "<td class='p-2 text-right font-bold'>$" . number_format($rowTotal, 2) . "</td>";
-                                    $html .= "</tr>";
-                                }
-                                $html .= '</tbody></table>';
-                                return new HtmlString($html);
-                            }),
-                    ]),
+                                // ── ITEM TABLE ────────────────────────────────────
+                                Section::make('Bill Items')
+                                    ->schema([
+                                        Placeholder::make('items_html')
+                                            ->label('')
+                                            ->content(function () use ($record) {
+                                                $html = '<table class="w-full text-sm text-left border-collapse">';
+                                                $html .= '<thead class="bg-gray-50 text-gray-600 uppercase text-[10px]"><tr>';
+                                                $html .= '<th class="p-2">SKU/Barcode</th><th class="p-2">Description</th><th class="p-2 text-right">Price</th><th class="p-2 text-right">Disc</th><th class="p-2 text-right">Total</th>';
+                                                $html .= '</tr></thead><tbody>';
 
-                // ── FINANCIALS ────────────────────────────────────
-                Grid::make(2)
-                    ->schema([
-                        Section::make('Workshop Details')
-                            ->visible(fn() => !empty($record->job_type))
-                            ->columnSpan(1)
-                            ->schema([
-                                Placeholder::make('j_type')->label('Type')->content($record->job_type),
-                                Placeholder::make('j_metal')->label('Metal')->content($record->metal_type),
-                                Placeholder::make('j_size')->label('Sizing')->content("{$record->current_size} ➔ {$record->target_size}"),
-                                Placeholder::make('j_notes')->label('Instructions')->content($record->job_instructions ?? '—'),
-                            ]),
+                                                foreach ($record->items as $item) {
+                                                    $price = floatval($item->sold_price);
+                                                    $disc = floatval($item->discount_amount);
+                                                    $rowTotal = ($price * ($item->qty ?? 1)) - $disc;
 
-                        Section::make('Totals')
-                            ->columnSpan(fn() => !empty($record->job_type) ? 1 : 2)
-                            ->schema([
-                                Grid::make(2)->schema([
-                                    Placeholder::make('f_sub')->label('Subtotal')->content("$" . number_format($record->subtotal, 2)),
-                                    Placeholder::make('f_tax')->label('Tax')->content("$" . number_format($record->tax_amount, 2)),
-                                    Placeholder::make('f_trade')->label('Trade-In')->content("-$" . number_format($record->trade_in_value, 2)),
-                                    Placeholder::make('f_total')->label('Grand Total')
-                                        ->content(new HtmlString("<span class='text-xl font-black text-gray-900'>$" . number_format($record->final_total, 2) . "</span>")),
-                                ]),
-                                Placeholder::make('f_paid')->label('Total Payments Received')
-                                    ->content(new HtmlString("<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$" . number_format($record->payments->sum('amount'), 2) . "</div>")),
-                            ]),
-                    ]),
+                                                    $html .= "<tr class='border-b border-gray-100'>";
+                                                    $html .= "<td class='p-2 font-mono text-primary-600'>" . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
+                                                    $html .= "<td class='p-2 text-gray-600'>{$item->custom_description}</td>";
+                                                    $html .= "<td class='p-2 text-right'>$" . number_format($price, 2) . "</td>";
+                                                    $html .= "<td class='p-2 text-right text-danger-600'>-$" . number_format($disc, 2) . "</td>";
+                                                    $html .= "<td class='p-2 text-right font-bold'>$" . number_format($rowTotal, 2) . "</td>";
+                                                    $html .= "</tr>";
+                                                }
+                                                $html .= '</tbody></table>';
+                                                return new HtmlString($html);
+                                            }),
+                                    ]),
 
-                Section::make('Internal Notes')
-                    ->collapsed()
-                    ->schema([
-                        Placeholder::make('f_notes')->label('')->content($record->notes ?? 'No internal notes recorded.'),
+                                // ── FINANCIALS ────────────────────────────────────
+                                Grid::make(2)
+                                    ->schema([
+                                        Section::make('Workshop Details')
+                                            ->visible(fn() => !empty($record->job_type))
+                                            ->columnSpan(1)
+                                            ->schema([
+                                                Placeholder::make('j_type')->label('Type')->content($record->job_type),
+                                                Placeholder::make('j_metal')->label('Metal')->content($record->metal_type),
+                                                Placeholder::make('j_size')->label('Sizing')->content("{$record->current_size} ➔ {$record->target_size}"),
+                                                Placeholder::make('j_notes')->label('Instructions')->content($record->job_instructions ?? '—'),
+                                            ]),
+
+                                        Section::make('Totals')
+                                            ->columnSpan(fn() => !empty($record->job_type) ? 1 : 2)
+                                            ->schema([
+                                                Grid::make(2)->schema([
+                                                    Placeholder::make('f_sub')->label('Subtotal')->content("$" . number_format($record->subtotal, 2)),
+                                                    Placeholder::make('f_tax')->label('Tax')->content("$" . number_format($record->tax_amount, 2)),
+                                                    Placeholder::make('f_trade')->label('Trade-In')->content("-$" . number_format($record->trade_in_value, 2)),
+                                                    Placeholder::make('f_total')->label('Grand Total')
+                                                        ->content(new HtmlString("<span class='text-xl font-black text-gray-900'>$" . number_format($record->final_total, 2) . "</span>")),
+                                                ]),
+                                                Placeholder::make('f_paid')->label('Total Payments Received')
+                                                    ->content(new HtmlString("<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$" . number_format($record->payments->sum('amount'), 2) . "</div>")),
+                                            ]),
+                                    ]),
+
+                                Section::make('Internal Notes')
+                                    ->collapsed()
+                                    ->schema([
+                                        Placeholder::make('f_notes')->label('')->content($record->notes ?? 'No internal notes recorded.'),
+                                    ]),
+                            ])
                     ]),
-            ])
-    ]),
 
                 \Filament\Tables\Actions\ActionGroup::make([
                     \Filament\Tables\Actions\Action::make('printStandard')
