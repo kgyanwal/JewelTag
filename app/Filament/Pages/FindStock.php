@@ -303,7 +303,7 @@ class FindStock extends Page implements HasForms, HasTable
     }
 
     /**
-     * Table Definition: Includes the fixed Infolist for the ViewAction modal.
+     * Table Definition.
      */
     public function table(Table $table): Table
     {
@@ -442,7 +442,6 @@ class FindStock extends Page implements HasForms, HasTable
                 ]),
             ])
             ->bulkActions([
-                
                 BulkAction::make('bulk_hold')
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
@@ -470,34 +469,24 @@ class FindStock extends Page implements HasForms, HasTable
                     ->icon('heroicon-o-printer')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->modalHeading('Print Jewelry Tags')
+                    ->modalHeading('Confirm Bulk Tags Print?')
                     ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
-                    ->action(function (EloquentCollection $records) {
+                    ->after(function (EloquentCollection $records) {
                         $service = new ZebraPrinterService();
-                        $success = $service->bulkPrintJewelryTags($records);
-
-                        if ($success) {
-                            Notification::make()
-                                ->title('Printing Started')
-                                ->body(count($records) . ' tags sent to printer.')
-                                ->success()
-                                ->send();
-                        } else {
-                            Notification::make()
-                                ->title('Print Error')
-                                // 🚀 FIXED: Now correctly reports the printer IP from service
-                                ->body('Could not connect to Zebra printer at ' . $service->getPrinterIp())
-                                ->danger()
-                                ->send();
+                        $combinedZpl = "";
+                        foreach ($records as $record) {
+                            $combinedZpl .= $service->getZplCode($record); 
                         }
-                    }),    
+                        $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
+                    })
+                    ->action(fn() => null),
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No stock matches your criteria');
     }
 
     /**
-     * Business Logic: Performs the complex stock transfer between isolated tenant databases.
+     * Business Logic: Performs stock transfer.
      */
     protected function performStockTransfer(ProductItem $record, string $targetId)
     {
@@ -508,29 +497,22 @@ class FindStock extends Page implements HasForms, HasTable
 
         try {
             DB::transaction(function () use ($itemData, $targetId, $vendorName, $record, $sourceId, $barcode) {
-                // Switch to Destination
                 $targetTenant = Tenant::find($targetId);
                 tenancy()->initialize($targetTenant);
-
-                // Map local Vendor ID
                 $targetSupplierId = Supplier::where('company_name', $vendorName)->value('id');
 
-                // Prepare Payload
                 unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
                 $itemData['supplier_id'] = $targetSupplierId;
                 $itemData['status'] = 'in_stock';
-
                 ProductItem::create($itemData);
 
-                // Notify Destination
-                $recipients = User::all(); // Destination store users
+                $recipients = User::all();
                 Notification::make()
                     ->title('Incoming Stock Transfer')
                     ->body("Item #{$barcode} arrived from Store {$sourceId}.")
                     ->success()
                     ->sendToDatabase($recipients);
 
-                // Return to Source and Remove
                 tenancy()->initialize(Tenant::find($sourceId));
                 $record->delete();
             });
