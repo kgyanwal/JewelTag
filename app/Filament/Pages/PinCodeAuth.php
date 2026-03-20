@@ -70,7 +70,7 @@ public function verify()
         ->send();
 
     // Use a hard redirect to ensure the middleware picks up the new session immediately
-    return redirect()->to(url('/admin/sales/create'));
+    return redirect()->to(url('/admin'));
 }
 
     public function logoutMaster()
