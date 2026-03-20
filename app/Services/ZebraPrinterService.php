@@ -4,40 +4,32 @@ namespace App\Services;
 
 use App\Models\ProductItem;
 use App\Models\LabelLayout;
-use App\Models\InventorySetting;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class ZebraPrinterService
 {
     protected $ZEBRA_PRINTER_IP;
 
     public function __construct() {
-        $dbIp = \Illuminate\Support\Facades\DB::table('site_settings')
-        ->where('key', 'zebra_printer_ip')
-        ->value('value');
+        // 🚀 FIX: Correctly fetching from DB and assigning to the protected property
+        $dbIp = DB::table('site_settings')
+            ->where('key', 'zebra_printer_ip')
+            ->value('value');
+            
         $this->ZEBRA_PRINTER_IP = $dbIp ?: config('services.zebra.ip', '192.168.1.60');
+    }
 
+    /**
+     * Returns the currently active IP for UI notifications.
+     */
+    public function getPrinterIp() {
+        return $this->ZEBRA_PRINTER_IP;
     }
 
     public function printJewelryTag(ProductItem $record, $useRFID = true) {
-        try {
-            $zpl = $this->getZplCode($record, $useRFID);
-            if (empty($zpl)) return false;
-
-            $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, 3);
-            if (!$socket) {
-                Log::error("Zebra Connection Failed: $errstr ($errno)");
-                return false;
-            }
-
-            fwrite($socket, $zpl . "\n");
-            fflush($socket);
-            fclose($socket);
-            return true;
-        } catch (\Exception $e) {
-            Log::error("Zebra Print Error: " . $e->getMessage());
-            return false;
-        }
+        // We reuse the bulk logic even for single prints to ensure consistent connection handling
+        return $this->bulkPrintJewelryTags(collect([$record]), $useRFID);
     }
 
     public function getZplCode(ProductItem $record, $useRFID = true) {
@@ -75,10 +67,9 @@ class ZebraPrinterService
                 }
             }
 
-            // **3. BARCODE (FORCED HEIGHT 4, NO STRETCH)**
+            // **3. BARCODE**
             $lBarcode = $getL('barcode');
             if ($lBarcode && !empty($record->barcode)) {
-                // 🚀 FIX: Force width to 1.0 to stop stretching on small tags.
                 $bW = ($lBarcode->width > 1) ? 1 : $lBarcode->width;
                 $zpl .= "\n^FO{$lBarcode->x_pos},{$lBarcode->y_pos}^BY{$bW},2.0";
                 $zpl .= "^BCN,{$lBarcode->height},N,N,N,N^FD{$record->barcode}^FS";
@@ -110,22 +101,15 @@ class ZebraPrinterService
                 }
             }
 
-            // **6. CATEGORY (CONCATENATE: Category + Sub-Department)**
+            // **6. CATEGORY**
             $lDeptcat = $getL('deptcat');
             if ($lDeptcat) {
                 $catParts = [];
-                
-                // 🚀 FAILSAFE LOOKUP: Match UI behavior
                 $c1 = trim((string)($record->category ?? ''));
                 $c2 = trim((string)($record->sub_department ?? ''));
-
                 if ($c1 !== "" && $c1 !== "0") $catParts[] = $c1;
                 if ($c2 !== "" && $c2 !== "0") $catParts[] = $c2;
-                
                 $catValue = substr(implode(' ', $catParts), 0, 20);
-
-                // FINAL LOG: If this says EMPTY now, the database is definitely not saving your UI selections.
-                Log::info("ZPL PRINT ATTEMPT for {$record->barcode} | Value: " . ($catValue ?: 'EMPTY'));
 
                 if (!empty($catValue)) {
                     $fH = $lDeptcat->font_size;
@@ -148,6 +132,46 @@ class ZebraPrinterService
         } catch (\Exception $e) { 
             Log::error("ZPL Generation Error: " . $e->getMessage());
             return ""; 
+        }
+    }
+
+    public function bulkPrintJewelryTags($records, $useRFID = true) 
+    {
+        try {
+            $combinedZpl = "";
+            foreach ($records as $record) {
+                $zpl = $this->getZplCode($record, $useRFID);
+                if (!empty($zpl)) {
+                    $combinedZpl .= $zpl . "\n";
+                }
+            }
+
+            if (empty(trim($combinedZpl))) return false;
+
+            // 🚀 FIX: Increased timeout to 10s for larger packets and added stream writing protection
+            $timeout = 10;
+            $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, $timeout);
+
+            if (!$socket) {
+                Log::error("Zebra Bulk Connection Failed to {$this->ZEBRA_PRINTER_IP}: $errstr ($errno)");
+                return false;
+            }
+
+            stream_set_timeout($socket, $timeout);
+
+            // 🚀 FIX: Write data in chunks to prevent buffer overflow on the printer's NIC
+            $length = strlen($combinedZpl);
+            $chunkSize = 8192; 
+            for ($i = 0; $i < $length; $i += $chunkSize) {
+                fwrite($socket, substr($combinedZpl, $i, $chunkSize));
+            }
+
+            fflush($socket);
+            fclose($socket);
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Zebra Bulk Print Error: " . $e->getMessage());
+            return false;
         }
     }
 
@@ -197,31 +221,4 @@ class ZebraPrinterService
             return false;
         }
     }
-
-    public function bulkPrintJewelryTags($records, $useRFID = true) 
-{
-    try {
-        $combinedZpl = "";
-        
-        foreach ($records as $record) {
-            $combinedZpl .= $this->getZplCode($record, $useRFID) . "\n";
-        }
-
-        if (empty($combinedZpl)) return false;
-
-        $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, 5);
-        if (!$socket) {
-            Log::error("Zebra Bulk Connection Failed: $errstr ($errno)");
-            return false;
-        }
-
-        fwrite($socket, $combinedZpl);
-        fflush($socket);
-        fclose($socket);
-        return true;
-    } catch (\Exception $e) {
-        Log::error("Zebra Bulk Print Error: " . $e->getMessage());
-        return false;
-    }
-}
 }

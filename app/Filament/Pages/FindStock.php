@@ -7,6 +7,7 @@ use App\Models\Supplier;
 use App\Models\InventorySetting;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\ZebraPrinterService;
 use Filament\Pages\Page;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
@@ -46,7 +47,7 @@ use Illuminate\Support\Str;
 
 /**
  * FindStock Page
- * * A high-performance search engine and inventory management hub.
+ * A high-performance search engine and inventory management hub.
  * Replicates professional POS layouts with deep jewelry specification tracking.
  */
 class FindStock extends Page implements HasForms, HasTable
@@ -371,7 +372,6 @@ class FindStock extends Page implements HasForms, HasTable
             ])
             ->actions([
                 TableActionGroup::make([
-                    // 🚀 THE FIXED VIEW MODAL: Infolist ensures the modal is not empty.
                     ViewAction::make()
                         ->modalHeading('Detailed Jewelry Specifications')
                         ->modalWidth('5xl')
@@ -426,7 +426,6 @@ class FindStock extends Page implements HasForms, HasTable
                             Notification::make()->title('Item placed on hold')->warning()->send();
                         }),
 
-                    // 🚀 ADDED: Cross-Tenant Transfer functionality directly from search
                     TableAction::make('transfer_stock')
                         ->label('Transfer to Store')
                         ->icon('heroicon-o-truck')
@@ -466,32 +465,32 @@ class FindStock extends Page implements HasForms, HasTable
                         }
                     }),
 
-                \Filament\Tables\Actions\BulkAction::make('bulk_print_tags')
-        ->label('Print Selected Tags')
-        ->icon('heroicon-o-printer')
-        ->color('success')
-        ->requiresConfirmation()
-        ->modalHeading('Print Jewelry Tags')
-        ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
-        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
-            $service = new \App\Services\ZebraPrinterService();
-            
-            $success = $service->bulkPrintJewelryTags($records);
+                BulkAction::make('bulk_print_tags')
+                    ->label('Print Selected Tags')
+                    ->icon('heroicon-o-printer')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Print Jewelry Tags')
+                    ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
+                    ->action(function (EloquentCollection $records) {
+                        $service = new ZebraPrinterService();
+                        $success = $service->bulkPrintJewelryTags($records);
 
-            if ($success) {
-                \Filament\Notifications\Notification::make()
-                    ->title('Printing Started')
-                    ->body(count($records) . ' tags sent to printer.')
-                    ->success()
-                    ->send();
-            } else {
-                \Filament\Notifications\Notification::make()
-                    ->title('Print Error')
-                    ->body('Could not connect to Zebra printer at ' . config('services.zebra.ip'))
-                    ->danger()
-                    ->send();
-            }
-        }),    
+                        if ($success) {
+                            Notification::make()
+                                ->title('Printing Started')
+                                ->body(count($records) . ' tags sent to printer.')
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('Print Error')
+                                // 🚀 FIXED: Now correctly reports the printer IP from service
+                                ->body('Could not connect to Zebra printer at ' . $service->getPrinterIp())
+                                ->danger()
+                                ->send();
+                        }
+                    }),    
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No stock matches your criteria');
