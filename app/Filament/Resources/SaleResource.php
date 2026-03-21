@@ -117,7 +117,7 @@ class SaleResource extends Resource
                                                 'custom_description' => $item->custom_description ?? $item->barcode,
                                                 'qty' => $get('current_qty') ?? 1,
                                                 'sold_price' => $item->retail_price,
-                                                'sale_price_override' => $item->retail_price * ($get('current_qty') ?? 1), // ✅ defaults to Price × Q
+                                                'sale_price_override' => $item->retail_price * ($get('current_qty') ?? 1),
                                                 'discount_percent' => 0,
                                                 'discount_amount' => 0,
                                                 'is_tax_free' => false,
@@ -873,7 +873,7 @@ class SaleResource extends Resource
                 Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
             ])
             ->actions([
-Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make(),
                 // I am commenting out because this is for sale edit request
                 // Tables\Actions\EditAction::make()
                 //     ->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
@@ -1001,12 +1001,25 @@ Tables\Actions\EditAction::make(),
 
                             // 5. Send SMS
                             try {
+                                $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+
                                 $sns = new \Aws\Sns\SnsClient([
                                     'version' => 'latest',
-                                    'region'  => config('services.sns.region'),
+                                    'region'  => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
                                     'credentials' => [
-                                        'key'    => config('services.sns.key'),
-                                        'secret' => config('services.sns.secret'),
+                                        'key'    => $settings['aws_sms_access_key_id'] ?? config('services.sns.key'),
+                                        'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret'),
+                                    ],
+                                ]);
+
+                                $sns->publish([
+                                    'Message' => $message,
+                                    'PhoneNumber' => $formattedPhone,
+                                    'MessageAttributes' => [
+                                        'OriginationNumber' => [
+                                            'DataType' => 'String',
+                                            'StringValue' => $settings['aws_sns_sms_from'] ?? config('services.sns.sms_from'),
+                                        ],
                                     ],
                                 ]);
 

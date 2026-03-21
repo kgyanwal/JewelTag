@@ -430,11 +430,27 @@ class RepairResource extends Resource
                 $digits = preg_replace('/[^0-9]/', '', $record->customer->phone);
                 $formattedPhone = '+1' . (Str::startsWith($digits, '1') ? substr($digits, 1) : $digits);
 
-                $sns = new SnsClient([
-                    'version' => 'latest',
-                    'region'  => config('services.sns.region'),
-                    'credentials' => ['key' => config('services.sns.key'), 'secret' => config('services.sns.secret')],
-                ]);
+               $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+
+$sns = new \Aws\Sns\SnsClient([
+    'version' => 'latest',
+    'region'  => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
+    'credentials' => [
+        'key'    => $settings['aws_sms_access_key_id'] ?? config('services.sns.key'),
+        'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret'),
+    ],
+]);
+
+$sns->publish([
+    'Message' => $message,
+    'PhoneNumber' => $formattedPhone,
+    'MessageAttributes' => [
+        'OriginationNumber' => [
+            'DataType' => 'String',
+            'StringValue' => $settings['aws_sns_sms_from'] ?? config('services.sns.sms_from'),
+        ],
+    ],
+]);
 
                 $sns->publish(['Message' => $message, 'PhoneNumber' => $formattedPhone]);
             } catch (\Exception $e) {

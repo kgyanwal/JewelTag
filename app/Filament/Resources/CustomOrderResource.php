@@ -135,7 +135,7 @@ class CustomOrderResource extends Resource
                         TextInput::make('size')->label('Size / Length')->placeholder('e.g. Size 7, 18"'),
                     ]),
 
-               Section::make('Financials & Status')
+                Section::make('Financials & Status')
     ->icon('heroicon-o-banknotes')
     ->schema([
         TextInput::make('budget')->label('Customer Budget')->numeric()->prefix('$'),
@@ -149,7 +149,6 @@ class CustomOrderResource extends Resource
             ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
             ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
 
-        // 🚀 THE DEPOSIT FIELD
         TextInput::make('amount_paid')
             ->label('Initial Deposit / Amount Paid')
             ->numeric()
@@ -157,18 +156,73 @@ class CustomOrderResource extends Resource
             ->default(0)
             ->live(onBlur: true)
             ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-            ->readOnly(fn (string $operation) => $operation === 'edit') 
+            ->readOnly(fn(string $operation) => $operation === 'edit')
             ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
 
-        // 🚀 NEW: DYNAMIC PAYMENT METHOD SELECTOR
+        // ── SPLIT PAYMENT TOGGLE ─────────────────────────────
+        \Filament\Forms\Components\Toggle::make('is_split_deposit')
+            ->label('Split Deposit Payment?')
+            ->onColor('warning')
+            ->live()
+            ->default(false)
+            ->visible(fn(string $operation) => $operation === 'create')
+            ->dehydrated(false),
+
+        // ── SINGLE PAYMENT METHOD ────────────────────────────
         Select::make('initial_payment_method')
             ->label('Deposit Payment Method')
-            ->options(self::getPaymentOptions()) // 👈 DYNAMIC NOW
+            ->options(self::getPaymentOptions())
             ->default('cash')
-            ->required(fn(Get $get) => floatval($get('amount_paid')) > 0)
-            ->visible(fn (string $operation, Get $get) => $operation === 'create' && floatval($get('amount_paid')) > 0),
-            
+            ->required(fn(Get $get) => floatval($get('amount_paid')) > 0 && !$get('is_split_deposit'))
+            ->visible(fn(string $operation, Get $get) => $operation === 'create' && !$get('is_split_deposit'))
+            ->dehydrated(false),
 
+        // ── SPLIT PAYMENTS REPEATER ──────────────────────────
+        \Filament\Forms\Components\Repeater::make('split_deposit_payments')
+            ->label('Split Deposit Breakdown')
+            ->visible(fn(string $operation, Get $get) => $operation === 'create' && $get('is_split_deposit'))
+            ->schema([
+                Grid::make(2)->schema([
+                    Select::make('method')
+                        ->options(self::getPaymentOptions())
+                        ->required()
+                        ->label('Method'),
+                    TextInput::make('amount')
+                        ->numeric()
+                        ->prefix('$')
+                        ->required()
+                        ->label('Amount')
+                        ->live(onBlur: true),
+                ]),
+            ])
+            ->defaultItems(2)
+            ->maxItems(4)
+            ->reorderable(false)
+            ->live()
+            ->dehydrated(false),
+
+        // ── SPLIT REMAINING BALANCE ──────────────────────────
+        \Filament\Forms\Components\Placeholder::make('split_deposit_calc')
+            ->label('Deposit Remaining')
+            ->visible(fn(string $operation, Get $get) => $operation === 'create' && $get('is_split_deposit'))
+            ->content(function (Get $get) {
+                $total    = floatval($get('amount_paid') ?? 0);
+                $payments = $get('split_deposit_payments') ?? [];
+                $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                $remaining = $total - $sum;
+                $color    = round($remaining, 2) <= 0 ? 'text-success-600' : 'text-danger-600';
+                return new HtmlString("<span class='{$color} font-bold text-lg'>$" . number_format(max(0, $remaining), 2) . " remaining</span>");
+            }),
+
+        // ── NO TAX TOGGLE ────────────────────────────────────
+        \Filament\Forms\Components\Toggle::make('is_tax_free')
+            ->label('Tax Free Order?')
+            ->helperText('Toggle on if this order is exempt from tax.')
+            ->default(false)
+            ->live()
+            ->dehydrated(true),
+
+        // ── BALANCE DUE ──────────────────────────────────────
         TextInput::make('balance_due')
             ->label('Remaining Balance')
             ->numeric()
@@ -177,14 +231,55 @@ class CustomOrderResource extends Resource
             ->readOnly()
             ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
+        // ── FINANCIAL SUMMARY ────────────────────────────────
+        \Filament\Forms\Components\Placeholder::make('financial_summary')
+            ->label('Order Summary')
+            ->live()
+            ->content(function (Get $get) {
+                $quoted    = floatval($get('quoted_price') ?? 0);
+                $paid      = floatval($get('amount_paid') ?? 0);
+                $isTaxFree = (bool) ($get('is_tax_free') ?? false);
+
+                $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                $tax     = $quoted * $taxRate;
+                $total   = $quoted + $tax;
+                $balance = max(0, $total - $paid);
+
+                return new HtmlString("
+                    <div class='rounded-lg border border-gray-200 overflow-hidden text-sm'>
+                        <div class='flex justify-between px-3 py-2 bg-gray-50'>
+                            <span class='text-gray-500'>Quoted Price</span>
+                            <span class='font-semibold'>\$" . number_format($quoted, 2) . "</span>
+                        </div>
+                        <div class='flex justify-between px-3 py-2'>
+                            <span class='text-gray-500'>Tax (" . ($isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%') . ")</span>
+                            <span class='font-semibold'>\$" . number_format($tax, 2) . "</span>
+                        </div>
+                        <div class='flex justify-between px-3 py-2 bg-gray-50 font-bold'>
+                            <span>Total</span>
+                            <span>\$" . number_format($total, 2) . "</span>
+                        </div>
+                        <div class='flex justify-between px-3 py-2'>
+                            <span class='text-success-600'>Deposit Paid</span>
+                            <span class='font-semibold text-success-600'>-\$" . number_format($paid, 2) . "</span>
+                        </div>
+                        <div class='flex justify-between px-3 py-2 bg-red-50 font-black text-red-600 text-base'>
+                            <span>Balance Due</span>
+                            <span>\$" . number_format($balance, 2) . "</span>
+                        </div>
+                    </div>
+                ");
+            }),
+
         Select::make('status')
             ->options([
-                'draft' => 'Draft',
-                'quoted' => 'Quoted',
-                'approved' => 'Approved',
+                'draft'         => 'Draft',
+                'quoted'        => 'Quoted',
+                'approved'      => 'Approved',
                 'in_production' => 'In Production',
-                'received' => 'Ready for Pickup',
-                'completed' => 'Picked Up / Completed',
+                'received'      => 'Ready for Pickup',
+                'completed'     => 'Picked Up / Completed',
             ])
             ->default('draft')
             ->live()
@@ -293,51 +388,89 @@ class CustomOrderResource extends Resource
             ->actions([
                 // 🚀 MOVE YOUR BUTTON ACTIONS HERE
                 Tables\Actions\EditAction::make()->iconButton(),
-                Tables\Actions\Action::make('recordPayment')
-            ->label('Add Deposit/Payment')
-            ->icon('heroicon-o-currency-dollar')
-            ->color('success')
-            ->visible(fn(CustomOrder $record) => $record->balance_due > 0)
-            ->form([
-                TextInput::make('amount')
-                    ->label('Payment Amount')
-                    ->numeric()
-                    ->required()
-                    ->prefix('$')
-                    ->default(fn(CustomOrder $record) => $record->balance_due), 
+              Tables\Actions\Action::make('recordPayment')
+    ->label('Add Deposit/Payment')
+    ->icon('heroicon-o-currency-dollar')
+    ->color('success')
+    ->visible(fn(CustomOrder $record) => $record->balance_due > 0)
+    ->form([
+        TextInput::make('amount')
+            ->label('Payment Amount')
+            ->numeric()
+            ->required()
+            ->prefix('$')
+            ->default(fn(CustomOrder $record) => $record->balance_due),
 
-                Select::make('payment_method')
-                    ->options(self::getPaymentOptions()) // 👈 DYNAMIC NOW
-                    ->default('cash')
-                    ->required(),
+        \Filament\Forms\Components\Toggle::make('is_split')
+            ->label('Split Payment?')
+            ->live()
+            ->default(false),
+
+        Select::make('payment_method')
+            ->options(self::getPaymentOptions())
+            ->default('cash')
+            ->required(fn(Get $get) => !$get('is_split'))
+            ->visible(fn(Get $get) => !$get('is_split')),
+
+        \Filament\Forms\Components\Repeater::make('split_payments')
+            ->label('Split Payment Breakdown')
+            ->visible(fn(Get $get) => $get('is_split'))
+            ->schema([
+                \Filament\Forms\Components\Grid::make(2)->schema([
+                    Select::make('method')
+                        ->options(self::getPaymentOptions())
+                        ->required()
+                        ->label('Method'),
+                    TextInput::make('amount')
+                        ->numeric()
+                        ->prefix('$')
+                        ->required()
+                        ->label('Amount'),
+                ]),
             ])
-                    ->action(function (CustomOrder $record, array $data) {
-                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
-                            $amountPaid = (float) $data['amount'];
+            ->defaultItems(2)
+            ->maxItems(4)
+            ->reorderable(false),
+    ])
+    ->action(function (CustomOrder $record, array $data) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+            $amountPaid = (float) $data['amount'];
 
-                            // 1. Update the Custom Order's math
-                            $newAmountPaid = $record->amount_paid + $amountPaid;
-                            $newBalance = max(0, $record->quoted_price - $newAmountPaid);
+            // Update Custom Order balance
+            $newAmountPaid = $record->amount_paid + $amountPaid;
+            $newBalance    = max(0, $record->quoted_price - $newAmountPaid);
 
-                            $record->update([
-                                'amount_paid' => $newAmountPaid,
-                                'balance_due' => $newBalance,
-                            ]);
+            $record->update([
+                'amount_paid' => $newAmountPaid,
+                'balance_due' => $newBalance,
+            ]);
 
-                           \App\Models\Payment::create([
-    'custom_order_id' => $record->id,
-    'amount'          => $amountPaid,
-    'method'          => strtolower($data['payment_method']),
-    'paid_at'         => now(),
-]);
-                        });
+            // Write to payments table (EOD reads from here)
+            if ($data['is_split'] ?? false) {
+                foreach ($data['split_payments'] ?? [] as $payment) {
+                    \App\Models\Payment::create([
+                        'custom_order_id' => $record->id,
+                        'amount'          => (float) $payment['amount'],
+                        'method'          => strtolower($payment['method']),
+                        'paid_at'         => now(),
+                    ]);
+                }
+            } else {
+                \App\Models\Payment::create([
+                    'custom_order_id' => $record->id,
+                    'amount'          => $amountPaid,
+                    'method'          => strtolower($data['payment_method']),
+                    'paid_at'         => now(),
+                ]);
+            }
+        });
 
-                        Notification::make()
-                            ->title('Payment Recorded')
-                            ->body('The custom order balance has been updated.')
-                            ->success()
-                            ->send();
-                    }),
+        Notification::make()
+            ->title('Payment Recorded')
+            ->body('Balance updated. EOD closing will reflect this payment.')
+            ->success()
+            ->send();
+    }),
                 Tables\Actions\Action::make('notifyDelay')
                     ->label('Delay')
                     ->icon('heroicon-o-clock')

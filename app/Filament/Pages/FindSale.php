@@ -318,7 +318,111 @@ class FindSale extends Page implements HasForms, HasTable
                         ->color('warning')
                         ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'job']))
                         ->openUrlInNewTab(),
+                Action::make('emailReceipt')
+                        ->label('Email Receipt')
+                        ->icon('heroicon-o-envelope')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->action(function (Sale $record) {
+                            if (!$record->customer || empty($record->customer->email)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Missing')
+                                    ->body('Customer has no email address.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $mailable = new \App\Mail\CustomerReceipt($record);
+                            $sent = $mailable->sendDirectly();
+
+                            if ($sent) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Receipt Sent')
+                                    ->body("Successfully emailed to {$record->customer->email}")
+                                    ->success()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Error')
+                                    ->body('Check Laravel logs for SES details.')
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+
+                    // 📱 SMS RECEIPT
+                    Action::make('smsReceipt')
+                        ->label('SMS Receipt')
+                        ->icon('heroicon-o-device-phone-mobile')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Send Receipt via SMS')
+                        ->action(function (Sale $record) {
+                            $phone = $record->customer->phone ?? null;
+
+                            if (empty($phone)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')
+                                    ->body('Customer has no phone number.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $digits = preg_replace('/[^0-9]/', '', $phone);
+                            if (\Illuminate\Support\Str::startsWith($digits, '1') && strlen($digits) === 11) {
+                                $digits = substr($digits, 1);
+                            }
+                            $formattedPhone = '+1' . $digits;
+
+                            $store = $record->store;
+                            $baseUrl = $store && !empty($store->domain_url)
+                                ? rtrim($store->domain_url, '/')
+                                : config('app.url');
+
+                            $link = $baseUrl . "/receipt/" . $record->id;
+                            $storeName = $store->name ?? 'Diamond Square';
+                            $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
+
+                            try {
+                                $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+                                
+                                $sns = new \Aws\Sns\SnsClient([
+                                    'version' => 'latest',
+                                    'region'  => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
+                                    'credentials' => [
+                                        'key'    => $settings['aws_sms_access_key_id'] ?? config('services.sns.key'),
+                                        'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret'),
+                                    ],
+                                ]);
+
+                                $sns->publish([
+                                    'Message' => $message,
+                                    'PhoneNumber' => $formattedPhone,
+                                    'MessageAttributes' => [
+                                        'OriginationNumber' => [
+                                            'DataType' => 'String',
+                                            'StringValue' => $settings['aws_sns_sms_from'] ?? config('services.sns.sms_from'),
+                                        ],
+                                    ],
+                                ]);
+
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Sent')
+                                    ->success()
+                                    ->send();
+                                    
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Failed')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            }
+                        })
                 ])
+                
                     ->label('Print')
                     ->icon('heroicon-m-printer')
                     ->color('gray')

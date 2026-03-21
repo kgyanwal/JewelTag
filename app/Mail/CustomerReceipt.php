@@ -9,6 +9,8 @@ use Barryvdh\DomPDF\Facade\Pdf; // 🔹 PDF Generator
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CustomerReceipt extends Mailable
 {
@@ -24,23 +26,46 @@ class CustomerReceipt extends Mailable
     public function sendDirectly()
     {
         try {
+            // 🚀 1. Fetch dynamic settings from the database
+            $settings = DB::table('site_settings')->pluck('value', 'key');
+
+            // 🚀 2. Safely check for DB credentials, fallback to config
+            $key = !empty($settings['aws_access_key_id']) 
+                ? $settings['aws_access_key_id'] 
+                : config('services.ses.key');
+
+            $secret = !empty($settings['aws_secret_access_key']) 
+                ? $settings['aws_secret_access_key'] 
+                : config('services.ses.secret');
+
+            $region = !empty($settings['aws_default_region']) 
+                ? $settings['aws_default_region'] 
+                : config('services.ses.region', 'us-east-1');
+
+            // 🚀 3. Prevent 500 Crash: If keys are entirely missing, abort safely
+            if (empty($key) || empty($secret)) {
+                Log::error('SES PDF Email Failed: AWS Credentials are empty.');
+                return false; 
+            }
+
+            // 4. Initialize the SES Client with dynamic credentials
             $sesClient = new SesClient([
                 'version' => 'latest',
-                'region'  => env('AWS_DEFAULT_REGION', 'us-east-1'),
+                'region'  => $region,
                 'credentials' => [
-                    'key'    => env('AWS_ACCESS_KEY_ID'),
-                    'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                    'key'    => $key,
+                    'secret' => $secret,
                 ],
             ]);
 
-            // 1. Generate the PDF from your exact blade template
+            // 5. Generate the PDF from your exact blade template
             $pdf = Pdf::loadView('receipts.sale', [
                 'sale' => $this->sale, 
                 'is_pdf' => true // Pass a flag to hide the print button in the PDF
             ]);
             $pdfContent = $pdf->output();
 
-            // 2. Build the Raw Email with PDF Attachment
+            // 6. Build the Raw Email with PDF Attachment
             $boundary = uniqid('np');
             $subject = "Tax Invoice: {$this->sale->invoice_number} | Diamond Square";
             $recipient = $this->sale->customer->email;
@@ -50,9 +75,11 @@ class CustomerReceipt extends Mailable
             $rawEmail .= "Subject: {$subject}\n";
             $rawEmail .= "MIME-Version: 1.0\n";
             $rawEmail .= "Content-Type: multipart/mixed; boundary=\"{$boundary}\"\n\n";
+            
             $rawEmail .= "--{$boundary}\n";
             $rawEmail .= "Content-Type: text/plain; charset=UTF-8\n\n";
             $rawEmail .= "Please find your itemized tax invoice attached as a PDF document.\n\n";
+            
             $rawEmail .= "--{$boundary}\n";
             $rawEmail .= "Content-Type: application/pdf; name=\"Invoice_{$this->sale->invoice_number}.pdf\"\n";
             $rawEmail .= "Content-Transfer-Encoding: base64\n";
@@ -60,7 +87,7 @@ class CustomerReceipt extends Mailable
             $rawEmail .= chunk_split(base64_encode($pdfContent)) . "\n";
             $rawEmail .= "--{$boundary}--";
 
-            // 3. Send via SES Raw Message
+            // 7. Send via SES Raw Message
             $sesClient->sendRawEmail([
                 'RawMessage' => [
                     'Data' => $rawEmail,
@@ -68,8 +95,12 @@ class CustomerReceipt extends Mailable
             ]);
 
             return true;
+            
         } catch (AwsException $e) {
-            \Illuminate\Support\Facades\Log::error("SES PDF Error: " . $e->getAwsErrorMessage());
+            Log::error("SES PDF Error: " . $e->getAwsErrorMessage());
+            return false;
+        } catch (\Exception $e) {
+            Log::error("General Email Error: " . $e->getMessage());
             return false;
         }
     }
