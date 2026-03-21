@@ -444,7 +444,8 @@ class ProductItemResource extends Resource
                                 ->icon('heroicon-o-information-circle')
                                 ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
                         )
-                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->toArray())
+                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray())
+
                         ->searchable()
                         ->columnSpan(2)
                         // 🚀 NEW: Quick Add Metal Karat
