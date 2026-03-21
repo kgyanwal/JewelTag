@@ -117,6 +117,7 @@ class SaleResource extends Resource
                                                 'custom_description' => $item->custom_description ?? $item->barcode,
                                                 'qty' => $get('current_qty') ?? 1,
                                                 'sold_price' => $item->retail_price,
+                                                'sale_price_override' => $item->retail_price * ($get('current_qty') ?? 1), // ✅ defaults to Price × Q
                                                 'discount_percent' => 0,
                                                 'discount_amount' => 0,
                                                 'is_tax_free' => false,
