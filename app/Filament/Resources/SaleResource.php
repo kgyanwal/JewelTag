@@ -728,21 +728,27 @@ class SaleResource extends Resource
                                 ->content(function (Get $get) {
                                     $total = floatval($get('final_total') ?? 0);
 
-                                    // If split payment is OFF, Balance Due is simply the Grand Total
                                     if (!$get('is_split_payment')) {
+                                        // ✅ If a payment method is selected, the full amount is being paid — balance is $0
+                                        $method = $get('payment_method');
+                                        if (!empty($method)) {
+                                            return new HtmlString("<span class='text-green-600 font-bold text-3xl'>$0.00</span><div class='text-xs text-green-500 mt-1'>Fully Paid via " . strtoupper($method) . "</div>");
+                                        }
+
+                                        // No method selected yet — show the amount due in red
                                         return new HtmlString("<span class='text-red-600 font-bold text-3xl'>$" . number_format($total, 2) . "</span>");
                                     }
 
-                                    // If split payment is ON, subtract the sum of payments entered
+                                    // Split payment — subtract what's been entered
                                     $payments = $get('split_payments') ?? [];
                                     $paidSum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                     $remaining = $total - $paidSum;
 
                                     $color = round($remaining, 2) <= 0 ? 'text-green-600' : 'text-red-600';
-                                    return new HtmlString("<span class='{$color} font-bold text-3xl'>$" . number_format($remaining, 2) . "</span>");
+                                    $label = round($remaining, 2) <= 0 ? 'Fully Paid' : 'Remaining';
+                                    return new HtmlString("<span class='{$color} font-bold text-3xl'>$" . number_format(max(0, $remaining), 2) . "</span><div class='text-xs mt-1 text-gray-400'>{$label}</div>");
                                 })
                                 ->live(),
-
                             Forms\Components\Actions::make([
                                 // Action::make('complete')
                                 //     ->label('COMPLETE SALE')
