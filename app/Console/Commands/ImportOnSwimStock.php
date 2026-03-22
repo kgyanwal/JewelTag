@@ -42,7 +42,7 @@ class ImportOnSwimStock extends Command
             return;
         }
 
-        $directoryPath = storage_path("app/data/{$tenantId}");
+       $directoryPath = storage_path("{$tenantId}/data");
         $filePath = "{$directoryPath}/stock_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
