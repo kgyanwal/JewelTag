@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 class ImportOnSwimSales extends Command
 {
     protected $signature = 'import:onswim-sales {tenant} {--rollback}';
-    protected $description = 'Import sales with fallback for missing customers and string truncation';
+    protected $description = 'Import sales with dynamic duplicate invoice handling';
 
     public function handle()
     {
@@ -34,7 +34,7 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-        // 🚀 FIX: Wrap Walk-in creation in withoutEvents to prevent activity_log error
+        // 🚀 FIX: Wrap Walk-in creation in withoutEvents
         $walkInCustomer = Customer::withoutEvents(function () {
             return Customer::firstOrCreate(
                 ['customer_no' => 'CUST-WALKIN'],
@@ -56,7 +56,7 @@ class ImportOnSwimSales extends Command
             return;
         }
 
-       $directoryPath = storage_path("{$tenantId}/data");
+  $directoryPath = storage_path("{$tenantId}/data");
         $filePath = "{$directoryPath}/sales_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
@@ -74,6 +74,7 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
+        // Group by Job, Date, and Customer to keep multi-item tickets together
         $salesGroups = collect($rows)->groupBy(function ($item) {
             $job = trim($item['Job No.'] ?? '0');
             $date = trim($item['Purchase Date'] ?? '00-00-00');
@@ -91,30 +92,40 @@ class ImportOnSwimSales extends Command
                 $firstItem = $items->first();
                 $customer = $this->findCustomer($firstItem);
                 
-                // 🚀 FALLBACK: Use Walk-in if customer not found to prevent NOT NULL error
                 $customerId = $customer?->id ?? $walkInCustomer->id; 
                 
                 $purchaseDate = !empty($firstItem['Purchase Date']) 
                     ? Carbon::parse($firstItem['Purchase Date']) 
                     : now();
 
-                $jobNo = trim($firstItem['Job No.'] ?? rand(1000, 9999));
-                $invoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
+                // Generate base Invoice No
+                $rawJobNo = trim($firstItem['Job No.'] ?? '');
+                $jobNo = empty($rawJobNo) ? rand(10000, 99999) : $rawJobNo;
+                $baseInvoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
+
+                // 🚀 THE FIX: Check for duplicate invoice numbers BEFORE creating the sale
+                $invoiceNo = $baseInvoiceNo;
+                $counter = 1;
+                while (Sale::where('invoice_number', $invoiceNo)->exists()) {
+                    $invoiceNo = $baseInvoiceNo . '-' . $counter;
+                    $counter++;
+                }
 
                 $staff = array_filter([
                     trim($firstItem['Sales Assistant'] ?? null),
                     trim($firstItem['Sales Assistant 2'] ?? null)
                 ]);
 
+                // Create the Sale header
                 $sale = Sale::withoutEvents(function () use ($invoiceNo, $customerId, $storeId, $staff, $purchaseDate, $firstItem) {
                     return Sale::create([
                         'invoice_number' => $invoiceNo,
                         'customer_id' => $customerId,
                         'store_id' => $storeId,
-                        'status' => 'completed',
+                        'status' => 'completed', // You can update this based on payment logic if needed
                         'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
                         'created_at' => $purchaseDate,
-                        'payment_method' => 'cash',
+                        'payment_method' => 'cash', // Default, updated later
                         'is_split_payment' => false,
                         'repair_number' => $firstItem['Repair Number'] ?? null,
                         'subtotal' => 0,
@@ -126,6 +137,7 @@ class ImportOnSwimSales extends Command
 
                 $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
+                // Process Sale Items
                 foreach ($items as $item) {
                     $desc = strtoupper($item['Description'] ?? '');
                     
@@ -169,6 +181,7 @@ class ImportOnSwimSales extends Command
 
                 $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
 
+                // Finalize the Sale Totals
                 Sale::withoutEvents(function () use ($sale, $subtotal, $taxTotal, $discountTotal, $tradeInTotal, $tradeInDesc, $finalTotal) {
                     $sale->update([
                         'subtotal' => $subtotal,
@@ -201,20 +214,21 @@ class ImportOnSwimSales extends Command
     {
         $onSwimCustNo = trim($data['Customer No.'] ?? '');
         if (!empty($onSwimCustNo)) {
-            $found = Customer::where('customer_no', 'CUST-' . $onSwimCustNo)->first();
+            // Include trashed customers just in case
+            $found = Customer::withoutGlobalScopes()->where('customer_no', 'CUST-' . $onSwimCustNo)->first();
             if ($found) return $found;
         }
 
         $email = trim($data['Email'] ?? '');
         if (!empty($email)) {
-            $found = Customer::where('email', $email)->first();
+            $found = Customer::withoutGlobalScopes()->where('email', $email)->first();
             if ($found) return $found;
         }
 
         $rawPhone = !empty(trim($data['Mobile'] ?? '')) ? $data['Mobile'] : ($data['Customer Ph'] ?? null);
         if (!empty($rawPhone)) {
             $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
-            $found = Customer::where('phone', 'like', "%{$cleanPhone}%")->first();
+            $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}%")->first();
             if ($found) return $found;
         }
 
