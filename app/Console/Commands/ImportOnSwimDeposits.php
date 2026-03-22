@@ -110,7 +110,7 @@ class ImportOnSwimDeposits extends Command
                     }
 
                     $laybuy->customer_id = $sale->customer_id;
-                    $laybuy->store_id = $sale->store_id;
+                   // $laybuy->store_id = $sale->store_id;
                     $laybuy->total_amount = $invoiceTotal;
                     $laybuy->amount_paid = $paymentTotal;
                     $laybuy->balance_due = $balance;
