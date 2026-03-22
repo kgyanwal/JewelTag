@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 class ImportOnSwimCustomers extends Command
 {
     protected $signature = 'import:onswim-customers {tenant} {--rollback}';
-    protected $description = 'Import customers with recursive conflict resolution to prevent 1062 unique key errors';
+    protected $description = 'Import customers with bulletproof database-level conflict resolution';
 
     public function handle()
     {
@@ -45,7 +45,7 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        $directoryPath = storage_path("{$tenantId}/data");
+    $directoryPath = storage_path("{$tenantId}/data");
         $filePath = "{$directoryPath}/customer_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
@@ -66,7 +66,7 @@ class ImportOnSwimCustomers extends Command
         DB::connection('tenant')->beginTransaction();
 
         try {
-            $bar = $this->output->createProgressBar(); // Optional: Visual progress
+            $bar = $this->output->createProgressBar(); 
 
             while (($row = fgetcsv($file)) !== FALSE) {
                 $totalRows++;
@@ -76,16 +76,15 @@ class ImportOnSwimCustomers extends Command
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
                 $rawCustNo = trim($data['Cust No.'] ?? '');
 
-                // Pass variables into the closure
                 Customer::withoutEvents(function () use ($rawCustNo, $data, $email, $phone, &$created, &$updated, &$tempIdsCreated) {
                     $customer = null;
 
                     // 1. Try to find existing customer
                     if (!empty($rawCustNo)) {
-                        $customer = Customer::where('customer_no', 'CUST-' . $rawCustNo)->first();
+                        // Use withoutGlobalScopes to find trashed/hidden records if they exist
+                        $customer = Customer::withoutGlobalScopes()->where('customer_no', 'CUST-' . $rawCustNo)->first();
                     }
 
-                    // 2. Create new if missing
                     if (!$customer) {
                         $customer = new Customer();
                         if (empty($rawCustNo)) {
@@ -99,23 +98,6 @@ class ImportOnSwimCustomers extends Command
                         $updated++;
                     }
 
-                    // 🚀 3. THE FIX: Correctly check for Phone conflicts
-                    if (!empty($phone)) {
-                        $phoneQuery = Customer::where('phone', $phone);
-                        
-                        // Only exclude 'self' if the customer already exists in the database
-                        if ($customer->exists) {
-                            $phoneQuery->where('id', '!=', $customer->id);
-                        }
-
-                        if ($phoneQuery->exists()) {
-                            // The phone belongs to someone else! Prevent the 1062 crash.
-                            // If it's a new record, set phone to null. If updating, keep their old phone.
-                            $phone = $customer->exists ? $customer->phone : null;
-                        }
-                    }
-
-                    // 4. Map the data
                     $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                     ? $data['City/Province'] 
                                     : ($data['Suburb/City'] ?? null);
@@ -124,7 +106,7 @@ class ImportOnSwimCustomers extends Command
                         'name' => $data['First Name'] ?? 'Walk-in',
                         'last_name' => $data['Last Name'] ?? null,
                         'email' => $email ?: $customer->email,
-                        'phone' => $phone,
+                        'phone' => $phone ?: $customer->phone,
                         'home_phone' => $data['Home Phone'] ?? null,
                         'street'   => $data['Street'] ?? null,
                         'suburb'   => $data['Suburb/City'] ?? null,   
@@ -148,7 +130,38 @@ class ImportOnSwimCustomers extends Command
                         'company' => $data['Company'] ?? null,
                     ]);
 
-                    $customer->save();
+                    // 🚀 THE BULLETPROOF FIX: Try to save, catch database rejections instantly
+                    try {
+                        $customer->save();
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        // 23000 / 1062 = MySQL Unique Constraint Violation
+                        if ($e->getCode() == 23000 || (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062)) {
+                            
+                            $errorMessage = $e->getMessage();
+                            
+                            // If Phone caused the crash, revert to old phone or set to null
+                            if (str_contains($errorMessage, 'phone_unique')) {
+                                $customer->phone = $customer->exists ? $customer->getOriginal('phone') : null;
+                            }
+                            
+                            // If Email caused the crash, revert or set to null
+                            if (str_contains($errorMessage, 'email_unique')) {
+                                $customer->email = $customer->exists ? $customer->getOriginal('email') : null;
+                            }
+
+                            // If we aren't sure, wipe both just to force the save through safely
+                            if (!str_contains($errorMessage, 'phone_unique') && !str_contains($errorMessage, 'email_unique')) {
+                                $customer->phone = $customer->exists ? $customer->getOriginal('phone') : null;
+                                $customer->email = $customer->exists ? $customer->getOriginal('email') : null;
+                            }
+
+                            // Save again with the conflicts removed
+                            $customer->save();
+                        } else {
+                            // If it's a completely different database error, throw it so we know
+                            throw $e;
+                        }
+                    }
                 });
                 
                 $bar->advance();
