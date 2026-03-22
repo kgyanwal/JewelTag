@@ -45,7 +45,7 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        $directoryPath = storage_path("app/data/{$tenantId}"); // Fixed the path to standard Laravel storage structure
+        $directoryPath = storage_path("{$tenantId}/data");
         $filePath = "{$directoryPath}/customer_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
