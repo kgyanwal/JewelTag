@@ -6,14 +6,16 @@ use Illuminate\Console\Command;
 use App\Models\Sale;
 use App\Models\SalePayment;
 use App\Models\Store;
+use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class ImportOnSwimSalesPayments extends Command
 {
     protected $signature = 'import:onswim-sales-payments {tenant} {--rollback}';
-    protected $description = 'Import OnSwim Sales Payments and dynamically map them to Sales';
+    protected $description = 'Import OnSwim Sales Payments, map to Sales, or directly to Customers as Historical Jobs';
 
     public function handle()
     {
@@ -33,13 +35,13 @@ class ImportOnSwimSalesPayments extends Command
         if ($this->option('rollback')) {
             Schema::disableForeignKeyConstraints();
             SalePayment::truncate();
+            // Optional: You could also delete sales that start with 'HIST-' here if you wanted a total wipe
             Schema::enableForeignKeyConstraints();
             $this->info("SalePayments table truncated.");
             return;
         }
 
-       $directoryPath = storage_path("{$tenantId}/data");
-        // ⚠️ Double check this filename! You had 'ssales' with two S's in your prompt.
+        $directoryPath = storage_path("{$tenantId}/data");
         $filePath = "{$directoryPath}/sales_payments_dsq_data_mar22_26.csv";
         
         if (!file_exists($filePath)) {
@@ -47,11 +49,12 @@ class ImportOnSwimSalesPayments extends Command
             return;
         }
 
-        // 🚀 1. FETCH DYNAMIC PAYMENT METHODS FROM SETTINGS
+        $defaultStoreId = Store::first()?->id ?? 1;
+
+        // 1. FETCH DYNAMIC PAYMENT METHODS
         $paymentMethodsJson = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
         $activePaymentMethods = $paymentMethodsJson ? json_decode($paymentMethodsJson, true) : ['CASH', 'VISA'];
         
-        // Normalize active methods for easy matching (e.g., 'CASH' -> 'cash')
         $normalizedActiveMethods = [];
         foreach ($activePaymentMethods as $method) {
             $normalizedActiveMethods[strtolower(trim($method))] = $method;
@@ -70,15 +73,20 @@ class ImportOnSwimSalesPayments extends Command
         Sale::select('id', 'invoice_number', 'customer_id', 'sales_person_list', 'store_id')
             ->chunk(500, function ($sales) use (&$jobToSale) {
                 foreach ($sales as $sale) {
-                    $jobNo = preg_replace('/[^0-9]/', '', $sale->invoice_number);
-                    if (is_numeric($jobNo) && $jobNo !== '') {
-                        $jobToSale[(int)$jobNo] = $sale;
+                    // 🚀 BUG FIX: Correctly extract Job Number without mangling the date
+                    $parts = explode('-', $sale->invoice_number);
+                    $jobNoStr = end($parts);
+                    
+                    if (is_numeric($jobNoStr)) {
+                        $jobToSale[(int)$jobNoStr] = $sale;
                     }
                 }
             });
 
-        $created = 0; $skippedNoSale = 0; $skippedDup = 0;
-        $unmappedMethods = []; // To track missing settings
+        $createdMatched = 0; 
+        $createdHistorical = 0; 
+        $skippedDup = 0;
+        $unmappedMethods = []; 
         
         DB::connection('tenant')->beginTransaction();
 
@@ -94,20 +102,62 @@ class ImportOnSwimSalesPayments extends Command
 
                 if ($amount <= 0) { $bar->advance(); continue; }
 
-                $sale = $jobToSale[$jobNo] ?? null;
-                if (!$sale) {
-                    $skippedNoSale++; $bar->advance(); continue;
-                }
-
                 $paymentDate = $this->parseDate($row['Date'] ?? null) ?? now()->format('Y-m-d');
-                
-                // 🚀 2. USE DYNAMIC MAPPING FUNCTION
                 $mappedMethod = $this->mapDynamicPaymentType($paymentType, $normalizedActiveMethods, $unmappedMethods);
-                
                 $isLayby = in_array($saleType, ['layby', 'lay-by', 'deposit']) || strtolower($mappedMethod) === 'laybuy';
+
+                // 🚀 DIRECT CUSTOMER MAPPING LOGIC
+                $sale = $jobToSale[$jobNo] ?? null;
+                $isHistorical = false;
+
+                if (!$sale) {
+                    $firstName = trim($row['First Name'] ?? '');
+                    $lastName = trim($row['Last Name'] ?? '');
+                    
+                    // A. Find or Create the Customer
+                    $customer = null;
+                    if (!empty($firstName) || !empty($lastName)) {
+                        $customer = Customer::withoutGlobalScopes()
+                            ->where('name', $firstName)
+                            ->where('last_name', $lastName)
+                            ->first();
+                    }
+
+                    if (!$customer) {
+                        $customer = Customer::create([
+                            'customer_no' => 'CUST-HIST-' . strtoupper(Str::random(6)),
+                            'name' => $firstName ?: 'Historical',
+                            'last_name' => $lastName ?: 'Customer',
+                            'is_active' => true,
+                        ]);
+                    }
+
+                    // B. Create a "Historical Sale" shell to attach the payment to
+                    $sale = Sale::withoutEvents(function () use ($jobNo, $customer, $paymentDate, $defaultStoreId) {
+                        return Sale::create([
+                            'invoice_number' => 'HIST-' . $jobNo . '-' . strtoupper(Str::random(4)),
+                            'customer_id' => $customer->id,
+                            'store_id' => $defaultStoreId,
+                            'status' => 'completed',
+                            'sales_person_list' => ['Historical Import'],
+                            'created_at' => $paymentDate,
+                            'payment_method' => 'other',
+                            'is_split_payment' => false,
+                            'subtotal' => 0,
+                            'tax_amount' => 0,
+                            'final_total' => 0,
+                            'discount_amount' => 0
+                        ]);
+                    });
+
+                    // Add to map so subsequent payments for this job find it
+                    $jobToSale[$jobNo] = $sale;
+                    $isHistorical = true;
+                }
 
                 $salesPerson = is_array($sale->sales_person_list) ? ($sale->sales_person_list[0] ?? 'System') : ($sale->sales_person_list ?? 'System');
 
+                // Duplicate Check
                 $exists = SalePayment::where('sale_id', $sale->id)->where('amount', $amount)
                     ->where('payment_method', $mappedMethod)->where('payment_date', $paymentDate)->exists();
 
@@ -127,7 +177,12 @@ class ImportOnSwimSalesPayments extends Command
                     'imported_at' => now(),
                 ]));
 
-                $created++;
+                if ($isHistorical) {
+                    $createdHistorical++;
+                } else {
+                    $createdMatched++;
+                }
+                
                 $bar->advance();
             }
 
@@ -135,15 +190,16 @@ class ImportOnSwimSalesPayments extends Command
             $bar->finish();
             $this->newLine(2);
             
-            $this->table(['Total CSV Rows', 'Created', 'No Sale Match (Skipped)', 'Duplicates (Skipped)'], [[count($rows), $created, $skippedNoSale, $skippedDup]]);
+            $this->table(
+                ['Total CSV Rows', 'Mapped to Existing Sale', 'Mapped to Customer (New Hist. Sale)', 'Duplicates Skipped'], 
+                [[count($rows), $createdMatched, $createdHistorical, $skippedDup]]
+            );
 
-            // 🚀 3. PRINT WARNING IF METHODS ARE MISSING IN FILAMENT
             if (!empty($unmappedMethods)) {
-                $this->warn("\n⚠️ Notice: The following payment types were found in the CSV but are not explicitly mapped in your Filament Settings:");
+                $this->warn("\n⚠️ Notice: The following payment types were imported but are missing from Filament Settings:");
                 foreach (array_unique($unmappedMethods) as $unmapped) {
                     $this->line(" - " . $unmapped);
                 }
-                $this->line("They were imported using their exact CSV name, but you may want to add them to your Utilities -> Sales -> Payment Methods.");
             }
 
         } catch (\Exception $e) {
@@ -152,45 +208,25 @@ class ImportOnSwimSalesPayments extends Command
         }
     }
 
-    /**
-     * Maps OnSwim text to your dynamically configured settings.
-     */
     private function mapDynamicPaymentType(string $rawType, array $activeMethods, array &$unmappedTracker): string
     {
         $cleanRaw = strtolower(trim($rawType));
+        if (isset($activeMethods[$cleanRaw])) return $activeMethods[$cleanRaw];
 
-        // 1. Direct Match
-        if (isset($activeMethods[$cleanRaw])) {
-            return $activeMethods[$cleanRaw];
-        }
-
-        // 2. Common Alias Matching
-        $aliases = [
-            'debit card' => 'debit',
-            'credit card' => 'credit',
-            'cheque' => 'check',
-            'lay-by' => 'laybuy',
-            'lay by' => 'laybuy',
-        ];
-
+        $aliases = ['debit card' => 'debit', 'credit card' => 'credit', 'cheque' => 'check', 'lay-by' => 'laybuy', 'lay by' => 'laybuy'];
         $aliased = $aliases[$cleanRaw] ?? $cleanRaw;
 
-        // 3. Fuzzy Match
         foreach ($activeMethods as $key => $actualMethod) {
-            if (str_contains($key, $aliased) || str_contains($aliased, $key)) {
-                return $actualMethod; 
-            }
+            if (str_contains($key, $aliased) || str_contains($aliased, $key)) return $actualMethod; 
         }
 
-        // 4. Safe Fallback
-        $unmappedTracker[] = $rawType; // Track this so we can warn the user at the end
+        $unmappedTracker[] = $rawType; 
         return strtoupper(trim($rawType));
     }
 
     private function parseDate(?string $date): ?string
     {
         if (empty($date)) return null;
-        try { return Carbon::parse($date)->format('Y-m-d'); } 
-        catch (\Exception $e) { return null; }
+        try { return Carbon::parse($date)->format('Y-m-d'); } catch (\Exception $e) { return null; }
     }
 }
