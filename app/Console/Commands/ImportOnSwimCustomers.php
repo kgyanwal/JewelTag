@@ -45,7 +45,7 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        $directoryPath = storage_path("{$tenantId}/data");
+        $directoryPath = storage_path("/data");
         $filePath = "{$directoryPath}/customer_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
