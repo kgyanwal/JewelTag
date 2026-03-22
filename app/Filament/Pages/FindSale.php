@@ -150,24 +150,30 @@ class FindSale extends Page implements HasForms, HasTable
                     ->badge()->color('warning')
                     ->visible(fn() => Sale::whereNotNull('job_type')->exists()),
 
-               TextColumn::make('payment_status_summary')
+              TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
+                        $isCustomDeposit = $record->has_trade_in && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
                         
-                        // 🚀 THE FIX: Add the deposit (trade-in) back to the visual totals
-                        $total   = floatval($record->final_total) + floatval($record->trade_in_value);
+                        $total = floatval($record->final_total);
+                        if ($isCustomDeposit) $total += floatval($record->trade_in_value);
                         
-                        // Add today's payments + the original deposit
-                        $paid    = floatval($record->payments->sum('amount')) + floatval($record->trade_in_value);
-
-                        // Non-cash completed sales are always fully paid
-                        $method  = strtolower($record->payment_method ?? '');
-                        $isNonCash = !in_array($method, ['cash', 'laybuy', '']) && !$record->is_split_payment;
-                        if ($isNonCash && $record->status === 'completed') {
-                            $paid = $total; // treat as fully paid for display
+                        // 1. Check new payments table
+                        $paid = floatval($record->payments->sum('amount'));
+                        
+                        // 2. Fallback to old amount_paid column
+                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+                            $paid = floatval($record->amount_paid);
                         }
 
-                        $balance = $total - $paid;
+                        if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
+
+                        // 🚀 THE ULTIMATE FALLBACK: If it is Completed, it MUST be fully paid!
+                        if ($record->status === 'completed' && $paid < $total) {
+                            $paid = $total;
+                        }
+
+                        $balance = max(0, $total - $paid);
 
                         $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
                         $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
