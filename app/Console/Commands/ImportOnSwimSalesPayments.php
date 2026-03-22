@@ -40,7 +40,7 @@ class ImportOnSwimSalesPayments extends Command
 
        $directoryPath = storage_path("{$tenantId}/data");
         // ⚠️ Double check this filename! You had 'ssales' with two S's in your prompt.
-        $filePath = "{$directoryPath}/ssales_payments_dsq_data_mar22_26.csv";
+        $filePath = "{$directoryPath}/sales_payments_dsq_data_mar22_26.csv";
         
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
