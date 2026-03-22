@@ -111,6 +111,10 @@ class Sale extends Model
     {
         return $this->hasMany(Payment::class);
     }
+    public function salePayments(): HasMany
+{
+    return $this->hasMany(SalePayment::class);
+}
     public function getGlobalSearchResultDetails(): array
     {
         return [

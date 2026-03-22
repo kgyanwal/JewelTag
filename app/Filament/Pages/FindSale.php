@@ -150,17 +150,29 @@ class FindSale extends Page implements HasForms, HasTable
                     ->badge()->color('warning')
                     ->visible(fn() => Sale::whereNotNull('job_type')->exists()),
 
-                TextColumn::make('payment_status_summary')
+               TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
-                        $total = $record->final_total;
-                        $paid = $record->payments->sum('amount'); // Summing all payments for this sale
+                        
+                        // 🚀 THE FIX: Add the deposit (trade-in) back to the visual totals
+                        $total   = floatval($record->final_total) + floatval($record->trade_in_value);
+                        
+                        // Add today's payments + the original deposit
+                        $paid    = floatval($record->payments->sum('amount')) + floatval($record->trade_in_value);
+
+                        // Non-cash completed sales are always fully paid
+                        $method  = strtolower($record->payment_method ?? '');
+                        $isNonCash = !in_array($method, ['cash', 'laybuy', '']) && !$record->is_split_payment;
+                        if ($isNonCash && $record->status === 'completed') {
+                            $paid = $total; // treat as fully paid for display
+                        }
+
                         $balance = $total - $paid;
 
-                        $html = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
                         $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-                        if ($balance > 0) {
+                        if ($balance > 0.01) {
                             $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
                         } else {
                             $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";

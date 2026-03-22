@@ -323,6 +323,7 @@ HTML
                 \App\Filament\Resources\ArchivedSaleResource::class,
                 \App\Filament\Resources\InventoryAuditResource::class,
                 \App\Filament\Resources\WishlistResource::class,
+                \App\Filament\Resources\SalePaymentResource::class,
             ])
             ->pages([
                 \App\Filament\Pages\Dashboard::class,

@@ -662,13 +662,51 @@ class SaleResource extends Resource
                                 ->columnSpanFull(),
 
                             // Standard Payment (Hidden if Split is ON)
-                            Select::make('payment_method')
+                           Select::make('payment_method')
                                 ->label('Payment Method')
                                 ->options(self::getPaymentOptions())
                                 ->default('cash')
                                 ->required(fn(Get $get) => !$get('is_split_payment'))
-                                ->visible(fn(Get $get) => !$get('is_split_payment')),
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                }),
 
+                            // 🚀 NEW FIELD: Big Display of the Total Due
+                            TextInput::make('display_total_due')
+                                ->label('Total Amount to Collect')
+                                ->prefix('$')
+                                ->readOnly()
+                                ->extraInputAttributes(['style' => 'font-size: 1.5rem; font-weight: 900; color: #0284c7; background-color: #f0f9ff;'])
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->dehydrated(false),
+
+                            TextInput::make('amount_paid')
+                                ->label('Amount Received')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(0)
+                                ->live(onBlur: true)
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                    self::syncStatus($get, $set); // 👈 add this
+                                })
+                                ->helperText('What the customer physically handed over'),
+
+                            // Change to give back — read only, auto-calculated
+                            TextInput::make('change_given')
+                                ->label('Change Given')
+                                ->prefix('$')
+                                ->readOnly()
+                                ->default('0.00')
+                                ->dehydrated(false)
+                                ->live()
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->extraInputAttributes([
+                                    'class' => 'text-right font-bold text-green-600 text-xl'
+                                ]),
                             // 🚀 NEW: Dynamic Split Payment Repeater
                             Repeater::make('split_payments')
                                 ->label('Payment Breakdown')
@@ -695,7 +733,10 @@ class SaleResource extends Resource
                                 ->addActionLabel('Add Another Payment Method') // 👈 Acts as "Load More"
                                 ->reorderable(false)
                                 ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                    self::syncStatus($get, $set);  // ← add this
+                                }),
 
                             // 🔹 Live Balance Calculation
                             Placeholder::make('split_calc')
@@ -716,9 +757,14 @@ class SaleResource extends Resource
 
                             Select::make('status')
                                 ->label('Sale Status')
-                                ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
-                                ->default('completed')
-                                ->required(),
+                                ->options([
+                                    'completed'  => 'Completed',
+                                    'inprogress' => 'In Progress',
+                                    'pending'    => 'Pending',
+                                ])
+                                ->default('inprogress')  // ← default to inprogress, not completed
+                                ->required()
+                                ->live(),
                         ]),
 
                         Section::make('Financial Summary')->schema([
@@ -730,24 +776,69 @@ class SaleResource extends Resource
                                     $total = floatval($get('final_total') ?? 0);
 
                                     if (!$get('is_split_payment')) {
-                                        // ✅ If a payment method is selected, the full amount is being paid — balance is $0
+                                        $tendered = floatval($get('amount_paid') ?? 0);
                                         $method = $get('payment_method');
-                                        if (!empty($method)) {
-                                            return new HtmlString("<span class='text-green-600 font-bold text-3xl'>$0.00</span><div class='text-xs text-green-500 mt-1'>Fully Paid via " . strtoupper($method) . "</div>");
+
+                                        // ✅ Tendered enough — fully paid
+                                        if ($tendered > 0 && $tendered >= $total) {
+                                            $change = $tendered - $total;
+                                            return new HtmlString("
+                    <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+                    <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Paid via " . strtoupper($method ?? '') . "</div>
+                    " . ($change > 0.00 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($change, 2) . "</div>" : "") . "
+                ");
                                         }
 
-                                        // No method selected yet — show the amount due in red
-                                        return new HtmlString("<span class='text-red-600 font-bold text-3xl'>$" . number_format($total, 2) . "</span>");
+                                        // 🔴 Cash entered but not enough
+                                        if ($tendered > 0 && $tendered < $total) {
+                                            $remaining = $total - $tendered;
+                                            return new HtmlString("
+                    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
+                ");
+                                        }
+
+                                        // 🔴 Cash selected, nothing entered yet
+                                        if (!empty($method) && strtolower($method) === 'cash') {
+                                            return new HtmlString("
+                    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+                    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Enter payment Amount Received above</div>
+                ");
+                                        }
+
+                                        // ✅ Non-cash method selected — assume full payment
+                                        if (!empty($method)) {
+                                            return new HtmlString("
+                    <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+                    <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Paid via " . strtoupper($method) . "</div>
+                ");
+                                        }
+
+                                        // 🔴 Nothing selected
+                                        return new HtmlString("
+                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
+            ");
                                     }
 
-                                    // Split payment — subtract what's been entered
+                                    // Split payment
                                     $payments = $get('split_payments') ?? [];
                                     $paidSum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                     $remaining = $total - $paidSum;
 
-                                    $color = round($remaining, 2) <= 0 ? 'text-green-600' : 'text-red-600';
-                                    $label = round($remaining, 2) <= 0 ? 'Fully Paid' : 'Remaining';
-                                    return new HtmlString("<span class='{$color} font-bold text-3xl'>$" . number_format(max(0, $remaining), 2) . "</span><div class='text-xs mt-1 text-gray-400'>{$label}</div>");
+                                    if (round($remaining, 2) <= 0) {
+                                        $overpaid = abs($remaining);
+                                        return new HtmlString("
+                <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+                <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Paid</div>
+                " . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "
+            ");
+                                    }
+
+                                    return new HtmlString("
+            <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+            <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Remaining balance</div>
+        ");
                                 })
                                 ->live(),
                             Forms\Components\Actions::make([
@@ -785,6 +876,8 @@ class SaleResource extends Resource
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
+                Hidden::make('change_given')->dehydrated(false),
+                Hidden::make('balance_due'),
                 Hidden::make('custom_order_id')
                     ->dehydrated(false), // 👈 Add this: tells Filament NOT to insert into 'sales' table
 
@@ -844,14 +937,25 @@ class SaleResource extends Resource
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
-                        $total = $record->final_total;
-                        $paid = $record->payments->sum('amount'); // Summing all payments for this sale
+                        // 🚀 THE FIX: Add the deposit (trade-in) back to the visual totals
+                        $total   = floatval($record->final_total) + floatval($record->trade_in_value);
+
+                        // Add today's payments + the original deposit
+                        $paid    = floatval($record->payments->sum('amount')) + floatval($record->trade_in_value);
+
+                        // Non-cash completed sales are always fully paid
+                        $method  = strtolower($record->payment_method ?? '');
+                        $isNonCash = !in_array($method, ['cash', 'laybuy', '']) && !$record->is_split_payment;
+                        if ($isNonCash && $record->status === 'completed') {
+                            $paid = $total; // treat as fully paid for display
+                        }
+
                         $balance = $total - $paid;
 
-                        $html = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
                         $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-                        if ($balance > 0) {
+                        if ($balance > 0.01) {
                             $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
                         } else {
                             $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
@@ -1106,28 +1210,24 @@ class SaleResource extends Resource
     }
 
     // 🚀 CHANGE: Use 'callable|Get' for the first argument
+  // 🚀 CHANGE: Use 'callable|Get' for the first argument
     public static function updateTotals(callable|Get $get, callable|Set $set): void
     {
-        // 1. Get Items (Handling different nesting levels)
-        $items = $get('items') ?? [];
-
-        // 2. Get Global Fees/Deductions
-        $shipping = floatval($get('shipping_charges') ?? 0);
+        $items           = $get('items') ?? [];
+        $shipping        = floatval($get('shipping_charges') ?? 0);
         $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
-        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+        $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
         $itemsSubtotal = 0;
-        $taxableBasis = 0;
+        $taxableBasis  = 0;
 
-        // 3. Calculate Line Items
         foreach ($items as $item) {
             $qty = intval($item['qty'] ?? 1);
 
-            // Use override if present, otherwise calculate Price * Qty - Discount
             if (!empty($item['sale_price_override'])) {
                 $rowTotal = floatval($item['sale_price_override']);
             } else {
-                $price = floatval($item['sold_price'] ?? 0);
+                $price    = floatval($item['sold_price'] ?? 0);
                 $discount = floatval($item['discount_amount'] ?? 0);
                 $rowTotal = ($price * $qty) - $discount;
             }
@@ -1139,25 +1239,67 @@ class SaleResource extends Resource
             }
         }
 
-        // 4. Calculate Tax
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate = floatval($dbTax) / 100;
 
         if ($isShippingTaxed) {
             $taxableBasis += $shipping;
         }
 
-        $totalTax = $taxableBasis * $taxRate;
-
-        // 5. Final Calculations
+        $totalTax   = $taxableBasis * $taxRate;
         $grandTotal = ($itemsSubtotal + $shipping + $totalTax) - $tradeIn;
 
-        // 6. Set State (Ensuring fields stay updated)
-        $set('subtotal', number_format($itemsSubtotal, 2, '.', ''));
-        $set('tax_amount', number_format($totalTax, 2, '.', ''));
+        $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
+        $set('tax_amount',  number_format($totalTax, 2, '.', ''));
         $set('final_total', number_format($grandTotal, 2, '.', ''));
+
+        $isSplit  = $get('is_split_payment');
+        $method   = strtolower($get('payment_method') ?? '');
+
+        // ── AUTO-FILL LOGIC ────────────────
+        if ($isSplit) {
+            $payments    = $get('split_payments') ?? [];
+            $amountPaid  = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        } else {
+            // Smart auto-fill for cards
+            if (!in_array($method, ['cash', 'laybuy', '']) && empty($get('amount_paid'))) {
+                $set('amount_paid', number_format($grandTotal, 2, '.', ''));
+                $amountPaid = $grandTotal;
+            } else {
+                $amountPaid = floatval($get('amount_paid') ?? 0);
+            }
+        }
+
+        $changeGiven = max(0, $amountPaid - $grandTotal);
+        $balanceDue  = max(0, $grandTotal - $amountPaid);
+
+        $set('change_given', number_format($changeGiven, 2, '.', ''));
+        $set('balance_due',  number_format($balanceDue, 2, '.', ''));
+        
+        // 🚀 Keeps the new visual field instantly updated!
+        $set('display_total_due', number_format($grandTotal, 2, '.', ''));
+
+        // 🚀 THE FIX: This forces the status to check itself immediately on page load!
+        self::syncStatus($get, $set);
     }
 
+    public static function syncStatus(callable|Get $get, callable|Set $set): void
+    {
+        $total = floatval($get('final_total') ?? 0);
+        $isSplit = $get('is_split_payment');
+
+        if ($isSplit) {
+            $payments = $get('split_payments') ?? [];
+            $paidSum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            $fullyPaid = round($paidSum, 2) >= round($total, 2);
+        } else {
+            $tendered = floatval($get('amount_paid') ?? 0);
+            // 🚀 THE FIX: Allows $0 balances (from Custom Orders) to instantly flip to completed!
+            $fullyPaid = round($tendered, 2) >= round($total, 2); 
+        }
+
+        $set('status', $fullyPaid ? 'completed' : 'inprogress');
+    }
     public static function getPaymentOptions(): array
     {
         $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');

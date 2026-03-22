@@ -46,7 +46,7 @@ class ImportOnSwimCustomers extends Command
         }
 
         $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/customer_lxddata_mar10_26.csv";
+        $filePath = "{$directoryPath}/customer_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
             $this->error("File not found at: {$filePath}");
