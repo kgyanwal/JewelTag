@@ -215,7 +215,7 @@
     </tr>
     <tr>
         <td><strong>Date Received:</strong> {{ $sale->created_at->format('m/d/Y') }}</td>
-        <td><strong>Date Required:</strong> {{ $sale->date_required?->format('m/d/Y') ?? 'ASAP' }}</td>
+       <td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
         <td></td>
     </tr>
 </table>
@@ -276,7 +276,7 @@
     </tr>
     <tr>
         <td><strong>Date Received:</strong> {{ $sale->created_at->format('m/d/Y') }}</td>
-        <td><strong>Date Required:</strong> {{ $sale->date_required?->format('m/d/Y') ?? 'ASAP' }}</td>
+<td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
         <td></td>
     </tr>
 </table>
