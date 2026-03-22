@@ -136,6 +136,14 @@ class EndOfDayClosing extends Page
                 ->hidden(fn() => $this->isClosed)
                 ->action(function () {
                     $this->loadData(); // Fresh calculation using the UTC window
+                    if ($this->isClosed) {
+                        Notification::make()
+                            ->title('Already Closed')
+                            ->body('This day has already been locked and closed.')
+                            ->warning()
+                            ->send();
+                        return; // Stop execution here to prevent the 1062 crash
+                    }
 
                     DailyClosing::create([
                         'closing_date'  => $this->date,
