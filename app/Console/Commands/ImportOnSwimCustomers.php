@@ -45,7 +45,7 @@ class ImportOnSwimCustomers extends Command
             return;
         }
 
-        $directoryPath = storage_path("/data");
+        $directoryPath = storage_path("app/data/{$tenantId}"); // Fixed the path to standard Laravel storage structure
         $filePath = "{$directoryPath}/customer_dsqdata_mar22_26.csv";
 
         if (!file_exists($filePath)) {
@@ -66,6 +66,8 @@ class ImportOnSwimCustomers extends Command
         DB::connection('tenant')->beginTransaction();
 
         try {
+            $bar = $this->output->createProgressBar(); // Optional: Visual progress
+
             while (($row = fgetcsv($file)) !== FALSE) {
                 $totalRows++;
                 $data = array_combine($headers, $row);
@@ -74,34 +76,46 @@ class ImportOnSwimCustomers extends Command
                 $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
                 $rawCustNo = trim($data['Cust No.'] ?? '');
 
-                // 🚀 REASON FIX: If ID is empty, generate one instead of skipping!
-                if (empty($rawCustNo)) {
-                    $fullCustNo = 'CUST-TEMP-' . strtoupper(Str::random(6));
-                    $tempIdsCreated++;
-                } else {
-                    $fullCustNo = 'CUST-' . $rawCustNo;
-                }
+                // Pass variables into the closure
+                Customer::withoutEvents(function () use ($rawCustNo, $data, $email, $phone, &$created, &$updated, &$tempIdsCreated) {
+                    $customer = null;
 
-                Customer::withoutEvents(function () use ($fullCustNo, $data, $email, $phone, &$created, &$updated) {
-                    // Check for existing by customer_no
-                    $customer = Customer::where('customer_no', $fullCustNo)->first();
+                    // 1. Try to find existing customer
+                    if (!empty($rawCustNo)) {
+                        $customer = Customer::where('customer_no', 'CUST-' . $rawCustNo)->first();
+                    }
 
+                    // 2. Create new if missing
                     if (!$customer) {
                         $customer = new Customer();
-                        $customer->customer_no = $fullCustNo;
+                        if (empty($rawCustNo)) {
+                            $customer->customer_no = 'CUST-TEMP-' . strtoupper(Str::random(6));
+                            $tempIdsCreated++;
+                        } else {
+                            $customer->customer_no = 'CUST-' . $rawCustNo;
+                        }
                         $created++;
                     } else {
                         $updated++;
                     }
 
-                    // Prevent phone conflict with OTHER records
-                    if (!empty($phone) && $phone !== $customer->phone) {
-                        $phoneExists = Customer::where('phone', $phone)->where('id', '!=', $customer->id)->exists();
-                        if ($phoneExists) {
-                            $phone = $customer->phone; // Keep old phone if new one belongs to someone else
+                    // 🚀 3. THE FIX: Correctly check for Phone conflicts
+                    if (!empty($phone)) {
+                        $phoneQuery = Customer::where('phone', $phone);
+                        
+                        // Only exclude 'self' if the customer already exists in the database
+                        if ($customer->exists) {
+                            $phoneQuery->where('id', '!=', $customer->id);
+                        }
+
+                        if ($phoneQuery->exists()) {
+                            // The phone belongs to someone else! Prevent the 1062 crash.
+                            // If it's a new record, set phone to null. If updating, keep their old phone.
+                            $phone = $customer->exists ? $customer->phone : null;
                         }
                     }
 
+                    // 4. Map the data
                     $cityValue = !empty(trim($data['City/Province'] ?? '')) 
                                     ? $data['City/Province'] 
                                     : ($data['Suburb/City'] ?? null);
@@ -136,10 +150,14 @@ class ImportOnSwimCustomers extends Command
 
                     $customer->save();
                 });
+                
+                $bar->advance();
             }
 
             DB::connection('tenant')->commit();
             fclose($file);
+            $bar->finish();
+            $this->newLine(2);
             
             $this->info("Import finished!");
             $this->table(
@@ -150,7 +168,7 @@ class ImportOnSwimCustomers extends Command
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
             if (isset($file)) fclose($file);
-            $this->error("Critical Error: " . $e->getMessage());
+            $this->error("\nCritical Error: " . $e->getMessage());
         }
     }
 
