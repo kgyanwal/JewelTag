@@ -9,8 +9,6 @@ use Filament\Notifications\Notification;
 use App\Helpers\Staff;
 use App\Models\Payment;
 use Illuminate\Support\Facades\DB;
-use Spatie\Activitylog\Facades\Activity;
-
 
 class EditSale extends EditRecord
 {
@@ -97,18 +95,25 @@ class EditSale extends EditRecord
             $data['completed_at'] = now();
         }
 
-        // ✅ Log when a completed sale is edited
+        // ✅ Log when a completed sale is edited — writes directly to activity_log table
         if ($this->record->status === 'completed') {
-            Activity::causedBy(auth()->user())
-                ->performedOn($this->record)
-                ->withProperties([
+            DB::table('activity_log')->insert([
+                'log_name'     => 'sale_edits',
+                'description'  => 'Completed sale edited',
+                'subject_type' => \App\Models\Sale::class,
+                'subject_id'   => $this->record->id,
+                'causer_type'  => \App\Models\User::class,
+                'causer_id'    => auth()->id(),
+                'properties'   => json_encode([
                     'invoice_number' => $this->record->invoice_number,
                     'edited_by'      => auth()->user()->name,
                     'ip'             => request()->ip(),
                     'final_total'    => $this->record->final_total,
                     'status_at_edit' => $this->record->status,
-                ])
-                ->log('Completed sale edited');
+                ]),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
         }
 
         return $data;
