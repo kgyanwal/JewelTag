@@ -99,7 +99,7 @@ class EditSale extends EditRecord
 
         // ✅ Log when a completed sale is edited
         if ($this->record->status === 'completed') {
-            \Spatie\Activitylog\Facades\Activity::causedBy(auth()->user())
+            Activity::causedBy(auth()->user())
                 ->performedOn($this->record)
                 ->withProperties([
                     'invoice_number' => $this->record->invoice_number,
