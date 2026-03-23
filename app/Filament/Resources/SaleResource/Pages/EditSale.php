@@ -18,9 +18,9 @@ class EditSale extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
-                ->visible(fn () => Staff::user()?->hasRole('Superadmin') || $this->record->status !== 'completed'),
+                ->visible(fn() => Staff::user()?->hasRole('Superadmin') || $this->record->status !== 'completed'),
 
-           Actions\Action::make('complete_sale')
+            Actions\Action::make('complete_sale')
                 ->label('Finalize Sale (Today)')
                 ->color('success')
                 ->icon('heroicon-o-check')
@@ -33,46 +33,57 @@ class EditSale extends EditRecord
                     $totalPaid = $sale->payments()->sum('amount');
                     $remaining = round($sale->final_total - $totalPaid, 2);
 
-                    // 2. If money is still owed, automatically log it as paid today
+                    // 2. If money is still owed, log it as paid today
                     if ($remaining > 0) {
                         \App\Models\Payment::create([
                             'sale_id' => $sale->id,
                             'amount'  => $remaining,
                             'method'  => $sale->payment_method ?? 'cash',
-                            'paid_at' => now(), // Puts the money in TODAY'S End of Day
+                            'paid_at' => now(),
                         ]);
-                        
-                        // Update the internal amount_paid tracker
+
                         $sale->update(['amount_paid' => $sale->final_total]);
                     }
 
-                    // 3. Mark the sale as officially completed
+                    // 3. Mark as completed
                     $sale->update([
                         'status'       => 'completed',
                         'completed_at' => now(),
                     ]);
 
                     Notification::make()->title('Sale Finalized & Paid In Full')->success()->send();
-                    
-                    // Force a hard refresh so the UI updates the Balance Due to $0.00
+
                     return redirect(request()->header('Referer'));
                 }),
         ];
     }
 
-    // 👇 ADD THIS — fixes amount_paid display on edit load
+    /**
+     * Populate amount_paid correctly when loading the edit form.
+     * Logic is based on split vs non-split — no hardcoded method name checks.
+     */
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $record    = $this->record;
-        $method    = strtolower($record->payment_method ?? '');
         $totalPaid = $record->payments->sum('amount');
 
-        if (!$record->is_split_payment && !in_array($method, ['cash', 'laybuy', ''])) {
-            // Non-cash (Visa, Katapult, etc.) — always show full total
-            $data['amount_paid'] = $record->final_total;
-        } elseif ($totalPaid > 0) {
-            // Cash — show what was actually paid
-            $data['amount_paid'] = $totalPaid;
+        if ($record->is_split_payment) {
+            // ✅ Split payment — show total paid across all methods
+            $data['amount_paid'] = $totalPaid > 0
+                ? $totalPaid
+                : $record->final_total;
+        } else {
+            // ✅ Single payment — show actual paid amount in priority order
+            if ($totalPaid > 0) {
+                // Most accurate: from actual payment records
+                $data['amount_paid'] = $totalPaid;
+            } elseif (floatval($record->amount_paid) > 0) {
+                // Fallback: saved amount_paid column
+                $data['amount_paid'] = $record->amount_paid;
+            } else {
+                // No records at all — default to full total as safe starting point
+                $data['amount_paid'] = $record->final_total;
+            }
         }
 
         return $data;
@@ -80,13 +91,32 @@ class EditSale extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
-            $data['completed_at'] = now();
+         if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
+        $data['completed_at'] = now();
+        }
+
+        // ✅ Log when a completed sale is edited
+        if ($this->record->status === 'completed') {
+            activity()
+                ->causedBy(auth()->user())
+                ->performedOn($this->record)
+                ->withProperties([
+                    'invoice_number'  => $this->record->invoice_number,
+                    'edited_by'       => auth()->user()->name,
+                    'ip'              => request()->ip(),
+                    'final_total'     => $this->record->final_total,
+                    'status_at_edit'  => $this->record->status,
+                ])
+                ->log('Completed sale edited');
         }
 
         return $data;
     }
 
+    /**
+     * After saving, record only the NEW delta payment — never delete existing payments.
+     * This ensures past EOD records are never corrupted by edits.
+     */
     protected function afterSave(): void
     {
         $sale = $this->record->fresh();
@@ -94,21 +124,26 @@ class EditSale extends EditRecord
         DB::transaction(function () use ($sale) {
             $sale->load('items');
 
+            // What has already been recorded in the payments table
             $alreadyPaidTotal = $sale->payments()->sum('amount');
 
-            $newIntendedTotal = 0;
             if ($sale->is_split_payment) {
+                // Split: sum all split entries
                 $splits = is_string($sale->split_payments)
                     ? json_decode($sale->split_payments, true)
                     : $sale->split_payments;
-                if (is_array($splits)) {
-                    $newIntendedTotal = collect($splits)->sum('amount');
-                }
+                $newIntendedTotal = is_array($splits) ? collect($splits)->sum('amount') : 0;
             } else {
-                // 🚀 THE FIX: Calculate delta against actual amount_paid, not the final bill total
-                $newIntendedTotal = min((float)$sale->amount_paid, (float)$sale->final_total);
+                // Standard: use amount_paid (what cashier entered), capped at final_total
+                // If amount_paid is 0, treat as full payment (non-cash methods auto-fill)
+                $amountPaid       = floatval($sale->amount_paid ?? 0);
+                $newIntendedTotal = min(
+                    $amountPaid > 0 ? $amountPaid : (float) $sale->final_total,
+                    (float) $sale->final_total
+                );
             }
 
+            // ✅ Only record the positive difference — never re-record old payments
             $delta = round($newIntendedTotal - $alreadyPaidTotal, 2);
 
             if ($delta <= 0) {
@@ -120,13 +155,13 @@ class EditSale extends EditRecord
                 return;
             }
 
+            // Determine which method to record the delta under
             $method = $sale->payment_method;
             if ($sale->is_split_payment) {
                 $splits = is_string($sale->split_payments)
                     ? json_decode($sale->split_payments, true)
                     : $sale->split_payments;
-                $lastSplit = collect($splits)->last();
-                $method = $lastSplit['method'] ?? $method;
+                $method = collect($splits)->last()['method'] ?? $method;
             }
 
             Payment::create([
