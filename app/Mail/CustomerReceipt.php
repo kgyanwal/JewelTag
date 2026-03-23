@@ -65,12 +65,22 @@ class CustomerReceipt extends Mailable
             ]);
             $pdfContent = $pdf->output();
 
-            // 6. Build the Raw Email with PDF Attachment
+            // 🚀 6. DYNAMIC STORE & CUSTOMER DATA
+            $store = $this->sale->store;
+            $store_name = $store->name ?? 'Our Store';
+            $store_phone = $store->phone ?? '';
+            $store_email = $store->email ?? config('mail.from.address');
+            $store_address = trim(($store->street ?? '') . ' ' . ($store->city ?? '') . ', ' . ($store->state ?? '') . ' ' . ($store->postcode ?? ''));
+            
+            $customer_name = $this->sale->customer->name ?? 'Valued Customer';
+            $invoice_number = $this->sale->invoice_number;
+
+            // 7. DYNAMIC HEADERS & SUBJECT
             $boundary = uniqid('np');
-            $subject = "Tax Invoice: {$this->sale->invoice_number} | Diamond Square";
+            $subject = "Your Receipt from {$store_name} (Invoice #{$invoice_number})";
             $recipient = $this->sale->customer->email;
             
-            $rawEmail = "From: Diamond Square <info@thedsq.com>\n";
+            $rawEmail = "From: {$store_name} <{$store_email}>\n";
             $rawEmail .= "To: {$recipient}\n";
             $rawEmail .= "Subject: {$subject}\n";
             $rawEmail .= "MIME-Version: 1.0\n";
@@ -78,16 +88,28 @@ class CustomerReceipt extends Mailable
             
             $rawEmail .= "--{$boundary}\n";
             $rawEmail .= "Content-Type: text/plain; charset=UTF-8\n\n";
-            $rawEmail .= "Please find your itemized tax invoice attached as a PDF document.\n\n";
             
+            // 8. DYNAMIC MESSAGE BODY
+            $rawEmail .= "Dear {$customer_name},\n\n" .
+                "Thank you for shopping with us! {$store_name} greatly appreciates your purchase.\n\n" .
+                "We hope you absolutely love your new jewelry. We are so happy to be a part of your Jewelry Joy!\n\n" .
+                "Please find your receipt attached to this email.\n\n" .
+                "Thank you for choosing {$store_name} for your jewelry needs. We look forward to serving you again soon!\n\n" .
+                "Warm regards,\n\n" .
+                "The {$store_name} Family\n" .
+                "{$store_address}\n" .
+                "{$store_phone}\n" .
+                "{$store_email}\n\n";
+            
+            // 9. ATTACH THE PDF
             $rawEmail .= "--{$boundary}\n";
-            $rawEmail .= "Content-Type: application/pdf; name=\"Invoice_{$this->sale->invoice_number}.pdf\"\n";
+            $rawEmail .= "Content-Type: application/pdf; name=\"Invoice_{$invoice_number}.pdf\"\n";
             $rawEmail .= "Content-Transfer-Encoding: base64\n";
-            $rawEmail .= "Content-Disposition: attachment; filename=\"Invoice_{$this->sale->invoice_number}.pdf\"\n\n";
+            $rawEmail .= "Content-Disposition: attachment; filename=\"Invoice_{$invoice_number}.pdf\"\n\n";
             $rawEmail .= chunk_split(base64_encode($pdfContent)) . "\n";
             $rawEmail .= "--{$boundary}--";
 
-            // 7. Send via SES Raw Message
+            // 10. Send via SES Raw Message
             $sesClient->sendRawEmail([
                 'RawMessage' => [
                     'Data' => $rawEmail,
