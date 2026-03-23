@@ -91,21 +91,20 @@ class EditSale extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-         if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
-        $data['completed_at'] = now();
+        if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
+            $data['completed_at'] = now();
         }
 
         // ✅ Log when a completed sale is edited
         if ($this->record->status === 'completed') {
-            activity()
-                ->causedBy(auth()->user())
+            \Spatie\Activitylog\Facades\Activity::causedBy(auth()->user())
                 ->performedOn($this->record)
                 ->withProperties([
-                    'invoice_number'  => $this->record->invoice_number,
-                    'edited_by'       => auth()->user()->name,
-                    'ip'              => request()->ip(),
-                    'final_total'     => $this->record->final_total,
-                    'status_at_edit'  => $this->record->status,
+                    'invoice_number' => $this->record->invoice_number,
+                    'edited_by'      => auth()->user()->name,
+                    'ip'             => request()->ip(),
+                    'final_total'    => $this->record->final_total,
+                    'status_at_edit' => $this->record->status,
                 ])
                 ->log('Completed sale edited');
         }
