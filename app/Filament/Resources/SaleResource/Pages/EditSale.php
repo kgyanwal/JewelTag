@@ -62,26 +62,25 @@ class EditSale extends EditRecord
      * Populate amount_paid correctly when loading the edit form.
      * Logic is based on split vs non-split — no hardcoded method name checks.
      */
+
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $record    = $this->record;
         $totalPaid = $record->payments->sum('amount');
 
         if ($record->is_split_payment) {
-            // ✅ Split payment — show total paid across all methods
+            // Split payment — show total paid across all methods
             $data['amount_paid'] = $totalPaid > 0
                 ? $totalPaid
                 : $record->final_total;
         } else {
-            // ✅ Single payment — show actual paid amount in priority order
-            if ($totalPaid > 0) {
-                // Most accurate: from actual payment records
-                $data['amount_paid'] = $totalPaid;
-            } elseif (floatval($record->amount_paid) > 0) {
-                // Fallback: saved amount_paid column
+            // ✅ FIXED: amount_paid column first — it stores what cashier physically entered
+            // payments sum second — may equal final_total for completed sales (not what was handed over)
+            if (floatval($record->amount_paid) > 0) {
                 $data['amount_paid'] = $record->amount_paid;
+            } elseif ($totalPaid > 0) {
+                $data['amount_paid'] = $totalPaid;
             } else {
-                // No records at all — default to full total as safe starting point
                 $data['amount_paid'] = $record->final_total;
             }
         }
