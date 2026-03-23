@@ -369,6 +369,7 @@ class SaleResource extends Resource
                                             'Bail Change'   => 'Bail Change',
                                             'Shorten'       => 'Shortening',
                                             'Stone Setting' => 'Stone Setting',
+                                            'Engraving' => 'Engraving',
                                             'Polishing'     => 'Polishing / Rhodium',
                                         ])
                                         ->placeholder('Select Job Type')
