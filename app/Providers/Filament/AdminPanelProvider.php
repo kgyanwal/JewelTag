@@ -345,6 +345,8 @@ HTML
                 \App\Filament\Pages\InactiveStockReport::class,
                 \App\Filament\Pages\MySalesReport::class,
                 \App\Filament\Pages\SoldStockReport::class,
+                 \App\Filament\Pages\DepositSalesReport::class,
+                 \App\Filament\Pages\NonStockReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,

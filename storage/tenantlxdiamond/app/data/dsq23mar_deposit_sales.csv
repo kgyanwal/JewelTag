@@ -1,0 +1,7 @@
+Customer,Date Sold,Job No.,Last Date Paid,Invoice Total,Payment Total,Balance,Staff,Date Required
+Andres Vera,3/14/2026,9331,3/19/2026,"$3,500.00",$500.00,"$3,000.00",Jeanette,4/15/2026
+Remy Heritier,3/19/2026,9363,3/19/2026,$968.67,$300.00,$668.67,Anthony,
+Antonio Gonzalez,3/18/2026,9361,-,$852.50,-,$852.50,Jeanette,
+Karla Malagon,3/13/2026,9314,3/13/2026,"$5,200.00","$1,200.00","$4,000.00",Jeanette/Anthony,5/01/2026
+Yvette Aguirre,3/5/2026,9241,3/5/2026,"$3,253.00","$3,252.50",$0.50,Jeanette/Anthony,
+John Branum,3/14/2026,9335,-,"$4,332.11",-,"$4,332.11",Paul,

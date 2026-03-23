@@ -10,44 +10,62 @@ class CreateCustomOrder extends CreateRecord
 {
     protected static string $resource = CustomOrderResource::class;
     protected ?bool $hasUnsavedDataChangesAlert = true;
-public ?string $depositMethod = null;
-public bool $isSplitDeposit = false;
-public array $splitDepositPayments = [];
 
-    // 🚀 2. Catch the VISA/Mastercard selection BEFORE it hits the Custom Orders table
-   protected function mutateFormDataBeforeCreate(array $data): array
-{
-    $this->depositMethod        = $data['initial_payment_method'] ?? 'cash';
-    $this->isSplitDeposit       = (bool) ($data['is_split_deposit'] ?? false);
-    $this->splitDepositPayments = $data['split_deposit_payments'] ?? [];
+    public ?string $depositMethod      = null;
+    public bool    $isSplitDeposit     = false;
+    public array   $splitDepositPayments = [];
 
-    unset($data['initial_payment_method'], $data['is_split_deposit'], $data['split_deposit_payments']);
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $this->depositMethod        = $data['initial_payment_method'] ?? 'cash';
+        $this->isSplitDeposit       = (bool) ($data['is_split_deposit'] ?? false);
+        $this->splitDepositPayments = $data['split_deposit_payments'] ?? [];
 
-    return $data;
-}
+        unset(
+            $data['initial_payment_method'],
+            $data['is_split_deposit'],
+            $data['split_deposit_payments']
+        );
 
-protected function afterCreate(): void
-{
-    $order = $this->record;
+        // Auto-calculate balance_due from items
+        $items = $data['items'] ?? [];
+        if (!empty($items)) {
+            $total             = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
+            $deposit           = (float)($data['amount_paid'] ?? 0);
+            $data['quoted_price'] = $total;
+            $data['balance_due']  = max(0, $total - $deposit);
+        }
 
-    if ($order->amount_paid > 0) {
-        if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
-            foreach ($this->splitDepositPayments as $payment) {
+        return $data;
+    }
+
+    protected function afterCreate(): void
+    {
+        $order = $this->record;
+
+        if ($order->amount_paid > 0) {
+            if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
+                foreach ($this->splitDepositPayments as $payment) {
+                    Payment::create([
+                        'custom_order_id' => $order->id,
+                        'amount'          => (float) $payment['amount'],
+                        'method'          => strtolower($payment['method']),
+                        'paid_at'         => now(),
+                    ]);
+                }
+            } else {
                 Payment::create([
                     'custom_order_id' => $order->id,
-                    'amount'          => (float) $payment['amount'],
-                    'method'          => strtolower($payment['method']),
+                    'amount'          => $order->amount_paid,
+                    'method'          => $this->depositMethod,
                     'paid_at'         => now(),
                 ]);
             }
-        } else {
-            Payment::create([
-                'custom_order_id' => $order->id,
-                'amount'          => $order->amount_paid,
-                'method'          => $this->depositMethod,
-                'paid_at'         => now(),
-            ]);
         }
     }
-}
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

@@ -131,7 +131,81 @@ class SaleResource extends Resource
                                         ->default(1)
                                         ->dehydrated(false)
                                         ->live(),
+
+
+                                      \Filament\Forms\Components\Actions::make([
+        FormAction::make('add_non_tag_item')
+            ->label('+ Non-Tag Item')
+            ->color('gray')
+            ->outlined()
+            ->icon('heroicon-o-plus-circle')
+            ->modalHeading('Add Non-Tag Item')
+            ->modalWidth('lg')
+            ->modalSubmitActionLabel('Add to Bill')
+            ->form([
+                TextInput::make('description')
+                    ->label('Description')
+                    ->required()
+                    ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
+
+                \Filament\Forms\Components\Grid::make(2)->schema([
+                    TextInput::make('price')
+                        ->label('Unit Price')
+                        ->numeric()
+                        ->prefix('$')
+                        ->required()
+                        ->default(0),
+
+                    TextInput::make('qty')
+                        ->label('Qty')
+                        ->numeric()
+                        ->required()
+                        ->default(1),
+                ]),
+
+                \Filament\Forms\Components\Grid::make(2)->schema([
+                    TextInput::make('discount_percent')
+                        ->label('Discount %')
+                        ->numeric()
+                        ->suffix('%')
+                        ->default(0),
+
+                    \Filament\Forms\Components\Toggle::make('is_tax_free')
+                        ->label('Tax Free?')
+                        ->default(false)
+                        ->inline(false),
+                ]),
+            ])
+            ->action(function (array $data, Get $get, Set $set) {
+                $price    = floatval($data['price'] ?? 0);
+                $qty      = intval($data['qty'] ?? 1);
+                $discPct  = floatval($data['discount_percent'] ?? 0);
+                $lineTotal = $price * $qty;
+                $discAmt  = $lineTotal * ($discPct / 100);
+                $finalPrice = $lineTotal - $discAmt;
+
+                $currentItems   = $get('items') ?? [];
+                $currentItems[] = [
+                    'product_item_id'    => null,   // ← null = no stock link
+                    'repair_id'          => null,
+                    'custom_order_id'    => null,
+                    'stock_no_display'   => 'NON-TAG',
+                    'custom_description' => $data['description'],
+                    'qty'                => $qty,
+                    'sold_price'         => $price,
+                    'sale_price_override'=> $finalPrice,
+                    'discount_percent'   => $discPct,
+                    'discount_amount'    => $discAmt,
+                    'is_tax_free'        => $data['is_tax_free'] ?? false,
+                ];
+
+                $set('items', $currentItems);
+                self::updateTotals($get, $set);
+            }),
+    ])->columnSpan(1),  
+
                                 ]),
+                                
                             ]),
 
                         Section::make('Current Bill Items')->schema([

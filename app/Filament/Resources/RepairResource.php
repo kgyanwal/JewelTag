@@ -26,14 +26,40 @@ class RepairResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-wrench';
     protected static ?string $navigationGroup = 'Sales';
 
+    // ── DYNAMIC STAFF BADGE ──────────────────────────────────────────
+    private static function staffBadge(?string $name): string
+    {
+        if (!$name) return '<span style="color:#9ca3af;font-size:11px;">—</span>';
+
+        $palette = [
+            ['#DBEAFE', '#1D4ED8'], // blue
+            ['#EDE9FE', '#6D28D9'], // purple
+            ['#CCFBF1', '#0F766E'], // teal
+            ['#FEF3C7', '#B45309'], // amber
+            ['#DCFCE7', '#15803D'], // green
+            ['#FCE7F3', '#BE185D'], // pink
+            ['#FEE2E2', '#B91C1C'], // red
+            ['#F3E8FF', '#7E22CE'], // violet
+            ['#CFFAFE', '#0E7490'], // cyan
+            ['#FFEDD5', '#C2410C'], // orange
+            ['#E0E7FF', '#4338CA'], // indigo
+            ['#ECFCCB', '#4D7C0F'], // lime
+        ];
+
+        $index       = abs(crc32(strtolower(trim($name)))) % count($palette);
+        [$bg, $text] = $palette[$index];
+        $short       = strtoupper(substr(trim($name), 0, 6));
+
+        return "<span style='background:{$bg};color:{$text};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px;white-space:nowrap;display:inline-block;border:1px solid {$text}33;'>{$short}</span>";
+    }
+
+    // ── FORM ─────────────────────────────────────────────────────────
     public static function form(Form $form): Form
     {
         return $form->schema([
-
-            // ── MAIN LAYOUT: 12-column grid ──────────────────────────
             Grid::make(12)->schema([
 
-                // ── LEFT COLUMN: Customer + Items (8 cols) ───────────
+                // ── LEFT: Customer + Items ────────────────────────────
                 Group::make()->columnSpan(['lg' => 8])->schema([
 
                     Section::make('Repair Intake')
@@ -41,7 +67,6 @@ class RepairResource extends Resource
                         ->icon('heroicon-o-user-circle')
                         ->schema([
                             Grid::make(2)->schema([
-                                // Customer Selection
                                 Select::make('customer_id')
                                     ->label('Select Customer')
                                     ->relationship('customer', 'name')
@@ -121,7 +146,6 @@ class RepairResource extends Resource
                                     ])
                                     ->createOptionUsing(fn(array $data) => \App\Models\Customer::create($data)->id),
 
-                                // Status
                                 Select::make('status')
                                     ->options([
                                         'received'    => 'Received',
@@ -134,7 +158,6 @@ class RepairResource extends Resource
                             ]),
                         ]),
 
-                    // ── JEWELRY ITEMS REPEATER ────────────────────────
                     Section::make('Jewelry Items to Repair')
                         ->description('Add all items brought in by the customer.')
                         ->icon('heroicon-o-sparkles')
@@ -142,7 +165,6 @@ class RepairResource extends Resource
                             Repeater::make('items')
                                 ->label('')
                                 ->schema([
-                                    // Row 1: Toggles
                                     Grid::make(2)->schema([
                                         Toggle::make('is_warranty')
                                             ->label('Covered Under Warranty?')
@@ -163,7 +185,6 @@ class RepairResource extends Resource
                                             ->live(),
                                     ])->columnSpanFull(),
 
-                                    // Row 2: Store Stock Selector (Only visible if Toggle is ON)
                                     Select::make('original_product_id')
                                         ->label('Search Store Stock No.')
                                         ->placeholder('Search sold items...')
@@ -175,7 +196,7 @@ class RepairResource extends Resource
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->barcode} - {$record->custom_description}")
                                         ->searchable()
                                         ->preload()
-                                        ->disableOptionsWhenSelectedInSiblingRepeaterItems() // 🚀 PREVENTS DUPLICATE SELECTION
+                                        ->disableOptionsWhenSelectedInSiblingRepeaterItems()
                                         ->live()
                                         ->afterStateUpdated(function ($state, Forms\Set $set) {
                                             if ($item = ProductItem::find($state)) {
@@ -185,7 +206,6 @@ class RepairResource extends Resource
                                         ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
                                         ->columnSpanFull(),
 
-                                    // Row 3: Descriptions
                                     Grid::make(2)->schema([
                                         Textarea::make('item_description')
                                             ->label('Item Name / Description')
@@ -201,7 +221,6 @@ class RepairResource extends Resource
                                             ->rows(3),
                                     ])->columnSpanFull(),
 
-                                    // Row 4: Pricing
                                     Grid::make(2)->schema([
                                         TextInput::make('estimated_cost')
                                             ->label('Estimated Cost')
@@ -221,12 +240,12 @@ class RepairResource extends Resource
                                 ->addActionLabel('+ Add Another Jewelry Item')
                                 ->itemLabel(fn(array $state): ?string => $state['item_description'] ?? 'New Item')
                                 ->collapsible()
-                                ->cloneable() // 🚀 Allows cloning a row if customer brings 2 identical rings
+                                ->cloneable()
                                 ->reorderable(true),
                         ]),
                 ]),
 
-                // ── RIGHT COLUMN: Staff + Workflow (4 cols) ──────────
+                // ── RIGHT: Staff + Tracking + Workflow ────────────────
                 Group::make()->columnSpan(['lg' => 4])->schema([
 
                     Section::make('Staff Assignment')
@@ -244,8 +263,65 @@ class RepairResource extends Resource
                                 ->afterStateUpdated(function ($state, Forms\Set $set) {
                                     $set('sales_person_id', !empty($state) ? $state[0] : null);
                                 }),
-                            
+
                             Hidden::make('sales_person_id'),
+                        ]),
+
+                    Section::make('Repair Tracking')
+                        ->icon('heroicon-o-map-pin')
+                        ->collapsible()
+                        ->schema([
+                            Grid::make(2)->schema([
+                                Select::make('dropped_by')
+                                    ->label('Dropped By')
+                                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                                    ->searchable()
+                                    ->preload()
+                                    ->default(fn() => auth()->user()?->name),
+
+                                DatePicker::make('date_dropped')
+                                    ->label('Date Dropped')
+                                    ->native(false)
+                                    ->displayFormat('M d, Y'),
+                            ]),
+
+                            Grid::make(2)->schema([
+                                Select::make('picked_up_by')
+                                    ->label('Picked Up By')
+                                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                                    ->searchable()
+                                    ->preload()
+                                    ->default(fn() => auth()->user()?->name),
+
+                                DatePicker::make('date_picked_up')
+                                    ->label('Date Picked/Received')
+                                    ->native(false)
+                                    ->displayFormat('M d, Y'),
+                            ]),
+
+                            Grid::make(2)->schema([
+                               GoogleAutocomplete::make('repair_location_search')
+        ->label('Repair Location')
+        ->autocompletePlaceholder('Search address or place...')
+        ->countries(['US'])
+        ->columnSpanFull()
+        ->withFields([
+            TextInput::make('repair_location')
+                ->label('Location Name / Address')
+                ->placeholder('e.g. Javier Workshop, Texas Vendor')
+                ->extraInputAttributes(['data-google-field' => '{establishment} {route}']),
+        ]),
+
+                                DatePicker::make('customer_pickup_date')
+                                    ->label('Customer Pickup Date')
+                                    ->native(false)
+                                    ->displayFormat('M d, Y'),
+                            ]),
+
+                            Textarea::make('repair_notes')
+                                ->label('Notes')
+                                ->rows(2)
+                                ->placeholder('e.g. Should be sent to Texas, Javier could not do it...'),
                         ]),
 
                     Section::make('Workflow')
@@ -264,51 +340,132 @@ class RepairResource extends Resource
         ]);
     }
 
+    // ── TABLE ─────────────────────────────────────────────────────────
     public static function table(Table $table): Table
     {
         return $table
+            ->striped()
             ->columns([
-                Tables\Columns\TextColumn::make('repair_no')
-                    ->label('Repair #')
-                    ->searchable()->sortable()->weight('bold'),
 
-                Tables\Columns\TextColumn::make('customer.name')
-                    ->label('Customer')
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('DATE')
+                    ->date('m/d/y')
+                    ->sortable()
+                    ->size('sm')
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('repair_no')
+                    ->label('JOB #')
                     ->searchable()
-                    ->description(function ($record) {
-                        $items = $record->items ?? [];
-                        $count = count($items);
-                        if ($count === 0) return 'No items recorded';
-                        if ($count === 1) return Str::limit($items[0]['item_description'] ?? 'Jewelry Item', 50);
-                        return "{$count} Items (Multiple)";
-                    }),
+                    ->formatStateUsing(fn($state) => '#' . substr(preg_replace('/[^0-9]/', '', $state), -4))
+                    ->weight('bold')
+                    ->copyable()
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('customer.last_name')
+                    ->label('CUSTOMER')
+                    ->searchable(['last_name', 'name'])
+                    ->formatStateUsing(fn($record) => strtoupper($record->customer?->last_name ?? 'WALK-IN'))
+                    ->weight('bold')
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('salesPerson.name')
-                    ->label('STAFF')->badge()->color('gray'),
+                    ->label('BY')
+                    ->html()
+                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->grow(false),
 
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'received'    => 'gray',
-                        'in_progress' => 'info',
-                        'ready'       => 'success',
-                        'delivered'   => 'primary',
-                        default       => 'gray',
+                Tables\Columns\TextColumn::make('date_dropped')
+                    ->label('DROPPED')
+                    ->date('m/d/y')
+                    ->placeholder('—')
+                    ->size('sm')
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('dropped_by')
+                    ->label('DROP BY')
+                    ->html()
+                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->placeholder('—')
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('picked_up_by')
+                    ->label('PICK BY')
+                    ->html()
+                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->placeholder('—')
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('date_picked_up')
+                    ->label('PICKED')
+                    ->date('m/d/y')
+                    ->placeholder('—')
+                    ->size('sm')
+                    ->grow(false),
+
+                Tables\Columns\SelectColumn::make('status')
+                    ->label('STATUS')
+                    ->options([
+                        'received'    => 'RCVD',
+                        'in_progress' => 'IN PROG',
+                        'ready'       => 'DONE',
+                        'delivered'   => 'DELIVERED',
+                    ])
+                    ->selectablePlaceholder(false)
+                    ->grow(false)
+                    ->extraAttributes(fn($record): array => match($record->status) {
+                        'received'    => ['style' => 'background:#F3F4F6;color:#374151;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'in_progress' => ['style' => 'background:#FEE2E2;color:#B91C1C;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'ready'       => ['style' => 'background:#DCFCE7;color:#15803D;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'delivered'   => ['style' => 'background:#DBEAFE;color:#1D4ED8;font-weight:700;border-radius:4px;min-width:90px;'],
+                        default       => ['style' => 'min-width:90px;'],
                     }),
 
+                Tables\Columns\TextColumn::make('repair_location')
+                    ->label('LOCATION')
+                    ->html()
+                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->placeholder('—')
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('customer_pickup_date')
+                    ->label('PICKUP')
+                    ->placeholder('—')
+                    ->formatStateUsing(fn($state) => $state
+                        ? "<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>"
+                            . \Carbon\Carbon::parse($state)->format('m/d/y')
+                            . "</span>"
+                        : '<span style="color:#9ca3af;">—</span>'
+                    )
+                    ->html()
+                    ->grow(false),
+
+                Tables\Columns\TextColumn::make('repair_notes')
+                    ->label('NOTES')
+                    ->limit(25)
+                    ->tooltip(fn($record) => $record->repair_notes)
+                    ->placeholder('—')
+                    ->size('sm')
+                    ->color('warning')
+                    ->grow(false),
+
                 Tables\Columns\TextColumn::make('notified_at')
-                    ->label('Last Notified')
-                    ->getStateUsing(fn($record) => $record->notified_at ? $record->notified_at->format('M d, y - h:i A') : 'Not Notified')
+                    ->label('NOTIFIED')
+                    ->getStateUsing(fn($record) => $record->notified_at
+                        ? $record->notified_at->format('m/d/y')
+                        : '—'
+                    )
                     ->icon(fn($record) => $record->notified_at ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
                     ->color(fn($record) => $record->notified_at ? 'success' : 'gray')
                     ->description(function ($record) {
                         if (empty($record->repair_history)) return null;
-                        return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Full History</span>");
+                        return new HtmlString("<span class='text-primary-600 text-[10px] font-bold underline cursor-pointer'>History</span>");
                     })
                     ->action(
                         Tables\Actions\Action::make('viewRepairLog')
                             ->modalHeading('Communication History')
-                            ->modalWidth('lg')->slideOver()
+                            ->modalWidth('lg')
+                            ->slideOver()
                             ->modalSubmitAction(false)
                             ->form([
                                 Forms\Components\Placeholder::make('history_display')
@@ -334,39 +491,59 @@ class RepairResource extends Resource
                                         return new HtmlString($html);
                                     })
                             ])
-                    ),
+                    )
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('estimated_total')
-                    ->label('Total Quote')->money('USD')
-                    ->getStateUsing(fn($record) => collect($record->items ?? [])->sum(fn($i) => (float)($i['estimated_cost'] ?? 0))),
+                    ->label('QUOTE')
+                    ->money('USD')
+                    ->getStateUsing(fn($record) => collect($record->items ?? [])
+                        ->sum(fn($i) => (float)($i['estimated_cost'] ?? 0))
+                    )
+                    ->grow(false),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options(['received' => 'Received', 'in_progress' => 'In Progress', 'ready' => 'Ready', 'delivered' => 'Delivered']),
+                    ->options([
+                        'received'    => 'Received',
+                        'in_progress' => 'In Progress',
+                        'ready'       => 'Job Complete',
+                        'delivered'   => 'Done',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\EditAction::make(),
 
                     Tables\Actions\Action::make('notifyDelay')
-                        ->label('Delay Notification')->icon('heroicon-o-clock')->color('danger')
+                        ->label('Delay Notification')
+                        ->icon('heroicon-o-clock')
+                        ->color('danger')
                         ->form([
                             Forms\Components\Select::make('notify_method')
                                 ->options(['sms' => 'SMS', 'email' => 'Email', 'both' => 'Both'])
-                                ->default('sms')->required(),
-                            Forms\Components\Textarea::make('message')->label('Message Content')
+                                ->default('sms')
+                                ->required(),
+                            Forms\Components\Textarea::make('message')
+                                ->label('Message Content')
                                 ->default(fn($record) => "Hi {$record->customer->name}, we are experiencing a slight delay with your repair #{$record->repair_no}. We appreciate your patience!")
                                 ->required(),
                         ])
-                        ->action(fn($record, array $data) => self::handleRepairNotification($record, $data['notify_method'], $data['message'])),
+                        ->action(fn($record, array $data) => self::handleRepairNotification(
+                            $record, $data['notify_method'], $data['message']
+                        )),
 
                     Tables\Actions\Action::make('markReady')
-                        ->label('Ready for Pickup')->icon('heroicon-o-check-circle')->color('success')
+                        ->label('Ready for Pickup')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
                         ->form([
                             Forms\Components\Select::make('notify_method')
                                 ->options(['sms' => 'SMS', 'email' => 'Email', 'both' => 'Both', 'none' => 'None'])
-                                ->default('both')->required(),
-                            Forms\Components\Textarea::make('message')->label('Message Content')
+                                ->default('both')
+                                ->required(),
+                            Forms\Components\Textarea::make('message')
+                                ->label('Message Content')
                                 ->default(fn($record) => "Hi {$record->customer->name}, great news! Your repair #{$record->repair_no} is ready for pickup.")
                                 ->visible(fn($get) => $get('notify_method') !== 'none'),
                         ])
@@ -378,14 +555,18 @@ class RepairResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('billRepair')
-                        ->label('Bill to POS')->icon('heroicon-o-currency-dollar')->color('success')
+                        ->label('Bill to POS')
+                        ->icon('heroicon-o-currency-dollar')
+                        ->color('success')
                         ->url(fn(Repair $record) => route('filament.admin.resources.sales.create', [
                             'repair_id'   => $record->id,
                             'customer_id' => $record->customer_id,
                         ])),
 
                     Tables\Actions\Action::make('printJobPacket')
-                        ->label('Print Job Packet')->icon('heroicon-o-printer')->color('info')
+                        ->label('Print Job Packet')
+                        ->icon('heroicon-o-printer')
+                        ->color('info')
                         ->url(fn(Repair $record): string => route('repair.print', $record))
                         ->openUrlInNewTab(),
                 ])
@@ -393,6 +574,7 @@ class RepairResource extends Resource
             ->defaultSort('created_at', 'desc');
     }
 
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────
     public static function handleRepairNotification(Repair $record, string $method, string $message)
     {
         $history   = $record->repair_history ?? [];
@@ -461,6 +643,7 @@ class RepairResource extends Resource
         Notification::make()->title('Customer Notified')->success()->send();
     }
 
+    // ── PAGES ─────────────────────────────────────────────────────────
     public static function getPages(): array
     {
         return [
