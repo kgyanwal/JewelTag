@@ -132,7 +132,9 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->live(),
 
-
+                                        
+                                ]),
+                                
                                       \Filament\Forms\Components\Actions::make([
         FormAction::make('add_non_tag_item')
             ->label('+ Non-Tag Item')
@@ -204,8 +206,6 @@ class SaleResource extends Resource
             }),
     ])->columnSpan(1),  
 
-                                ]),
-                                
                             ]),
 
                         Section::make('Current Bill Items')->schema([
