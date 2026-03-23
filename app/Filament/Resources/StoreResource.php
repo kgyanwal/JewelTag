@@ -36,7 +36,7 @@ class StoreResource extends Resource
 
                         TextInput::make('legal_name')
                             ->label('Legal Business Name')
-                            ->placeholder('e.g., Finest Gem LLC'),
+                            ->placeholder('e.g., Your Jewelry LLC'),
 
 
                         TextInput::make('tagline')
