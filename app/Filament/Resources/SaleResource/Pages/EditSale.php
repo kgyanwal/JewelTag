@@ -89,23 +89,52 @@ class EditSale extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        if (($data['status'] ?? null) === 'completed' && !$this->record->completed_at) {
-            $data['completed_at'] = now();
+        $record = $this->record;
+
+        // ── AUTO-CORRECT STATUS BASED ON ACTUAL PAYMENTS ──────────────────────
+        // Get total already paid from payments table
+        $alreadyPaid = $record->payments()->sum('amount');
+
+        // Add any new payment being entered now
+        if ($record->is_split_payment) {
+            $splits = $data['split_payments'] ?? [];
+            $newIntended = collect($splits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        } else {
+            $newIntended = floatval($data['amount_paid'] ?? 0);
         }
 
-        // ✅ Log when a completed sale is edited — writes directly to activity_log table
-        if ($this->record->status === 'completed') {
+        // Use the higher of already paid vs newly entered
+        $totalPaid = max($alreadyPaid, $newIntended);
+        $finalTotal = floatval($record->final_total);
+        $balance = round($finalTotal - $totalPaid, 2);
+
+        if ($balance <= 0) {
+            // Fully paid — force completed
+            $data['status'] = 'completed';
+            $data['balance_due'] = 0;
+            if (!$record->completed_at) {
+                $data['completed_at'] = now();
+            }
+        } else {
+            // Still has balance — force pending
+            $data['status'] = 'pending';
+            $data['balance_due'] = $balance;
+            $data['completed_at'] = null; // clear completed_at if it was set
+        }
+
+        // ── ACTIVITY LOG for completed sale edits ─────────────────────────────
+        if ($record->status === 'completed') {
             \App\Models\ActivityLog::create([
                 'user_id'    => auth()->id(),
                 'action'     => 'Updated',
                 'module'     => 'Sale',
-                'identifier' => $this->record->invoice_number,
+                'identifier' => $record->invoice_number,
                 'changes'    => json_encode([
                     'note'          => 'Completed sale was edited',
                     'edited_by'     => auth()->user()->name,
                     'ip'            => request()->ip(),
-                    'final_total'   => $this->record->final_total,
-                    'status'        => $this->record->status,
+                    'final_total'   => $record->final_total,
+                    'status'        => $record->status,
                 ]),
                 'url'        => '/' . request()->path(),
                 'ip_address' => request()->ip(),

@@ -914,10 +914,6 @@ class SaleResource extends Resource
 
                         if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
 
-                        if ($record->status === 'completed' && $paid < $total) {
-                            $paid = $total;
-                        }
-
                         $balance = max(0, $total - $paid);
 
                         $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
@@ -1174,11 +1170,8 @@ class SaleResource extends Resource
             $fullyPaid = $tendered > 0 && round($tendered, 2) >= round($total, 2);
         }
 
-        // ✅ Never downgrade an already completed sale
-        $currentStatus = $get('status');
-        if ($currentStatus !== 'completed') {
-            $set('status', $fullyPaid ? 'completed' : 'inprogress');
-        }
+        $set('status', $fullyPaid ? 'completed' : 'pending');
+
     }
 
     public static function getPaymentOptions(): array

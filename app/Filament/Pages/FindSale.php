@@ -57,7 +57,6 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->label('Sales Staff')
                                 ->placeholder('e.g. Anthony')
                                 ->live(),
-                            // 🚀 SIMON'S REQUEST: Separate First and Last Name
                             TextInput::make('first_name')->label('First Name')->live(),
                             TextInput::make('last_name')->label('Last Name')->live(),
 
@@ -96,14 +95,12 @@ class FindSale extends Page implements HasForms, HasTable
                     ->when($this->data['staff_name'] ?? null, function ($q, $v) {
                         $q->where('sales_person_list', 'like', "%{$v}%");
                     })
-                    // 🚀 UPDATED LOGIC: Filter by separate First and Last name fields
                     ->when($this->data['first_name'] ?? null, function ($q, $v) {
                         $q->whereHas('customer', fn($sq) => $sq->where('name', 'like', "%{$v}%"));
                     })
                     ->when($this->data['last_name'] ?? null, function ($q, $v) {
                         $q->whereHas('customer', fn($sq) => $sq->where('last_name', 'like', "%{$v}%"));
                     })
-
                     ->when($this->data['job_type'] ?? null, fn($q, $v) => $q->where('job_type', $v))
                     ->when($this->data['date_from'] ?? null, fn($q, $v) => $q->whereDate('created_at', '>=', $v))
                     ->latest()
@@ -115,7 +112,6 @@ class FindSale extends Page implements HasForms, HasTable
 
                 TextColumn::make('customer.name')
                     ->label('CUSTOMER')
-                    // 🚀 Ensure full name is always displayed in the table
                     ->formatStateUsing(fn($record) => $record->customer ? "{$record->customer->name} {$record->customer->last_name}" : 'Walk-in')
                     ->description(fn($record) => $record->customer?->phone),
 
@@ -134,9 +130,10 @@ class FindSale extends Page implements HasForms, HasTable
                     ->label('SALES STAFF')
                     ->badge()
                     ->color('gray')
-                    ->separator(',') // Handles multiple names like "Jeanette, Simon"
+                    ->separator(',')
                     ->searchable()
                     ->toggleable(),
+
                 TextColumn::make('resize_info')
                     ->label('JOB STATUS')
                     ->getStateUsing(function ($record) {
@@ -150,28 +147,26 @@ class FindSale extends Page implements HasForms, HasTable
                     ->badge()->color('warning')
                     ->visible(fn() => Sale::whereNotNull('job_type')->exists()),
 
-              TextColumn::make('payment_status_summary')
+                TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
                         $isCustomDeposit = $record->has_trade_in && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
-                        
+
                         $total = floatval($record->final_total);
                         if ($isCustomDeposit) $total += floatval($record->trade_in_value);
-                        
-                        // 1. Check new payments table
+
+                        // FIX: Source of truth is the payments table
                         $paid = floatval($record->payments->sum('amount'));
-                        
-                        // 2. Fallback to old amount_paid column
+
+                        // Fallback for legacy records that predate the payments table
                         if ($paid == 0 && floatval($record->amount_paid) > 0) {
                             $paid = floatval($record->amount_paid);
                         }
 
                         if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
 
-                        // 🚀 THE ULTIMATE FALLBACK: If it is Completed, it MUST be fully paid!
-                        if ($record->status === 'completed' && $paid < $total) {
-                            $paid = $total;
-                        }
+                        // FIX: Removed the "completed = fully paid" fallback.
+                        // Status is now auto-corrected on save based on actual payments.
 
                         $balance = max(0, $total - $paid);
 
@@ -191,8 +186,8 @@ class FindSale extends Page implements HasForms, HasTable
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'completed' => 'success',
-                        'refunded' => 'danger',            // Bright red for fully refunded
-                        'partially_refunded' => 'warning', // Orange for partial
+                        'refunded' => 'danger',
+                        'partially_refunded' => 'warning',
                         'cancelled' => 'gray',
                         default => 'gray',
                     })
@@ -200,8 +195,9 @@ class FindSale extends Page implements HasForms, HasTable
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
-        ->label('Edit')
-        ->url(fn (Sale $record): string => SaleResource::getUrl('edit', ['record' => $record])),
+                    ->label('Edit')
+                    ->url(fn(Sale $record): string => SaleResource::getUrl('edit', ['record' => $record])),
+
                 Action::make('quick_view')
                     ->label('View')
                     ->icon('heroicon-o-eye')
@@ -209,11 +205,9 @@ class FindSale extends Page implements HasForms, HasTable
                     ->slideOver()
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
-                    // 🚀 Pass the $record to the form closure
                     ->form(fn(Sale $record): array => [
                         Group::make()
                             ->schema([
-                                // ── CUSTOMER & SALE HEADER ──────────────────────────────
                                 Grid::make(3)
                                     ->schema([
                                         Section::make('Customer Info')
@@ -247,7 +241,6 @@ class FindSale extends Page implements HasForms, HasTable
                                             ]),
                                     ]),
 
-                                // ── ITEM TABLE ────────────────────────────────────
                                 Section::make('Bill Items')
                                     ->schema([
                                         Placeholder::make('items_html')
@@ -276,7 +269,6 @@ class FindSale extends Page implements HasForms, HasTable
                                             }),
                                     ]),
 
-                                // ── FINANCIALS ────────────────────────────────────
                                 Grid::make(2)
                                     ->schema([
                                         Section::make('Workshop Details')
@@ -318,7 +310,6 @@ class FindSale extends Page implements HasForms, HasTable
                         ->icon('heroicon-o-printer')
                         ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
                         ->openUrlInNewTab()
-                        // 🚀 THE MAGIC: This triggers the print dialog as soon as the new tab opens
                         ->extraAttributes([
                             'onclick' => "let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); }; return false;"
                         ]),
@@ -336,7 +327,8 @@ class FindSale extends Page implements HasForms, HasTable
                         ->color('warning')
                         ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'job']))
                         ->openUrlInNewTab(),
-                Action::make('emailReceipt')
+
+                    Action::make('emailReceipt')
                         ->label('Email Receipt')
                         ->icon('heroicon-o-envelope')
                         ->color('info')
@@ -369,7 +361,6 @@ class FindSale extends Page implements HasForms, HasTable
                             }
                         }),
 
-                    // 📱 SMS RECEIPT
                     Action::make('smsReceipt')
                         ->label('SMS Receipt')
                         ->icon('heroicon-o-device-phone-mobile')
@@ -405,7 +396,7 @@ class FindSale extends Page implements HasForms, HasTable
 
                             try {
                                 $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
-                                
+
                                 $sns = new \Aws\Sns\SnsClient([
                                     'version' => 'latest',
                                     'region'  => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
@@ -430,7 +421,7 @@ class FindSale extends Page implements HasForms, HasTable
                                     ->title('SMS Sent')
                                     ->success()
                                     ->send();
-                                    
+
                             } catch (\Exception $e) {
                                 \Filament\Notifications\Notification::make()
                                     ->title('SMS Failed')
@@ -438,9 +429,8 @@ class FindSale extends Page implements HasForms, HasTable
                                     ->danger()
                                     ->send();
                             }
-                        })
+                        }),
                 ])
-                
                     ->label('Print')
                     ->icon('heroicon-m-printer')
                     ->color('gray')
