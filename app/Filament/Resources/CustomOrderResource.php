@@ -42,14 +42,27 @@ class CustomOrderResource extends Resource
                         ->icon('heroicon-o-user-group')
                         ->schema([
                             Grid::make(2)->schema([
-                                Select::make('customer_id')
-                                    ->label('Select Customer')
-                                    ->relationship('customer', 'name')
-                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} ({$record->phone})")
-                                    ->searchable(['name', 'last_name', 'phone'])
-                                    ->preload()
-                                    ->prefixIcon('heroicon-o-user')
-                                    ->required(),
+                              Select::make('customer_id')
+                                        ->label('Select Customer')
+                                        ->relationship('customer', 'name')
+                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                        ->searchable()
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            return \App\Models\Customer::query()
+                                                ->where(function ($q) use ($search) {
+                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhere('phone', 'like', "%{$search}%")
+                                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(function ($customer) {
+                                                    return [
+                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                    ];
+                                                });
+                                        }),
 
                                 Select::make('staff_id')
                                     ->label('Sales Person')

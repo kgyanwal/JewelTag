@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class ImportOnSwimNonStock extends Command
 {
-    protected $signature = 'import:onswim-nonstock {tenant}';
+    protected $signature = 'import:onswim-nonstock {tenant} {--rollback}';
     protected $description = 'Import Non-Stock items (Grills, Repairs, Custom Labor) from OnSwim';
 
     public function handle()
