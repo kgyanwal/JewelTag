@@ -38,7 +38,7 @@ class EditSale extends EditRecord
                         \App\Models\Payment::create([
                             'sale_id' => $sale->id,
                             'amount'  => $remaining,
-                            'method'  => $sale->payment_method ?? 'cash',
+                            'method'  => strtoupper(trim($sale->payment_method ?? 'CASH')),
                             'paid_at' => now(),
                         ]);
 
@@ -62,7 +62,6 @@ class EditSale extends EditRecord
      * Populate amount_paid correctly when loading the edit form.
      * Logic is based on split vs non-split — no hardcoded method name checks.
      */
-
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $record    = $this->record;
@@ -117,8 +116,12 @@ class EditSale extends EditRecord
     }
 
     /**
-     * After saving, record only the NEW delta payment — never delete existing payments.
-     * This ensures past EOD records are never corrupted by edits.
+     * After saving, sync payments correctly per method.
+     *
+     * For split payments: compare intended amount per method vs already paid per method
+     * and only record the delta per method — never a single lump sum under wrong method.
+     *
+     * For non-split: record only the new delta as a single payment.
      */
     protected function afterSave(): void
     {
@@ -127,79 +130,139 @@ class EditSale extends EditRecord
         DB::transaction(function () use ($sale) {
             $sale->load('items');
 
-            $alreadyPaidTotal = $sale->payments()->sum('amount');
-
             if ($sale->is_split_payment) {
+                // ── SPLIT PAYMENT: per-method delta sync ──────────────────────
                 $splits = is_string($sale->split_payments)
                     ? json_decode($sale->split_payments, true)
                     : $sale->split_payments;
-                $newIntendedTotal = is_array($splits) ? collect($splits)->sum('amount') : 0;
+
+                if (!is_array($splits) || empty($splits)) {
+                    return;
+                }
+
+                // What the split_payments JSON intends per method (normalized to uppercase)
+                $intendedByMethod = collect($splits)
+                    ->groupBy(fn($s) => strtoupper(trim($s['method'])))
+                    ->map(fn($g) => round($g->sum(fn($s) => (float) $s['amount']), 2));
+
+                // What has already been recorded in payments table per method
+                $paidByMethod = $sale->payments()->get()
+                    ->groupBy(fn($p) => strtoupper(trim($p->method)))
+                    ->map(fn($g) => round($g->sum('amount'), 2));
+
+                $anyChange = false;
+
+                foreach ($intendedByMethod as $method => $intendedAmount) {
+                    $alreadyPaid = $paidByMethod[$method] ?? 0;
+                    $methodDelta = round($intendedAmount - $alreadyPaid, 2);
+
+                    if ($methodDelta > 0) {
+                        // More paid on this method — record the extra
+                        Payment::create([
+                            'sale_id' => $sale->id,
+                            'amount'  => $methodDelta,
+                            'method'  => $method,
+                            'paid_at' => now(),
+                        ]);
+                        $anyChange = true;
+
+                    } elseif ($methodDelta < 0) {
+                        // Overpaid on this method — adjust latest payment for this method today
+                        $latestPayment = $sale->payments()
+                            ->whereRaw('UPPER(TRIM(method)) = ?', [$method])
+                            ->whereDate('paid_at', today())
+                            ->latest()
+                            ->first();
+
+                        if ($latestPayment) {
+                            $correctedAmount = round($latestPayment->amount + $methodDelta, 2);
+                            if ($correctedAmount <= 0) {
+                                $latestPayment->delete();
+                            } else {
+                                $latestPayment->update(['amount' => $correctedAmount]);
+                            }
+                            $anyChange = true;
+                        }
+                    }
+                }
+
+                // Sync amount_paid on sale to total of split_payments JSON
+                $totalIntended = round($intendedByMethod->sum(), 2);
+                $sale->update(['amount_paid' => $totalIntended]);
+
+                if ($anyChange) {
+                    Notification::make()
+                        ->title('Payments Updated')
+                        ->body('Split payment records synced. Total collected: $' . number_format($totalIntended, 2))
+                        ->success()
+                        ->send();
+                } else {
+                    Notification::make()
+                        ->title('Sale Updated')
+                        ->body('No payment changes detected.')
+                        ->info()
+                        ->send();
+                }
+
             } else {
+                // ── NON-SPLIT: single delta payment ───────────────────────────
+                $alreadyPaidTotal = $sale->payments()->sum('amount');
+
                 $amountPaid       = floatval($sale->amount_paid ?? 0);
                 $newIntendedTotal = min(
                     $amountPaid > 0 ? $amountPaid : (float) $sale->final_total,
                     (float) $sale->final_total
                 );
-            }
 
-            $delta = round($newIntendedTotal - $alreadyPaidTotal, 2);
+                $delta = round($newIntendedTotal - $alreadyPaidTotal, 2);
 
-            // ✅ New payment needed
-            if ($delta > 0) {
-                $method = $sale->payment_method;
-                if ($sale->is_split_payment) {
-                    $splits = is_string($sale->split_payments)
-                        ? json_decode($sale->split_payments, true)
-                        : $sale->split_payments;
-                    $method = collect($splits)->last()['method'] ?? $method;
-                }
+                if ($delta > 0) {
+                    Payment::create([
+                        'sale_id' => $sale->id,
+                        'amount'  => $delta,
+                        'method'  => strtoupper(trim($sale->payment_method ?? 'CASH')),
+                        'paid_at' => now(),
+                    ]);
 
-                Payment::create([
-                    'sale_id' => $sale->id,
-                    'amount'  => $delta,
-                    'method'  => $method,
-                    'paid_at' => now(),
-                ]);
-
-                Notification::make()
-                    ->title('New Payment Recorded')
-                    ->body('$' . number_format($delta, 2) . ' added to today\'s EOD.')
-                    ->success()
-                    ->send();
-                return;
-            }
-
-            // ✅ Cashier corrected a lower amount — adjust the latest payment
-            // Only adjust if the latest payment was made today (same day correction)
-            if ($delta < 0) {
-                $latestPayment = $sale->payments()->whereDate('paid_at', today())->latest()->first();
-
-                if ($latestPayment) {
-                    $correctedAmount = round($latestPayment->amount + $delta, 2);
-
-                    if ($correctedAmount <= 0) {
-                        // Delta wipes out entire latest payment — delete it
-                        $latestPayment->delete();
-                    } else {
-                        // Reduce the latest payment by the overpaid amount
-                        $latestPayment->update(['amount' => $correctedAmount]);
-                    }
+                    // Sync amount_paid
+                    $sale->update(['amount_paid' => round($alreadyPaidTotal + $delta, 2)]);
 
                     Notification::make()
-                        ->title('Payment Adjusted')
-                        ->body('Payment corrected by $' . number_format(abs($delta), 2) . '. Balance due: $' . number_format($sale->final_total - $newIntendedTotal, 2))
-                        ->warning()
+                        ->title('New Payment Recorded')
+                        ->body('$' . number_format($delta, 2) . ' added to today\'s EOD.')
+                        ->success()
                         ->send();
-                    return;
+
+                } elseif ($delta < 0) {
+                    $latestPayment = $sale->payments()->whereDate('paid_at', today())->latest()->first();
+
+                    if ($latestPayment) {
+                        $correctedAmount = round($latestPayment->amount + $delta, 2);
+
+                        if ($correctedAmount <= 0) {
+                            $latestPayment->delete();
+                        } else {
+                            $latestPayment->update(['amount' => $correctedAmount]);
+                        }
+
+                        // Sync amount_paid
+                        $sale->update(['amount_paid' => round($newIntendedTotal, 2)]);
+
+                        Notification::make()
+                            ->title('Payment Adjusted')
+                            ->body('Payment corrected by $' . number_format(abs($delta), 2) . '. Balance due: $' . number_format($sale->final_total - $newIntendedTotal, 2))
+                            ->warning()
+                            ->send();
+                    }
+
+                } else {
+                    Notification::make()
+                        ->title('Sale Updated')
+                        ->body('No payment changes detected.')
+                        ->info()
+                        ->send();
                 }
             }
-
-            // No change
-            Notification::make()
-                ->title('Sale Updated')
-                ->body('No payment changes detected.')
-                ->info()
-                ->send();
         });
     }
 

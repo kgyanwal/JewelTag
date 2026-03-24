@@ -249,14 +249,26 @@ class CreateSale extends CreateRecord
 
             // ── PAYMENTS ──────────────────────────────────────────────────────
             if ($sale->is_split_payment) {
+                $totalSplitPaid = 0;
+
                 foreach ($sale->split_payments as $payment) {
+                    // FIX: Cast amount to float and normalize method to uppercase
+                    $amount = round((float) $payment['amount'], 2);
+                    $method = strtoupper(trim($payment['method']));
+
                     \App\Models\Payment::create([
                         'sale_id' => $sale->id,
-                        'amount'  => $payment['amount'],
-                        'method'  => $payment['method'],
+                        'amount'  => $amount,
+                        'method'  => $method,
                         'paid_at' => now(),
                     ]);
+
+                    $totalSplitPaid += $amount;
                 }
+
+                // FIX: Update amount_paid on the sale to reflect actual collected amount
+                $sale->update(['amount_paid' => round($totalSplitPaid, 2)]);
+
             } else {
                 // ✅ Use actual amount_paid entered by cashier, capped at final_total
                 // If 0 (e.g. non-cash auto-filled), fall back to final_total
@@ -268,9 +280,12 @@ class CreateSale extends CreateRecord
                 \App\Models\Payment::create([
                     'sale_id' => $sale->id,
                     'amount'  => $actualPaid,
-                    'method'  => $sale->payment_method,
+                    'method'  => strtoupper(trim($sale->payment_method)), // FIX: normalize method
                     'paid_at' => now(),
                 ]);
+
+                // FIX: Sync amount_paid on sale
+                $sale->update(['amount_paid' => $actualPaid]);
             }
 
             // ── ITEMS ──────────────────────────────────────────────────────────
