@@ -269,46 +269,46 @@ class CustomOrderResource extends Resource
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
                                 ->readOnly(fn(string $operation) =>
-                                    $operation === 'edit' && !\App\Helpers\Staff::user()?->hasRole('Superadmin')
+                                    $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                                 )
                                 ->helperText(fn(string $operation) =>
-                                    $operation === 'edit' && \App\Helpers\Staff::user()?->hasRole('Superadmin')
-                                        ? '⚠️ Superadmin: editing this will recalculate balance'
+                                    $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                        ? '⚠️ Admin: editing this will recalculate balance'
                                         : null
                                 )
                                 ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
 
                             // Split deposit toggle
-                            // Superadmin can see on edit to fix mistakes, others only on create
+                            // Superadmin/Administration can see on edit to fix mistakes
                             Toggle::make('is_split_deposit')
                                 ->label('Split Deposit Payment?')
                                 ->onColor('warning')
                                 ->live()
                                 ->default(false)
                                 ->visible(fn(string $operation) =>
-                                    $operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin')
+                                    $operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                                 )
                                 ->dehydrated(false),
 
                             // Single payment method
-                            // Superadmin can edit on existing orders to fix wrong method
+                            // Superadmin/Administration can edit on existing orders to fix wrong method
                             Select::make('initial_payment_method')
                                 ->label('Deposit Payment Method')
                                 ->options(self::getPaymentOptions())
                                 ->default('CASH')
                                 ->required(fn(Get $get) => floatval($get('amount_paid')) > 0 && !$get('is_split_deposit'))
                                 ->visible(fn(string $operation, Get $get) =>
-                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin'))
+                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
                                     && !$get('is_split_deposit')
                                 )
                                 ->dehydrated(false),
 
                             // Split payment repeater
-                            // Superadmin can edit on existing orders to fix wrong split
+                            // Superadmin/Administration can edit on existing orders to fix wrong split
                             Repeater::make('split_deposit_payments')
                                 ->label('Split Deposit Breakdown')
                                 ->visible(fn(string $operation, Get $get) =>
-                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin'))
+                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
                                     && $get('is_split_deposit')
                                 )
                                 ->schema([

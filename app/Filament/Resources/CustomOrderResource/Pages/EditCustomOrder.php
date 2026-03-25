@@ -54,8 +54,9 @@ class EditCustomOrder extends EditRecord
     {
         $order = $this->record->fresh();
 
-        // Only Superadmin can update payment records
-        if (!\App\Helpers\Staff::user()?->hasRole('Superadmin')) {
+        // Only Superadmin, Administration or Manager can update payment records
+        $canEdit = \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']);
+        if (!$canEdit) {
             return;
         }
 
@@ -86,6 +87,15 @@ class EditCustomOrder extends EditRecord
                     ->orderBy('paid_at', 'asc')
                     ->get();
 
+                // Fallback: find orphaned payment by amount and date if none linked yet
+                if ($existingPayments->isEmpty()) {
+                    $existingPayments = Payment::whereNull('custom_order_id')
+                        ->whereNull('sale_id')
+                        ->where('amount', round((float) $order->amount_paid, 2))
+                        ->orderBy('paid_at', 'asc')
+                        ->get();
+                }
+
                 if ($existingPayments->count() > 1) {
                     // Duplicates exist — delete all except the first one
                     $first = $existingPayments->first();
@@ -93,20 +103,22 @@ class EditCustomOrder extends EditRecord
                         ->where('id', '!=', $first->id)
                         ->delete();
 
-                    // Update the first one with the correct method
+                    // Update the first one with correct method and link
                     $first->update([
-                        'method' => strtoupper(trim($this->depositMethod)),
-                        'amount' => round((float) $order->amount_paid, 2),
+                        'method'          => strtoupper(trim($this->depositMethod)),
+                        'amount'          => round((float) $order->amount_paid, 2),
+                        'custom_order_id' => $order->id,
                     ]);
 
                 } elseif ($existingPayments->count() === 1) {
-                    // Single payment exists — just update the method
+                    // Single payment exists — update method and ensure linked
                     $existingPayments->first()->update([
-                        'method' => strtoupper(trim($this->depositMethod)),
+                        'method'          => strtoupper(trim($this->depositMethod)),
+                        'custom_order_id' => $order->id,
                     ]);
 
                 } else {
-                    // No payment exists yet — create one
+                    // No payment exists at all — create one
                     Payment::create([
                         'custom_order_id' => $order->id,
                         'sale_id'         => $order->sale_id ?? null,
