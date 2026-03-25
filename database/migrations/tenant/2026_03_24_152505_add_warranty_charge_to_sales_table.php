@@ -8,17 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('custom_orders', function (Blueprint $table) {
-            $table->string('order_type')->default('custom')->after('id');
+        Schema::table('sales', function (Blueprint $table) {
+            $table->decimal('warranty_charge', 10, 2)->default(0)->after('warranty_period');
         });
     }
 
     public function down(): void
     {
-        Schema::table('custom_orders', function (Blueprint $table) {
-            $table->dropColumn('order_type');
+        Schema::table('sales', function (Blueprint $table) {
+            $table->dropColumn('warranty_charge');
         });
     }
 };
-
-

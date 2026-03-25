@@ -20,6 +20,7 @@ class Sale extends Model
         'split_payments' => 'array',
         'sales_person_list' => 'array',
         'created_at' => 'datetime',
+        'special_jobs'     => 'array',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
