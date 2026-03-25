@@ -3,17 +3,145 @@
 namespace App\Filament\Resources\CustomOrderResource\Pages;
 
 use App\Filament\Resources\CustomOrderResource;
+use App\Models\Payment;
+use App\Models\Sale;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\DB;
 
 class EditCustomOrder extends EditRecord
 {
     protected static string $resource = CustomOrderResource::class;
+
+    // Store payment method data before save since dehydrated(false) fields
+    // are not available in afterSave()
+    public ?string $depositMethod        = null;
+    public bool    $isSplitDeposit       = false;
+    public array   $splitDepositPayments = [];
 
     protected function getHeaderActions(): array
     {
         return [
             Actions\DeleteAction::make(),
         ];
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        // FIX: dehydrated(false) fields are stripped from $data but still
+        // available in $this->data (Livewire component state)
+        $this->depositMethod        = $this->data['initial_payment_method'] ?? null;
+        $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
+        $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
+
+        // Recalculate balance_due with tax
+        $quoted    = floatval($data['quoted_price'] ?? 0);
+        $paid      = floatval($data['amount_paid'] ?? 0);
+        $isTaxFree = (bool)($data['is_tax_free'] ?? false);
+
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $tax     = $quoted * $taxRate;
+        $total   = $quoted + $tax;
+
+        $data['balance_due'] = round(max(0, $total - $paid), 2);
+
+        return $data;
+    }
+
+    protected function afterSave(): void
+    {
+        $order = $this->record->fresh();
+
+        // Only Superadmin can update payment records
+        if (!\App\Helpers\Staff::user()?->hasRole('Superadmin')) {
+            return;
+        }
+
+        // Nothing to update if no payment method was provided
+        if (!$this->depositMethod && empty($this->splitDepositPayments)) {
+            return;
+        }
+
+        DB::transaction(function () use ($order) {
+
+            if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
+                // ── SPLIT: delete old payments and re-create with correct methods/amounts
+                Payment::where('custom_order_id', $order->id)->delete();
+
+                foreach ($this->splitDepositPayments as $payment) {
+                    Payment::create([
+                        'custom_order_id' => $order->id,
+                        'sale_id'         => $order->sale_id ?? null,
+                        'amount'          => round((float) $payment['amount'], 2),
+                        'method'          => strtoupper(trim($payment['method'])),
+                        'paid_at'         => now(),
+                    ]);
+                }
+
+            } elseif ($this->depositMethod) {
+                // ── SINGLE: get all payments for this custom order
+                $existingPayments = Payment::where('custom_order_id', $order->id)
+                    ->orderBy('paid_at', 'asc')
+                    ->get();
+
+                if ($existingPayments->count() > 1) {
+                    // Duplicates exist — delete all except the first one
+                    $first = $existingPayments->first();
+                    Payment::where('custom_order_id', $order->id)
+                        ->where('id', '!=', $first->id)
+                        ->delete();
+
+                    // Update the first one with the correct method
+                    $first->update([
+                        'method' => strtoupper(trim($this->depositMethod)),
+                        'amount' => round((float) $order->amount_paid, 2),
+                    ]);
+
+                } elseif ($existingPayments->count() === 1) {
+                    // Single payment exists — just update the method
+                    $existingPayments->first()->update([
+                        'method' => strtoupper(trim($this->depositMethod)),
+                    ]);
+
+                } else {
+                    // No payment exists yet — create one
+                    Payment::create([
+                        'custom_order_id' => $order->id,
+                        'sale_id'         => $order->sale_id ?? null,
+                        'amount'          => round((float) $order->amount_paid, 2),
+                        'method'          => strtoupper(trim($this->depositMethod)),
+                        'paid_at'         => now(),
+                    ]);
+                }
+            }
+
+            // Sync linked sale if exists
+            if ($order->sale_id) {
+                $sale = Sale::find($order->sale_id);
+                if ($sale) {
+                    $totalPaid = $sale->payments()->sum('amount');
+                    $balance   = round(max(0, $sale->final_total - $totalPaid), 2);
+                    $sale->update([
+                        'amount_paid'  => $totalPaid,
+                        'balance_due'  => $balance,
+                        'status'       => $balance <= 0 ? 'completed' : 'pending',
+                        'completed_at' => $balance <= 0 ? now() : null,
+                    ]);
+                }
+            }
+        });
+
+        Notification::make()
+            ->title('Payment Updated')
+            ->body('Payment method and EOD records have been updated.')
+            ->success()
+            ->send();
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
     }
 }

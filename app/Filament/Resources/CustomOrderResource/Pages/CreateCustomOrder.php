@@ -18,9 +18,11 @@ class CreateCustomOrder extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $this->depositMethod        = $data['initial_payment_method'] ?? 'CASH';
-        $this->isSplitDeposit       = (bool) ($data['is_split_deposit'] ?? false);
-        $this->splitDepositPayments = $data['split_deposit_payments'] ?? [];
+        // FIX: dehydrated(false) fields are stripped from $data but still
+        // available in $this->data (Livewire component state)
+        $this->depositMethod        = $this->data['initial_payment_method'] ?? 'CASH';
+        $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
+        $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
         unset(
             $data['initial_payment_method'],
