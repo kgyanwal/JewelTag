@@ -17,8 +17,8 @@ class NonStockReport extends Page implements Tables\Contracts\HasTable
     use Tables\Concerns\InteractsWithTable;
 
     protected static ?string $navigationIcon = 'heroicon-o-wrench';
-    protected static ?string $navigationGroup = 'Analytics & Reports';
-    protected static ?string $navigationLabel = 'Non-Stock / Service Sales';
+    protected static ?string $navigationGroup = 'Sales';
+    protected static ?string $navigationLabel = 'Non-Stock Sales';
     protected static string $view = 'filament.pages.non-stock-report';
 
     public function table(Table $table): Table
