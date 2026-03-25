@@ -5,19 +5,20 @@ namespace App\Filament\Resources\CustomOrderResource\Pages;
 use App\Filament\Resources\CustomOrderResource;
 use Filament\Resources\Pages\CreateRecord;
 use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 
 class CreateCustomOrder extends CreateRecord
 {
     protected static string $resource = CustomOrderResource::class;
     protected ?bool $hasUnsavedDataChangesAlert = true;
 
-    public ?string $depositMethod      = null;
-    public bool    $isSplitDeposit     = false;
+    public ?string $depositMethod        = null;
+    public bool    $isSplitDeposit       = false;
     public array   $splitDepositPayments = [];
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $this->depositMethod        = $data['initial_payment_method'] ?? 'cash';
+        $this->depositMethod        = $data['initial_payment_method'] ?? 'CASH';
         $this->isSplitDeposit       = (bool) ($data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $data['split_deposit_payments'] ?? [];
 
@@ -27,13 +28,21 @@ class CreateCustomOrder extends CreateRecord
             $data['split_deposit_payments']
         );
 
-        // Auto-calculate balance_due from items
+        // Auto-calculate quoted_price and balance_due from items (with tax)
         $items = $data['items'] ?? [];
         if (!empty($items)) {
-            $total             = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
-            $deposit           = (float)($data['amount_paid'] ?? 0);
-            $data['quoted_price'] = $total;
-            $data['balance_due']  = max(0, $total - $deposit);
+            $subtotal = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
+            $deposit  = (float)($data['amount_paid'] ?? 0);
+
+            // FIX: Apply tax to get the real total (matches Order Summary in UI)
+            $isTaxFree = (bool)($data['is_tax_free'] ?? false);
+            $dbTax     = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+            $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+            $tax       = $subtotal * $taxRate;
+            $total     = $subtotal + $tax;
+
+            $data['quoted_price'] = round($subtotal, 2);
+            $data['balance_due']  = round(max(0, $total - $deposit), 2);
         }
 
         return $data;
@@ -48,16 +57,18 @@ class CreateCustomOrder extends CreateRecord
                 foreach ($this->splitDepositPayments as $payment) {
                     Payment::create([
                         'custom_order_id' => $order->id,
-                        'amount'          => (float) $payment['amount'],
-                        'method'          => strtolower($payment['method']),
+                        'sale_id'         => $order->sale_id ?? null, // FIX: link to sale for EOD
+                        'amount'          => round((float) $payment['amount'], 2),
+                        'method'          => strtoupper(trim($payment['method'])), // FIX: uppercase
                         'paid_at'         => now(),
                     ]);
                 }
             } else {
                 Payment::create([
                     'custom_order_id' => $order->id,
-                    'amount'          => $order->amount_paid,
-                    'method'          => $this->depositMethod,
+                    'sale_id'         => $order->sale_id ?? null, // FIX: link to sale for EOD
+                    'amount'          => round((float) $order->amount_paid, 2),
+                    'method'          => strtoupper(trim($this->depositMethod)), // FIX: uppercase
                     'paid_at'         => now(),
                 ]);
             }

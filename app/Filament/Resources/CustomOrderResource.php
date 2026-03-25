@@ -6,6 +6,7 @@ use App\Filament\Resources\CustomOrderResource\Pages;
 use App\Models\CustomOrder;
 use App\Models\ProductItem;
 use App\Models\User;
+use App\Models\Sale;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -42,27 +43,27 @@ class CustomOrderResource extends Resource
                         ->icon('heroicon-o-user-group')
                         ->schema([
                             Grid::make(2)->schema([
-                              Select::make('customer_id')
-                                        ->label('Select Customer')
-                                        ->relationship('customer', 'name')
-                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
-                                        ->searchable()
-                                        ->getSearchResultsUsing(function (string $search) {
-                                            return \App\Models\Customer::query()
-                                                ->where(function ($q) use ($search) {
-                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
-                                                        ->orWhere('phone', 'like', "%{$search}%")
-                                                        ->orWhere('customer_no', 'like', "%{$search}%");
-                                                })
-                                                ->limit(50)
-                                                ->get()
-                                                ->mapWithKeys(function ($customer) {
-                                                    return [
-                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
-                                                    ];
-                                                });
-                                        }),
+                                Select::make('customer_id')
+                                    ->label('Select Customer')
+                                    ->relationship('customer', 'name')
+                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                    ->searchable()
+                                    ->getSearchResultsUsing(function (string $search) {
+                                        return \App\Models\Customer::query()
+                                            ->where(function ($q) use ($search) {
+                                                $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                    ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                    ->orWhere('phone', 'like', "%{$search}%")
+                                                    ->orWhere('customer_no', 'like', "%{$search}%");
+                                            })
+                                            ->limit(50)
+                                            ->get()
+                                            ->mapWithKeys(function ($customer) {
+                                                return [
+                                                    $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                ];
+                                            });
+                                    }),
 
                                 Select::make('staff_id')
                                     ->label('Sales Person')
@@ -267,31 +268,49 @@ class CustomOrderResource extends Resource
                                 ->default(0)
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->readOnly(fn(string $operation) => $operation === 'edit')
+                                ->readOnly(fn(string $operation) =>
+                                    $operation === 'edit' && !\App\Helpers\Staff::user()?->hasRole('Superadmin')
+                                )
+                                ->helperText(fn(string $operation) =>
+                                    $operation === 'edit' && \App\Helpers\Staff::user()?->hasRole('Superadmin')
+                                        ? '⚠️ Superadmin: editing this will recalculate balance'
+                                        : null
+                                )
                                 ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
 
                             // Split deposit toggle
+                            // Superadmin can see on edit to fix mistakes, others only on create
                             Toggle::make('is_split_deposit')
                                 ->label('Split Deposit Payment?')
                                 ->onColor('warning')
                                 ->live()
                                 ->default(false)
-                                ->visible(fn(string $operation) => $operation === 'create')
+                                ->visible(fn(string $operation) =>
+                                    $operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin')
+                                )
                                 ->dehydrated(false),
 
                             // Single payment method
+                            // Superadmin can edit on existing orders to fix wrong method
                             Select::make('initial_payment_method')
                                 ->label('Deposit Payment Method')
                                 ->options(self::getPaymentOptions())
-                                ->default('cash')
+                                ->default('CASH')
                                 ->required(fn(Get $get) => floatval($get('amount_paid')) > 0 && !$get('is_split_deposit'))
-                                ->visible(fn(string $operation, Get $get) => $operation === 'create' && !$get('is_split_deposit'))
+                                ->visible(fn(string $operation, Get $get) =>
+                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin'))
+                                    && !$get('is_split_deposit')
+                                )
                                 ->dehydrated(false),
 
                             // Split payment repeater
+                            // Superadmin can edit on existing orders to fix wrong split
                             Repeater::make('split_deposit_payments')
                                 ->label('Split Deposit Breakdown')
-                                ->visible(fn(string $operation, Get $get) => $operation === 'create' && $get('is_split_deposit'))
+                                ->visible(fn(string $operation, Get $get) =>
+                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasRole('Superadmin'))
+                                    && $get('is_split_deposit')
+                                )
                                 ->schema([
                                     Grid::make(2)->schema([
                                         Select::make('method')
@@ -315,7 +334,7 @@ class CustomOrderResource extends Resource
                             // Split remaining balance display
                             Placeholder::make('split_deposit_calc')
                                 ->label('Deposit Remaining')
-                                ->visible(fn(string $operation, Get $get) => $operation === 'create' && $get('is_split_deposit'))
+                                ->visible(fn(Get $get) => $get('is_split_deposit'))
                                 ->content(function (Get $get) {
                                     $total     = floatval($get('amount_paid') ?? 0);
                                     $payments  = $get('split_deposit_payments') ?? [];
@@ -327,9 +346,10 @@ class CustomOrderResource extends Resource
 
                             Toggle::make('is_tax_free')
                                 ->label('Tax Free Order?')
-                                ->helperText('Toggle on if this order is exempt from tax.')
+                                ->helperText('Toggle on if this order is financed or exempt from tax.')
                                 ->default(false)
                                 ->live()
+                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
                                 ->dehydrated(true),
 
                             TextInput::make('balance_due')
@@ -588,7 +608,7 @@ class CustomOrderResource extends Resource
                     ->label('Add Deposit/Payment')
                     ->icon('heroicon-o-currency-dollar')
                     ->color('success')
-                    ->visible(fn(CustomOrder $record) => $record->status === 'received' && $record->balance_due > 0)
+                    ->visible(fn(CustomOrder $record) => !in_array($record->status, ['completed', 'cancelled']) && $record->balance_due > 0)
                     ->form([
                         TextInput::make('amount')
                             ->label('Payment Amount')
@@ -604,7 +624,7 @@ class CustomOrderResource extends Resource
 
                         Select::make('payment_method')
                             ->options(self::getPaymentOptions())
-                            ->default('cash')
+                            ->default('CASH')
                             ->required(fn(Get $get) => !$get('is_split'))
                             ->visible(fn(Get $get) => !$get('is_split')),
 
@@ -630,7 +650,7 @@ class CustomOrderResource extends Resource
                     ])
                     ->action(function (CustomOrder $record, array $data) {
                         DB::transaction(function () use ($record, $data) {
-                            $amountPaid    = (float) $data['amount'];
+                            $amountPaid    = round((float) $data['amount'], 2);
                             $newAmountPaid = $record->amount_paid + $amountPaid;
                             $newBalance    = max(0, $record->quoted_price - $newAmountPaid);
 
@@ -643,18 +663,35 @@ class CustomOrderResource extends Resource
                                 foreach ($data['split_payments'] ?? [] as $payment) {
                                     \App\Models\Payment::create([
                                         'custom_order_id' => $record->id,
-                                        'amount'          => (float) $payment['amount'],
-                                        'method'          => strtolower($payment['method']),
+                                        'sale_id'         => $record->sale_id ?? null,
+                                        'amount'          => round((float) $payment['amount'], 2),
+                                        'method'          => strtoupper(trim($payment['method'])), // FIX: uppercase
                                         'paid_at'         => now(),
                                     ]);
                                 }
                             } else {
                                 \App\Models\Payment::create([
                                     'custom_order_id' => $record->id,
+                                    'sale_id'         => $record->sale_id ?? null,
                                     'amount'          => $amountPaid,
-                                    'method'          => strtolower($data['payment_method']),
+                                    'method'          => strtoupper(trim($data['payment_method'])), // FIX: uppercase
                                     'paid_at'         => now(),
                                 ]);
+                            }
+
+                            // FIX: Sync the linked sale's amount_paid, balance_due and status
+                            if ($record->sale_id) {
+                                $sale = Sale::find($record->sale_id);
+                                if ($sale) {
+                                    $totalPaid = $sale->payments()->sum('amount');
+                                    $balance   = round(max(0, $sale->final_total - $totalPaid), 2);
+                                    $sale->update([
+                                        'amount_paid'  => $totalPaid,
+                                        'balance_due'  => $balance,
+                                        'status'       => $balance <= 0 ? 'completed' : 'pending',
+                                        'completed_at' => $balance <= 0 ? now() : null,
+                                    ]);
+                                }
                             }
                         });
 
@@ -738,17 +775,26 @@ class CustomOrderResource extends Resource
 
         foreach ($methods as $method) {
             if (strtoupper($method) !== 'LAYBUY') {
-                $options[strtolower($method)] = strtoupper($method);
+                // FIX: key is uppercase to match EOD grouping
+                $options[strtoupper($method)] = strtoupper($method);
             }
         }
         return $options;
     }
 
+    // FIX: calculateBalance now includes tax and respects is_tax_free toggle
     public static function calculateBalance(Get $get, Set $set): void
     {
-        $quoted = floatval($get('quoted_price') ?? 0);
-        $paid   = floatval($get('amount_paid') ?? 0);
-        $set('balance_due', max(0, $quoted - $paid));
+        $quoted    = floatval($get('quoted_price') ?? 0);
+        $paid      = floatval($get('amount_paid') ?? 0);
+        $isTaxFree = (bool)($get('is_tax_free') ?? false);
+
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $tax     = $quoted * $taxRate;
+        $total   = $quoted + $tax;
+
+        $set('balance_due', round(max(0, $total - $paid), 2));
     }
 
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
