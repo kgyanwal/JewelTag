@@ -471,35 +471,48 @@ $isSpecialJob = !empty($specialJobs);
                     </div>
                     @endif
 
-                    @if($isSpecialJob)
-                    <div style="margin-bottom:15px;background:#fffbeb;border:1px solid #fef3c7;border-radius:6px;padding:12px;border-left:5px solid #f59e0b;">
-                        <div style="color:#92400e;font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:6px;">
-                            <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
-                        </div>
-                        <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;color:#78350f;margin-bottom:8px;">
-                            <tr>
-                                <td width="50%"><strong>Service:</strong> {{ $sale->job_type ?? 'General Service' }}</td>
-                                <td width="50%"><strong>Metal:</strong> {{ $sale->metal_type ?? 'N/A' }}</td>
-                            </tr>
-                            @if($sale->job_type === 'Resize')
-                            <tr>
-                                <td><strong>From:</strong> {{ $sale->current_size }}</td>
-                                <td><strong>To:</strong> {{ $sale->target_size }}</td>
-                            </tr>
-                            @endif
-                            @if($sale->date_required)
-                            <tr>
-                                <td colspan="2"><strong>Completion:</strong> {{ \Carbon\Carbon::parse($sale->date_required)->format('M d, Y') }}</td>
-                            </tr>
-                            @endif
-                        </table>
-                        @if($sale->job_instructions)
-                        <div style="font-size:11px;color:#78350f;line-height:1.6;border-top:1px dashed #fef3c7;padding-top:5px;">
-                            <strong>Instructions:</strong> {{ $sale->job_instructions }}
-                        </div>
-                        @endif
-                    </div>
-                    @endif
+                   @if($isSpecialJob)
+<div style="margin-bottom:15px;background:#fffbeb;border:1px solid #fef3c7;border-radius:6px;padding:12px;border-left:5px solid #f59e0b;">
+    <div style="color:#92400e;font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:6px;">
+        <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
+    </div>
+    @foreach($specialJobs as $jobIndex => $job)
+    <div style="{{ $jobIndex > 0 ? 'margin-top:10px;padding-top:10px;border-top:1px dashed #fef3c7;' : '' }}">
+        <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;color:#78350f;margin-bottom:4px;">
+            <tr>
+                <td width="50%">
+                    <strong>{{ count($specialJobs) > 1 ? 'Job ' . ($jobIndex + 1) . ':' : 'Service:' }}</strong>
+                    {{ $job['job_type'] ?? 'General Service' }}
+                </td>
+                <td width="50%">
+                    <strong>Metal:</strong>
+                    {{ $job['metal_type'] ?? 'N/A' }}
+                </td>
+            </tr>
+            @if(($job['job_type'] ?? '') === 'Resize')
+            <tr>
+                <td><strong>From:</strong> {{ $job['current_size'] ?? '—' }}</td>
+                <td><strong>To:</strong> {{ $job['target_size'] ?? '—' }}</td>
+            </tr>
+            @endif
+            @if(!empty($job['date_required']))
+            <tr>
+                <td colspan="2">
+                    <strong>Completion:</strong>
+                    {{ \Carbon\Carbon::parse($job['date_required'])->format('M d, Y') }}
+                </td>
+            </tr>
+            @endif
+        </table>
+        @if(!empty($job['job_instructions']))
+        <div style="font-size:11px;color:#78350f;line-height:1.6;border-top:1px dashed #fef3c7;padding-top:5px;">
+            <strong>Instructions:</strong> {{ $job['job_instructions'] }}
+        </div>
+        @endif
+    </div>
+    @endforeach
+</div>
+@endif
 
                     <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #e0e7ee;margin-bottom:15px;">
                         <div style="color:{{ $receiptColor }};font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:5px;letter-spacing:.5px;">
