@@ -57,7 +57,9 @@ class ImportOnSwimNonStock extends Command
         }
 
         // ── FILE CHECK ────────────────────────────────────────────────────────
-        $filePath = storage_path("app/data/non_stock_sales_dsq23mar.csv");
+        $directoryPath = storage_path("{$tenantId}/data");
+        $filePath = "{$directoryPath}/non_stock_sales_dsq25mar.csv";
+
 
         if (!file_exists($filePath)) {
             $this->error("File not found: {$filePath}");
