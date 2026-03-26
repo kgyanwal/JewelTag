@@ -699,7 +699,19 @@ class SaleResource extends Resource
                                     self::updateTotals($get, $set);
                                     self::syncStatus($get, $set);
                                 })
-                                ->helperText('What the customer physically handed over'),
+                                ->helperText('What the customer physically handed over')
+                                ->hintAction(
+                                    \Filament\Forms\Components\Actions\Action::make('fill_full_amount')
+                                        ->label('Collect Full Amount')
+                                        ->icon('heroicon-o-banknotes')
+                                        ->color('success')
+                                        ->action(function (Get $get, Set $set) {
+                                            $total = floatval($get('final_total') ?? 0);
+                                            $set('amount_paid', number_format($total, 2, '.', ''));
+                                            self::updateTotals($get, $set);
+                                            self::syncStatus($get, $set);
+                                        })
+                                ),
 
                             // Change to give back — read only, auto-calculated
                             TextInput::make('change_given')
@@ -1101,7 +1113,7 @@ class SaleResource extends Resource
         foreach ($items as $item) {
             $qty = intval($item['qty'] ?? 1);
 
-            if (!empty($item['sale_price_override'])) {
+            if (!empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0) {
                 $rowTotal = floatval($item['sale_price_override']);
             } else {
                 $price    = floatval($item['sold_price'] ?? 0);
@@ -1136,13 +1148,6 @@ class SaleResource extends Resource
             $amountPaid = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
         } else {
             $amountPaid = floatval($get('amount_paid') ?? 0);
-
-            // ✅ Auto-fill with full total only if amount_paid is genuinely 0 and untouched
-            // Works for ALL payment methods — no hardcoded method name checks
-            if ($amountPaid == 0 && !empty($get('payment_method'))) {
-                $set('amount_paid', number_format($grandTotal, 2, '.', ''));
-                $amountPaid = $grandTotal;
-            }
         }
 
         $changeGiven = max(0, $amountPaid - $grandTotal);
