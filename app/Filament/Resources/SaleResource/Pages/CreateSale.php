@@ -39,44 +39,50 @@ class CreateSale extends CreateRecord
 
         $repairId      = request()->get('repair_id');
         $customOrderId = request()->get('custom_order_id');
+  if ($repairId || $customOrderId) {
+        session()->forget('sale_draft');
+        $this->data = [];
+    } elseif (session()->has('sale_draft')) {
+        $this->data = session('sale_draft');
+    }
+      
+    // ── HANDLE REPAIR ────────────────────────────────────────────────────
+    if ($repairId) {
+        $repair = \App\Models\Repair::find($repairId);
+        if ($repair) {
+            $this->data['customer_id'] = $repair->customer_id;
 
-        // ── HANDLE REPAIR ────────────────────────────────────────────────────
-        if ($repairId) {
-            $repair = \App\Models\Repair::find($repairId);
-            if ($repair) {
-                $this->data['customer_id'] = $repair->customer_id;
+            $cartItems   = [];
+            $repairItems = $repair->items ?? [];
 
-                $cartItems   = [];
-                $repairItems = $repair->items ?? [];
-
-                if (empty($repairItems) && !empty($repair->item_description)) {
-                    $repairItems = [[
-                        'item_description' => $repair->item_description,
-                        'reported_issue'   => $repair->reported_issue,
-                        'final_cost'       => $repair->final_cost,
-                        'estimated_cost'   => $repair->estimated_cost,
-                    ]];
-                }
-
-                foreach ($repairItems as $index => $rItem) {
-                    $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
-                    $cartItems[] = [
-                        'product_item_id'    => null,
-                        'repair_id'          => $repair->id,
-                        'stock_no_display'   => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
-                        'custom_description' => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
-                        'qty'                => 1,
-                        'sold_price'         => $cost,
-                        'sale_price_override'=> $cost,
-                        'discount_percent'   => 0,
-                        'discount_amount'    => 0,
-                        'is_tax_free'        => false,
-                    ];
-                }
-
-                $this->data['items'] = $cartItems;
+            if (empty($repairItems) && !empty($repair->item_description)) {
+                $repairItems = [[
+                    'item_description' => $repair->item_description,
+                    'reported_issue'   => $repair->reported_issue,
+                    'final_cost'       => $repair->final_cost,
+                    'estimated_cost'   => $repair->estimated_cost,
+                ]];
             }
+
+            foreach ($repairItems as $index => $rItem) {
+                $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
+                $cartItems[] = [
+                    'product_item_id'    => null,
+                    'repair_id'          => $repair->id,
+                    'stock_no_display'   => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
+                    'custom_description' => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
+                    'qty'                => 1,
+                    'sold_price'         => $cost,
+                    'sale_price_override'=> $cost,
+                    'discount_percent'   => 0,
+                    'discount_amount'    => 0,
+                    'is_tax_free'        => false,
+                ];
+            }
+
+            $this->data['items'] = $cartItems;
         }
+    }
 
         // ── HANDLE CUSTOM ORDER ───────────────────────────────────────────────
         if ($customOrderId) {
@@ -109,6 +115,22 @@ class CreateSale extends CreateRecord
         }
 
         if ($repairId || $customOrderId) {
+                $this->data['has_trade_in']          = $this->data['has_trade_in'] ?? 0;
+    $this->data['shipping_charges']      = $this->data['shipping_charges'] ?? 0;
+    $this->data['carrier']               = $this->data['carrier'] ?? 'No carrier';
+    $this->data['has_warranty']          = $this->data['has_warranty'] ?? 0;
+    $this->data['shipping_taxed']        = $this->data['shipping_taxed'] ?? false;
+    $this->data['follow_up_date']        = $this->data['follow_up_date'] ?? now()->addWeeks(2)->format('Y-m-d');
+    $this->data['second_follow_up_date'] = $this->data['second_follow_up_date'] ?? now()->addMonths(6)->format('Y-m-d');
+    $this->data['is_split_payment']      = $this->data['is_split_payment'] ?? false;
+    $this->data['payment_method']        = $this->data['payment_method'] ?? 'cash';
+    $this->data['status']                = $this->data['status'] ?? 'inprogress';
+    $this->data['amount_paid']           = $this->data['amount_paid'] ?? 0;
+    if (empty($this->data['sales_person_list'])) {
+    $this->data['sales_person_list'] = [
+        \Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name
+    ];
+}
             $this->recalculateFinancials();
         }
     }

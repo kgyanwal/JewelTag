@@ -111,7 +111,7 @@ class SaleResource extends Resource
                                                 'custom_description' => $item->custom_description ?? $item->barcode,
                                                 'qty'                => $qty,
                                                 'sold_price'         => $item->retail_price,
-                                                'sale_price_override'=> $item->retail_price * $qty,
+                                                'sale_price_override' => $item->retail_price * $qty,
                                                 'discount_percent'   => 0,
                                                 'discount_amount'    => 0,
                                                 'is_tax_free'        => false,
@@ -132,79 +132,80 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->live(),
 
-                                        
+
                                 ]),
-                                
-                                      \Filament\Forms\Components\Actions::make([
-        FormAction::make('add_non_tag_item')
-            ->label('+ Non-Tag Item')
-            ->color('gray')
-            ->outlined()
-            ->icon('heroicon-o-plus-circle')
-            ->modalHeading('Add Non-Tag Item')
-            ->modalWidth('lg')
-            ->modalSubmitActionLabel('Add to Bill')
-            ->form([
-                TextInput::make('description')
-                    ->label('Description')
-                    ->required()
-                    ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
 
-                \Filament\Forms\Components\Grid::make(2)->schema([
-                    TextInput::make('price')
-                        ->label('Unit Price')
-                        ->numeric()
-                        ->prefix('$')
-                        ->required()
-                        ->default(0),
+                                \Filament\Forms\Components\Actions::make([
+                                    FormAction::make('add_non_tag_item')
+                                        ->label('+ Non-Tag Item')
+                                        ->color('gray')
+                                        ->outlined()
+                                        ->icon('heroicon-o-plus-circle')
+                                        ->modalHeading('Add Non-Tag Item')
+                                        ->modalWidth('lg')
+                                        ->modalSubmitActionLabel('Add to Bill')
+                                        ->form([
+                                            TextInput::make('description')
+                                                ->label('Description')
+                                                ->required()
+                                                ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
 
-                    TextInput::make('qty')
-                        ->label('Qty')
-                        ->numeric()
-                        ->required()
-                        ->default(1),
-                ]),
+                                            \Filament\Forms\Components\Grid::make(2)->schema([
+                                                TextInput::make('price')
+                                                    ->label('Unit Price')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->required()
+                                                    ->default(0),
 
-                \Filament\Forms\Components\Grid::make(2)->schema([
-                    TextInput::make('discount_percent')
-                        ->label('Discount %')
-                        ->numeric()
-                        ->suffix('%')
-                        ->default(0),
+                                                TextInput::make('qty')
+                                                    ->label('Qty')
+                                                    ->numeric()
+                                                    ->required()
+                                                    ->default(1),
+                                            ]),
 
-                    \Filament\Forms\Components\Toggle::make('is_tax_free')
-                        ->label('Tax Free?')
-                        ->default(false)
-                        ->inline(false),
-                ]),
-            ])
-            ->action(function (array $data, Get $get, Set $set) {
-                $price    = floatval($data['price'] ?? 0);
-                $qty      = intval($data['qty'] ?? 1);
-                $discPct  = floatval($data['discount_percent'] ?? 0);
-                $lineTotal = $price * $qty;
-                $discAmt  = $lineTotal * ($discPct / 100);
-                $finalPrice = $lineTotal - $discAmt;
+                                            \Filament\Forms\Components\Grid::make(2)->schema([
+                                                TextInput::make('discount_percent')
+                                                    ->label('Discount %')
+                                                    ->numeric()
+                                                    ->suffix('%')
+                                                    ->default(0),
 
-                $currentItems   = $get('items') ?? [];
-                $currentItems[] = [
-                    'product_item_id'    => null,   // ← null = no stock link
-                    'repair_id'          => null,
-                    'custom_order_id'    => null,
-                    'stock_no_display'   => 'NON-TAG',
-                    'custom_description' => $data['description'],
-                    'qty'                => $qty,
-                    'sold_price'         => $price,
-                    'sale_price_override'=> $finalPrice,
-                    'discount_percent'   => $discPct,
-                    'discount_amount'    => $discAmt,
-                    'is_tax_free'        => $data['is_tax_free'] ?? false,
-                ];
+                                                \Filament\Forms\Components\Toggle::make('is_tax_free')
+                                                    ->label('Tax Free?')
+                                                    ->default(false)
+                                                    ->inline(false),
+                                            ]),
+                                        ])
+                                        ->action(function (array $data, Get $get, Set $set) {
+                                            $price    = floatval($data['price'] ?? 0);
+                                            $qty      = intval($data['qty'] ?? 1);
+                                            $discPct  = floatval($data['discount_percent'] ?? 0);
+                                            $lineTotal = $price * $qty;
+                                            $discAmt  = $lineTotal * ($discPct / 100);
+                                            $finalPrice = $lineTotal - $discAmt;
 
-                $set('items', $currentItems);
-                self::updateTotals($get, $set);
-            }),
-    ])->columnSpan(1),  
+                                            $currentItems   = $get('items') ?? [];
+                                            $currentItems[] = [
+                                                'product_item_id'    => null,   // ← null = no stock link
+                                                'repair_id'          => null,
+                                                'custom_order_id'    => null,
+                                                'is_non_stock'       => true,
+                                                'stock_no_display'   => 'NON-TAG',
+                                                'custom_description' => $data['description'],
+                                                'qty'                => $qty,
+                                                'sold_price'         => $price,
+                                                'sale_price_override' => $finalPrice,
+                                                'discount_percent'   => $discPct,
+                                                'discount_amount'    => $discAmt,
+                                                'is_tax_free'        => $data['is_tax_free'] ?? false,
+                                            ];
+
+                                            $set('items', $currentItems);
+                                            self::updateTotals($get, $set);
+                                        }),
+                                ])->columnSpan(1),
 
                             ]),
 
@@ -355,67 +356,77 @@ class SaleResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
-                        Section::make('🛠️ Workshop / Special Job')
-                            ->description('Add custom work instructions (Resize, Solder, etc.)')
-                            ->icon('heroicon-o-wrench')
-                            ->collapsible()
-                            ->schema([
-                                Grid::make(3)->schema([
-                                    Select::make('job_type')
-                                        ->label('Service Type')
-                                        ->options([
-                                            'Resize'        => 'Resize',
-                                            'Solder'        => 'Solder / Weld',
-                                            'Bail Change'   => 'Bail Change',
-                                            'Shorten'       => 'Shortening',
-                                            'Stone Setting' => 'Stone Setting',
-                                            'Engraving' => 'Engraving',
-                                            'Polishing'     => 'Polishing / Rhodium',
-                                        ])
-                                        ->placeholder('Select Job Type')
-                                        ->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                       Section::make('🛠️ Workshop / Special Jobs')
+    ->description('Add one or more job instructions (Resize, Solder, Engraving, etc.)')
+    ->icon('heroicon-o-wrench')
+    ->collapsible()
+    ->schema([
+        Repeater::make('special_jobs')
+            ->label('')
+            ->schema([
+                Grid::make(3)->schema([
+                    Select::make('job_type')
+    ->label('Service Type')
+    ->options(fn() => self::getServiceTypeOptions())
+    ->placeholder('Select Job Type')
+    ->helperText(new \Illuminate\Support\HtmlString(
+        '<a href="' . \App\Filament\Pages\ManageSettings::getUrl() . '?tab=-sales-tab" target="_blank" style="color:#0284c7;font-weight:600;">⚙️ Add custom service types in Settings</a>'
+    ))
+    ->live()
+    ->required(),
 
-                                    Select::make('metal_type')
-                                        ->label('Metal')
-                                        ->options([
-                                            '10k'      => '10k Gold',
-                                            '14k'      => '14k Gold',
-                                            '18k'      => '18k Gold',
-                                            'Platinum' => 'Platinum',
-                                            'Silver'   => 'Sterling Silver',
-                                        ])
-                                        ->placeholder('Select Metal'),
+                    Select::make('metal_type')
+                        ->label('Metal')
+                        ->options([
+                            '10k'      => '10k Gold',
+                            '14k'      => '14k Gold',
+                            '18k'      => '18k Gold',
+                            'Platinum' => 'Platinum',
+                            'Silver'   => 'Sterling Silver',
+                        ])
+                        ->placeholder('Select Metal'),
 
-                                    DatePicker::make('date_required')
-                                        ->label('Completion Date')
-                                        ->native(false)
-                                        ->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
-                                ]),
+                    DatePicker::make('date_required')
+                        ->label('Completion Date')
+                        ->native(false)
+                        ->displayFormat('M d, Y'),
+                ]),
 
-                                Grid::make(2)
-                                    ->visible(fn(Get $get) => $get('job_type') === 'Resize')
-                                    ->schema([
-                                        TextInput::make('current_size')
-                                            ->label('Current Size')
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
+                Grid::make(2)
+                    ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
+                    ->schema([
+                        TextInput::make('current_size')
+                            ->label('Current Size'),
+                        TextInput::make('target_size')
+                            ->label('Target Size'),
+                    ]),
 
-                                        TextInput::make('target_size')
-                                            ->label('Target Size')
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::mapResizeToNotes($get, $set)),
-                                    ]),
+                Textarea::make('job_instructions')
+                    ->label('Bench Notes / Instructions')
+                    ->placeholder('Describe exactly what the jeweler needs to do...')
+                    ->columnSpanFull()
+                    ->rows(2),
+            ])
+            ->columns(1)
+            ->addActionLabel('+ Add Another Job')
+            ->defaultItems(0)
+            ->collapsible()
+            ->itemLabel(fn(array $state): string =>
+                ($state['job_type'] ?? 'New Job') .
+                ($state['metal_type'] ? ' — ' . $state['metal_type'] : '') .
+                ($state['date_required'] ? ' (Due: ' . \Carbon\Carbon::parse($state['date_required'])->format('M d') . ')' : '')
+            )
+            ->reorderable(false),
 
-                                Textarea::make('job_instructions')
-                                    ->label('Bench Notes / Instructions')
-                                    ->placeholder('Describe exactly what the jeweler needs to do...')
-                                    ->columnSpanFull()
-                                    ->rows(3),
-
-                                Hidden::make('notes'),
-                            ]),
+        // Keep legacy hidden fields for backward compatibility
+        Hidden::make('job_type'),
+        Hidden::make('metal_type'),
+        Hidden::make('date_required'),
+        Hidden::make('current_size'),
+        Hidden::make('target_size'),
+        Hidden::make('job_instructions'),
+        Hidden::make('notes'),
+    ]),
 
                         Section::make('Trade-In Details')
                             ->schema([
@@ -478,7 +489,14 @@ class SaleResource extends Resource
                                         $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
                                         return array_combine($options, $options);
                                     }),
-
+                                TextInput::make('warranty_charge')
+                                    ->label('Warranty Charge ($)')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->default(0)
+                                    ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 Forms\Components\DatePicker::make('follow_up_date')
                                     ->label('Follow Up (2 Weeks)')
                                     ->default(now()->addWeeks(2))
@@ -1068,9 +1086,38 @@ class SaleResource extends Resource
                     ->visible(fn(Sale $record) => $record->status === 'completed')
                     ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
             ])
-            ->defaultSort('created_at', 'desc');
+            ->defaultSort('created_at', 'desc')
+            ->filters([
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Type')
+                    ->options(fn() => self::getPaymentOptions()),
+                Tables\Filters\TernaryFilter::make('has_trade_in')
+                    ->label('Trade-Ins'),
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Sale Status')
+                    ->options([
+                        'completed'  => 'Completed',
+                        'pending'    => 'Pending',
+                        'inprogress' => 'In Progress',
+                        'cancelled'  => 'Cancelled',
+                    ]),
+            ]);
     }
+public static function getServiceTypeOptions(): array
+{
+    $defaultTypes = [
+        'Resize', 'Solder / Weld', 'Bail Change',
+        'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium',
+    ];
 
+    $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
+    $types = $json ? json_decode($json, true) : $defaultTypes;
+
+    return collect($types)
+        ->filter()
+        ->mapWithKeys(fn($type) => [$type => $type])
+        ->toArray();
+}
     public static function mapResizeToNotes(Get $get, Set $set): void
     {
         $type    = $get('job_type');
@@ -1092,7 +1139,8 @@ class SaleResource extends Resource
         if ($date) {
             try {
                 $parts[] = "Due: " . \Carbon\Carbon::parse($date)->format('M d, Y');
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
         }
 
         if ($instr) $parts[] = "Notes: {$instr}";
@@ -1134,7 +1182,8 @@ class SaleResource extends Resource
         if ($isShippingTaxed) $taxableBasis += $shipping;
 
         $totalTax   = $taxableBasis * $taxRate;
-        $grandTotal = ($itemsSubtotal + $shipping + $totalTax) - $tradeIn;
+        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+        $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
 
         $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
         $set('tax_amount',  number_format($totalTax,      2, '.', ''));
@@ -1176,7 +1225,6 @@ class SaleResource extends Resource
         }
 
         $set('status', $fullyPaid ? 'completed' : 'pending');
-
     }
 
     public static function getPaymentOptions(): array
