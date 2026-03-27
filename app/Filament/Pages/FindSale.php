@@ -90,6 +90,7 @@ class FindSale extends Page implements HasForms, HasTable
             ->query(Sale::query())
             ->modifyQueryUsing(
                 fn(Builder $query) => $query
+                 ->withoutTrashed()  
                     ->with(['customer', 'items.productItem'])
                     ->when($this->data['invoice_number'] ?? null, fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%"))
                     ->when($this->data['staff_name'] ?? null, function ($q, $v) {
