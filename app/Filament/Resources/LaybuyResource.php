@@ -89,6 +89,20 @@ class LaybuyResource extends Resource
                                     ->options(fn() => ProductItem::where('status', 'in_stock')->get()->mapWithKeys(fn($i) => [
                                         $i->id => "{$i->barcode} - {$i->custom_description} (\${$i->retail_price})"
                                     ]))
+                                    ->getSearchResultsUsing(function (string $search) {
+    return \App\Models\ProductItem::query()
+        ->where('status', 'on_hold')  // ✅ only reserved/held items
+        ->where(function ($q) use ($search) {
+            $q->where('barcode', 'like', "%{$search}%")
+              ->orWhere('custom_description', 'like', "%{$search}%");
+        })
+        ->limit(50)
+        ->get()
+        ->mapWithKeys(fn($i) => [
+            $i->id => "{$i->barcode} — " . \Illuminate\Support\Str::limit($i->custom_description ?? '', 35)
+                . " (\${$i->retail_price})"
+        ]);
+})
                                     ->searchable()
                                     ->dehydrated(false)
                                     ->live()
@@ -120,9 +134,22 @@ class LaybuyResource extends Resource
                                     ->label('Items reserved in this agreement')
                                     ->schema([
                                         Grid::make(4)->schema([
-                                            TextInput::make('barcode')->label('Stock #')->readOnly(),
-                                            TextInput::make('description')->label('Item Details')->columnSpan(2)->readOnly(),
-                                            TextInput::make('price')->label('Unit Price')->prefix('$')->readOnly(),
+                                            TextInput::make('barcode')
+                                                ->label('Stock #')
+                                                ->readOnly(),
+
+                                            TextInput::make('description')
+                                                ->label('Item Details')
+                                                ->columnSpan(2)
+                                                ->readOnly(),
+
+                                            // 🚀 THE FIX: Removed readOnly() and added live(onBlur) to recalculate
+                                            TextInput::make('price')
+                                                ->label('Unit Price')
+                                                ->prefix('$')
+                                                ->numeric()
+                                                ->live(onBlur: true)
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set)),
                                         ]),
                                         Hidden::make('product_item_id'),
                                     ])

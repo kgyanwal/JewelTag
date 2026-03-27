@@ -185,27 +185,45 @@ class RepairResource extends Resource
                                             ->live(),
                                     ])->columnSpanFull(),
 
-                                    Select::make('original_product_id')
-                                        ->label('Search Store Stock No.')
-                                        ->placeholder('Search sold items...')
-                                        ->relationship(
-                                            name: 'originalProduct',
-                                            titleAttribute: 'barcode',
-                                            modifyQueryUsing: fn($query) => $query->where('status', 'sold')
-                                        )
-                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->barcode} - {$record->custom_description}")
-                                        ->searchable()
-                                        ->preload()
-                                        ->disableOptionsWhenSelectedInSiblingRepeaterItems()
-                                        ->live()
-                                        ->afterStateUpdated(function ($state, Forms\Set $set) {
-                                            if ($item = ProductItem::find($state)) {
-                                                $set('item_description', $item->custom_description ?? $item->barcode);
-                                            }
-                                        })
-                                        ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
-                                        ->columnSpanFull(),
-
+                                   Select::make('original_product_id')
+    ->label('Search Store Stock No.')
+    ->placeholder('Search by stock number (G1234, R1001, N...)') 
+    ->options(function () {
+        // ✅ Show ALL stock regardless of status — sold, in_stock, on_hold
+        return \App\Models\ProductItem::query()
+            ->whereNotNull('barcode')
+            ->orderBy('barcode')
+            ->limit(200)
+            ->get()
+            ->mapWithKeys(fn($item) => [
+                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                    . " [{$item->status}]"
+            ]);
+    })
+    ->getSearchResultsUsing(function (string $search) {
+        // ✅ Search by barcode OR description, no status filter
+        return \App\Models\ProductItem::query()
+            ->where(function ($q) use ($search) {
+                $q->where('barcode', 'like', "%{$search}%")
+                  ->orWhere('custom_description', 'like', "%{$search}%");
+            })
+            ->limit(50)
+            ->get()
+            ->mapWithKeys(fn($item) => [
+                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                    . " [{$item->status}]"
+            ]);
+    })
+    ->getOptionLabelUsing(fn($value) => \App\Models\ProductItem::find($value)?->barcode . ' — ' . \App\Models\ProductItem::find($value)?->custom_description)
+    ->searchable()
+    ->live()
+    ->afterStateUpdated(function ($state, Forms\Set $set) {
+        if ($item = \App\Models\ProductItem::find($state)) {
+            $set('item_description', $item->custom_description ?? $item->barcode);
+        }
+    })
+    ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
+    ->columnSpanFull(),
                                     Grid::make(2)->schema([
                                         Textarea::make('item_description')
                                             ->label('Item Name / Description')

@@ -381,7 +381,6 @@ $isSpecialJob = !empty($specialJobs);
                     <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:left;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Reference #</th>
                     <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:left;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Item Description</th>
                     <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:center;width:10%;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Qty</th>
-                    <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:center;width:10%;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Disc %</th>
                     <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:right;width:20%;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Price</th>
                 </tr>
             </thead>
@@ -441,16 +440,29 @@ $isSpecialJob = !empty($specialJobs);
     <div style="font-weight:700;color:#2c3e50;font-size:12px;">{{ $item->custom_description }}</div>
 </td>
             <td style="text-align:center;font-weight:700;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">{{ $item->qty }}</td>
-            <td style="text-align:center;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                @if($item->discount_percent > 0)
-                <span style="color:#10b981;font-weight:700;">{{ number_format($item->discount_percent, 0) }}%</span>
-                @else
-                <span style="color:#546e7a;">-</span>
-                @endif
-            </td>
+ 
             <td style="text-align:right;font-weight:700;color:{{ $receiptColor }};padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                ${{ number_format($item->sold_price * $item->qty, 2) }}
-            </td>
+    @php
+        $lineTotal = $item->sale_price_override > 0
+            ? floatval($item->sale_price_override)
+            : (floatval($item->sold_price) * intval($item->qty)) - floatval($item->discount_amount ?? 0);
+    @endphp
+
+    @if($item->discount_percent > 0)
+        {{-- Show original crossed out, then discounted price --}}
+        <div style="font-size:9px;color:#94a3b8;text-decoration:line-through;font-weight:400;">
+            ${{ number_format(floatval($item->sold_price) * intval($item->qty), 2) }}
+        </div>
+        <div style="color:{{ $receiptColor }};font-weight:700;">
+            ${{ number_format($lineTotal, 2) }}
+        </div>
+        <div style="font-size:8px;color:#10b981;font-weight:600;">
+            {{ number_format($item->discount_percent, 0) }}% off
+        </div>
+    @else
+        ${{ number_format($lineTotal, 2) }}
+    @endif
+</td>
         </tr>
     @endif
 @endforeach

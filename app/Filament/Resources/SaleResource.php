@@ -463,53 +463,67 @@ class SaleResource extends Resource
                                     ]),
                             ]),
 
-                        Section::make('Shipping & Handling')->schema([
-                            Grid::make(4)->schema([
-                                TextInput::make('shipping_charges')
-                                    ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
-                                Select::make('carrier')->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])->default('No carrier'),
-                                TextInput::make('tracking_number')->label('Tracking')->nullable(),
-                            ]),
+                        Section::make('Shipping & Handling')
+    ->icon('heroicon-o-truck')
+    ->collapsible()
+    ->schema([
+        Grid::make(4)->schema([
+            TextInput::make('shipping_charges')
+                ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
+                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+            Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
+            Select::make('carrier')
+                ->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])
+                ->default('No carrier'),
+            TextInput::make('tracking_number')->label('Tracking #')->nullable(),
+        ]),
+    ]),
 
-                            Grid::make(4)->schema([
-                                Select::make('has_warranty')
-                                    ->label('Include Warranty?')
-                                    ->options([0 => 'No', 1 => 'Yes'])
-                                    ->default(0)
-                                    ->live(),
+Section::make('Warranty')
+    ->icon('heroicon-o-shield-check')
+    ->collapsible()
+    ->schema([
+        Grid::make(4)->schema([
+            Select::make('has_warranty')
+                ->label('Include Warranty?')
+                ->options([0 => 'No', 1 => 'Yes'])
+                ->default(0)
+                ->live(),
 
-                                Select::make('warranty_period')
-                                    ->label('Warranty Time')
-                                    ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                                    ->required(fn(Get $get) => $get('has_warranty') == 1)
-                                    ->options(function () {
-                                        $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
-                                        $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
-                                        return array_combine($options, $options);
-                                    }),
-                                TextInput::make('warranty_charge')
-                                    ->label('Warranty Charge ($)')
-                                    ->numeric()
-                                    ->prefix('$')
-                                    ->default(0)
-                                    ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                Forms\Components\DatePicker::make('follow_up_date')
-                                    ->label('Follow Up (2 Weeks)')
-                                    ->default(now()->addWeeks(2))
-                                    ->native(false)
-                                    ->displayFormat('M d, Y'),
+            Select::make('warranty_period')
+                ->label('Warranty Duration')
+                ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                ->required(fn(Get $get) => $get('has_warranty') == 1)
+                ->options(function () {
+                    $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                    $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                    return array_combine($options, $options);
+                }),
 
-                                Forms\Components\DatePicker::make('second_follow_up_date')
-                                    ->label('Follow Up Second')
-                                    ->default(now()->addMonths(6))
-                                    ->native(false)
-                                    ->displayFormat('M d, Y'),
-                            ]),
-                        ]),
+            TextInput::make('warranty_charge')
+                ->label('Warranty Charge ($)')
+                ->numeric()
+                ->prefix('$')
+                ->default(0)
+                ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                ->live(onBlur: true)
+                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+            Forms\Components\DatePicker::make('follow_up_date')
+                ->label('Follow Up (2 Weeks)')
+                ->default(now()->addWeeks(2))
+                ->native(false)
+                ->displayFormat('M d, Y'),
+        ]),
+
+        Grid::make(4)->schema([
+            Forms\Components\DatePicker::make('second_follow_up_date')
+                ->label('Second Follow Up')
+                ->default(now()->addMonths(6))
+                ->native(false)
+                ->displayFormat('M d, Y'),
+        ]),
+    ]),
 
                         Section::make('Receipt Customization')
                             ->schema([

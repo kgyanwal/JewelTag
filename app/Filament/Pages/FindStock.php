@@ -45,37 +45,23 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/**
- * FindStock Page
- * A high-performance search engine and inventory management hub.
- * Replicates professional POS layouts with deep jewelry specification tracking.
- */
 class FindStock extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithTable;
 
-    protected static ?string $navigationIcon = 'heroicon-o-magnifying-glass';
+    protected static ?string $navigationIcon  = 'heroicon-o-magnifying-glass';
     protected static ?string $navigationLabel = 'Find Stock';
     protected static ?string $navigationGroup = 'Inventory';
-    protected static string $view = 'filament.pages.find-stock';
+    protected static string  $view            = 'filament.pages.find-stock';
 
-    /**
-     * Form state storage container for live reactive filtering.
-     */
     public ?array $data = [];
 
-    /**
-     * Lifecycle Hook: Initialize the filter form.
-     */
     public function mount(): void
     {
         $this->form->fill();
     }
 
-    /**
-     * Auto-refresh: Triggers table reset immediately when form data changes.
-     */
     public function updated($property): void
     {
         if (str_starts_with($property, 'data.')) {
@@ -83,17 +69,11 @@ class FindStock extends Page implements HasForms, HasTable
         }
     }
 
-    /**
-     * Manual trigger for filters.
-     */
     public function applyFilters(): void
     {
         $this->resetTable();
     }
 
-    /**
-     * Global Header Actions for the FindStock Hub.
-     */
     protected function getHeaderActions(): array
     {
         return [
@@ -116,17 +96,14 @@ class FindStock extends Page implements HasForms, HasTable
         ];
     }
 
-    /**
-     * Financial Logic: Calculates the valuation of the currently filtered result set.
-     */
     private function getInventoryValuationHtml(): string
     {
         $query = ProductItem::query();
         $this->applyQueryFilters($query);
-        
-        $count = $query->count();
+
+        $count  = $query->count();
         $retail = $query->sum('retail_price');
-        $cost = $query->sum('cost_price');
+        $cost   = $query->sum('cost_price');
 
         return "
             <div class='grid grid-cols-3 gap-6 p-4'>
@@ -146,9 +123,6 @@ class FindStock extends Page implements HasForms, HasTable
         ";
     }
 
-    /**
-     * Form Construction: Multi-tab layout for deep jewelry searching.
-     */
     public function form(Form $form): Form
     {
         $settings = InventorySetting::all()->pluck('value', 'key');
@@ -161,15 +135,21 @@ class FindStock extends Page implements HasForms, HasTable
                     ->schema([
                         Tabs::make('Inventory Filters')
                             ->tabs([
-                                // --- TAB 1: GENERAL CLASSIFICATION ---
                                 Tabs\Tab::make('General')
                                     ->icon('heroicon-o-tag')
                                     ->schema([
                                         Grid::make(4)->schema([
                                             TextInput::make('stock_number')
                                                 ->label('Stock # / Barcode')
-                                                ->placeholder('R1024...')
+                                                ->placeholder('G10274...')
                                                 ->live()->debounce(500),
+
+                                            // ── JOB NUMBER SEARCH ─────────────────────────────
+                                            TextInput::make('job_number')
+                                                ->label('Job # / Deposit No.')
+                                                ->placeholder('9363...')
+                                                ->live()
+                                                ->debounce(500),
 
                                             TextInput::make('description')
                                                 ->label('Keywords')
@@ -180,9 +160,9 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->label('Status')
                                                 ->options([
                                                     'in_stock' => 'In Stock',
-                                                    'sold' => 'Sold',
-                                                    'on_hold' => 'On Hold',
-                                                    'memo' => 'On Memo',
+                                                    'sold'     => 'Sold',
+                                                    'on_hold'  => 'On Hold',
+                                                    'memo'     => 'On Memo',
                                                 ])->live(),
 
                                             Select::make('department')
@@ -206,7 +186,6 @@ class FindStock extends Page implements HasForms, HasTable
                                         ]),
                                     ]),
 
-                                // --- TAB 2: JEWELRY & STONE SPECS ---
                                 Tabs\Tab::make('Stone Details')
                                     ->icon('heroicon-o-sparkles')
                                     ->schema([
@@ -228,15 +207,12 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->live(),
 
                                             TextInput::make('certificate_number')->label('Cert # (GIA/IGI)')->live(),
-
                                             Toggle::make('is_lab_grown')->label('Lab Grown Only')->live(),
-
                                             TextInput::make('diamond_weight_from')->label('Min CTW')->numeric()->live(),
                                             TextInput::make('diamond_weight_to')->label('Max CTW')->numeric()->live(),
                                         ]),
                                     ]),
 
-                                // --- TAB 3: PROCUREMENT & VENDOR RELATIONS ---
                                 Tabs\Tab::make('Acquisition')
                                     ->icon('heroicon-o-building-office')
                                     ->schema([
@@ -247,7 +223,6 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->searchable()->live(),
 
                                             TextInput::make('supplier_code')->label('Vendor SKU')->live(),
-
                                             TextInput::make('price_from')->label('Retail Min')->numeric()->prefix('$')->live(),
                                             TextInput::make('price_to')->label('Retail Max')->numeric()->prefix('$')->live(),
 
@@ -268,48 +243,50 @@ class FindStock extends Page implements HasForms, HasTable
             ]);
     }
 
-    /**
-     * Global query filter logic shared by Table and Valuation.
-     */
     protected function applyQueryFilters(Builder $query): Builder
     {
         $f = $this->data;
 
         return $query
-            ->when($f['stock_number'] ?? null, fn ($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
-            ->when($f['description'] ?? null, fn ($q, $v) => $q->where('custom_description', 'like', "%{$v}%"))
-            ->when($f['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($f['department'] ?? null, fn ($q, $v) => $q->where('department', $v))
-            ->when($f['sub_department'] ?? null, fn ($q, $v) => $q->where('sub_department', $v))
-            ->when($f['category'] ?? null, fn ($q, $v) => $q->where('category', $v))
-            ->when($f['metal_type'] ?? null, fn ($q, $v) => $q->where('metal_type', $v))
-            ->when($f['size'] ?? null, fn ($q, $v) => $q->where('size', 'like', "%{$v}%"))
-            ->when($f['shape'] ?? null, fn ($q, $v) => $q->where('shape', $v))
-            ->when($f['color'] ?? null, fn ($q, $v) => $q->where('color', $v))
-            ->when($f['clarity'] ?? null, fn ($q, $v) => $q->where('clarity', $v))
-            ->when($f['cut'] ?? null, fn ($q, $v) => $q->where('cut', $v))
-            ->when($f['certificate_number'] ?? null, fn ($q, $v) => $q->where('certificate_number', 'like', "%{$v}%"))
-            ->when($f['is_lab_grown'] ?? null, fn ($q, $v) => $q->where('is_lab_grown', $v))
-            ->when($f['diamond_weight_from'] ?? null, fn ($q, $v) => $q->where('diamond_weight', '>=', $v))
-            ->when($f['diamond_weight_to'] ?? null, fn ($q, $v) => $q->where('diamond_weight', '<=', $v))
-            ->when($f['supplier_id'] ?? null, fn ($q, $v) => $q->where('supplier_id', $v))
-            ->when($f['supplier_code'] ?? null, fn ($q, $v) => $q->where('supplier_code', 'like', "%{$v}%"))
-            ->when($f['serial_number'] ?? null, fn ($q, $v) => $q->where('serial_number', 'like', "%{$v}%"))
-            ->when($f['rfid_code'] ?? null, fn ($q, $v) => $q->where('rfid_code', 'like', "%{$v}%"))
-            ->when($f['is_memo'] !== null && $f['is_memo'] !== '', fn ($q) => $q->where('is_memo', $f['is_memo']))
-            ->when($f['is_trade_in'] !== null && $f['is_trade_in'] !== '', fn ($q) => $q->where('is_trade_in', $f['is_trade_in']))
-            ->when($f['price_from'] ?? null, fn ($q, $v) => $q->where('retail_price', '>=', $v))
-            ->when($f['price_to'] ?? null, fn ($q, $v) => $q->where('retail_price', '<=', $v));
+            ->when($f['stock_number'] ?? null, fn($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
+            ->when($f['description'] ?? null,  fn($q, $v) => $q->where('custom_description', 'like', "%{$v}%"))
+            ->when($f['status'] ?? null,        fn($q, $v) => $q->where('status', $v))
+            ->when($f['department'] ?? null,    fn($q, $v) => $q->where('department', $v))
+            ->when($f['sub_department'] ?? null, fn($q, $v) => $q->where('sub_department', $v))
+            ->when($f['category'] ?? null,      fn($q, $v) => $q->where('category', $v))
+            ->when($f['metal_type'] ?? null,    fn($q, $v) => $q->where('metal_type', $v))
+            ->when($f['size'] ?? null,          fn($q, $v) => $q->where('size', 'like', "%{$v}%"))
+            ->when($f['shape'] ?? null,         fn($q, $v) => $q->where('shape', $v))
+            ->when($f['color'] ?? null,         fn($q, $v) => $q->where('color', $v))
+            ->when($f['clarity'] ?? null,       fn($q, $v) => $q->where('clarity', $v))
+            ->when($f['cut'] ?? null,           fn($q, $v) => $q->where('cut', $v))
+            ->when($f['certificate_number'] ?? null, fn($q, $v) => $q->where('certificate_number', 'like', "%{$v}%"))
+            ->when($f['is_lab_grown'] ?? null,  fn($q, $v) => $q->where('is_lab_grown', $v))
+            ->when($f['diamond_weight_from'] ?? null, fn($q, $v) => $q->where('diamond_weight', '>=', $v))
+            ->when($f['diamond_weight_to'] ?? null,   fn($q, $v) => $q->where('diamond_weight', '<=', $v))
+            ->when($f['supplier_id'] ?? null,   fn($q, $v) => $q->where('supplier_id', $v))
+            ->when($f['supplier_code'] ?? null, fn($q, $v) => $q->where('supplier_code', 'like', "%{$v}%"))
+            ->when($f['serial_number'] ?? null, fn($q, $v) => $q->where('serial_number', 'like', "%{$v}%"))
+            ->when($f['rfid_code'] ?? null,     fn($q, $v) => $q->where('rfid_code', 'like', "%{$v}%"))
+            ->when($f['is_memo'] !== null && $f['is_memo'] !== '',     fn($q) => $q->where('is_memo', $f['is_memo']))
+            ->when($f['is_trade_in'] !== null && $f['is_trade_in'] !== '', fn($q) => $q->where('is_trade_in', $f['is_trade_in']))
+            ->when($f['price_from'] ?? null,    fn($q, $v) => $q->where('retail_price', '>=', $v))
+            ->when($f['price_to'] ?? null,      fn($q, $v) => $q->where('retail_price', '<=', $v))
+
+            // 🚀 THE FIX: Changed 'saleItems' to 'saleItem' to match the relationship name in the Model!
+            ->when($f['job_number'] ?? null, fn($q, $v) =>
+                $q->whereHas('saleItem.sale', fn($q) =>
+                    $q->where('invoice_number', 'like', "%-{$v}")
+                      ->orWhere('invoice_number', 'like', "%{$v}%")
+                )
+            );
     }
 
-    /**
-     * Table Definition.
-     */
     public function table(Table $table): Table
     {
         return $table
             ->query(ProductItem::query())
-            ->modifyQueryUsing(fn (Builder $query) => $this->applyQueryFilters($query))
+            ->modifyQueryUsing(fn(Builder $query) => $this->applyQueryFilters($query))
             ->columns([
                 TextColumn::make('barcode')
                     ->label('STOCK #')
@@ -323,11 +300,11 @@ class FindStock extends Page implements HasForms, HasTable
                 TextColumn::make('custom_description')
                     ->label('ITEM DESCRIPTION')
                     ->wrap()
-                    ->description(fn($record) => 
+                    ->description(fn($record) =>
                         new HtmlString("<span class='text-xs text-gray-500 font-medium uppercase'>" .
-                        ($record->metal_type ? $record->metal_type : "") . 
-                        ($record->diamond_weight ? " • " . $record->diamond_weight . "ctw" : "") .
-                        ($record->shape ? " • " . $record->shape : "") .
+                            ($record->metal_type ? $record->metal_type : "") .
+                            ($record->diamond_weight ? " • " . $record->diamond_weight . "ctw" : "") .
+                            ($record->shape ? " • " . $record->shape : "") .
                         "</span>")
                     )->limit(60),
 
@@ -355,14 +332,59 @@ class FindStock extends Page implements HasForms, HasTable
 
                 TextColumn::make('status')
                     ->badge()
-                    ->color(fn ($state) => match ($state) {
+                    ->color(fn($state) => match ($state) {
                         'in_stock' => 'success',
-                        'sold' => 'danger',
-                        'on_hold' => 'warning',
-                        'memo' => 'info',
-                        default => 'gray',
+                        'sold'     => 'danger',
+                        'on_hold'  => 'warning',
+                        'memo'     => 'info',
+                        default    => 'gray',
                     })
-                    ->formatStateUsing(fn ($state) => Str::headline($state)),
+                    ->formatStateUsing(fn($state) => Str::headline($state)),
+
+                TextColumn::make('linked_job')
+                    ->label('Linked Job / Deposit')
+                    ->getStateUsing(function (ProductItem $record) {
+                        $saleItems = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->with(['sale', 'sale.customer'])
+                            ->get();
+
+                        if ($saleItems->isEmpty()) {
+                            return new HtmlString(
+                                "<span class='text-[10px] text-gray-300 italic'>No sale</span>"
+                            );
+                        }
+
+                        return new HtmlString(
+                            $saleItems->map(function ($si) {
+                                $inv     = $si->sale?->invoice_number ?? '—';
+                                $parts   = explode('-', $inv);
+                                $jobNo   = end($parts);
+                                $name    = htmlspecialchars(trim(
+                                    ($si->sale?->customer?->name ?? '') . ' ' .
+                                    ($si->sale?->customer?->last_name ?? '')
+                                ));
+                                $balance = floatval($si->sale?->balance_due ?? 0);
+
+                                $badge = $balance > 0.01
+                                    ? "<span class='text-[9px] bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full font-bold'>\$" . number_format($balance, 2) . " due</span>"
+                                    : "<span class='text-[9px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded-full font-bold'>Paid ✓</span>";
+
+                                $url = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $si->sale_id]);
+
+                                return "
+                                    <div class='mb-1.5 last:mb-0'>
+                                        <a href='{$url}' class='font-mono text-xs font-bold text-primary-600 hover:underline'>
+                                            Job #{$jobNo}
+                                        </a>
+                                        {$badge}
+                                        <div class='text-[10px] text-gray-500 mt-0.5'>{$name}</div>
+                                    </div>
+                                ";
+                            })->implode('')
+                        );
+                    })
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('date_in')
                     ->label('DATE IN')
@@ -375,7 +397,7 @@ class FindStock extends Page implements HasForms, HasTable
                     ViewAction::make()
                         ->modalHeading('Detailed Jewelry Specifications')
                         ->modalWidth('5xl')
-                        ->infolist(fn (Infolist $infolist) => $infolist->schema([
+                        ->infolist(fn(Infolist $infolist) => $infolist->schema([
                             InfoSection::make('Inventory Identity')->schema([
                                 InfoGrid::make(3)->schema([
                                     TextEntry::make('barcode')->label('Stock Number')->weight('black')->size('lg'),
@@ -407,14 +429,14 @@ class FindStock extends Page implements HasForms, HasTable
                         ])),
 
                     EditAction::make()
-                        ->url(fn ($record) => ProductItemResource::getUrl('edit', ['record' => $record])),
-                    
+                        ->url(fn($record) => ProductItemResource::getUrl('edit', ['record' => $record])),
+
                     TableAction::make('print')
                         ->label('Print Barcode')
                         ->icon('heroicon-o-printer')
                         ->color('gray')
                         ->action(fn($record) => $this->dispatch('print-barcode', record: $record->id)),
-                    
+
                     TableAction::make('hold_item')
                         ->label('Place on Hold')
                         ->icon('heroicon-o-hand-raised')
@@ -446,7 +468,7 @@ class FindStock extends Page implements HasForms, HasTable
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
-                    ->action(fn (EloquentCollection $records) => $records->each->update(['status' => 'on_hold'])),
+                    ->action(fn(EloquentCollection $records) => $records->each->update(['status' => 'on_hold'])),
 
                 BulkAction::make('bulk_transfer')
                     ->label('Batch Transfer')
@@ -472,10 +494,10 @@ class FindStock extends Page implements HasForms, HasTable
                     ->modalHeading('Confirm Bulk Tags Print?')
                     ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
                     ->after(function (EloquentCollection $records) {
-                        $service = new ZebraPrinterService();
+                        $service     = new ZebraPrinterService();
                         $combinedZpl = "";
                         foreach ($records as $record) {
-                            $combinedZpl .= $service->getZplCode($record); 
+                            $combinedZpl .= $service->getZplCode($record);
                         }
                         $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
                     })
@@ -485,25 +507,22 @@ class FindStock extends Page implements HasForms, HasTable
             ->emptyStateHeading('No stock matches your criteria');
     }
 
-    /**
-     * Business Logic: Performs stock transfer.
-     */
     protected function performStockTransfer(ProductItem $record, string $targetId)
     {
-        $sourceId = tenant('id');
-        $itemData = $record->toArray();
-        $barcode = $record->barcode;
+        $sourceId   = tenant('id');
+        $itemData   = $record->toArray();
+        $barcode    = $record->barcode;
         $vendorName = $record->supplier?->company_name;
 
         try {
             DB::transaction(function () use ($itemData, $targetId, $vendorName, $record, $sourceId, $barcode) {
-                $targetTenant = Tenant::find($targetId);
+                $targetTenant    = Tenant::find($targetId);
                 tenancy()->initialize($targetTenant);
                 $targetSupplierId = Supplier::where('company_name', $vendorName)->value('id');
 
                 unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
                 $itemData['supplier_id'] = $targetSupplierId;
-                $itemData['status'] = 'in_stock';
+                $itemData['status']      = 'in_stock';
                 ProductItem::create($itemData);
 
                 $recipients = User::all();
