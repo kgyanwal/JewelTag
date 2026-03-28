@@ -185,7 +185,7 @@ class CreateSale extends CreateRecord
                         Notification::make()->title('Invalid PIN')->danger()->send();
                         return;
                     }
-
+$formState['sales_person_list'] = [$actualStaff->name];
                     $get = fn($path) => data_get($formState, $path);
                     $set = function ($path, $value) use (&$formState) {
                         data_set($formState, $path, $value);
