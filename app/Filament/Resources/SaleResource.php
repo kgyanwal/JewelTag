@@ -356,77 +356,77 @@ class SaleResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
-                       Section::make('🛠️ Workshop / Special Jobs')
-    ->description('Add one or more job instructions (Resize, Solder, Engraving, etc.)')
-    ->icon('heroicon-o-wrench')
-    ->collapsible()
-    ->schema([
-        Repeater::make('special_jobs')
-            ->label('')
-            ->schema([
-                Grid::make(3)->schema([
-                    Select::make('job_type')
-    ->label('Service Type')
-    ->options(fn() => self::getServiceTypeOptions())
-    ->placeholder('Select Job Type')
-    ->helperText(new \Illuminate\Support\HtmlString(
-        '<a href="' . \App\Filament\Pages\ManageSettings::getUrl() . '?tab=-sales-tab" target="_blank" style="color:#0284c7;font-weight:600;">⚙️ Add custom service types in Settings</a>'
-    ))
-    ->live()
-    ->required(),
+                        Section::make('🛠️ Workshop / Special Jobs')
+                            ->description('Add one or more job instructions (Resize, Solder, Engraving, etc.)')
+                            ->icon('heroicon-o-wrench')
+                            ->collapsible()
+                            ->schema([
+                                Repeater::make('special_jobs')
+                                    ->label('')
+                                    ->schema([
+                                        Grid::make(3)->schema([
+                                            Select::make('job_type')
+                                                ->label('Service Type')
+                                                ->options(fn() => self::getServiceTypeOptions())
+                                                ->placeholder('Select Job Type')
+                                                ->helperText(new \Illuminate\Support\HtmlString(
+                                                    '<a href="' . \App\Filament\Pages\ManageSettings::getUrl() . '?tab=-sales-tab" target="_blank" style="color:#0284c7;font-weight:600;">⚙️ Add custom service types in Settings</a>'
+                                                ))
+                                                ->live()
+                                                ->required(),
 
-                    Select::make('metal_type')
-                        ->label('Metal')
-                        ->options([
-                            '10k'      => '10k Gold',
-                            '14k'      => '14k Gold',
-                            '18k'      => '18k Gold',
-                            'Platinum' => 'Platinum',
-                            'Silver'   => 'Sterling Silver',
-                        ])
-                        ->placeholder('Select Metal'),
+                                            Select::make('metal_type')
+                                                ->label('Metal')
+                                                ->options([
+                                                    '10k'      => '10k Gold',
+                                                    '14k'      => '14k Gold',
+                                                    '18k'      => '18k Gold',
+                                                    'Platinum' => 'Platinum',
+                                                    'Silver'   => 'Sterling Silver',
+                                                ])
+                                                ->placeholder('Select Metal'),
 
-                    DatePicker::make('date_required')
-                        ->label('Completion Date')
-                        ->native(false)
-                        ->displayFormat('M d, Y'),
-                ]),
+                                            DatePicker::make('date_required')
+                                                ->label('Completion Date')
+                                                ->native(false)
+                                                ->displayFormat('M d, Y'),
+                                        ]),
 
-                Grid::make(2)
-                    ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
-                    ->schema([
-                        TextInput::make('current_size')
-                            ->label('Current Size'),
-                        TextInput::make('target_size')
-                            ->label('Target Size'),
-                    ]),
+                                        Grid::make(2)
+                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
+                                            ->schema([
+                                                TextInput::make('current_size')
+                                                    ->label('Current Size'),
+                                                TextInput::make('target_size')
+                                                    ->label('Target Size'),
+                                            ]),
 
-                Textarea::make('job_instructions')
-                    ->label('Bench Notes / Instructions')
-                    ->placeholder('Describe exactly what the jeweler needs to do...')
-                    ->columnSpanFull()
-                    ->rows(2),
-            ])
-            ->columns(1)
-            ->addActionLabel('+ Add Another Job')
-            ->defaultItems(0)
-            ->collapsible()
-            ->itemLabel(fn(array $state): string =>
-                ($state['job_type'] ?? 'New Job') .
-                ($state['metal_type'] ? ' — ' . $state['metal_type'] : '') .
-                ($state['date_required'] ? ' (Due: ' . \Carbon\Carbon::parse($state['date_required'])->format('M d') . ')' : '')
-            )
-            ->reorderable(false),
+                                        Textarea::make('job_instructions')
+                                            ->label('Bench Notes / Instructions')
+                                            ->placeholder('Describe exactly what the jeweler needs to do...')
+                                            ->columnSpanFull()
+                                            ->rows(2),
+                                    ])
+                                    ->columns(1)
+                                    ->addActionLabel('+ Add Another Job')
+                                    ->defaultItems(0)
+                                    ->collapsible()
+                                    ->itemLabel(
+                                        fn(array $state): string => ($state['job_type'] ?? 'New Job') .
+                                            ($state['metal_type'] ? ' — ' . $state['metal_type'] : '') .
+                                            ($state['date_required'] ? ' (Due: ' . \Carbon\Carbon::parse($state['date_required'])->format('M d') . ')' : '')
+                                    )
+                                    ->reorderable(false),
 
-        // Keep legacy hidden fields for backward compatibility
-        Hidden::make('job_type'),
-        Hidden::make('metal_type'),
-        Hidden::make('date_required'),
-        Hidden::make('current_size'),
-        Hidden::make('target_size'),
-        Hidden::make('job_instructions'),
-        Hidden::make('notes'),
-    ]),
+                                // Keep legacy hidden fields for backward compatibility
+                                Hidden::make('job_type'),
+                                Hidden::make('metal_type'),
+                                Hidden::make('date_required'),
+                                Hidden::make('current_size'),
+                                Hidden::make('target_size'),
+                                Hidden::make('job_instructions'),
+                                Hidden::make('notes'),
+                            ]),
 
                         Section::make('Trade-In Details')
                             ->schema([
@@ -463,68 +463,68 @@ class SaleResource extends Resource
                                     ]),
                             ]),
 
+
+
+                        Section::make('Warranty')
+                            ->icon('heroicon-o-shield-check')
+                            ->collapsible()
+                            ->schema([
+                                Grid::make(4)->schema([
+                                    Select::make('has_warranty')
+                                        ->label('Include Warranty?')
+                                        ->options([0 => 'No', 1 => 'Yes'])
+                                        ->default(0)
+                                        ->live(),
+
+                                    Select::make('warranty_period')
+                                        ->label('Warranty Duration')
+                                        ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->required(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->options(function () {
+                                            $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                            $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                                            return array_combine($options, $options);
+                                        }),
+
+                                    TextInput::make('warranty_charge')
+                                        ->label('Warranty Charge ($)')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->default(0)
+                                        ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                    Forms\Components\DatePicker::make('follow_up_date')
+                                        ->label('Follow Up (2 Weeks)')
+                                        ->default(now()->addWeeks(2))
+                                        ->native(false)
+                                        ->displayFormat('M d, Y'),
+                                ]),
+
+                                Grid::make(4)->schema([
+                                    Forms\Components\DatePicker::make('second_follow_up_date')
+                                        ->label('Second Follow Up')
+                                        ->default(now()->addMonths(6))
+                                        ->native(false)
+                                        ->displayFormat('M d, Y'),
+                                ]),
+                            ]),
                         Section::make('Shipping & Handling')
-    ->icon('heroicon-o-truck')
-    ->collapsible()
-    ->schema([
-        Grid::make(4)->schema([
-            TextInput::make('shipping_charges')
-                ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
-                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-            Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
-            Select::make('carrier')
-                ->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])
-                ->default('No carrier'),
-            TextInput::make('tracking_number')->label('Tracking #')->nullable(),
-        ]),
-    ]),
-
-Section::make('Warranty')
-    ->icon('heroicon-o-shield-check')
-    ->collapsible()
-    ->schema([
-        Grid::make(4)->schema([
-            Select::make('has_warranty')
-                ->label('Include Warranty?')
-                ->options([0 => 'No', 1 => 'Yes'])
-                ->default(0)
-                ->live(),
-
-            Select::make('warranty_period')
-                ->label('Warranty Duration')
-                ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                ->required(fn(Get $get) => $get('has_warranty') == 1)
-                ->options(function () {
-                    $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
-                    $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
-                    return array_combine($options, $options);
-                }),
-
-            TextInput::make('warranty_charge')
-                ->label('Warranty Charge ($)')
-                ->numeric()
-                ->prefix('$')
-                ->default(0)
-                ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                ->live(onBlur: true)
-                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-
-            Forms\Components\DatePicker::make('follow_up_date')
-                ->label('Follow Up (2 Weeks)')
-                ->default(now()->addWeeks(2))
-                ->native(false)
-                ->displayFormat('M d, Y'),
-        ]),
-
-        Grid::make(4)->schema([
-            Forms\Components\DatePicker::make('second_follow_up_date')
-                ->label('Second Follow Up')
-                ->default(now()->addMonths(6))
-                ->native(false)
-                ->displayFormat('M d, Y'),
-        ]),
-    ]),
-
+                            ->icon('heroicon-o-truck')
+                            ->collapsible()
+                            ->schema([
+                                Grid::make(4)->schema([
+                                    TextInput::make('shipping_charges')
+                                        ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                    Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
+                                    Select::make('carrier')
+                                        ->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])
+                                        ->default('No carrier'),
+                                    TextInput::make('tracking_number')->label('Tracking #')->nullable(),
+                                ]),
+                            ]),
                         Section::make('Receipt Customization')
                             ->schema([
                                 Textarea::make('notes')
@@ -1117,21 +1117,26 @@ Section::make('Warranty')
                     ]),
             ]);
     }
-public static function getServiceTypeOptions(): array
-{
-    $defaultTypes = [
-        'Resize', 'Solder / Weld', 'Bail Change',
-        'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium',
-    ];
+    public static function getServiceTypeOptions(): array
+    {
+        $defaultTypes = [
+            'Resize',
+            'Solder / Weld',
+            'Bail Change',
+            'Shortening',
+            'Stone Setting',
+            'Engraving',
+            'Polishing / Rhodium',
+        ];
 
-    $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
-    $types = $json ? json_decode($json, true) : $defaultTypes;
+        $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
+        $types = $json ? json_decode($json, true) : $defaultTypes;
 
-    return collect($types)
-        ->filter()
-        ->mapWithKeys(fn($type) => [$type => $type])
-        ->toArray();
-}
+        return collect($types)
+            ->filter()
+            ->mapWithKeys(fn($type) => [$type => $type])
+            ->toArray();
+    }
     public static function mapResizeToNotes(Get $get, Set $set): void
     {
         $type    = $get('job_type');
