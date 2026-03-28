@@ -56,14 +56,23 @@ class MySalesReport extends Page implements HasTable
                     ->color('primary')
                     ->searchable(),
 
-                TextColumn::make('customer.name')
-                    ->label('Customer')
-                    ->formatStateUsing(fn($state, $record) =>
-                        $record->customer
-                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
-                            : 'Walk-in Customer'
-                    )
-                    ->searchable(),
+                TextColumn::make('customer_name_display')
+    ->label('Customer')
+    ->getStateUsing(fn($record) =>
+        $record->customer
+            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+            : '—'
+    )
+    ->searchable(
+        query: function (Builder $query, string $search): Builder {
+            return $query->whereHas('customer', fn($q) =>
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+            );
+        }
+    )
+    ->sortable(false),
 
                 TextColumn::make('sales_person_list')
                     ->label('Associates')

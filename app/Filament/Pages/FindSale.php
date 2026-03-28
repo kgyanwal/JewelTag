@@ -164,14 +164,23 @@ class FindSale extends Page implements HasForms, HasTable
                     ->copyable(),
 
                 // ── customer relationship is now eager loaded so no extra query per row
-                TextColumn::make('customer.name')
-                    ->label('CUSTOMER')
-                    ->formatStateUsing(fn($state, $record) =>
-                        $record->customer
-                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
-                            : 'Walk-in'
-                    )
-                    ->description(fn($record) => $record->customer?->phone),
+                TextColumn::make('customer_name_display')
+    ->label('Customer')
+    ->getStateUsing(fn($record) =>
+        $record->customer
+            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+            : '—'
+    )
+    ->searchable(
+        query: function (Builder $query, string $search): Builder {
+            return $query->whereHas('customer', fn($q) =>
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+            );
+        }
+    )
+    ->sortable(false),
 
                 TextColumn::make('items_summary')
                     ->label('ITEMS / DESCRIPTION')

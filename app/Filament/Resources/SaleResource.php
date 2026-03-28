@@ -920,16 +920,23 @@ class SaleResource extends Resource
                     ->sortable()
                     ->grow(false),
 
-                // ── THE FIX: safe null check so real customers show correctly
-                TextColumn::make('customer.name')
+                TextColumn::make('customer_name_display')
                     ->label('Customer')
-                    ->formatStateUsing(fn($state, $record) =>
+                    ->getStateUsing(fn($record) =>
                         $record->customer
                             ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
-                            : 'Walk-in'
+                            : '—'
                     )
-                    ->searchable()
-                    ->sortable(),
+                    ->searchable(
+                        query: function (Builder $query, string $search): Builder {
+                            return $query->whereHas('customer', fn($q) =>
+                                $q->where('name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%")
+                                ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            );
+                        }
+                    )
+                    ->sortable(false),
 
                 TextColumn::make('sales_person_list')
                     ->label('Sales Staff')
