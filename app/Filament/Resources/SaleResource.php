@@ -905,25 +905,56 @@ class SaleResource extends Resource
         ]);
     }
 
+  // ── Drop this into SaleResource.php, replacing the existing table() method ──
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn(Builder $query) => $query->where('status', '!=', 'void'))
+            ->modifyQueryUsing(fn(Builder $query) => $query
+                ->where('status', '!=', 'void')
+                ->with(['customer', 'items.productItem', 'payments'])  // ← eager load: kills N+1
+            )
             ->columns([
-                TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
-                TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
-                TextColumn::make('sales_person_list')->label('Sales Staff')->badge()->separator(',')->searchable(),
+                TextColumn::make('invoice_number')
+                    ->label('Inv #')
+                    ->searchable()
+                    ->sortable()
+                    ->grow(false),
+
+                // ── THE FIX: safe null check so real customers show correctly
+                TextColumn::make('customer.name')
+                    ->label('Customer')
+                    ->formatStateUsing(fn($state, $record) =>
+                        $record->customer
+                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+                            : 'Walk-in'
+                    )
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('sales_person_list')
+                    ->label('Sales Staff')
+                    ->badge()
+                    ->separator(',')
+                    ->searchable(),
+
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()
                     ->getStateUsing(function ($record) {
+                        // items->productItem already eager loaded — no N+1
                         return $record->items->map(function ($item) {
-                            if ($item->productItem) return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? 'Item');
-                            if ($item->repair_id) return "REPAIR: #" . ($item->repair->repair_no ?? 'SVC');
+                            if ($item->productItem)
+                                return $item->productItem->barcode . ' — '
+                                    . ($item->productItem->custom_description ?? 'Item');
+                            if ($item->repair_id)
+                                return 'REPAIR: #' . ($item->repair->repair_no ?? 'SVC');
                             return $item->custom_description;
                         })->toArray();
                     })
-                    ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
+                    ->limitList(1)
+                    ->expandableLimitedList()
+                    ->size('xs')
+                    ->color('gray'),
 
                 TextColumn::make('status')
                     ->badge()
@@ -938,24 +969,26 @@ class SaleResource extends Resource
 
                 TextColumn::make('payment_method')
                     ->label('Method')
-                    ->formatStateUsing(fn($record) => $record->is_split_payment ? 'SPLIT' : $record->payment_method)
+                    ->formatStateUsing(fn($record) =>
+                        $record->is_split_payment ? 'SPLIT' : $record->payment_method
+                    )
                     ->badge()
                     ->color(fn($state) => $state === 'SPLIT' ? 'warning' : 'gray'),
 
+                // ── payments already eager loaded — no extra query per row
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
-                        $isCustomDeposit = $record->has_trade_in && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+                        $isCustomDeposit = $record->has_trade_in
+                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
                         $total = floatval($record->final_total);
                         if ($isCustomDeposit) $total += floatval($record->trade_in_value);
 
                         $paid = floatval($record->payments->sum('amount'));
-
                         if ($paid == 0 && floatval($record->amount_paid) > 0) {
                             $paid = floatval($record->amount_paid);
                         }
-
                         if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
 
                         $balance = max(0, $total - $paid);
@@ -980,9 +1013,19 @@ class SaleResource extends Resource
                     ->grow(false),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('payment_method')->label('Payment Type')
-                    ->options(['cash' => 'CASH', 'laybuy' => 'LAYBUY', 'visa' => 'VISA']),
-                Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins'),
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Type')
+                    ->options(fn() => self::getPaymentOptions()),
+                Tables\Filters\TernaryFilter::make('has_trade_in')
+                    ->label('Trade-Ins'),
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Sale Status')
+                    ->options([
+                        'completed'  => 'Completed',
+                        'pending'    => 'Pending',
+                        'inprogress' => 'In Progress',
+                        'cancelled'  => 'Cancelled',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -1018,17 +1061,22 @@ class SaleResource extends Resource
                         ->requiresConfirmation()
                         ->action(function (Sale $record) {
                             if (!$record->customer || empty($record->customer->email)) {
-                                \Filament\Notifications\Notification::make()->title('Email Missing')->body('Customer has no email address.')->danger()->send();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Missing')->body('Customer has no email address.')
+                                    ->danger()->send();
                                 return;
                             }
-
                             $mailable = new \App\Mail\CustomerReceipt($record);
                             $sent     = $mailable->sendDirectly();
-
                             if ($sent) {
-                                \Filament\Notifications\Notification::make()->title('Receipt Sent')->body("Successfully emailed to {$record->customer->email}")->success()->send();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Receipt Sent')
+                                    ->body("Successfully emailed to {$record->customer->email}")
+                                    ->success()->send();
                             } else {
-                                \Filament\Notifications\Notification::make()->title('Email Error')->body('Check Laravel logs for SES details.')->danger()->send();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Error')->body('Check Laravel logs for SES details.')
+                                    ->danger()->send();
                             }
                         }),
 
@@ -1040,28 +1088,27 @@ class SaleResource extends Resource
                         ->modalHeading('Send Receipt via SMS')
                         ->action(function (Sale $record) {
                             $phone = $record->customer->phone ?? null;
-
                             if (empty($phone)) {
-                                \Filament\Notifications\Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')->body('Customer has no phone number.')
+                                    ->danger()->send();
                                 return;
                             }
-
                             $digits = preg_replace('/[^0-9]/', '', $phone);
                             if (\Illuminate\Support\Str::startsWith($digits, '1') && strlen($digits) === 11) {
                                 $digits = substr($digits, 1);
                             }
                             $formattedPhone = '+1' . $digits;
-
-                            $store     = $record->store;
-                            $baseUrl   = $store && !empty($store->domain_url) ? rtrim($store->domain_url, '/') : config('app.url');
-                            $link      = $baseUrl . "/receipt/" . $record->id;
+                            $store          = $record->store;
+                            $baseUrl        = $store && !empty($store->domain_url)
+                                                ? rtrim($store->domain_url, '/')
+                                                : config('app.url');
+                            $link      = $baseUrl . '/receipt/' . $record->id;
                             $storeName = $store->name ?? 'Diamond Square';
                             $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
-
                             try {
                                 $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
-
-                                $sns = new \Aws\Sns\SnsClient([
+                                $sns      = new \Aws\Sns\SnsClient([
                                     'version'     => 'latest',
                                     'region'      => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
                                     'credentials' => [
@@ -1069,10 +1116,9 @@ class SaleResource extends Resource
                                         'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret'),
                                     ],
                                 ]);
-
                                 $sns->publish([
-                                    'Message'          => $message,
-                                    'PhoneNumber'      => $formattedPhone,
+                                    'Message'     => $message,
+                                    'PhoneNumber' => $formattedPhone,
                                     'MessageAttributes' => [
                                         'OriginationNumber' => [
                                             'DataType'    => 'String',
@@ -1080,10 +1126,10 @@ class SaleResource extends Resource
                                         ],
                                     ],
                                 ]);
-
                                 \Filament\Notifications\Notification::make()->title('SMS Sent')->success()->send();
                             } catch (\Exception $e) {
-                                \Filament\Notifications\Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Failed')->body($e->getMessage())->danger()->send();
                             }
                         }),
                 ])
@@ -1098,24 +1144,11 @@ class SaleResource extends Resource
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('danger')
                     ->visible(fn(Sale $record) => $record->status === 'completed')
-                    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
+                    ->url(fn(Sale $record) =>
+                        \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])
+                    ),
             ])
-            ->defaultSort('created_at', 'desc')
-            ->filters([
-                Tables\Filters\SelectFilter::make('payment_method')
-                    ->label('Payment Type')
-                    ->options(fn() => self::getPaymentOptions()),
-                Tables\Filters\TernaryFilter::make('has_trade_in')
-                    ->label('Trade-Ins'),
-                Tables\Filters\SelectFilter::make('status')
-                    ->label('Sale Status')
-                    ->options([
-                        'completed'  => 'Completed',
-                        'pending'    => 'Pending',
-                        'inprogress' => 'In Progress',
-                        'cancelled'  => 'Cancelled',
-                    ]),
-            ]);
+            ->defaultSort('created_at', 'desc');
     }
     public static function getServiceTypeOptions(): array
     {
