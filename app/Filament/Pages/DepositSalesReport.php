@@ -2,7 +2,7 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\Laybuy;
+use App\Models\DepositSale;
 use App\Models\Payment;
 use App\Models\User;
 use Filament\Pages\Page;
@@ -15,34 +15,20 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Enums\FiltersLayout;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Tables\Actions\Action;
 use Filament\Support\Enums\FontWeight;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 
 /**
  * DepositSalesReport
  *
- * WHAT THIS SHOWS (simply):
- *   A list of all layby/deposit plans from the laybuys table.
- *   Each row shows:
- *     - Customer name + Job number
- *     - What items they are buying (from sale_items → product_items)
- *     - Payment history (from payments table via sale_id)
- *     - How much they owe (balance_due from laybuys table)
- *     - Staff member who made the sale
- *
- * DATA SOURCES:
- *   laybuys table        → populated by ImportOnSwimDeposits
- *   payments table       → populated by POS when payments are taken
- *                          columns: id, sale_id, amount, method, paid_at
- *   sale_items table     → populated by ImportOnSwimSales
- *   product_items table  → populated by ImportOnSwimStock
- *
- * DOES NOT USE:
- *   sale_payments table  → that's a separate OnSwim import table
- *   LaybuyPayment model  → doesn't exist in your system
+ * Shows all deposit sales from the deposit_sales table.
+ * Supports recording balance payments and linking to sales.
  */
 class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 {
@@ -58,26 +44,22 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
     {
         return $table
             ->query(
-                Laybuy::query()
-                    ->with([
-                        'customer',
-                        'sale.items.productItem',  // to show stock items (G10274 etc.)
-                    ])
+                DepositSale::query()
+                    ->with(['customer', 'sale.items.productItem', 'sale.payments'])
                     ->latest('start_date')
             )
             ->columns([
 
-                // ── Customer + Job Number ──────────────────────────────
-                // Job number is extracted from invoice_number: "D031926-9363" → #9363
+                // ── Customer & Deposit No ──────────────────────────────
                 TextColumn::make('customer.name')
-                    ->label('Customer & Job')
+                    ->label('Customer & Deposit')
                     ->weight(FontWeight::Bold)
                     ->formatStateUsing(fn($state, $record) =>
                         trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? ''))
                     )
-                    ->description(fn(Laybuy $record) =>
-                        'Job: ' . ($record->sale?->invoice_number ?? $record->laybuy_no) .
-                        ' | ' . ($record->sale?->store?->name ?? '—')
+                    ->description(fn(DepositSale $record) =>
+                        $record->deposit_no .
+                        ($record->sale ? ' | Sale: ' . $record->sale->invoice_number : ' | No sale linked')
                     )
                     ->searchable(query: function (Builder $query, string $search): Builder {
                         return $query
@@ -89,7 +71,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             ->orWhereHas('sale', fn($q) =>
                                 $q->where('invoice_number', 'like', "%{$search}%")
                             )
-                            ->orWhere('laybuy_no', 'like', "%{$search}%");
+                            ->orWhere('deposit_no', 'like', "%{$search}%");
                     }),
 
                 // ── Date Sold ──────────────────────────────────────────
@@ -99,19 +81,19 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                     ->sortable()
                     ->grow(false),
 
-                // ── Stock Items ────────────────────────────────────────
-                // Shows items from sale_items table linked to this job.
-                // Example: [G10274] 1GM Cross Pendant $299.99
-                // These items were already imported by ImportOnSwimSales.
-                // This does NOT add new items — just displays existing ones.
+                // ── Items ──────────────────────────────────────────────
                 TextColumn::make('stock_items')
-                    ->label('Items / Stock #')
-                    ->getStateUsing(function (Laybuy $record) {
+                    ->label('Items')
+                    ->getStateUsing(function (DepositSale $record) {
                         $items = $record->sale?->items ?? collect();
 
                         if ($items->isEmpty()) {
+                            // Show notes as fallback
+                            $notes = $record->notes
+                                ? strip_tags($record->notes)
+                                : 'No items linked';
                             return new HtmlString(
-                                "<span class='text-[11px] text-gray-300 italic'>No items linked</span>"
+                                "<span class='text-[11px] text-gray-400 italic'>{$notes}</span>"
                             );
                         }
 
@@ -140,39 +122,25 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                     ->html(),
 
                 // ── Payment History ────────────────────────────────────
-                // Reads from `payments` table (your actual payments table).
-                // columns used: amount, method, paid_at
-                // Linked via: payments.sale_id = laybuys.sale_id
                 TextColumn::make('payment_history')
                     ->label('Payment History')
-                    ->getStateUsing(function (Laybuy $record) {
-                        if (!$record->sale_id) {
-                            return new HtmlString(
-                                "<span class='text-[11px] text-gray-300 italic'>No sale linked</span>"
-                            );
-                        }
-
-                        // Direct DB query — no relationship needed
-                        // Using your actual payments table columns: method, paid_at, amount
-                        $payments = Payment::where('sale_id', $record->sale_id)
-                            ->orderByDesc('paid_at')
-                            ->get();
+                    ->getStateUsing(function (DepositSale $record) {
+                        // Get payments from linked sale if exists
+                        $payments = $record->sale_id
+                            ? Payment::where('sale_id', $record->sale_id)->orderByDesc('paid_at')->get()
+                            : collect();
 
                         if ($payments->isEmpty()) {
+                            $paid = number_format($record->amount_paid, 2);
                             return new HtmlString(
-                                "<span class='text-[11px] text-gray-300 italic'>No payments yet</span>"
+                                "<span class='text-[11px] text-gray-400 italic'>Deposit: \${$paid}</span>"
                             );
                         }
 
                         $rows = $payments->map(function ($p) {
-                            // payments table uses 'paid_at' (not 'payment_date')
-                            $date   = $p->paid_at
-                                ? Carbon::parse($p->paid_at)->format('M d, Y')
-                                : '—';
-                            // payments table uses 'method' (not 'payment_method')
+                            $date   = $p->paid_at ? Carbon::parse($p->paid_at)->format('M d, Y') : '—';
                             $method = htmlspecialchars($p->method ?? 'N/A');
                             $amount = number_format($p->amount, 2);
-
                             return "
                                 <div class='flex items-center gap-2 text-[11px] mb-0.5 last:mb-0'>
                                     <span class='text-gray-400 w-[72px] flex-shrink-0'>{$date}</span>
@@ -183,7 +151,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         })->implode('');
 
                         $total = number_format($payments->sum('amount'), 2);
-
                         return new HtmlString("
                             <div class='min-w-[200px]'>
                                 {$rows}
@@ -220,22 +187,18 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                     ->summarize(Sum::make()->label('Total Outstanding')->money('USD')),
 
                 // ── Staff ──────────────────────────────────────────────
-                // staff_list is stored as JSON array ["Jeanette","Anthony"]
-                // Displayed as "Jeanette / Anthony"
                 TextColumn::make('staff_list')
                     ->label('Staff')
-                    ->getStateUsing(function (Laybuy $record) {
+                    ->getStateUsing(function (DepositSale $record) {
                         $list = $record->staff_list ?? [];
                         if (empty($list)) return $record->sales_person ?? '—';
-                        return implode(' / ', (array)$list);
+                        return implode(' / ', (array) $list);
                     })
                     ->badge()
                     ->color('gray')
                     ->grow(false),
 
-                // ── Status Badge ───────────────────────────────────────
-                // 'active'    = customer still owes money
-                // 'completed' = fully paid
+                // ── Status ────────────────────────────────────────────
                 TextColumn::make('status')
                     ->badge()
                     ->grow(false)
@@ -243,7 +206,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         'active'      => 'Active',
                         'completed'   => 'Fully Paid',
                         'cancelled'   => 'Cancelled',
-                        'in_progress' => 'Active',  // handle old records
+                        'in_progress' => 'Active',
                         default       => ucfirst($state),
                     })
                     ->color(fn(string $state): string => match ($state) {
@@ -252,7 +215,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         default     => 'warning',
                     }),
 
-                // ── Due Date ───────────────────────────────────────────
+                // ── Due Date ──────────────────────────────────────────
                 TextColumn::make('due_date')
                     ->label('Required By')
                     ->date('M d, Y')
@@ -299,20 +262,26 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                                 ->orWhereJsonContains('staff_list', $data['sales_person'])
                         )
                     ),
+
+                Filter::make('unlinked')
+                    ->label('No Sale Linked')
+                    ->query(fn(Builder $query) => $query->whereNull('sale_id'))
+                    ->toggle(),
             ])
             ->filtersLayout(FiltersLayout::AboveContent)
 
+            // ── Header Actions ────────────────────────────────────────
             ->headerActions([
                 Action::make('export_csv')
                     ->label('Download CSV')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('gray')
                     ->action(function () {
-                        $records = Laybuy::with(['customer', 'sale'])
+                        $records = DepositSale::with(['customer', 'sale'])
                             ->latest('start_date')
                             ->get();
 
-                        $csv = "Customer,Date Sold,Job No,Laybuy No,Invoice Total,Amount Paid,Balance,Status,Staff,Due Date\n";
+                        $csv = "Customer,Date Sold,Deposit No,Sale Invoice,Invoice Total,Amount Paid,Balance,Status,Staff,Due Date\n";
 
                         foreach ($records as $r) {
                             $name  = trim(($r->customer?->name ?? '') . ' ' . ($r->customer?->last_name ?? ''));
@@ -321,8 +290,8 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             $csv .= implode(',', [
                                 '"' . str_replace('"', '""', $name) . '"',
                                 $r->start_date?->format('m/d/Y'),
+                                $r->deposit_no,
                                 $r->sale?->invoice_number ?? '—',
-                                $r->laybuy_no,
                                 number_format($r->total_amount, 2),
                                 number_format($r->amount_paid, 2),
                                 number_format($r->balance_due, 2),
@@ -339,13 +308,89 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                     }),
             ])
 
+            // ── Row Actions ───────────────────────────────────────────
             ->actions([
+                // Record a balance payment
+                Action::make('add_payment')
+                    ->label('Add Payment')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('success')
+                    ->visible(fn(DepositSale $record) => $record->balance_due > 0)
+                    ->form([
+                        TextInput::make('amount')
+                            ->label('Payment Amount')
+                            ->numeric()
+                            ->required()
+                            ->prefix('$')
+                            ->default(fn(DepositSale $record) => $record->balance_due),
+                        Select::make('method')
+                            ->label('Payment Method')
+                            ->options([
+                                'CASH'                   => 'Cash',
+                                'DEBIT CARD'             => 'Debit Card',
+                                'VISA'                   => 'Visa',
+                                'MASTERCARD'             => 'Mastercard',
+                                'AMERICAN EXPRESS'       => 'American Express',
+                                'KAFENE'                 => 'Kafene',
+                                'ACIMA'                  => 'Acima',
+                                'PROGRESSIVE LEASING'    => 'Progressive Leasing',
+                                'AMERICAN FIRST FINANCE' => 'American First Finance',
+                                'WELLS FARGO'            => 'Wells Fargo',
+                                'COMENITY BANK'          => 'Comenity Bank',
+                                'KATAPULT'               => 'Katapult',
+                            ])
+                            ->required(),
+                    ])
+                    ->action(function (DepositSale $record, array $data) {
+                        DB::transaction(function () use ($record, $data) {
+                            $amount = (float) $data['amount'];
+
+                            // Record payment against linked sale if exists
+                            if ($record->sale_id) {
+                                Payment::create([
+                                    'sale_id' => $record->sale_id,
+                                    'amount'  => $amount,
+                                    'method'  => $data['method'],
+                                    'paid_at' => now(),
+                                ]);
+                            }
+
+                            $newPaid    = round($record->amount_paid + $amount, 2);
+                            $newBalance = round(max(0, $record->total_amount - $newPaid), 2);
+                            $newStatus  = $newBalance <= 0 ? 'completed' : 'active';
+
+                            $record->update([
+                                'amount_paid'    => $newPaid,
+                                'balance_due'    => $newBalance,
+                                'status'         => $newStatus,
+                                'last_paid_date' => now()->toDateString(),
+                            ]);
+
+                            // If fully paid and has linked sale, mark sale completed
+                            if ($newBalance <= 0 && $record->sale_id) {
+                                \App\Models\Sale::where('id', $record->sale_id)->update([
+                                    'status'       => 'completed',
+                                    'amount_paid'  => $newPaid,
+                                    'balance_due'  => 0,
+                                    'completed_at' => now(),
+                                ]);
+                            }
+                        });
+
+                        Notification::make()
+                            ->title('Payment Recorded')
+                            ->body('$' . number_format($data['amount'], 2) . ' recorded successfully.')
+                            ->success()
+                            ->send();
+                    }),
+
+                // View linked sale
                 Action::make('view_sale')
                     ->label('View Sale')
                     ->icon('heroicon-o-eye')
                     ->color('gray')
-                    ->visible(fn(Laybuy $record) => $record->sale_id !== null)
-                    ->url(fn(Laybuy $record) =>
+                    ->visible(fn(DepositSale $record) => $record->sale_id !== null)
+                    ->url(fn(DepositSale $record) =>
                         \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id])
                     ),
             ])
