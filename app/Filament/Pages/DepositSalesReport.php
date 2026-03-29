@@ -35,7 +35,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
     use Tables\Concerns\InteractsWithTable;
 
     protected static ?string $navigationIcon  = 'heroicon-o-banknotes';
-    protected static ?string $navigationGroup = 'Analytics & Reports';
+    protected static ?string $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'Deposit Sales Report';
     protected static ?int    $navigationSort  = 3;
     protected static string  $view            = 'filament.pages.deposit-sales-report';
