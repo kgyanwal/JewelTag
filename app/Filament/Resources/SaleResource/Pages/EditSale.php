@@ -92,10 +92,8 @@ class EditSale extends EditRecord
         $record = $this->record;
 
         // ── AUTO-CORRECT STATUS BASED ON ACTUAL PAYMENTS ──────────────────────
-        // Get total already paid from payments table
         $alreadyPaid = $record->payments()->sum('amount');
 
-        // Add any new payment being entered now
         if ($record->is_split_payment) {
             $splits      = $data['split_payments'] ?? [];
             $newIntended = collect($splits)->sum(fn($p) => (float)($p['amount'] ?? 0));
@@ -103,23 +101,20 @@ class EditSale extends EditRecord
             $newIntended = floatval($data['amount_paid'] ?? 0);
         }
 
-        // Use the higher of already paid vs newly entered
         $totalPaid  = max($alreadyPaid, $newIntended);
         $finalTotal = floatval($record->final_total);
         $balance    = round($finalTotal - $totalPaid, 2);
 
         if ($balance <= 0) {
-            // Fully paid — force completed
             $data['status']      = 'completed';
             $data['balance_due'] = 0;
             if (!$record->completed_at) {
                 $data['completed_at'] = now();
             }
         } else {
-            // Still has balance — force pending
             $data['status']       = 'pending';
             $data['balance_due']  = $balance;
-            $data['completed_at'] = null; // clear completed_at if it was set
+            $data['completed_at'] = null;
         }
 
         // ── ACTIVITY LOG for completed sale edits ─────────────────────────────
@@ -151,6 +146,7 @@ class EditSale extends EditRecord
      * and only record the delta per method — never a single lump sum under wrong method.
      *
      * For non-split: record only the new delta as a single payment.
+     * If amount is unchanged but method changed, update the existing payment's method.
      */
     protected function afterSave(): void
     {
@@ -243,17 +239,18 @@ class EditSale extends EditRecord
                     (float) $sale->final_total
                 );
 
-                $delta = round($newIntendedTotal - $alreadyPaidTotal, 2);
+                $delta         = round($newIntendedTotal - $alreadyPaidTotal, 2);
+                $currentMethod = strtoupper(trim($sale->payment_method ?? 'CASH'));
 
                 if ($delta > 0) {
+                    // New money coming in — record it
                     Payment::create([
                         'sale_id' => $sale->id,
                         'amount'  => $delta,
-                        'method'  => strtoupper(trim($sale->payment_method ?? 'CASH')),
+                        'method'  => $currentMethod,
                         'paid_at' => now(),
                     ]);
 
-                    // Sync amount_paid
                     $sale->update(['amount_paid' => round($alreadyPaidTotal + $delta, 2)]);
 
                     Notification::make()
@@ -263,8 +260,8 @@ class EditSale extends EditRecord
                         ->send();
 
                 } elseif ($delta < 0) {
-                    // ── FIX: removed ->whereDate('paid_at', today()) so we can adjust
-                    //    payments from previous days when a sale is edited to a lower amount
+                    // Amount decreased — adjust the latest payment
+                    // NOTE: no date restriction — allows adjusting payments from previous days
                     $latestPayment = $sale->payments()->latest()->first();
 
                     if ($latestPayment) {
@@ -276,7 +273,6 @@ class EditSale extends EditRecord
                             $latestPayment->update(['amount' => $correctedAmount]);
                         }
 
-                        // Sync amount_paid
                         $sale->update(['amount_paid' => round($newIntendedTotal, 2)]);
 
                         Notification::make()
@@ -287,11 +283,26 @@ class EditSale extends EditRecord
                     }
 
                 } else {
-                    Notification::make()
-                        ->title('Sale Updated')
-                        ->body('No payment changes detected.')
-                        ->info()
-                        ->send();
+                    // ── Amount unchanged — but method may have changed ─────────
+                    // e.g. sale started as 'cash' default, later staff selected 'DEBIT CARD'
+                    // Update the existing payment record's method to match
+                    $latestPayment = $sale->payments()->latest()->first();
+
+                    if ($latestPayment && strtoupper(trim($latestPayment->method)) !== $currentMethod) {
+                        $latestPayment->update(['method' => $currentMethod]);
+
+                        Notification::make()
+                            ->title('Payment Method Updated')
+                            ->body('Payment method changed to ' . $currentMethod . '.')
+                            ->info()
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->title('Sale Updated')
+                            ->body('No payment changes detected.')
+                            ->info()
+                            ->send();
+                    }
                 }
             }
         });
