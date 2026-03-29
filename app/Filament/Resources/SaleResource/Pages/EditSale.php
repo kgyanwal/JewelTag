@@ -97,28 +97,28 @@ class EditSale extends EditRecord
 
         // Add any new payment being entered now
         if ($record->is_split_payment) {
-            $splits = $data['split_payments'] ?? [];
+            $splits      = $data['split_payments'] ?? [];
             $newIntended = collect($splits)->sum(fn($p) => (float)($p['amount'] ?? 0));
         } else {
             $newIntended = floatval($data['amount_paid'] ?? 0);
         }
 
         // Use the higher of already paid vs newly entered
-        $totalPaid = max($alreadyPaid, $newIntended);
+        $totalPaid  = max($alreadyPaid, $newIntended);
         $finalTotal = floatval($record->final_total);
-        $balance = round($finalTotal - $totalPaid, 2);
+        $balance    = round($finalTotal - $totalPaid, 2);
 
         if ($balance <= 0) {
             // Fully paid — force completed
-            $data['status'] = 'completed';
+            $data['status']      = 'completed';
             $data['balance_due'] = 0;
             if (!$record->completed_at) {
                 $data['completed_at'] = now();
             }
         } else {
             // Still has balance — force pending
-            $data['status'] = 'pending';
-            $data['balance_due'] = $balance;
+            $data['status']       = 'pending';
+            $data['balance_due']  = $balance;
             $data['completed_at'] = null; // clear completed_at if it was set
         }
 
@@ -130,11 +130,11 @@ class EditSale extends EditRecord
                 'module'     => 'Sale',
                 'identifier' => $record->invoice_number,
                 'changes'    => json_encode([
-                    'note'          => 'Completed sale was edited',
-                    'edited_by'     => auth()->user()->name,
-                    'ip'            => request()->ip(),
-                    'final_total'   => $record->final_total,
-                    'status'        => $record->status,
+                    'note'        => 'Completed sale was edited',
+                    'edited_by'   => auth()->user()->name,
+                    'ip'          => request()->ip(),
+                    'final_total' => $record->final_total,
+                    'status'      => $record->status,
                 ]),
                 'url'        => '/' . request()->path(),
                 'ip_address' => request()->ip(),
@@ -196,10 +196,10 @@ class EditSale extends EditRecord
                         $anyChange = true;
 
                     } elseif ($methodDelta < 0) {
-                        // Overpaid on this method — adjust latest payment for this method today
+                        // Overpaid on this method — adjust latest payment for this method
+                        // NOTE: no date restriction — allows adjusting payments from previous days
                         $latestPayment = $sale->payments()
                             ->whereRaw('UPPER(TRIM(method)) = ?', [$method])
-                            ->whereDate('paid_at', today())
                             ->latest()
                             ->first();
 
@@ -263,7 +263,9 @@ class EditSale extends EditRecord
                         ->send();
 
                 } elseif ($delta < 0) {
-                    $latestPayment = $sale->payments()->whereDate('paid_at', today())->latest()->first();
+                    // ── FIX: removed ->whereDate('paid_at', today()) so we can adjust
+                    //    payments from previous days when a sale is edited to a lower amount
+                    $latestPayment = $sale->payments()->latest()->first();
 
                     if ($latestPayment) {
                         $correctedAmount = round($latestPayment->amount + $delta, 2);
