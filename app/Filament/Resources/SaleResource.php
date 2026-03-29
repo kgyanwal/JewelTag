@@ -699,16 +699,16 @@ class SaleResource extends Resource
                                 ->columnSpanFull(),
 
                             // ── STANDARD PAYMENT ──────────────────────────────────
-                            Select::make('payment_method')
-                                ->label('Payment Method')
-                                ->options(self::getPaymentOptions())
-                                ->default('cash')
-                                ->required(fn(Get $get) => !$get('is_split_payment'))
-                                ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                ->live()
-                                ->afterStateUpdated(function (Get $get, Set $set) {
-                                    self::updateTotals($get, $set);
-                                }),
+                        Select::make('payment_method')
+                            ->label('Payment Method')
+                            ->options(self::getPaymentOptions())
+                            ->placeholder('Select Payment Method')  // ← replaces ->default('cash')
+                            ->required(fn(Get $get) => !$get('is_split_payment'))
+                            ->visible(fn(Get $get) => !$get('is_split_payment'))
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set) {
+                                self::updateTotals($get, $set);
+                            }),
 
                             // Big blue display of total to collect
                             TextInput::make('display_total_due')
