@@ -300,11 +300,27 @@
                 <div style="font-size: 12px; margin-top: 4px; font-weight: 700;">
                     {{ strtoupper($item->custom_description) }}
                 </div>
-                @if($sale->notes)
-                    <div class="instructions">
-                        <strong>Sales Notes:</strong><br>{{ $sale->notes }}
-                    </div>
-                @endif
+               {{-- NEW: Read from special_jobs repeater --}}
+@if(!empty($sale->special_jobs))
+    @foreach($sale->special_jobs as $job)
+    <div class="instructions" style="margin-top:6px;">
+        <strong>{{ strtoupper($job['job_type'] ?? 'Job') }}</strong>
+        @if(!empty($job['metal_type'])) — {{ $job['metal_type'] }}@endif
+        @if(!empty($job['date_required'])) | Due: {{ \Carbon\Carbon::parse($job['date_required'])->format('m/d/Y') }}@endif
+        @if(($job['job_type'] ?? '') === 'Resize' && (!empty($job['current_size']) || !empty($job['target_size'])))
+            <br>Size: {{ $job['current_size'] ?? '?' }} → {{ $job['target_size'] ?? '?' }}
+        @endif
+        @if(!empty($job['job_instructions']))
+            <br>{{ $job['job_instructions'] }}
+        @endif
+    </div>
+    @endforeach
+@elseif($sale->notes)
+    {{-- Fallback for old sales saved before special_jobs --}}
+    <div class="instructions">
+        <strong>Notes:</strong><br>{{ $sale->notes }}
+    </div>
+@endif
             </td>
             <td></td>
         </tr>
