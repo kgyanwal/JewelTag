@@ -302,7 +302,39 @@ class LaybuyResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('laybuy_no')->label('ID')->searchable(),
-                TextColumn::make('customer.name')->label('Customer')->weight('bold'),
+                 TextColumn::make('customer.name')
+                    ->label('Customer')
+                    ->weight('bold')
+                    // FIX: Show full name like CustomerResource does
+                    ->formatStateUsing(fn($record) =>
+                        trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? ''))
+                    )
+                    ->description(fn($record) => $record->customer?->phone),
+                      TextColumn::make('progress')
+                    ->label('Progress')
+                    ->getStateUsing(function ($record) {
+                        $total = floatval($record->total_amount);
+                        if ($total <= 0) return new HtmlString('<span class="text-gray-400">—</span>');
+ 
+                        // FIX: Same logic as form progress bar — sum both laybuy + sale payments
+                        $salePayments   = $record->sale ? $record->sale->payments->sum('amount') : 0;
+                        $laybuyPayments = $record->payments->sum('amount');
+                        $paid           = $salePayments + $laybuyPayments;
+                        $perc           = min(100, round(($paid / $total) * 100));
+                        $color          = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
+ 
+                        return new HtmlString("
+                            <div style='min-width:140px;'>
+                                <div style='display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px;'>
+                                    <span style='color:#6b7280;'>\$" . number_format($paid, 2) . " / \$" . number_format($total, 2) . "</span>
+                                    <span style='color:{$color};font-weight:900;'>{$perc}%</span>
+                                </div>
+                                <div style='background:#e5e7eb;border-radius:999px;height:7px;overflow:hidden;'>
+                                    <div style='background:{$color};width:{$perc}%;height:100%;border-radius:999px;transition:width 0.3s;'></div>
+                                </div>
+                            </div>
+                        ");
+                    }),
                 TextColumn::make('balance_due')->money('USD')->label('Balance')->color('danger')->sortable(),
                 TextColumn::make('status')->badge(),
                 TextColumn::make('due_date')->date()->label('Deadline'),

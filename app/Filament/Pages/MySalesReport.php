@@ -80,7 +80,7 @@ class MySalesReport extends Page implements HasTable
                     ->separator(','),
 
                 TextColumn::make('subtotal')
-                    ->label('Subtotal (My Share)')
+                    ->label('Subtotal (My Sale)')
                     ->alignRight()
                     ->formatStateUsing(function ($state, $record) {
                         $staffList = is_string($record->sales_person_list)
@@ -96,7 +96,7 @@ class MySalesReport extends Page implements HasTable
                             $html .= "<div class='text-xs text-gray-400'>Invoice Total: $"
                                    . number_format($state, 2) . "</div>";
                             $html .= "<div class='text-[10px] text-primary-600 font-medium uppercase tracking-wider'>"
-                                   . "Split {$count} ways</div>";
+                                   . "Split with {$count}</div>";
                         } else {
                             $html .= "<div class='text-[10px] text-gray-400 font-medium uppercase tracking-wider'>"
                                    . "Full Sale Amount</div>";
@@ -106,7 +106,7 @@ class MySalesReport extends Page implements HasTable
                     })
                     ->summarize(
                         Summarizer::make()
-                            ->label('My Total Share')
+                            ->label('My Total Amount')
                             ->using(function ($query) {
                                 $rows       = $query->get(['subtotal', 'sales_person_list']);
                                 $totalShare = 0;
