@@ -146,19 +146,24 @@ class ImportOnSwimSales extends Command
                     $staff = array_filter([trim($firstItem['Sales Assistant'] ?? null), trim($firstItem['Sales Assistant 2'] ?? null)]);
 
                     $sale = Sale::withoutEvents(fn() => 
-                        Sale::updateOrCreate(
-                            ['invoice_number' => $invoiceNo],
-                            [
-                                'customer_id'       => $customerId,
-                                'store_id'          => $storeId,
-                                'status'            => 'completed',
-                                'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
-                                'created_at'        => $purchaseDate,
-                                'payment_method'    => 'cash',
-                                'repair_number'     => $firstItem['Repair Number'] ?? null,
-                            ]
-                        )
-                    );
+                Sale::updateOrCreate(
+                    ['invoice_number' => $invoiceNo],
+                    [
+                        'customer_id'       => $customerId,
+                        'store_id'          => $storeId,
+                        'status'            => 'completed',
+                        'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
+                        'created_at'        => $purchaseDate,
+                        'payment_method'    => 'cash',
+                        'repair_number'     => $firstItem['Repair Number'] ?? null,
+                        // 👇 Add these lines to prevent the "No Default Value" error
+                        'subtotal'          => 0,
+                        'tax_amount'        => 0,
+                        'final_total'       => 0,
+                        'discount_amount'   => 0,
+                    ]
+                )
+            );
 
                     // Clear items to allow fresh overwrite
                     $sale->items()->delete();
