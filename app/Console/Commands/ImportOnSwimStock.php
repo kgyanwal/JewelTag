@@ -32,16 +32,19 @@ class ImportOnSwimStock extends Command
             $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
 
-            $dbName = config('database.connections.tenant.database');
-            $directoryPath = storage_path("/{$tenantId}/data");
+            // 🚀 MATCHING YOUR 'LS' STRUCTURE: storage/tenantlxd/lxd/data/
+            $dbName = config('database.connections.tenant.database'); // 'tenantlxd'
+            $directoryPath = storage_path("{$dbName}/{$tenantId}/data");
 
             // Ensure directory exists
             if (!File::exists($directoryPath)) {
                 File::makeDirectory($directoryPath, 0755, true);
             }
 
-            // Dynamic filename: stock_mar30_26.csv
-            $yesterday = Carbon::yesterday()->format('M d, y');
+            // 🚀 MATCHING YOUR FILENAME: stock_2026_03_30.csv
+            // 'Y' = 2026, 'm' = 03, 'd' = 30
+            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
+            
             $fileName = "stock_{$yesterday}.csv";
             $filePath = "{$directoryPath}/{$fileName}";
 
