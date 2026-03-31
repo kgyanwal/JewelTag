@@ -57,22 +57,22 @@ class MySalesReport extends Page implements HasTable
                     ->searchable(),
 
                 TextColumn::make('customer_name_display')
-    ->label('Customer')
-    ->getStateUsing(fn($record) =>
-        $record->customer
-            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
-            : '—'
-    )
-    ->searchable(
-        query: function (Builder $query, string $search): Builder {
-            return $query->whereHas('customer', fn($q) =>
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%")
-                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-            );
-        }
-    )
-    ->sortable(false),
+                    ->label('Customer')
+                    ->getStateUsing(fn($record) =>
+                        $record->customer
+                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+                            : '—'
+                    )
+                    ->searchable(
+                        query: function (Builder $query, string $search): Builder {
+                            return $query->whereHas('customer', fn($q) =>
+                                $q->where('name', 'like', "%{$search}%")
+                                  ->orWhere('last_name', 'like', "%{$search}%")
+                                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            );
+                        }
+                    )
+                    ->sortable(false),
 
                 TextColumn::make('sales_person_list')
                     ->label('Associates')
@@ -80,7 +80,7 @@ class MySalesReport extends Page implements HasTable
                     ->separator(','),
 
                 TextColumn::make('subtotal')
-                    ->label('Subtotal (My Sale)')
+                    ->label('Subtotal (My Share)')
                     ->alignRight()
                     ->formatStateUsing(function ($state, $record) {
                         $staffList = is_string($record->sales_person_list)
@@ -105,19 +105,47 @@ class MySalesReport extends Page implements HasTable
                         return new HtmlString($html);
                     })
                     ->summarize(
+                        // Single summarizer — shows Split Total | Solo Total | My Total in one cell
                         Summarizer::make()
-                            ->label('My Total Amount')
+                            ->label('')
                             ->using(function ($query) {
-                                $rows       = $query->get(['subtotal', 'sales_person_list']);
-                                $totalShare = 0;
-                                foreach ($rows as $sale) {
-                                    $staffList  = is_string($sale->sales_person_list)
+                                $sales = $query->get(['subtotal', 'sales_person_list']);
+
+                                $splitTotal  = 0;
+                                $soloTotal   = 0;
+                                $myTotal     = 0;
+
+                                foreach ($sales as $sale) {
+                                    $staffList = is_string($sale->sales_person_list)
                                         ? json_decode($sale->sales_person_list, true)
                                         : ($sale->sales_person_list ?? []);
-                                    $count      = max(1, is_array($staffList) ? count($staffList) : 1);
-                                    $totalShare += ($sale->subtotal / $count);
+                                    $count  = max(1, is_array($staffList) ? count($staffList) : 1);
+                                    $share  = floatval($sale->subtotal) / $count;
+                                    $myTotal += $share;
+
+                                    if ($count > 1) {
+                                        $splitTotal += floatval($sale->subtotal);
+                                    } else {
+                                        $soloTotal += floatval($sale->subtotal);
+                                    }
                                 }
-                                return '$' . number_format($totalShare, 2);
+
+                                return new HtmlString(
+                                    "<div style='display:flex;gap:24px;justify-content:flex-end;align-items:center;flex-wrap:wrap;'>"
+                                    . "<div style='text-align:right;'>"
+                                    .   "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;'>Split Sales</div>"
+                                    .   "<div style='font-size:16px;font-weight:900;color:#d97706;'>$" . number_format($splitTotal, 2) . "</div>"
+                                    . "</div>"
+                                    . "<div style='text-align:right;'>"
+                                    .   "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;'>Solo Sales</div>"
+                                    .   "<div style='font-size:16px;font-weight:900;color:#0284c7;'>$" . number_format($soloTotal, 2) . "</div>"
+                                    . "</div>"
+                                    . "<div style='text-align:right;padding:4px 10px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;'>"
+                                    .   "<div style='font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.05em;'>My Total</div>"
+                                    .   "<div style='font-size:18px;font-weight:900;color:#15803d;'>$" . number_format($myTotal, 2) . "</div>"
+                                    . "</div>"
+                                    . "</div>"
+                                );
                             })
                     ),
             ])
@@ -176,17 +204,13 @@ class MySalesReport extends Page implements HasTable
     public function getStats(): array
     {
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
+        $isSuperadmin = auth()->user()->hasRole('Superadmin');
         $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
         $currentUser  = auth()->user()->name;
 
-        // Use $this->tableFilters (real Livewire property) — getTableFilters() does not exist
         $filters       = $this->tableFilters ?? [];
         $filteredAssoc = $isPrivileged ? ($filters['staff_filter']['associate'] ?? null) : null;
-
-        // non-privileged → always themselves
-        // admin + filter → selected associate
-        // admin no filter → themselves
-        $viewingUser = $filteredAssoc ?? $currentUser;
+        $viewingUser   = $filteredAssoc ?? $currentUser;
 
         $applyDates = function (Builder $q) use ($filters, $tz): Builder {
             if (!empty($filters['created_at']['from'])) {
@@ -212,12 +236,12 @@ class MySalesReport extends Page implements HasTable
             $staffList = is_string($sale->sales_person_list)
                 ? json_decode($sale->sales_person_list, true)
                 : ($sale->sales_person_list ?? []);
-            $count     = max(1, is_array($staffList) ? count($staffList) : 1);
-            $netShare += ($sale->subtotal / $count);
+            $count    = max(1, is_array($staffList) ? count($staffList) : 1);
+            $netShare += (floatval($sale->subtotal) / $count);
         }
 
         $storeTotal = null;
-        if ($isPrivileged) {
+        if ($isSuperadmin) {
             $storeQuery = Sale::query()
                 ->where('status', 'completed')
                 ->where('balance_due', 0);
@@ -231,6 +255,7 @@ class MySalesReport extends Page implements HasTable
             'tax'            => $sales->sum('tax_amount'),
             'store_total'    => $storeTotal,
             'is_privileged'  => $isPrivileged,
+            'is_superadmin'  => $isSuperadmin,
             'user_name'      => $currentUser,
             'viewing_user'   => $viewingUser,
             'filtered_assoc' => $filteredAssoc,
