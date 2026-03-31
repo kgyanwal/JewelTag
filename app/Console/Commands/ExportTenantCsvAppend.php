@@ -109,11 +109,21 @@ class ExportTenantCsvAppend extends Command
         $csvLines    = [];
         $fileExists  = Storage::disk('s3')->exists($s3Path);
 
-        if ($fileExists) {
+      if ($fileExists) {
     $existing = Storage::disk('s3')->get($s3Path);
-    if (str_contains($existing, $dateLabel)) {
-        $this->line("  ⏭ {$table}: {$dateLabel} already exported, skipping.");
-        return;
+    // Check if date appears as a DATA date (created_at), not just export date
+    // Look for the date in the actual data columns, not _export_date
+    $lines = explode("\n", $existing);
+    foreach ($lines as $line) {
+        // Skip header and empty lines
+        if (empty($line) || str_starts_with($line, 'id,')) continue;
+        // The data date appears at position before _export_date
+        // Check if line contains dateLabel NOT at the very end (export date position)
+        $withoutExportDate = preg_replace('/,' . preg_quote(now()->format('Y-m-d'), '/') . '[^,\n]*$/', '', $line);
+        if (str_contains($withoutExportDate, $dateLabel)) {
+            $this->line("  ⏭ {$table}: {$dateLabel} already exported, skipping.");
+            return;
+        }
     }
 }
 
