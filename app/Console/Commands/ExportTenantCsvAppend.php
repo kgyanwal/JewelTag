@@ -109,10 +109,13 @@ class ExportTenantCsvAppend extends Command
         $csvLines    = [];
         $fileExists  = Storage::disk('s3')->exists($s3Path);
 
-        if (!$fileExists) {
-            // First time — write header row (with _export_date column added)
-            $csvLines[] = $this->toCsvLine(array_merge($headers, ['_export_date']));
-        }
+        if ($fileExists) {
+    $existing = Storage::disk('s3')->get($s3Path);
+    if (str_contains($existing, $dateLabel)) {
+        $this->line("  ⏭ {$table}: {$dateLabel} already exported, skipping.");
+        return;
+    }
+}
 
         foreach ($rows as $row) {
             $row['_export_date'] = now()->toDateTimeString();
