@@ -10,6 +10,7 @@ use App\Models\ProductItem;
 use App\Models\Store;
 use App\Models\Repair;
 use App\Models\Tenant;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,10 +20,10 @@ use Illuminate\Support\Str;
 class ImportOnSwimSales extends Command
 {
     /**
-     * Signature restored with all options
+     * Signature restored with all functional flags
      */
     protected $signature = 'import:onswim-sales {tenant} {--rollback} {--dry-run}';
-    protected $description = 'Import sales with full pre-calculation and duplicate detection';
+    protected $description = 'Import sales with pre-calculation, cross-format duplicate detection, and SQL constraint fixes';
 
     public function handle()
     {
@@ -36,10 +37,14 @@ class ImportOnSwimSales extends Command
             $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
 
-            // 🚀 WORKING PATH: storage/lxd/data/
+            // 🛡️ FIX 1: Authenticate admin to satisfy activity_logs foreign key constraint
+            $adminUser = User::first();
+            if ($adminUser) {
+                auth()->login($adminUser);
+            }
+
+            // 🚀 WORKING PATH & DATE PATTERN
             $directoryPath = storage_path("/{$tenantId}/data");
-            
-            // 🚀 WORKING DATE PATTERN: sales_2026_03_30.csv
             $yesterday = Carbon::yesterday()->format('Y_m_d'); 
             $fileName = "sales_{$yesterday}.csv";
             $filePath = "{$directoryPath}/{$fileName}";
@@ -56,12 +61,14 @@ class ImportOnSwimSales extends Command
 
         // Handle Rollback
         if ($this->option('rollback')) {
-            $this->warn("Rolling back sales for tenant: {$tenantId}...");
-            Schema::disableForeignKeyConstraints();
-            SaleItem::truncate();
-            Sale::truncate();
-            Schema::enableForeignKeyConstraints();
-            $this->info("Sales tables truncated.");
+            $this->warn("Rolling back (deleting) ALL sales for tenant: {$tenantId}...");
+            if ($this->confirm('Are you sure?', false)) {
+                Schema::disableForeignKeyConstraints();
+                SaleItem::truncate();
+                Sale::truncate();
+                Schema::enableForeignKeyConstraints();
+                $this->info("Sales tables truncated.");
+            }
             return;
         }
 
@@ -80,24 +87,21 @@ class ImportOnSwimSales extends Command
         }
         fclose($file);
 
-        // Grouping logic for single invoice creation
+        // Grouping: One Job/Date/Customer combo = One Invoice
         $salesGroups = collect($rows)->groupBy(fn($item) => 
             trim($item['Job No.'] ?? '0') . '-' . trim($item['Purchase Date'] ?? '0') . '-' . trim($item['Customer No.'] ?? 'WALKIN')
         );
 
-        $this->info("Processing " . $salesGroups->count() . " sales...");
+        $this->info("Processing " . $salesGroups->count() . " individual sales...");
         $bar = $this->output->createProgressBar($salesGroups->count());
         
-        // Stats tracking
-        $created = 0; $skipped = 0; $updated = 0;
+        $created = 0; $skipped = 0;
 
         DB::connection('tenant')->beginTransaction();
 
         try {
             foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
-                
-                // 🚀 DUAL-PHONE SEARCH (Home and Mobile addressed)
                 $customer = $this->findCustomer($firstItem);
                 $customerId = $customer?->id ?? $walkInCustomer->id;
 
@@ -105,7 +109,7 @@ class ImportOnSwimSales extends Command
                 $rawJobNo = trim($firstItem['Job No.'] ?? '');
                 $jobNo = empty($rawJobNo) ? rand(10000, 99999) : $rawJobNo;
 
-                // ── PRE-CALCULATE TOTAL for duplicate detection ──
+                // ── 🛡️ RESTORED: PRE-CALCULATE TOTAL for duplicate detection ──
                 $preCalcSubtotal = 0;
                 $preCalcTax = 0;
                 foreach ($items as $preItem) {
@@ -116,11 +120,11 @@ class ImportOnSwimSales extends Command
                 }
                 $preCalcTotal = $preCalcSubtotal + $preCalcTax;
 
-                // ── CHECK 1: Exact invoice number duplicate (Idempotency) ──
+                // ── 🚀 INVOICE NUMBER GENERATION ──
                 $baseInvoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
                 $invoiceNo = $baseInvoiceNo;
-                
-                // ── CHECK 2: Cross-format POS duplicate check ──
+
+                // ── 🛡️ RESTORED: CROSS-FORMAT DUPLICATE CHECK ──
                 if ($customerId !== $walkInCustomer->id && $preCalcTotal > 0) {
                     $crossFormatDuplicate = Sale::where('customer_id', $customerId)
                         ->whereBetween('created_at', [
@@ -142,31 +146,29 @@ class ImportOnSwimSales extends Command
                 }
 
                 if (!$isDryRun) {
-                    // 🚀 CREATE/UPDATE PARENT SALE
-                    $staff = array_filter([trim($firstItem['Sales Assistant'] ?? null), trim($firstItem['Sales Assistant 2'] ?? null)]);
-
+                    // ── 🚀 FIX 2: Added 0 defaults to satisfy DB NOT NULL constraints ──
                     $sale = Sale::withoutEvents(fn() => 
-                Sale::updateOrCreate(
-                    ['invoice_number' => $invoiceNo],
-                    [
-                        'customer_id'       => $customerId,
-                        'store_id'          => $storeId,
-                        'status'            => 'completed',
-                        'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
-                        'created_at'        => $purchaseDate,
-                        'payment_method'    => 'cash',
-                        'repair_number'     => $firstItem['Repair Number'] ?? null,
-                        // 👇 Add these lines to prevent the "No Default Value" error
-                        'subtotal'          => 0,
-                        'tax_amount'        => 0,
-                        'final_total'       => 0,
-                        'discount_amount'   => 0,
-                    ]
-                )
-            );
+                        Sale::updateOrCreate(
+                            ['invoice_number' => $invoiceNo],
+                            [
+                                'customer_id'       => $customerId,
+                                'store_id'          => $storeId,
+                                'status'            => 'completed',
+                                'sales_person_list' => array_filter([trim($firstItem['Sales Assistant'] ?? ''), trim($firstItem['Sales Assistant 2'] ?? '')]) ?: ['System'],
+                                'created_at'        => $purchaseDate,
+                                'payment_method'    => 'cash',
+                                'repair_number'     => $firstItem['Repair Number'] ?? null,
+                                'subtotal'          => 0,
+                                'tax_amount'        => 0,
+                                'final_total'       => 0,
+                                'discount_amount'   => 0,
+                                'amount_paid'       => 0,
+                            ]
+                        )
+                    );
 
-                    // Clear items to allow fresh overwrite
-                    $sale->items()->delete();
+                    // Clear items for overwrite - bypasses heavy observers
+                    SaleItem::withoutEvents(fn() => $sale->items()->delete());
 
                     $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
 
@@ -187,18 +189,21 @@ class ImportOnSwimSales extends Command
 
                         $repairId = !empty($item['Repair Number']) ? Repair::where('repair_no', $item['Repair Number'])->value('id') : null;
 
-                        $sale->items()->create([
-                            'product_item_id'    => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
-                            'repair_id'          => $repairId,
-                            'custom_description' => $item['Description'] ?? 'Item',
-                            'job_description'    => Str::limit(trim($item['Job Description'] ?? ''), 250, ''),
-                            'qty'                => $qty,
-                            'sold_price'         => $soldPrice,
-                            'discount_amount'    => $discAmount,
-                            'discount_percent'   => floatval($item['Discount'] ?? 0),
-                            'is_manual'          => empty($item['Stock/Item No.']),
-                            'store_id'           => $storeId,
-                        ]);
+                        // 🛡️ Bypasses Activity Log crashes on line-items
+                        SaleItem::withoutEvents(fn() =>
+                            $sale->items()->create([
+                                'product_item_id'    => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
+                                'repair_id'          => $repairId,
+                                'custom_description' => $item['Description'] ?? 'Item',
+                                'job_description'    => Str::limit(trim($item['Job Description'] ?? ''), 250, ''),
+                                'qty'                => $qty,
+                                'sold_price'         => $soldPrice,
+                                'discount_amount'    => $discAmount,
+                                'discount_percent'   => floatval($item['Discount'] ?? 0),
+                                'is_manual'          => empty($item['Stock/Item No.']),
+                                'store_id'           => $storeId,
+                            ])
+                        );
 
                         $subtotal += ($soldPrice * $qty);
                         $taxTotal += $taxAmount;
@@ -206,16 +211,20 @@ class ImportOnSwimSales extends Command
                     }
 
                     $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
-                    $sale->update([
-                        'subtotal'             => $subtotal,
-                        'tax_amount'           => $taxTotal,
-                        'discount_amount'      => $discountTotal,
-                        'has_trade_in'         => $tradeInTotal > 0,
-                        'trade_in_value'       => $tradeInTotal,
-                        'trade_in_description' => rtrim($tradeInDesc, '; '),
-                        'final_total'          => $finalTotal,
-                        'payment_amount_1'     => $finalTotal,
-                    ]);
+                    
+                    Sale::withoutEvents(fn() =>
+                        $sale->update([
+                            'subtotal'             => $subtotal,
+                            'tax_amount'           => $taxTotal,
+                            'discount_amount'      => $discountTotal,
+                            'has_trade_in'         => $tradeInTotal > 0,
+                            'trade_in_value'       => $tradeInTotal,
+                            'trade_in_description' => rtrim($tradeInDesc, '; '),
+                            'final_total'          => $finalTotal,
+                            'amount_paid'          => $finalTotal,
+                            'payment_amount_1'     => $finalTotal,
+                        ])
+                    );
                     $created++;
                 }
                 $bar->advance();
@@ -225,38 +234,31 @@ class ImportOnSwimSales extends Command
                 DB::connection('tenant')->rollBack();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ DRY RUN COMPLETE. No data changed.");
+                $this->info("✅ DRY RUN COMPLETE.");
             } else {
                 DB::connection('tenant')->commit();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ Sales Import Complete!");
-                $this->table(
-                    ['Created/Updated', 'Skipped (POS Duplicates)'],
-                    [[$created, $skipped]]
-                );
+                $this->info("✅ SUCCESS: Sales synchronized.");
+                $this->table(['Created/Updated', 'Skipped (Duplicates)'], [[$created, $skipped]]);
             }
+
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
-            $this->error("\nCritical Error: " . $e->getMessage());
+            $this->error("\nImport Error: " . $e->getMessage());
         }
     }
 
     /**
-     * 🚀 DUAL PHONE RESOLUTION: Checks Mobile and Customer Ph (Home)
+     * 🛡️ RESTORED: DUAL PHONE SEARCH
      */
     private function findCustomer($data)
     {
         $onSwimCustNo = trim($data['Customer No.'] ?? '');
         $email = strtolower(trim($data['Email'] ?? ''));
-        
-        // Check both potential phone columns
-        $rawMobile = trim($data['Mobile'] ?? '');
-        $rawHome = trim($data['Customer Ph'] ?? '');
-        
         $searchPhones = array_filter([
-            preg_replace('/[^0-9]/', '', $rawMobile),
-            preg_replace('/[^0-9]/', '', $rawHome)
+            preg_replace('/[^0-9]/', '', trim($data['Mobile'] ?? '')),
+            preg_replace('/[^0-9]/', '', trim($data['Customer Ph'] ?? ''))
         ]);
 
         if (!empty($onSwimCustNo)) {
@@ -267,15 +269,12 @@ class ImportOnSwimSales extends Command
             $found = Customer::withoutGlobalScopes()->where('email', $email)->first();
             if ($found) return $found;
         }
-        
-        // Iterate through both Mobile and Home phone to find a match
         foreach ($searchPhones as $cleanPhone) {
             if (strlen($cleanPhone) >= 7) {
-                $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}%")->first();
+                $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}")->first();
                 if ($found) return $found;
             }
         }
-        
         return null;
     }
 }
