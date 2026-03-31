@@ -33,7 +33,6 @@ class ImportOnSwimStock extends Command
             tenancy()->initialize($tenant);
 
             // 🚀 MATCHING YOUR 'LS' STRUCTURE: storage/tenantlxd/lxd/data/
-            $dbName = config('database.connections.tenant.database'); // 'tenantlxd'
             $directoryPath = storage_path("/{$tenantId}/data");
 
             // Ensure directory exists
