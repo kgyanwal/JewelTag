@@ -33,7 +33,7 @@ class ImportOnSwimStock extends Command
             tenancy()->initialize($tenant);
 
             $dbName = config('database.connections.tenant.database');
-            $directoryPath = storage_path("{$dbName}/{$tenantId}/data");
+            $directoryPath = storage_path("/{$tenantId}/data");
 
             // Ensure directory exists
             if (!File::exists($directoryPath)) {
@@ -42,8 +42,7 @@ class ImportOnSwimStock extends Command
 
             // Dynamic filename: stock_mar30_26.csv
             $yesterday = Carbon::yesterday()->format('M d, y');
-            $formattedDate = str_replace([' ', ','], '', strtolower($yesterday)); 
-            $fileName = "stock_" . $formattedDate . ".csv";
+            $fileName = "stock_{$yesterday}.csv";
             $filePath = "{$directoryPath}/{$fileName}";
 
             if (!File::exists($filePath)) {
