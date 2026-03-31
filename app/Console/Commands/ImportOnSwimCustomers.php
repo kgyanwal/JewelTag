@@ -14,9 +14,11 @@ use Illuminate\Support\Str;
 
 class ImportOnSwimCustomers extends Command
 {
-    // 🚀 Added --dry-run and kept --rollback
+    /**
+     * Signature includes tenant, rollback option, and dry-run safety.
+     */
     protected $signature = 'import:onswim-customers {tenant} {--rollback} {--dry-run}';
-    protected $description = 'Import customers with dynamic pathing and database-level conflict resolution';
+    protected $description = 'Import customers from OnSwim CSV with dual-phone logic and conflict resolution';
 
     public function handle()
     {
@@ -30,7 +32,7 @@ class ImportOnSwimCustomers extends Command
             $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
 
-            // 🚀 WORKING PATH PATTERN
+            // 🚀 WORKING PATH: storage/lxd/data/
             $directoryPath = storage_path("/{$tenantId}/data");
             
             // 🚀 WORKING DATE PATTERN: customers_2026_03_30.csv
@@ -39,7 +41,9 @@ class ImportOnSwimCustomers extends Command
             $filePath = "{$directoryPath}/{$fileName}";
 
             if (!File::exists($filePath)) {
-                $this->error("❌ FILE NOT FOUND: {$filePath}");
+                $this->newLine();
+                $this->error("❌ FILE NOT FOUND");
+                $this->warn("Expected Path: {$filePath}");
                 return Command::SUCCESS; 
             }
 
@@ -48,23 +52,26 @@ class ImportOnSwimCustomers extends Command
             return Command::FAILURE;
         }
 
-        // Login first user as admin for auditing
+        // Authenticate system user for activity logging
         $adminUser = User::first();
         if ($adminUser) auth()->login($adminUser); 
 
+        // Handle Rollback
         if ($this->option('rollback')) {
             $this->warn("Rolling back (deleting) customers for tenant: {$tenantId}...");
             if ($this->confirm('This will delete ALL customers. Are you sure?', false)) {
                 Schema::disableForeignKeyConstraints();
                 Customer::truncate();
                 Schema::enableForeignKeyConstraints();
-                $this->info("Customer table truncated.");
+                $this->info("Customer table truncated successfully.");
             }
             return;
         }
 
         if ($isDryRun) {
-            $this->warn("🛠️ DRY RUN ENABLED: No changes will be saved.");
+            $this->newLine();
+            $this->warn("🛠️  DRY RUN ENABLED: No changes will be saved to the database.");
+            $this->newLine();
         }
 
         $file = fopen($filePath, 'r');
@@ -84,19 +91,24 @@ class ImportOnSwimCustomers extends Command
                 $totalRows++;
                 $data = array_combine($headers, $row);
 
+                // 🚀 DUAL-PHONE LOGIC: Check Mobile first, fallback to Home Phone
                 $email = strtolower(trim($data['Email'] ?? ''));
-                $phone = $this->formatPhone($data['Mobile'] ?? $data['Home Phone'] ?? '');
+                $mobile = $this->formatPhone($data['Mobile'] ?? '');
+                $homePhone = $this->formatPhone($data['Home Phone'] ?? '');
+                $primaryPhone = !empty($mobile) ? $mobile : $homePhone;
+
                 $rawCustNo = trim($data['Cust No.'] ?? '');
 
                 if (!$isDryRun) {
-                    Customer::withoutEvents(function () use ($rawCustNo, $data, $email, $phone, &$created, &$updated, &$tempIdsCreated) {
+                    Customer::withoutEvents(function () use ($rawCustNo, $data, $email, $primaryPhone, $homePhone, &$created, &$updated, &$tempIdsCreated) {
                         $customer = null;
 
-                        // 🚀 IMPROVED MATCHING: Try ID first, then Email
+                        // 1. Match by OnSwim ID
                         if (!empty($rawCustNo)) {
                             $customer = Customer::withoutGlobalScopes()->where('customer_no', 'CUST-' . $rawCustNo)->first();
                         }
-                        
+
+                        // 2. Fallback: Match by Email to prevent duplicates
                         if (!$customer && !empty($email)) {
                             $customer = Customer::withoutGlobalScopes()->where('email', $email)->first();
                         }
@@ -122,8 +134,8 @@ class ImportOnSwimCustomers extends Command
                             'name' => $data['First Name'] ?? 'Walk-in',
                             'last_name' => $data['Last Name'] ?? null,
                             'email' => $email ?: $customer->email,
-                            'phone' => $phone ?: $customer->phone,
-                            'home_phone' => $data['Home Phone'] ?? null,
+                            'phone' => $primaryPhone ?: $customer->phone,
+                            'home_phone' => $homePhone ?: $customer->home_phone,
                             'street'   => $data['Street'] ?? null,
                             'suburb'   => $data['Suburb/City'] ?? null,   
                             'city'     => $cityValue,
@@ -146,14 +158,20 @@ class ImportOnSwimCustomers extends Command
                             'company' => $data['Company'] ?? null,
                         ]);
 
+                        // 🚀 BULLETPROOF SAVE: Revert conflicting fields if unique constraint is hit
                         try {
                             $customer->save();
                         } catch (\Illuminate\Database\QueryException $e) {
                             if ($e->getCode() == 23000 || (isset($e->errorInfo[1]) && $e->errorInfo[1] == 1062)) {
                                 $errorMessage = $e->getMessage();
-                                // Revert conflicting unique fields
-                                if (str_contains($errorMessage, 'phone_unique')) $customer->phone = $customer->exists ? $customer->getOriginal('phone') : null;
-                                if (str_contains($errorMessage, 'email_unique')) $customer->email = $customer->exists ? $customer->getOriginal('email') : null;
+                                
+                                if (str_contains($errorMessage, 'phone_unique')) {
+                                    $customer->phone = $customer->exists ? $customer->getOriginal('phone') : null;
+                                }
+                                if (str_contains($errorMessage, 'email_unique')) {
+                                    $customer->email = $customer->exists ? $customer->getOriginal('email') : null;
+                                }
+                                
                                 $customer->save();
                             } else {
                                 throw $e;
@@ -161,6 +179,7 @@ class ImportOnSwimCustomers extends Command
                         }
                     });
                 }
+                
                 $bar->advance();
             }
 
@@ -173,12 +192,13 @@ class ImportOnSwimCustomers extends Command
                 DB::connection('tenant')->commit();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ SUCCESS: Customers imported.");
+                $this->info("✅ SUCCESS: Customers synchronized from {$fileName}");
                 $this->table(
                     ['Processed', 'Created', 'Updated', 'Temp IDs'],
                     [[$totalRows, $created, $updated, $tempIdsCreated]]
                 );
             }
+
             fclose($file);
 
         } catch (\Exception $e) {
@@ -188,13 +208,19 @@ class ImportOnSwimCustomers extends Command
         }
     }
 
+    /**
+     * Standardizes phone numbers to +1 followed by 10 digits
+     */
     private function formatPhone($phone)
     {
         $digits = preg_replace('/[^0-9]/', '', $phone);
-        if (empty($digits)) return null;
+        if (empty($digits) || strlen($digits) < 7) return null;
         return '+1' . substr($digits, -10);
     }
 
+    /**
+     * Gracefully parses various date formats
+     */
     private function parseDate($date)
     {
         if (empty($date) || trim($date) == '-' || trim($date) == '') return null;
