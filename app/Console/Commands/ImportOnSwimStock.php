@@ -34,7 +34,7 @@ class ImportOnSwimStock extends Command
 
             // 🚀 MATCHING YOUR 'LS' STRUCTURE: storage/tenantlxd/lxd/data/
             $dbName = config('database.connections.tenant.database'); // 'tenantlxd'
-            $directoryPath = storage_path("{$dbName}/{$tenantId}/data");
+            $directoryPath = storage_path("/{$tenantId}/data");
 
             // Ensure directory exists
             if (!File::exists($directoryPath)) {
