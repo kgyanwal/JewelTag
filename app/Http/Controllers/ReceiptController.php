@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CustomOrder;
 use App\Models\Repair;
 use App\Models\Sale;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -47,6 +48,22 @@ public function printRepair(Repair $repair)
 
     // 4. Stream the PDF to the browser with a clean filename
     $filename = "REPAIR_{$repair->repair_no}.pdf";
+    return $pdf->stream($filename);
+}
+
+public function customOrderReceipt(Request $request, CustomOrder $customOrder)
+{
+    // Force fresh load with all relationships
+    $customOrder->load(['customer', 'payments', 'staff']);
+    $customOrder->refresh(); // ← ensures latest data
+
+    $pdf = Pdf::loadView('receipts.custom-order-deposit', [
+        'order'  => $customOrder,
+        'is_pdf' => true,
+    ]);
+
+    $pdf->setPaper('letter', 'portrait');
+    $filename = "DEPOSIT_{$customOrder->order_no}.pdf";
     return $pdf->stream($filename);
 }
 }

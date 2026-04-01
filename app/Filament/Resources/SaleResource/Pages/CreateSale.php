@@ -39,98 +39,132 @@ class CreateSale extends CreateRecord
 
         $repairId      = request()->get('repair_id');
         $customOrderId = request()->get('custom_order_id');
-  if ($repairId || $customOrderId) {
-        session()->forget('sale_draft');
-        $this->data = [];
-    } elseif (session()->has('sale_draft')) {
-        $this->data = session('sale_draft');
-    }
-      
-    // ── HANDLE REPAIR ────────────────────────────────────────────────────
-    if ($repairId) {
-        $repair = \App\Models\Repair::find($repairId);
-        if ($repair) {
-            $this->data['customer_id'] = $repair->customer_id;
-
-            $cartItems   = [];
-            $repairItems = $repair->items ?? [];
-
-            if (empty($repairItems) && !empty($repair->item_description)) {
-                $repairItems = [[
-                    'item_description' => $repair->item_description,
-                    'reported_issue'   => $repair->reported_issue,
-                    'final_cost'       => $repair->final_cost,
-                    'estimated_cost'   => $repair->estimated_cost,
-                ]];
-            }
-
-            foreach ($repairItems as $index => $rItem) {
-                $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
-                $cartItems[] = [
-                    'product_item_id'    => null,
-                    'repair_id'          => $repair->id,
-                    'stock_no_display'   => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
-                    'custom_description' => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
-                    'qty'                => 1,
-                    'sold_price'         => $cost,
-                    'sale_price_override'=> $cost,
-                    'discount_percent'   => 0,
-                    'discount_amount'    => 0,
-                    'is_tax_free'        => false,
-                ];
-            }
-
-            $this->data['items'] = $cartItems;
+        if ($repairId || $customOrderId) {
+            session()->forget('sale_draft');
+            $this->data = [];
+        } elseif (session()->has('sale_draft')) {
+            $this->data = session('sale_draft');
         }
-    }
+
+        // ── HANDLE REPAIR ────────────────────────────────────────────────────
+        if ($repairId) {
+            $repair = \App\Models\Repair::find($repairId);
+            if ($repair) {
+                $this->data['customer_id'] = $repair->customer_id;
+
+                $cartItems   = [];
+                $repairItems = $repair->items ?? [];
+
+                if (empty($repairItems) && !empty($repair->item_description)) {
+                    $repairItems = [[
+                        'item_description' => $repair->item_description,
+                        'reported_issue'   => $repair->reported_issue,
+                        'final_cost'       => $repair->final_cost,
+                        'estimated_cost'   => $repair->estimated_cost,
+                    ]];
+                }
+
+                foreach ($repairItems as $index => $rItem) {
+                    $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
+                    $cartItems[] = [
+                        'product_item_id'    => null,
+                        'repair_id'          => $repair->id,
+                        'stock_no_display'   => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
+                        'custom_description' => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
+                        'qty'                => 1,
+                        'sold_price'         => $cost,
+                        'sale_price_override' => $cost,
+                        'discount_percent'   => 0,
+                        'discount_amount'    => 0,
+                        'is_tax_free'        => false,
+                    ];
+                }
+
+                $this->data['items'] = $cartItems;
+            }
+        }
 
         // ── HANDLE CUSTOM ORDER ───────────────────────────────────────────────
-        if ($customOrderId) {
-            $customOrder = \App\Models\CustomOrder::find($customOrderId);
-            if ($customOrder) {
-                $this->data['customer_id'] = $customOrder->customer_id;
-                $this->data['items']       = [[
-                    'product_item_id'    => null,
-                    'repair_id'          => null,
-                    'custom_order_id'    => $customOrder->id,
-                    'stock_no_display'   => 'CUSTOM #' . $customOrder->order_no,
-                    'custom_description' => "Custom {$customOrder->product_name}: {$customOrder->metal_type} - " . ($customOrder->design_notes ?? ''),
-                    'qty'                => 1,
-                    'sold_price'         => $customOrder->quoted_price ?? 0,
-                    'sale_price_override'=> $customOrder->quoted_price ?? 0,
-                    'discount_percent'   => 0,
-                    'discount_amount'    => 0,
-                    'is_tax_free'        => true,
-                ]];
+      if ($customOrderId) {
+    $customOrder = \App\Models\CustomOrder::find($customOrderId);
+    if ($customOrder) {
+        $this->data['customer_id'] = $customOrder->customer_id;
+        
+        // Load the Custom Order as a line item
+        $this->data['items'] = [[
+            'product_item_id'     => null,
+            'repair_id'           => null,
+            'custom_order_id'     => $customOrder->id,
+            'stock_no_display'    => 'CUSTOM #' . $customOrder->order_no,
+            'custom_description'  => "Custom {$customOrder->product_name}: " . ($customOrder->design_notes ?? ''),
+            'qty'                 => 1,
+            'sold_price'          => $customOrder->quoted_price ?? 0,
+            'sale_price_override' => $customOrder->quoted_price ?? 0,
+            'discount_percent'    => 0,
+            'discount_amount'     => 0,
+            'is_tax_free'         => true, // Tax was already handled in Custom Order
+        ]];
 
-                if ($customOrder->amount_paid > 0) {
-                    $this->data['has_trade_in']        = 1;
-                    $this->data['trade_in_value']       = $customOrder->amount_paid;
-                    $this->data['trade_in_description'] = 'Prior Deposit Paid on Custom Order #' . $customOrder->order_no;
-                    $this->data['trade_in_receipt_no']  = 'DEP-' . $customOrder->order_no;
-                } else {
-                    $this->data['has_trade_in'] = 0;
-                }
-            }
-        }
+        // Calculate actual money already paid
+       // Calculate actual money already paid from payments table
+$actualPaid = \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount');
+
+// Fallback to amount_paid column if no payment records exist
+if ($actualPaid == 0 && $customOrder->amount_paid > 0) {
+    $actualPaid = floatval($customOrder->amount_paid);
+}
+
+if ($actualPaid > 0) {
+    // Cap trade-in at quoted_price to avoid negative totals
+    // (customer may have overpaid due to tax collected at deposit stage)
+    $tradeInValue = min($actualPaid, floatval($customOrder->quoted_price));
+    $overpaid     = round($actualPaid - $tradeInValue, 2);
+
+    $this->data['has_trade_in']        = 1;
+    $this->data['trade_in_value']      = $tradeInValue;
+    $this->data['trade_in_receipt_no'] = 'DEP-' . $customOrder->order_no;
+    $this->data['trade_in_description'] = 'Prior Deposit(s) on Custom Order #' . $customOrder->order_no
+        . ($overpaid > 0.01
+            ? ' (Overpaid: $' . number_format($overpaid, 2) . ' — refund or apply as store credit)'
+            : '');
+} else {
+    $this->data['has_trade_in'] = 0;
+    $tradeInValue = 0;
+}
+
+// Reset payment fields so cashier handles the remaining balance
+$this->data['amount_paid']    = 0;
+$this->data['payment_method'] = null;
+
+// If fully paid via deposits, pre-fill payment method
+$remainingBalance = max(0, floatval($customOrder->quoted_price) - $tradeInValue);
+if ($remainingBalance <= 0) {
+    $this->data['payment_method'] = 'DEPOSIT';
+    $this->data['notes'] = "Fully paid via prior deposits on Custom Order #{$customOrder->order_no}."
+        . (isset($overpaid) && $overpaid > 0.01
+            ? " Customer overpaid by \${$overpaid} — please refund or apply as store credit."
+            : '');
+}
+    }
+}
 
         if ($repairId || $customOrderId) {
-                $this->data['has_trade_in']          = $this->data['has_trade_in'] ?? 0;
-    $this->data['shipping_charges']      = $this->data['shipping_charges'] ?? 0;
-    $this->data['carrier']               = $this->data['carrier'] ?? 'No carrier';
-    $this->data['has_warranty']          = $this->data['has_warranty'] ?? 0;
-    $this->data['shipping_taxed']        = $this->data['shipping_taxed'] ?? false;
-    $this->data['follow_up_date']        = $this->data['follow_up_date'] ?? now()->addWeeks(2)->format('Y-m-d');
-    $this->data['second_follow_up_date'] = $this->data['second_follow_up_date'] ?? now()->addMonths(6)->format('Y-m-d');
-    $this->data['is_split_payment']      = $this->data['is_split_payment'] ?? false;
-    $this->data['payment_method']        = $this->data['payment_method'] ?? 'cash';
-    $this->data['status']                = $this->data['status'] ?? 'inprogress';
-    $this->data['amount_paid']           = $this->data['amount_paid'] ?? 0;
-    if (empty($this->data['sales_person_list'])) {
-    $this->data['sales_person_list'] = [
-        \Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name
-    ];
-}
+            $this->data['has_trade_in']          = $this->data['has_trade_in'] ?? 0;
+            $this->data['shipping_charges']      = $this->data['shipping_charges'] ?? 0;
+            $this->data['carrier']               = $this->data['carrier'] ?? 'No carrier';
+            $this->data['has_warranty']          = $this->data['has_warranty'] ?? 0;
+            $this->data['shipping_taxed']        = $this->data['shipping_taxed'] ?? false;
+            $this->data['follow_up_date']        = $this->data['follow_up_date'] ?? now()->addWeeks(2)->format('Y-m-d');
+            $this->data['second_follow_up_date'] = $this->data['second_follow_up_date'] ?? now()->addMonths(6)->format('Y-m-d');
+            $this->data['is_split_payment']      = $this->data['is_split_payment'] ?? false;
+            $this->data['payment_method']        = $this->data['payment_method'] ?? 'cash';
+            $this->data['status']                = $this->data['status'] ?? 'inprogress';
+            $this->data['amount_paid']           = $this->data['amount_paid'] ?? 0;
+            if (empty($this->data['sales_person_list'])) {
+                $this->data['sales_person_list'] = [
+                    \Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name
+                ];
+            }
             $this->recalculateFinancials();
         }
     }
@@ -185,7 +219,11 @@ class CreateSale extends CreateRecord
                         Notification::make()->title('Invalid PIN')->danger()->send();
                         return;
                     }
-$formState['sales_person_list'] = [$actualStaff->name];
+                    $existingStaff = $formState['sales_person_list'] ?? [];
+                    if (!in_array($actualStaff->name, $existingStaff)) {
+                        $existingStaff[] = $actualStaff->name;
+                    }
+                    $formState['sales_person_list'] = array_values($existingStaff);
                     $get = fn($path) => data_get($formState, $path);
                     $set = function ($path, $value) use (&$formState) {
                         data_set($formState, $path, $value);
@@ -290,7 +328,6 @@ $formState['sales_person_list'] = [$actualStaff->name];
 
                 // FIX: Update amount_paid on the sale to reflect actual collected amount
                 $sale->update(['amount_paid' => round($totalSplitPaid, 2)]);
-
             } else {
                 // ✅ Use actual amount_paid entered by cashier, capped at final_total
                 // If 0 (e.g. non-cash auto-filled), fall back to final_total
@@ -311,12 +348,19 @@ $formState['sales_person_list'] = [$actualStaff->name];
             }
 
             // ── ITEMS ──────────────────────────────────────────────────────────
+            // ── ITEMS ──────────────────────────────────────────────────────────
             foreach ($sale->items as $saleItem) {
                 if ($saleItem->custom_order_id) {
                     $customOrder = \App\Models\CustomOrder::find($saleItem->custom_order_id);
                     if ($customOrder) {
+                        // ── Link all prior deposit payments to this sale ──────
+                        \App\Models\Payment::where('custom_order_id', $customOrder->id)
+                            ->whereNull('sale_id')
+                            ->update(['sale_id' => $sale->id]);
+
                         $customOrder->update([
                             'status'      => 'completed',
+                            'sale_id'     => $sale->id,
                             'balance_due' => 0,
                             'amount_paid' => $customOrder->quoted_price,
                         ]);

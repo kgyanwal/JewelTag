@@ -345,7 +345,37 @@ $isSpecialJob = !empty($specialJobs);
                                 </span>
                             </td>
                         </tr>
+{{-- PASTE THE NEW CODE HERE --}}
+                        {{-- ── CUSTOM ORDER DEPOSIT HISTORY ── --}}
+                        @php
+                            $customOrderItem = $sale->items->first(fn($i) => $i->custom_order_id);
+                            $customOrder = $customOrderItem?->customOrder;
+                            $depositPayments = $customOrder 
+                                ? \App\Models\Payment::where('custom_order_id', $customOrder->id)
+                                    ->orderBy('paid_at')->get()
+                                : collect();
+                        @endphp
 
+                        @if($depositPayments->count() > 0)
+                        <tr>
+                            <td colspan="2" style="padding-top:8px; border-top:1px dashed #eee;">
+                                <div style="font-size:9px; font-weight:700; color:{{ $receiptColor ?? '#000' }}; text-transform:uppercase; margin-bottom:4px;">
+                                    <i class="fas fa-history"></i> Prior Deposit History
+                                </div>
+                                @foreach($depositPayments as $dep)
+                                <div style="display:flex; justify-content:space-between; font-size:9px; color:#546e7a; margin-bottom:2px;">
+                                    <span>{{ \Carbon\Carbon::parse($dep->paid_at)->format('M d, Y') }} — {{ strtoupper($dep->method) }}</span>
+                                    <span style="color:#10b981; font-weight:600;">+${{ number_format($dep->amount, 2) }}</span>
+                                </div>
+                                @endforeach
+                                <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:700; border-top:1px solid #eee; padding-top:3px; margin-top:3px;">
+                                    <span>Total Deposited</span>
+                                    <span style="color:#10b981;">${{ number_format($depositPayments->sum('amount'), 2) }}</span>
+                                </div>
+                            </td>
+                        </tr>
+                        @endif
+                        {{-- END OF NEW CODE --}}
                         {{-- Layby specific --}}
                         @if($isLaybuy && $sale->laybuy)
                         <tr>

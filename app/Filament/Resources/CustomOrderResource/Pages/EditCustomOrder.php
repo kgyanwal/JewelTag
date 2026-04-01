@@ -104,18 +104,19 @@ class EditCustomOrder extends EditRecord
                         ->delete();
 
                     // Update the first one with correct method and link
-                    $first->update([
-                        'method'          => strtoupper(trim($this->depositMethod)),
-                        'amount'          => round((float) $order->amount_paid, 2),
-                        'custom_order_id' => $order->id,
-                    ]);
+                  $first->update([
+    'method'          => strtoupper(trim($this->depositMethod)),
+    'amount'          => round((float) $order->amount_paid, 2),
+    'custom_order_id' => $order->id,
+]);
 
-                } elseif ($existingPayments->count() === 1) {
-                    // Single payment exists — update method and ensure linked
-                    $existingPayments->first()->update([
-                        'method'          => strtoupper(trim($this->depositMethod)),
-                        'custom_order_id' => $order->id,
-                    ]);
+              } elseif ($existingPayments->count() === 1) {
+    // Single payment exists — update method AND amount to match current amount_paid
+    $existingPayments->first()->update([
+        'method'          => strtoupper(trim($this->depositMethod)),
+        'amount'          => round((float) $order->amount_paid, 2),
+        'custom_order_id' => $order->id,
+    ]);
 
                 } else {
                     // No payment exists at all — create one

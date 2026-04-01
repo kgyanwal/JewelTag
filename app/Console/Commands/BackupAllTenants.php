@@ -46,6 +46,12 @@ class BackupAllTenants extends Command
             try {
                 tenancy()->initialize($tenant);
 
+              foreach ($tenants as $tenant) {
+            $this->info("Exporting CSVs for tenant: {$tenant->id}");
+
+            try {
+                tenancy()->initialize($tenant);
+
                 foreach ($tablesToExport as $table) {
                     if (!Schema::hasTable($table)) continue;
 
@@ -55,29 +61,30 @@ class BackupAllTenants extends Command
                     $tempPath = storage_path("app/private/{$tenant->id}_{$table}.csv");
                     $file = fopen($tempPath, 'w');
 
-                    // 2. Stream data in chunks so the server doesn't crash on large databases
-                    $query = DB::table($table)->orderBy('id');
-                    $isFirstRow = true;
+                    // 🚀 FIX: Get the actual column names from the database schema
+                    // This ensures headers like 'created_at' and 'updated_at' are ALWAYS included
+                    $columns = Schema::getColumnListing($table);
                     
-                    $query->chunk(1000, function ($records) use ($file, &$isFirstRow) {
+                    // 🚀 FIX: Write the header row immediately
+                    fputcsv($file, $columns);
+
+                    // 2. Stream data in chunks
+                    DB::table($table)->orderBy('id')->chunk(1000, function ($records) use ($file, $columns) {
                         foreach ($records as $record) {
-                            $recordArray = (array) $record;
+                            $row = [];
                             
-                            // Write headers on the very first row
-                            if ($isFirstRow) {
-                                fputcsv($file, array_keys($recordArray));
-                                $isFirstRow = false;
+                            // 🚀 FIX: Map data based on the $columns list to maintain perfect order
+                            foreach ($columns as $column) {
+                                $row[] = $record->{$column} ?? '';
                             }
                             
-                            // Write the data row
-                            fputcsv($file, array_values($recordArray));
+                            fputcsv($file, $row);
                         }
                     });
 
                     fclose($file);
 
-                    // 3. Upload to S3 in the exact structure: jeweltag/{tenant}/{table}.csv
-                    // This overwrites yesterday's file, meaning the CSV is ALWAYS up-to-date with all data.
+                    // 3. Upload to S3
                     $s3Path = "jeweltag/{$tenant->id}/{$table}.csv";
                     
                     Storage::disk('s3')->put(
@@ -85,9 +92,18 @@ class BackupAllTenants extends Command
                         file_get_contents($tempPath)
                     );
 
-                    // Clean up the local temp file
+                    // Clean up
                     unlink($tempPath);
                 }
+
+                tenancy()->end();
+                $this->info("✓ Done: {$tenant->id}");
+
+            } catch (\Exception $e) {
+                $this->error("✗ Failed {$tenant->id}: " . $e->getMessage());
+                if (tenancy()->initialized) tenancy()->end();
+            }
+        }
 
                 tenancy()->end();
                 $this->info("✓ Done: {$tenant->id}");

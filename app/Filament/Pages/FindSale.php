@@ -129,13 +129,17 @@ class FindSale extends Page implements HasForms, HasTable
                     )
                     ->when(
                         $this->data['first_name'] ?? null,
-                        fn($q, $v) => $q->whereHas('customer',
-                            fn($sq) => $sq->where('name', 'like', "%{$v}%"))
+                        fn($q, $v) => $q->whereHas(
+                            'customer',
+                            fn($sq) => $sq->where('name', 'like', "%{$v}%")
+                        )
                     )
                     ->when(
                         $this->data['last_name'] ?? null,
-                        fn($q, $v) => $q->whereHas('customer',
-                            fn($sq) => $sq->where('last_name', 'like', "%{$v}%"))
+                        fn($q, $v) => $q->whereHas(
+                            'customer',
+                            fn($sq) => $sq->where('last_name', 'like', "%{$v}%")
+                        )
                     )
                     ->when(
                         $this->data['payment_method'] ?? null,
@@ -165,22 +169,25 @@ class FindSale extends Page implements HasForms, HasTable
 
                 // ── customer relationship is now eager loaded so no extra query per row
                 TextColumn::make('customer_name_display')
-    ->label('Customer')
-    ->getStateUsing(fn($record) =>
-        $record->customer
-            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
-            : '—'
-    )
-    ->searchable(
-        query: function (Builder $query, string $search): Builder {
-            return $query->whereHas('customer', fn($q) =>
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%")
-                  ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-            );
-        }
-    )
-    ->sortable(false),
+                    ->label('Customer')
+                    ->getStateUsing(
+                        fn($record) =>
+                        $record->customer
+                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+                            : '—'
+                    )
+                    ->searchable(
+                        query: function (Builder $query, string $search): Builder {
+                            return $query->whereHas(
+                                'customer',
+                                fn($q) =>
+                                $q->where('name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            );
+                        }
+                    )
+                    ->sortable(false),
 
                 TextColumn::make('items_summary')
                     ->label('ITEMS / DESCRIPTION')
@@ -188,9 +195,9 @@ class FindSale extends Page implements HasForms, HasTable
                         // items->productItem already eager loaded — no extra queries
                         return $record->items
                             ->take(3)   // ← cap at 3 lines per row to avoid huge cells
-                            ->map(fn($i) =>
-                                ($i->productItem?->barcode ?? 'Item') . ': ' .
-                                Str::limit($i->custom_description ?? '', 30)
+                            ->map(
+                                fn($i) => ($i->productItem?->barcode ?? 'Item') . ': ' .
+                                    Str::limit($i->custom_description ?? '', 30)
                             )
                             ->toArray();
                     })
@@ -207,34 +214,43 @@ class FindSale extends Page implements HasForms, HasTable
                     ->toggleable(),
 
                 // ── payments already eager loaded — no extra query per row
-                TextColumn::make('payment_status_summary')
-                    ->label('PAYMENT SUMMARY')
-                    ->getStateUsing(function ($record) {
-                        $isCustomDeposit = $record->has_trade_in
-                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+            TextColumn::make('payment_status_summary')
+    ->label('PAYMENT SUMMARY')
+    ->getStateUsing(function ($record) {
+        // 1. Identify if this is a Custom Order Conversion
+        $isCustomDeposit = $record->has_trade_in
+            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-                        $total = floatval($record->final_total);
-                        if ($isCustomDeposit) $total += floatval($record->trade_in_value);
+        // 2. The Bill Total (Grand Total)
+        // We add trade_in_value back because final_total is already "Net" in the DB
+        $total = floatval($record->final_total);
+        if ($isCustomDeposit) {
+            $total += floatval($record->trade_in_value);
+        }
 
-                        $paid = floatval($record->payments->sum('amount'));
-                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
-                            $paid = floatval($record->amount_paid);
-                        }
-                        if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
+        // 3. The actual money collected
+        // We sum the payments table. 
+        // IMPORTANT: Our CreateSale logic already linked custom order payments to this sale_id.
+        $paid = floatval($record->payments->sum('amount'));
 
-                        $balance = max(0, $total - $paid);
+        // Fallback for legacy data not using the payments table
+        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+            $paid = floatval($record->amount_paid);
+        }
 
-                        $html  = "<div class='text-xs text-gray-500'>Total: $" . number_format($total, 2) . "</div>";
-                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+        $balance = max(0, $total - $paid);
 
-                        if ($balance > 0.01) {
-                            $html .= "<div class='text-sm font-bold text-danger-600'>Due: $" . number_format($balance, 2) . "</div>";
-                        } else {
-                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-                        }
+        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-                        return new HtmlString($html);
-                    }),
+        if ($balance > 0.01) {
+            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+        } else {
+            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+        }
+
+        return new HtmlString($html);
+    }),
 
                 TextColumn::make('status')
                     ->badge()
@@ -245,14 +261,16 @@ class FindSale extends Page implements HasForms, HasTable
                         'cancelled'          => 'gray',
                         default              => 'gray',
                     })
-                    ->formatStateUsing(fn(string $state) =>
+                    ->formatStateUsing(
+                        fn(string $state) =>
                         strtoupper(str_replace('_', ' ', $state))
                     ),
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
                     ->label('Edit')
-                    ->url(fn(Sale $record): string =>
+                    ->url(
+                        fn(Sale $record): string =>
                         SaleResource::getUrl('edit', ['record' => $record])
                     ),
 
@@ -300,12 +318,12 @@ class FindSale extends Page implements HasForms, HasTable
                                             ->label('Status')
                                             ->content(new HtmlString(
                                                 "<span class='px-2 py-1 rounded text-xs font-bold uppercase " .
-                                                match ($record->status) {
-                                                    'completed'          => 'bg-success-100 text-success-700',
-                                                    'refunded'           => 'bg-danger-100 text-danger-700',
-                                                    'partially_refunded' => 'bg-warning-100 text-warning-700',
-                                                    default              => 'bg-gray-100 text-gray-700',
-                                                } . "'>{$record->status}</span>"
+                                                    match ($record->status) {
+                                                        'completed'          => 'bg-success-100 text-success-700',
+                                                        'refunded'           => 'bg-danger-100 text-danger-700',
+                                                        'partially_refunded' => 'bg-warning-100 text-warning-700',
+                                                        default              => 'bg-gray-100 text-gray-700',
+                                                    } . "'>{$record->status}</span>"
                                             )),
                                     ]),
                             ]),
@@ -327,9 +345,9 @@ class FindSale extends Page implements HasForms, HasTable
 
                                             $html .= "<tr class='border-b border-gray-100'>";
                                             $html .= "<td class='p-2 font-mono text-primary-600'>"
-                                                   . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
+                                                . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
                                             $html .= "<td class='p-2 text-gray-600'>"
-                                                   . e($item->custom_description) . "</td>";
+                                                . e($item->custom_description) . "</td>";
                                             $html .= "<td class='p-2 text-right'>$" . number_format($price, 2) . "</td>";
                                             $html .= "<td class='p-2 text-right text-danger-600'>-$" . number_format($disc, 2) . "</td>";
                                             $html .= "<td class='p-2 text-right font-bold'>$" . number_format($rowTotal, 2) . "</td>";
@@ -371,15 +389,20 @@ class FindSale extends Page implements HasForms, HasTable
                                                 ->label('Grand Total')
                                                 ->content(new HtmlString(
                                                     "<span class='text-xl font-black text-gray-900'>$"
-                                                    . number_format($record->final_total, 2) . "</span>"
+                                                        . number_format($record->final_total, 2) . "</span>"
                                                 )),
                                         ]),
-                                        Placeholder::make('f_paid')
-                                            ->label('Total Payments Received')
-                                            ->content(new HtmlString(
-                                                "<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$"
-                                                . number_format($record->payments->sum('amount'), 2) . "</div>"
-                                            )),
+                                       Placeholder::make('f_paid')
+    ->label('Total Payments Received')
+    ->content(function() use ($record) {
+        // Source of truth: Sum of all payments linked to this Sale ID
+        $amt = $record->payments->sum('amount');
+        
+        return new HtmlString(
+            "<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$" 
+            . number_format($amt, 2) . "</div>"
+        );
+    }),
                                     ]),
                             ]),
 
@@ -462,8 +485,8 @@ class FindSale extends Page implements HasForms, HasTable
                             $formattedPhone = '+1' . $digits;
                             $store          = $record->store;
                             $baseUrl        = $store && !empty($store->domain_url)
-                                                ? rtrim($store->domain_url, '/')
-                                                : config('app.url');
+                                ? rtrim($store->domain_url, '/')
+                                : config('app.url');
                             $link      = $baseUrl . '/receipt/' . $record->id;
                             $storeName = $store->name ?? 'Diamond Square';
                             $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";

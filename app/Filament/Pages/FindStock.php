@@ -274,10 +274,14 @@ class FindStock extends Page implements HasForms, HasTable
             ->when($f['price_to'] ?? null,      fn($q, $v) => $q->where('retail_price', '<=', $v))
 
             // 🚀 THE FIX: Changed 'saleItems' to 'saleItem' to match the relationship name in the Model!
-            ->when($f['job_number'] ?? null, fn($q, $v) =>
-                $q->whereHas('saleItem.sale', fn($q) =>
+            ->when(
+                $f['job_number'] ?? null,
+                fn($q, $v) =>
+                $q->whereHas(
+                    'saleItem.sale',
+                    fn($q) =>
                     $q->where('invoice_number', 'like', "%-{$v}")
-                      ->orWhere('invoice_number', 'like', "%{$v}%")
+                        ->orWhere('invoice_number', 'like', "%{$v}%")
                 )
             );
     }
@@ -300,12 +304,13 @@ class FindStock extends Page implements HasForms, HasTable
                 TextColumn::make('custom_description')
                     ->label('ITEM DESCRIPTION')
                     ->wrap()
-                    ->description(fn($record) =>
+                    ->description(
+                        fn($record) =>
                         new HtmlString("<span class='text-xs text-gray-500 font-medium uppercase'>" .
                             ($record->metal_type ? $record->metal_type : "") .
                             ($record->diamond_weight ? " • " . $record->diamond_weight . "ctw" : "") .
                             ($record->shape ? " • " . $record->shape : "") .
-                        "</span>")
+                            "</span>")
                     )->limit(60),
 
                 TextColumn::make('retail_price')
@@ -361,7 +366,7 @@ class FindStock extends Page implements HasForms, HasTable
                                 $jobNo   = end($parts);
                                 $name    = htmlspecialchars(trim(
                                     ($si->sale?->customer?->name ?? '') . ' ' .
-                                    ($si->sale?->customer?->last_name ?? '')
+                                        ($si->sale?->customer?->last_name ?? '')
                                 ));
                                 $balance = floatval($si->sale?->balance_due ?? 0);
 
@@ -458,9 +463,26 @@ class FindStock extends Page implements HasForms, HasTable
                                 ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
                                 ->required(),
                         ])
-                        ->action(function (ProductItem $record, array $data) {
-                            $this->performStockTransfer($record, $data['target_tenant_id']);
-                        }),
+                       ->action(function (EloquentCollection $records, array $data) {
+    $succeeded = 0;
+    $skipped   = 0;
+    $failed    = 0;
+
+    foreach ($records as $record) {
+        try {
+            $this->performStockTransfer($record, $data['target_tenant_id']);
+            $succeeded++;
+        } catch (\Exception $e) {
+            $failed++;
+        }
+    }
+
+    Notification::make()
+        ->title("Bulk Transfer Complete")
+        ->body("✅ {$succeeded} transferred · ⚠️ {$skipped} skipped · ❌ {$failed} failed")
+        ->success()
+        ->send();
+}),
                 ]),
             ])
             ->bulkActions([
@@ -516,15 +538,35 @@ class FindStock extends Page implements HasForms, HasTable
 
         try {
             DB::transaction(function () use ($itemData, $targetId, $vendorName, $record, $sourceId, $barcode) {
-                $targetTenant    = Tenant::find($targetId);
+                $targetTenant = Tenant::find($targetId);
                 tenancy()->initialize($targetTenant);
-                $targetSupplierId = Supplier::where('company_name', $vendorName)->value('id');
 
-                unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
-                $itemData['supplier_id'] = $targetSupplierId;
-                $itemData['status']      = 'in_stock';
-                ProductItem::create($itemData);
+                // Auto-create vendor in destination if not found
+                $targetSupplier = Supplier::where('company_name', $vendorName)->first();
+                if (!$targetSupplier) {
+                    // Use updateOrCreate without triggering LogsActivity observer
+                    $targetSupplier = Supplier::withoutEvents(function () use ($vendorName, $record) {
+                        return Supplier::create([
+                            'company_name'  => $vendorName ?? 'Unknown Vendor',
+                            'supplier_code' => $record->supplier?->supplier_code ?? null,
+                        ]);
+                    });
+                }
+           unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
+$itemData['supplier_id'] = $targetSupplier->id;
+$itemData['status']      = 'in_stock';
+$itemData['store_id']    = 1;
 
+// Check if barcode already exists in destination — skip if so
+$existsInDestination = ProductItem::where('barcode', $barcode)->exists();
+if ($existsInDestination) {
+    tenancy()->initialize(Tenant::find($sourceId));
+    return; // silently skip — bulk action will count this
+}
+
+ProductItem::withoutEvents(function () use ($itemData) {
+    ProductItem::create($itemData);
+});
                 $recipients = User::all();
                 Notification::make()
                     ->title('Incoming Stock Transfer')

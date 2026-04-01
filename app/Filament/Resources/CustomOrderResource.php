@@ -63,6 +63,96 @@ class CustomOrderResource extends Resource
                                                     $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
                                                 ];
                                             });
+                                    })
+                                    ->preload()
+                                    ->required()
+                                    ->live()
+
+                                    ->hintAction(
+                                        FormAction::make('view_customer_details')
+                                            ->label('View Profile')
+                                            ->icon('heroicon-o-user-circle')
+                                            ->color('info')
+                                            ->visible(fn(Get $get) => $get('customer_id'))
+                                            ->modalHeading('Customer Profile Details')
+                                            ->modalSubmitAction(false)
+                                            ->modalCancelActionLabel('Close')
+                                            ->slideOver()
+                                            ->form(function (Get $get) {
+                                                $customer = \App\Models\Customer::find($get('customer_id'));
+                                                if (!$customer) return [];
+
+                                                return [
+                                                    Grid::make(2)->schema([
+                                                        Placeholder::make('img')
+                                                            ->label('')
+                                                            ->content(new HtmlString("
+                                <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                    <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                    <div>
+                                        <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                        <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                            Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                        </span>
+                                    </div>
+                                </div>
+                            "))->columnSpanFull(),
+                                                        TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
+                                                        TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
+                                                        TextInput::make('addr')
+                                                            ->label('Full Address')
+                                                            ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                            ->readOnly()
+                                                            ->columnSpanFull(),
+                                                    ]),
+                                                ];
+                                            })
+                                    )
+                                    ->createOptionModalHeading('Quick Add New Customer')
+                                    ->createOptionForm([
+                                        Forms\Components\Tabs::make('New Customer')
+                                            ->tabs([
+                                                Forms\Components\Tabs\Tab::make('Contact')
+                                                    ->icon('heroicon-o-user')
+                                                    ->schema([
+                                                        Forms\Components\Grid::make(2)->schema([
+                                                            Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                                                            Forms\Components\TextInput::make('last_name')->label('Last Name'),
+                                                        ]),
+                                                        Forms\Components\Grid::make(2)->schema([
+                                                            Forms\Components\TextInput::make('phone')
+                                                                ->label('Mobile Phone')
+                                                                ->tel()
+                                                                ->prefix('+1')
+                                                                ->mask('(999) 999-9999')
+                                                                ->placeholder('(555) 555-5555')
+                                                                ->stripCharacters(['(', ')', '-', ' '])
+                                                                ->rule('regex:/^[0-9]{10}$/'),
+                                                            Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                                        ]),
+                                                        Forms\Components\Section::make('Customer Address')
+                                                            ->description('Search for an address to automatically fill the fields below.')
+                                                            ->columns(2)
+                                                            ->collapsible()
+                                                            ->schema([
+                                                                \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('address_search')
+                                                                    ->label('Search Address')
+                                                                    ->countries(['US'])
+                                                                    ->columnSpanFull()
+                                                                    ->withFields([
+                                                                        TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                                        TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality']),
+                                                                        TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                        TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                    ]),
+                                                            ]),
+                                                    ]),
+                                            ]),
+                                        Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                    ])
+                                    ->createOptionUsing(function (array $data) {
+                                        return \App\Models\Customer::create($data)->id;
                                     }),
 
                                 Select::make('staff_id')
@@ -104,11 +194,12 @@ class CustomOrderResource extends Resource
                                     Select::make('stock_item_id')
                                         ->label('Select Stock Item to Modify')
                                         ->placeholder('Search by barcode or description...')
-                                        ->options(fn() => ProductItem::whereIn('status', ['in_stock', 'sold'])
-                                            ->get()
-                                            ->mapWithKeys(fn($i) => [
-                                                $i->id => "{$i->barcode} — " . Str::limit($i->custom_description, 40)
-                                            ])
+                                        ->options(
+                                            fn() => ProductItem::whereIn('status', ['in_stock', 'sold'])
+                                                ->get()
+                                                ->mapWithKeys(fn($i) => [
+                                                    $i->id => "{$i->barcode} — " . Str::limit($i->custom_description, 40)
+                                                ])
                                         )
                                         ->searchable()
                                         ->live()
@@ -123,7 +214,8 @@ class CustomOrderResource extends Resource
                                             $set('size',           $item->size);
                                             $set('quoted_price',   $item->retail_price);
                                         })
-                                        ->visible(fn(Get $get, $livewire) =>
+                                        ->visible(
+                                            fn(Get $get, $livewire) =>
                                             data_get($livewire->data, 'order_type') === 'stock_modify'
                                         )
                                         ->columnSpanFull(),
@@ -132,9 +224,10 @@ class CustomOrderResource extends Resource
                                         Select::make('product_name')
                                             ->label('Product / Jewelry Type')
                                             ->placeholder('e.g. Diamond Tennis Bracelet')
-                                            ->options(fn() => CustomOrder::distinct()
-                                                ->whereNotNull('product_name')
-                                                ->pluck('product_name', 'product_name')
+                                            ->options(
+                                                fn() => CustomOrder::distinct()
+                                                    ->whereNotNull('product_name')
+                                                    ->pluck('product_name', 'product_name')
                                             )
                                             ->searchable()
                                             ->createOptionForm([
@@ -155,7 +248,7 @@ class CustomOrderResource extends Resource
                                             ->required(),
                                     ]),
 
-                                    Grid::make(4)->schema([
+                                    Grid::make(3)->schema([
                                         TextInput::make('metal_weight')
                                             ->label('Metal Wt. (g)')
                                             ->numeric()
@@ -169,14 +262,21 @@ class CustomOrderResource extends Resource
                                         TextInput::make('size')
                                             ->label('Size')
                                             ->placeholder('e.g. 6.5'),
-
-                                        TextInput::make('quoted_price')
-                                            ->label('Item Price')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required()
-                                            ->live(onBlur: true),
                                     ]),
+
+                                    // ── ITEM PRICE — full width, prominent ───────────────────────
+                                    TextInput::make('quoted_price')
+                                        ->label('Item Price')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->required()
+                                        ->live(onBlur: true)
+                                        ->columnSpanFull()
+                                        ->helperText('Enter the agreed price for this item')
+                                        ->extraInputAttributes([
+                                            'class' => 'font-black text-2xl text-success-700',
+                                            'style' => 'font-size:1.5rem;height:3rem;border:2px solid #10b981;background:#f0fdf4;',
+                                        ]),
 
                                     Textarea::make('design_notes')
                                         ->label('Design Notes / Instructions')
@@ -197,9 +297,9 @@ class CustomOrderResource extends Resource
                                 ])
                                 ->defaultItems(1)
                                 ->addActionLabel('+ Add Another Item')
-                                ->itemLabel(fn(array $state): ?string =>
-                                    ($state['product_name'] ?? 'New Item') .
-                                    (!empty($state['quoted_price']) ? ' — $' . number_format((float)$state['quoted_price'], 2) : '')
+                                ->itemLabel(
+                                    fn(array $state): ?string => ($state['product_name'] ?? 'New Item') .
+                                        (!empty($state['quoted_price']) ? ' — $' . number_format((float)$state['quoted_price'], 2) : '')
                                 )
                                 ->collapsible()
                                 ->cloneable()
@@ -268,10 +368,12 @@ class CustomOrderResource extends Resource
                                 ->default(0)
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->readOnly(fn(string $operation) =>
+                                ->readOnly(
+                                    fn(string $operation) =>
                                     $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                                 )
-                                ->helperText(fn(string $operation) =>
+                                ->helperText(
+                                    fn(string $operation) =>
                                     $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                                         ? '⚠️ Admin: editing this will recalculate balance'
                                         : null
@@ -285,7 +387,8 @@ class CustomOrderResource extends Resource
                                 ->onColor('warning')
                                 ->live()
                                 ->default(false)
-                                ->visible(fn(string $operation) =>
+                                ->visible(
+                                    fn(string $operation) =>
                                     $operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                                 )
                                 ->dehydrated(false),
@@ -297,9 +400,9 @@ class CustomOrderResource extends Resource
                                 ->options(self::getPaymentOptions())
                                 ->default('CASH')
                                 ->required(fn(Get $get) => floatval($get('amount_paid')) > 0 && !$get('is_split_deposit'))
-                                ->visible(fn(string $operation, Get $get) =>
-                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                                    && !$get('is_split_deposit')
+                                ->visible(
+                                    fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                                        && !$get('is_split_deposit')
                                 )
                                 ->dehydrated(false),
 
@@ -307,9 +410,9 @@ class CustomOrderResource extends Resource
                             // Superadmin/Administration can edit on existing orders to fix wrong split
                             Repeater::make('split_deposit_payments')
                                 ->label('Split Deposit Breakdown')
-                                ->visible(fn(string $operation, Get $get) =>
-                                    ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                                    && $get('is_split_deposit')
+                                ->visible(
+                                    fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                                        && $get('is_split_deposit')
                                 )
                                 ->schema([
                                     Grid::make(2)->schema([
@@ -432,7 +535,7 @@ class CustomOrderResource extends Resource
         ]);
     }
 
-    public static function table(Table $table): Table
+   public static function table(Table $table): Table
     {
         return $table
             ->columns([
@@ -440,7 +543,8 @@ class CustomOrderResource extends Resource
                     ->label('ORDER #')
                     ->searchable()
                     ->sortable()
-                    ->weight('bold'),
+                    ->weight('bold')
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('order_type')
                     ->label('TYPE')
@@ -454,38 +558,29 @@ class CustomOrderResource extends Resource
                     ->searchable()
                     ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
 
-                Tables\Columns\TextColumn::make('items_summary')
-                    ->label('ITEMS')
-                    ->getStateUsing(function ($record) {
-                        $items = $record->items ?? [];
-                        if (empty($items)) return $record->product_name ?? '—';
-                        $count = count($items);
-                        $first = $items[0]['product_name'] ?? 'Item';
-                        return $count > 1 ? "{$first} +" . ($count - 1) . " more" : $first;
-                    })
-                    ->description(fn($record) => $record->metal_type)
-                    ->limit(40),
-
                 Tables\Columns\TextColumn::make('staff.name')
                     ->label('SALES REP')
-                    ->toggleable()
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->color('gray'),
 
                 Tables\Columns\TextColumn::make('due_date')
                     ->date('M d, Y')
                     ->label('DUE DATE')
                     ->sortable()
+                    ->grow(false)
                     ->color(fn($record) => $record->due_date && $record->due_date <= now() ? 'danger' : 'warning'),
 
                 Tables\Columns\TextColumn::make('quoted_price')
                     ->label('QUOTED')
                     ->money('USD')
-                    ->color('success'),
+                    ->color('success')
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('balance_due')
                     ->label('BALANCE')
                     ->money('USD')
                     ->sortable()
+                    ->grow(false)
                     ->color(fn($state) => $state > 0 ? 'danger' : 'success')
                     ->weight('bold'),
 
@@ -499,43 +594,18 @@ class CustomOrderResource extends Resource
                         'received'      => 'Ready for Pickup',
                         'completed'     => 'Completed',
                     ])
-                    ->selectablePlaceholder(false),
+                    ->selectablePlaceholder(false)
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('notified_at')
-                    ->label('TIMESTAMP')
+                    ->label('NOTIFIED')
                     ->getStateUsing(fn($record) => $record->is_customer_notified && $record->notified_at
-                        ? $record->notified_at->format('M d, y - h:i A')
-                        : 'Not Notified'
+                        ? $record->notified_at->format('M d, y')
+                        : 'No'
                     )
-                    ->icon(fn($state) => $state !== 'Not Notified' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
-                    ->color(fn($state) => $state !== 'Not Notified' ? 'success' : 'gray')
-                    ->description(function ($record) {
-                        if (!$record->is_customer_notified) return null;
-                        return new HtmlString("<span class='text-primary-600 font-bold underline cursor-pointer hover:text-primary-500'>View Message Log</span>");
-                    })
-                    ->action(
-                        Tables\Actions\Action::make('viewMessageHistory')
-                            ->modalHeading('Communication History')
-                            ->modalWidth('lg')
-                            ->slideOver()
-                            ->modalSubmitAction(false)
-                            ->modalCancelActionLabel('Close')
-                            ->form([
-                                Forms\Components\Placeholder::make('history_log')
-                                    ->label('')
-                                    ->content(fn($record) => new HtmlString("
-                                        <div class='space-y-4'>
-                                            <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
-                                                <div class='flex justify-between items-center mb-2'>
-                                                    <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification</span>
-                                                    <span class='text-[10px] text-gray-400'>" . ($record->notified_at?->format('M d, Y h:i A') ?? 'N/A') . "</span>
-                                                </div>
-                                                <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
-                                            </div>
-                                        </div>
-                                    "))
-                            ])
-                    ),
+                    ->icon(fn($state) => $state !== 'No' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
+                    ->color(fn($state) => $state !== 'No' ? 'success' : 'gray')
+                    ->grow(false),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -554,100 +624,130 @@ class CustomOrderResource extends Resource
                     ]),
             ])
             ->actions([
+                // ── EDIT ──────────────────────────────────────────────
                 Tables\Actions\EditAction::make()->iconButton(),
 
-                Tables\Actions\Action::make('viewItems')
-                    ->label('Items')
-                    ->icon('heroicon-o-list-bullet')
-                    ->color('info')
-                    ->slideOver()
-                    ->modalHeading(fn(CustomOrder $record) => "Order {$record->order_no} — Items")
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
-                    ->form(fn(CustomOrder $record): array => [
-                        Placeholder::make('items_detail')
-                            ->label('')
-                            ->content(function () use ($record) {
-                                $items = $record->items ?? [];
-                                if (empty($items)) {
-                                    $items = [[
-                                        'product_name'   => $record->product_name,
-                                        'metal_type'     => $record->metal_type,
-                                        'metal_weight'   => $record->metal_weight,
-                                        'diamond_weight' => $record->diamond_weight,
-                                        'size'           => $record->size,
-                                        'design_notes'   => $record->design_notes,
-                                        'quoted_price'   => $record->quoted_price,
-                                    ]];
-                                }
-
-                                $html = '<div class="space-y-4">';
-                                foreach ($items as $i => $item) {
-                                    $name  = $item['product_name'] ?? 'Item ' . ($i + 1);
-                                    $price = '$' . number_format((float)($item['quoted_price'] ?? 0), 2);
-                                    $html .= "
-                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
-                                            <div class='flex justify-between items-center mb-2'>
-                                                <span class='font-bold text-gray-900'>{$name}</span>
-                                                <span class='text-success-600 font-bold'>{$price}</span>
-                                            </div>
-                                            <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
-                                                <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
-                                                <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
-                                                <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
-                                            </div>
-                                            " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
-                                        </div>";
-                                }
-                                $html .= '</div>';
-                                return new HtmlString($html);
-                            }),
-                    ]),
-
+                // ── ADD DEPOSIT / PAYMENT ─────────────────────────────
                 Tables\Actions\Action::make('recordPayment')
-                    ->label('Add Deposit/Payment')
-                    ->icon('heroicon-o-currency-dollar')
+                    ->label('Add Deposit')
+                    ->icon('heroicon-o-banknotes')
                     ->color('success')
+                    ->button()
+                    ->size('sm')
                     ->visible(fn(CustomOrder $record) => !in_array($record->status, ['completed', 'cancelled']) && $record->balance_due > 0)
-                    ->form([
-                        TextInput::make('amount')
-                            ->label('Payment Amount')
-                            ->numeric()
-                            ->required()
-                            ->prefix('$')
-                            ->default(fn(CustomOrder $record) => $record->balance_due),
+                    ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
+                    ->modalSubmitActionLabel('✓ Record Payment')
+                    ->modalWidth('lg')
+                    ->form(function (CustomOrder $record) {
+                        $record = $record->fresh(['payments']);
+                        // ── Build payment history HTML ─────────────────
+                        $payments   = $record->payments()->orderBy('paid_at')->get();
+                        $totalPaid  = $payments->sum('amount');
+                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                        $grandTotal = floatval($record->quoted_price) + (floatval($record->quoted_price) * $taxRate);
+                        $balance    = max(0, $grandTotal - $totalPaid);
 
-                        Toggle::make('is_split')
-                            ->label('Split Payment?')
-                            ->live()
-                            ->default(false),
+                        $rows = '';
+                        if ($payments->isEmpty()) {
+                            $rows = "<p style='font-size:11px;color:#9ca3af;font-style:italic;padding:8px 0;'>No payments recorded yet.</p>";
+                        } else {
+                            $running = 0;
+                            foreach ($payments as $p) {
+                                $running    += floatval($p->amount);
+                                $runningBal  = max(0, $grandTotal - $running);
+                                $rows .= "
+                                    <div style='display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:6px 0;border-bottom:1px dashed #e5e7eb;'>
+                                        <div>
+                                            <span style='color:#374151;font-weight:600;'>" . \Carbon\Carbon::parse($p->paid_at)->format('M d, Y') . "</span>
+                                            <span style='color:#9ca3af;margin-left:6px;'>" . \Carbon\Carbon::parse($p->paid_at)->format('h:i A') . "</span>
+                                            <span style='display:inline-block;margin-left:8px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700;'>" . strtoupper($p->method) . "</span>
+                                        </div>
+                                        <div style='text-align:right;'>
+                                            <span style='color:#10b981;font-weight:700;'>+\$" . number_format($p->amount, 2) . "</span>
+                                            <span style='color:#9ca3af;font-size:10px;margin-left:8px;'>bal: \$" . number_format($runningBal, 2) . "</span>
+                                        </div>
+                                    </div>
+                                ";
+                            }
+                        }
 
-                        Select::make('payment_method')
-                            ->options(self::getPaymentOptions())
-                            ->default('CASH')
-                            ->required(fn(Get $get) => !$get('is_split'))
-                            ->visible(fn(Get $get) => !$get('is_split')),
+                        $balColor    = $balance <= 0 ? '#10b981' : '#ef4444';
+                        $summaryHtml = "
+                            <div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:2px;'>
+                                <div style='font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>
+                                    📋 Payment History
+                                </div>
+                                {$rows}
+                                <div style='margin-top:10px;padding-top:10px;border-top:2px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;'>
+                                    <div>
+                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Order Total</div>
+                                        <div style='font-size:14px;font-weight:700;color:#374151;'>\$" . number_format($grandTotal, 2) . "</div>
+                                    </div>
+                                    <div style='text-align:center;'>
+                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Total Paid</div>
+                                        <div style='font-size:14px;font-weight:700;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
+                                    </div>
+                                    <div style='text-align:right;'>
+                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Remaining</div>
+                                        <div style='font-size:20px;font-weight:900;color:{$balColor};'>\$" . number_format($balance, 2) . "</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ";
 
-                        Repeater::make('split_payments')
-                            ->label('Split Payment Breakdown')
-                            ->visible(fn(Get $get) => $get('is_split'))
-                            ->schema([
-                                Grid::make(2)->schema([
-                                    Select::make('method')
-                                        ->options(self::getPaymentOptions())
-                                        ->required()
-                                        ->label('Method'),
-                                    TextInput::make('amount')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->required()
-                                        ->label('Amount'),
-                                ]),
-                            ])
-                            ->defaultItems(2)
-                            ->maxItems(4)
-                            ->reorderable(false),
-                    ])
+                        return [
+                            Placeholder::make('payment_history')
+                                ->label('')
+                                ->content(new HtmlString($summaryHtml)),
+
+                            TextInput::make('amount')
+                                ->label('Amount to Collect Now')
+                                ->numeric()
+                                ->required()
+                                ->prefix('$')
+                                ->default(fn() => $record->fresh()->balance_due)
+                                ->extraInputAttributes([
+                                    'style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;',
+                                ])
+                                ->helperText('Enter the amount the customer is paying today'),
+
+                            Toggle::make('is_split')
+                                ->label('Split Payment?')
+                                ->live()
+                                ->default(false),
+
+                            Select::make('payment_method')
+                                ->label('Payment Method')
+                                ->options(self::getPaymentOptions())
+                                ->default('CASH')
+                                ->required(fn(Get $get) => !$get('is_split'))
+                                ->visible(fn(Get $get) => !$get('is_split'))
+                                ->native(false),
+
+                            Repeater::make('split_payments')
+                                ->label('Split Payment Breakdown')
+                                ->visible(fn(Get $get) => $get('is_split'))
+                                ->schema([
+                                    Grid::make(2)->schema([
+                                        Select::make('method')
+                                            ->options(self::getPaymentOptions())
+                                            ->required()
+                                            ->label('Method')
+                                            ->native(false),
+                                        TextInput::make('amount')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required()
+                                            ->label('Amount'),
+                                    ]),
+                                ])
+                                ->defaultItems(2)
+                                ->maxItems(4)
+                                ->reorderable(false),
+                        ];
+                    })
                     ->action(function (CustomOrder $record, array $data) {
                         DB::transaction(function () use ($record, $data) {
                             $amountPaid    = round((float) $data['amount'], 2);
@@ -665,7 +765,7 @@ class CustomOrderResource extends Resource
                                         'custom_order_id' => $record->id,
                                         'sale_id'         => $record->sale_id ?? null,
                                         'amount'          => round((float) $payment['amount'], 2),
-                                        'method'          => strtoupper(trim($payment['method'])), // FIX: uppercase
+                                        'method'          => strtoupper(trim($payment['method'])),
                                         'paid_at'         => now(),
                                     ]);
                                 }
@@ -674,22 +774,21 @@ class CustomOrderResource extends Resource
                                     'custom_order_id' => $record->id,
                                     'sale_id'         => $record->sale_id ?? null,
                                     'amount'          => $amountPaid,
-                                    'method'          => strtoupper(trim($data['payment_method'])), // FIX: uppercase
+                                    'method'          => strtoupper(trim($data['payment_method'])),
                                     'paid_at'         => now(),
                                 ]);
                             }
 
-                            // FIX: Sync the linked sale's amount_paid, balance_due and status
                             if ($record->sale_id) {
                                 $sale = Sale::find($record->sale_id);
                                 if ($sale) {
                                     $totalPaid = $sale->payments()->sum('amount');
-                                    $balance   = round(max(0, $sale->final_total - $totalPaid), 2);
+                                    $bal       = round(max(0, $sale->final_total - $totalPaid), 2);
                                     $sale->update([
                                         'amount_paid'  => $totalPaid,
-                                        'balance_due'  => $balance,
-                                        'status'       => $balance <= 0 ? 'completed' : 'pending',
-                                        'completed_at' => $balance <= 0 ? now() : null,
+                                        'balance_due'  => $bal,
+                                        'status'       => $bal <= 0 ? 'completed' : 'pending',
+                                        'completed_at' => $bal <= 0 ? now() : null,
                                     ]);
                                 }
                             }
@@ -697,71 +796,164 @@ class CustomOrderResource extends Resource
 
                         Notification::make()
                             ->title('Payment Recorded')
-                            ->body('Balance updated. EOD closing will reflect this payment.')
+                            ->body('Balance has been updated.')
                             ->success()
                             ->send();
                     }),
 
-                Tables\Actions\Action::make('notifyDelay')
-                    ->label('Delay')
-                    ->icon('heroicon-o-clock')
-                    ->color('danger')
-                    ->modalHeading('Notify Customer of Delay')
-                    ->form([
-                        Select::make('notify_method')
-                            ->label('Notification Method')
-                            ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)'])
-                            ->default('sms')
-                            ->required(),
-                        Textarea::make('message')
-                            ->label('Message Content')
-                            ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
-                            ->rows(3)
-                            ->required(),
-                    ])
-                    ->action(fn(CustomOrder $record, array $data) => self::handleNotification($record, $data['notify_method'], $data['message'])),
+                // ── GROUPED SECONDARY ACTIONS ─────────────────────────
+                Tables\Actions\ActionGroup::make([
 
-                Tables\Actions\Action::make('markReady')
-                    ->label('Ready')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->modalHeading('Mark Ready & Notify')
-                    ->form([
-                        Select::make('notify_method')
-                            ->label('Notification Method')
-                            ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)', 'none' => 'Do not notify'])
-                            ->default('both')
-                            ->required(),
-                        Textarea::make('message')
-                            ->label('Message Content')
-                            ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
-                            ->rows(3)
-                            ->required(fn(Get $get) => $get('notify_method') !== 'none')
-                            ->visible(fn(Get $get) => $get('notify_method') !== 'none'),
-                    ])
-                    ->action(function (CustomOrder $record, array $data) {
-                        $record->update([
-                            'status'               => 'received',
-                            'is_customer_notified' => $data['notify_method'] !== 'none',
-                            'notified_at'          => $data['notify_method'] !== 'none' ? now() : null,
-                        ]);
+                    Tables\Actions\Action::make('viewItems')
+                        ->label('View Order Items')
+                        ->icon('heroicon-o-list-bullet')
+                        ->color('info')
+                        ->slideOver()
+                        ->modalHeading(fn(CustomOrder $record) => "Order {$record->order_no} — Items")
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->form(fn(CustomOrder $record): array => [
+                            Placeholder::make('items_detail')
+                                ->label('')
+                                ->content(function () use ($record) {
+                                    $items = $record->items ?? [];
+                                    if (empty($items)) {
+                                        $items = [[
+                                            'product_name'   => $record->product_name,
+                                            'metal_type'     => $record->metal_type,
+                                            'metal_weight'   => $record->metal_weight,
+                                            'diamond_weight' => $record->diamond_weight,
+                                            'size'           => $record->size,
+                                            'design_notes'   => $record->design_notes,
+                                            'quoted_price'   => $record->quoted_price,
+                                        ]];
+                                    }
 
-                        if ($data['notify_method'] !== 'none') {
-                            self::handleNotification($record, $data['notify_method'], $data['message']);
-                        } else {
-                            Notification::make()->title('Status updated. No notifications sent.')->success()->send();
-                        }
-                    }),
+                                    $html = '<div class="space-y-4">';
+                                    foreach ($items as $i => $item) {
+                                        $name  = $item['product_name'] ?? 'Item ' . ($i + 1);
+                                        $price = '$' . number_format((float)($item['quoted_price'] ?? 0), 2);
+                                        $html .= "
+                                            <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
+                                                <div class='flex justify-between items-center mb-2'>
+                                                    <span class='font-bold text-gray-900'>{$name}</span>
+                                                    <span class='text-success-600 font-bold text-lg'>{$price}</span>
+                                                </div>
+                                                <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
+                                                    <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
+                                                    <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
+                                                    <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
+                                                </div>
+                                                " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
+                                            </div>";
+                                    }
+                                    $html .= '</div>';
+                                    return new HtmlString($html);
+                                }),
+                        ]),
 
-                Tables\Actions\Action::make('convertToSale')
-                    ->label('To Sale')
-                    ->icon('heroicon-o-shopping-cart')
-                    ->color('info')
-                    ->visible(fn(CustomOrder $record) => $record->status === 'received')
-                    ->action(fn(CustomOrder $record) => redirect()->route('filament.admin.resources.sales.create', [
-                        'customer_id'     => $record->customer_id,
-                        'custom_order_id' => $record->id,
-                    ])),
+                   Tables\Actions\Action::make('printDepositReceipt')
+    ->label('Print Receipt')
+    ->icon('heroicon-o-printer')
+    ->color('gray')
+    ->url(fn(CustomOrder $record) => $record->sale_id
+        ? route('sales.receipt', ['record' => $record->sale_id, 'type' => 'standard'])
+        : route('custom-orders.deposit-receipt', ['customOrder' => $record->id])
+    )
+    ->openUrlInNewTab(),
+
+                    Tables\Actions\Action::make('notifyDelay')
+                        ->label('Notify: Delay')
+                        ->icon('heroicon-o-clock')
+                        ->color('danger')
+                        ->modalHeading('Notify Customer of Delay')
+                        ->form([
+                            Select::make('notify_method')
+                                ->label('Notification Method')
+                                ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)'])
+                                ->default('sms')
+                                ->required(),
+                            Textarea::make('message')
+                                ->label('Message Content')
+                                ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
+                                ->rows(3)
+                                ->required(),
+                        ])
+                        ->action(fn(CustomOrder $record, array $data) => self::handleNotification($record, $data['notify_method'], $data['message'])),
+
+                    Tables\Actions\Action::make('markReady')
+                        ->label('Mark Ready & Notify')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->modalHeading('Mark Ready & Notify Customer')
+                        ->form([
+                            Select::make('notify_method')
+                                ->label('Notification Method')
+                                ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)', 'none' => 'Do not notify'])
+                                ->default('both')
+                                ->required(),
+                            Textarea::make('message')
+                                ->label('Message Content')
+                                ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
+                                ->rows(3)
+                                ->required(fn(Get $get) => $get('notify_method') !== 'none')
+                                ->visible(fn(Get $get) => $get('notify_method') !== 'none'),
+                        ])
+                        ->action(function (CustomOrder $record, array $data) {
+                            $record->update([
+                                'status'               => 'received',
+                                'is_customer_notified' => $data['notify_method'] !== 'none',
+                                'notified_at'          => $data['notify_method'] !== 'none' ? now() : null,
+                            ]);
+                            if ($data['notify_method'] !== 'none') {
+                                self::handleNotification($record, $data['notify_method'], $data['message']);
+                            } else {
+                                Notification::make()->title('Status updated. No notifications sent.')->success()->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('convertToSale')
+                        ->label('Convert to Sale')
+                        ->icon('heroicon-o-shopping-cart')
+                        ->color('info')
+                        ->visible(fn(CustomOrder $record) => $record->status === 'received')
+                        ->action(fn(CustomOrder $record) => redirect()->route('filament.admin.resources.sales.create', [
+                            'customer_id'     => $record->customer_id,
+                            'custom_order_id' => $record->id,
+                        ])),
+
+                    Tables\Actions\Action::make('viewMessageHistory')
+                        ->label('Message History')
+                        ->icon('heroicon-o-chat-bubble-left-ellipsis')
+                        ->color('gray')
+                        ->visible(fn(CustomOrder $record) => $record->is_customer_notified)
+                        ->modalHeading('Communication History')
+                        ->modalWidth('lg')
+                        ->slideOver()
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->form([
+                            Placeholder::make('history_log')
+                                ->label('')
+                                ->content(fn(CustomOrder $record) => new HtmlString("
+                                    <div class='space-y-4'>
+                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
+                                            <div class='flex justify-between items-center mb-2'>
+                                                <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification</span>
+                                                <span class='text-[10px] text-gray-400'>" . ($record->notified_at?->format('M d, Y h:i A') ?? 'N/A') . "</span>
+                                            </div>
+                                            <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
+                                        </div>
+                                    </div>
+                                ")),
+                        ]),
+
+                ])
+                ->label('More')
+                ->icon('heroicon-m-ellipsis-horizontal')
+                ->color('gray')
+                ->button()
+                ->size('sm'),
             ])
             ->defaultSort('created_at', 'desc');
     }

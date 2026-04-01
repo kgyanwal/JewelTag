@@ -686,12 +686,75 @@ class SaleResource extends Resource
                                     ->multiple()
                                     ->searchable()
                                     ->preload()
-                                    ->options(fn() => User::pluck('name', 'name')->toArray())
+                                    ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
                                     ->default(fn() => [Session::get('active_staff_name') ?? auth()->user()->name])
-                                    ->required(),
+                                    ->required()
+                                    ->live(onBlur: true),  // ← only re-renders on blur, not on every keystroke
                             ]),
 
                         Section::make('Payment & Status')->schema([
+                            Placeholder::make('custom_order_payment_logs')
+                                ->label('PREVIOUS DEPOSITS LOG')
+                                // FIX: Check the URL query parameter AND the repeater items for custom_order_id
+                                ->visible(function (Get $get) {
+                                    $items = $get('items') ?? [];
+                                    return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
+                                        || request()->has('custom_order_id');
+                                })
+                                ->content(function (Get $get) {
+                                    // Try to get custom_order_id from items or URL
+                                    $items = $get('items') ?? [];
+                                    $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
+                                        ?? request()->get('custom_order_id');
+
+                                    if (!$customOrderId) return null;
+
+                                    $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
+                                        ->orderBy('paid_at', 'asc')
+                                        ->get();
+
+                                    if ($payments->isEmpty()) {
+                                        return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
+                                    }
+
+                                    $rows = "";
+                                    foreach ($payments as $payment) {
+                                        $date = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
+                                        $method = strtoupper($payment->method);
+                                        $amount = number_format($payment->amount, 2);
+
+                                        $rows .= "
+                <div style='display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9;'>
+                    <div style='display:flex; flex-direction:column;'>
+                        <span style='font-size:10px; font-weight:700; color:#334155;'>{$method}</span>
+                        <span style='font-size:9px; color:#94a3b8;'>{$date}</span>
+                    </div>
+                    
+<span style='font-size:11px; font-weight:700; color:#10b981;'>+\${$amount}</span>
+                </div>";
+                                    }
+
+                                    $totalDeposited = $payments->sum('amount');
+
+                                    return new HtmlString("
+            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
+                <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; display:flex; align-items:center; gap:5px;'>
+                    <svg style='width:12px; height:12px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'></path></svg>
+                    Custom Order Payment Trail
+                </div>
+                <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
+                    {$rows}
+                </div>
+                <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; pt-2; border-top: 1px solid #bae6fd; padding-top:8px;'>
+                    <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
+                    <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
+                </div>
+                <div style='margin-top:5px; font-size:9px; color:#64748b; font-style:italic;'>
+                    * This credit has been deducted from the balance below.
+                </div>
+            </div>
+        ");
+                                }),
                             Toggle::make('is_split_payment')
                                 ->label('Enable Split Payment')
                                 ->onColor('warning')
@@ -699,16 +762,16 @@ class SaleResource extends Resource
                                 ->columnSpanFull(),
 
                             // ── STANDARD PAYMENT ──────────────────────────────────
-                        Select::make('payment_method')
-                            ->label('Payment Method')
-                            ->options(self::getPaymentOptions())
-                            ->placeholder('Select Payment Method')  // ← replaces ->default('cash')
-                            ->required(fn(Get $get) => !$get('is_split_payment'))
-                            ->visible(fn(Get $get) => !$get('is_split_payment'))
-                            ->live()
-                            ->afterStateUpdated(function (Get $get, Set $set) {
-                                self::updateTotals($get, $set);
-                            }),
+                            Select::make('payment_method')
+                                ->label('Payment Method')
+                                ->options(self::getPaymentOptions())
+                                ->placeholder('Select Payment Method')  // ← replaces ->default('cash')
+                                ->required(fn(Get $get) => !$get('is_split_payment'))
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                }),
 
                             // Big blue display of total to collect
                             TextInput::make('display_total_due')
@@ -815,6 +878,7 @@ class SaleResource extends Resource
                         Section::make('Financial Summary')->schema([
                             self::totalRow('TAX TOTAL', 'tax_amount'),
                             self::totalRow('SUBTOTAL', 'subtotal'),
+
                             Placeholder::make('balance_due_display')
                                 ->label('BALANCE DUE')
                                 ->content(function (Get $get) {
@@ -825,22 +889,23 @@ class SaleResource extends Resource
                                         $tendered = floatval($get('amount_paid') ?? 0);
 
                                         // ✅ Fully paid
-                                        if ($tendered > 0 && $tendered >= $total) {
-                                            $change = $tendered - $total;
+                                        // ✅ Case: Fully Paid (Green Color)
+                                        if (round($total, 2) <= 0 || ($tendered > 0 && round($tendered, 2) >= round($total, 2))) {
                                             return new HtmlString("
-                                                <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
-                                                <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Paid via " . strtoupper($method) . "</div>
-                                                " . ($change > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($change, 2) . "</div>" : "") . "
-                                            ");
+                <div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px;'>
+                    <span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span>
+                    <div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div>
+                </div>
+            ");
                                         }
 
-                                        // 🔴 Partial payment entered
+                                        // 🔴 Case: Partial Payment (Red Color)
                                         if ($tendered > 0 && $tendered < $total) {
                                             $remaining = $total - $tendered;
                                             return new HtmlString("
-                                                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
-                                                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
-                                            ");
+                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
+            ");
                                         }
 
                                         // 🔴 Method selected but nothing entered yet
@@ -852,10 +917,19 @@ class SaleResource extends Resource
                                         }
 
                                         // 🔴 Nothing selected
+                                        // ✅ Total is $0 — fully covered by deposits/trade-in
+                                        if (round($total, 2) <= 0) {
+                                            return new HtmlString("
+        <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+        <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Covered by Prior Deposits</div>
+    ");
+                                        }
+
+                                        // 🔴 Nothing selected
                                         return new HtmlString("
-                                            <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
-                                            <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
-                                        ");
+    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
+");
                                     }
 
                                     // ── SPLIT ──────────────────────────────────────
@@ -905,13 +979,14 @@ class SaleResource extends Resource
         ]);
     }
 
-  // ── Drop this into SaleResource.php, replacing the existing table() method ──
+    // ── Drop this into SaleResource.php, replacing the existing table() method ──
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn(Builder $query) => $query
-                ->where('status', '!=', 'void')
-                ->with(['customer', 'items.productItem', 'payments'])  // ← eager load: kills N+1
+            ->modifyQueryUsing(
+                fn(Builder $query) => $query
+                    ->where('status', '!=', 'void')
+                    ->with(['customer', 'items.productItem', 'payments'])  // ← eager load: kills N+1
             )
             ->columns([
                 TextColumn::make('invoice_number')
@@ -922,17 +997,20 @@ class SaleResource extends Resource
 
                 TextColumn::make('customer_name_display')
                     ->label('Customer')
-                    ->getStateUsing(fn($record) =>
+                    ->getStateUsing(
+                        fn($record) =>
                         $record->customer
                             ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
                             : '—'
                     )
                     ->searchable(
                         query: function (Builder $query, string $search): Builder {
-                            return $query->whereHas('customer', fn($q) =>
+                            return $query->whereHas(
+                                'customer',
+                                fn($q) =>
                                 $q->where('name', 'like', "%{$search}%")
-                                ->orWhere('last_name', 'like', "%{$search}%")
-                                ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
                             );
                         }
                     )
@@ -976,42 +1054,56 @@ class SaleResource extends Resource
 
                 TextColumn::make('payment_method')
                     ->label('Method')
-                    ->formatStateUsing(fn($record) =>
+                    ->formatStateUsing(
+                        fn($record) =>
                         $record->is_split_payment ? 'SPLIT' : $record->payment_method
                     )
                     ->badge()
                     ->color(fn($state) => $state === 'SPLIT' ? 'warning' : 'gray'),
 
-                // ── payments already eager loaded — no extra query per row
-                TextColumn::make('payment_status_summary')
-                    ->label('PAYMENT SUMMARY')
-                    ->getStateUsing(function ($record) {
-                        $isCustomDeposit = $record->has_trade_in
-                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+              // ── payments already eager loaded — no extra query per row
+TextColumn::make('payment_status_summary')
+    ->label('PAYMENT SUMMARY')
+    ->getStateUsing(function ($record) {
+        // 1. Check if this is a Custom Order conversion with a deposit
+        $isCustomDeposit = $record->has_trade_in
+            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-                        $total = floatval($record->final_total);
-                        if ($isCustomDeposit) $total += floatval($record->trade_in_value);
+        // 2. The Bill Total (Grand Total of the Sale)
+        // We use final_total because trade_in_value has already been subtracted from it in the DB
+        // If it's a conversion, we add it back just for the visual "Bill Total"
+        $total = floatval($record->final_total);
+        if ($isCustomDeposit) {
+            $total += floatval($record->trade_in_value);
+        }
 
-                        $paid = floatval($record->payments->sum('amount'));
-                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
-                            $paid = floatval($record->amount_paid);
-                        }
-                        if ($isCustomDeposit) $paid += floatval($record->trade_in_value);
+        // 3. The actual money collected
+        // Sum the payments table (this already includes the linked Custom Order deposits)
+        $paid = floatval($record->payments->sum('amount'));
 
-                        $balance = max(0, $total - $paid);
+        // Fallback for legacy data or non-linked amounts
+        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+            $paid = floatval($record->amount_paid);
+        }
 
-                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+        // 4. Calculate Balance
+        $balance = max(0, $total - $paid);
 
-                        if ($balance > 0.01) {
-                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
-                        } else {
-                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-                        }
+        // 5. Build the HTML
+        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-                        return new HtmlString($html);
-                    }),
+        if ($balance > 0.01) {
+            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+        } else {
+            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+        }
 
+        return new HtmlString($html);
+    }),
+
+
+                    
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Date')
                     ->dateTime('M d, y')
@@ -1108,8 +1200,8 @@ class SaleResource extends Resource
                             $formattedPhone = '+1' . $digits;
                             $store          = $record->store;
                             $baseUrl        = $store && !empty($store->domain_url)
-                                                ? rtrim($store->domain_url, '/')
-                                                : config('app.url');
+                                ? rtrim($store->domain_url, '/')
+                                : config('app.url');
                             $link      = $baseUrl . '/receipt/' . $record->id;
                             $storeName = $store->name ?? 'Diamond Square';
                             $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
@@ -1151,7 +1243,8 @@ class SaleResource extends Resource
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('danger')
                     ->visible(fn(Sale $record) => $record->status === 'completed')
-                    ->url(fn(Sale $record) =>
+                    ->url(
+                        fn(Sale $record) =>
                         \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])
                     ),
             ])
@@ -1279,8 +1372,12 @@ class SaleResource extends Resource
             $fullyPaid = round($paidSum, 2) >= round($total, 2);
         } else {
             $tendered  = floatval($get('amount_paid') ?? 0);
-            // ✅ Simple: if amount_paid >= total, fully paid — no method name assumptions
-            $fullyPaid = $tendered > 0 && round($tendered, 2) >= round($total, 2);
+            // If total is $0 (fully covered by trade-in/deposits), mark as completed
+            if (round($total, 2) <= 0) {
+                $fullyPaid = true;
+            } else {
+                $fullyPaid = $tendered > 0 && round($tendered, 2) >= round($total, 2);
+            }
         }
 
         $set('status', $fullyPaid ? 'completed' : 'pending');

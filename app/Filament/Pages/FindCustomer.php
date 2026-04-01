@@ -289,6 +289,7 @@ class FindCustomer extends Page implements HasTable
                     ->icon('heroicon-m-pencil-square')
                     ->url(fn ($record) => CustomerResource::getUrl('edit', ['record' => $record])),
             ])
+            ->defaultSort('created_at', 'desc')
             ->headerActions([
                 \Filament\Tables\Actions\Action::make('reset')
                     ->label('Clear Filters')

@@ -67,7 +67,7 @@ class ExportTenantCsvAppend extends Command
         }
     }
 
-    protected function exportTable(
+   protected function exportTable(
         string $tenantId,
         string $table,
         string $dateColumn,
@@ -76,22 +76,23 @@ class ExportTenantCsvAppend extends Command
     ): void {
         $s3Path = "jeweltag/{$tenantId}/{$table}.csv";
 
-        // Check if table exists
+        // 1. Check if table exists
         if (!DB::getSchemaBuilder()->hasTable($table)) {
             $this->warn("  ⚠ Table {$table} not found, skipping.");
             return;
         }
 
-        // Check if dateColumn exists
-        if (!DB::getSchemaBuilder()->hasColumn($table, $dateColumn)) {
+        // 2. Get All Columns from Schema (Guarantees created_at/updated_at/etc.)
+        $columns = DB::getSchemaBuilder()->getColumnListing($table);
+        
+        if (!in_array($dateColumn, $columns)) {
             $this->warn("  ⚠ Column {$dateColumn} not found in {$table}, skipping.");
             return;
         }
 
-        // Build query — only apply deleted_at filter if column exists
+        // 3. Query for specific day
         $query = DB::table($table)->whereDate($dateColumn, $date->toDateString());
-
-        if (DB::getSchemaBuilder()->hasColumn($table, 'deleted_at')) {
+        if (in_array('deleted_at', $columns)) {
             $query->whereNull('deleted_at');
         }
 
@@ -102,46 +103,48 @@ class ExportTenantCsvAppend extends Command
             return;
         }
 
-        $rowCount = $rows->count();
-        $rows     = $rows->map(fn($r) => (array) $r)->toArray();
-        $headers  = array_keys($rows[0]);
+        // 4. Load existing content or initialize with Headers
+        $fileExists = Storage::disk('s3')->exists($s3Path);
+        $existingContent = $fileExists ? Storage::disk('s3')->get($s3Path) : '';
 
-        $csvLines    = [];
-        $fileExists  = Storage::disk('s3')->exists($s3Path);
-
-      if ($fileExists) {
-    $existing = Storage::disk('s3')->get($s3Path);
-    // Check if date appears as a DATA date (created_at), not just export date
-    // Look for the date in the actual data columns, not _export_date
-    $lines = explode("\n", $existing);
-    foreach ($lines as $line) {
-        // Skip header and empty lines
-        if (empty($line) || str_starts_with($line, 'id,')) continue;
-        // The data date appears at position before _export_date
-        // Check if line contains dateLabel NOT at the very end (export date position)
-        $withoutExportDate = preg_replace('/,' . preg_quote(now()->format('Y-m-d'), '/') . '[^,\n]*$/', '', $line);
-        if (str_contains($withoutExportDate, $dateLabel)) {
-            $this->line("  ⏭ {$table}: {$dateLabel} already exported, skipping.");
-            return;
+        if (!$fileExists || empty($existingContent)) {
+            // New File: Initialize with Headers
+            $headerRow = $columns;
+            $headerRow[] = '_export_date';
+            $existingContent = $this->toCsvLine($headerRow) . "\n";
         }
-    }
-}
+
+        // 5. Build CSV lines for NEW rows only
+        $newCsvLines = [];
+        $skippedCount = 0;
 
         foreach ($rows as $row) {
-            $row['_export_date'] = now()->toDateTimeString();
-            $csvLines[] = $this->toCsvLine(array_values($row));
+            // Check if this specific record ID already exists in the CSV to prevent duplicates
+            // We search for ",ID_NUMBER," to be precise
+            if ($fileExists && str_contains($existingContent, ',' . $row->id . ',')) {
+                $skippedCount++;
+                continue;
+            }
+
+            $dataRow = [];
+            foreach ($columns as $col) {
+                // Ensure we handle the object correctly (DB::table returns objects)
+                $dataRow[] = $row->{$col} ?? '';
+            }
+            $dataRow[] = now()->toDateTimeString(); // _export_date
+            $newCsvLines[] = $this->toCsvLine($dataRow);
         }
 
-        $csvContent = implode("\n", $csvLines) . "\n";
-
-        if ($fileExists) {
-            $existing   = Storage::disk('s3')->get($s3Path);
-            $csvContent = $existing . $csvContent;
+        if (empty($newCsvLines)) {
+            $this->line("  ⏭ {$table}: All {$rows->count()} rows already exist in S3. Skipping.");
+            return;
         }
 
-        Storage::disk('s3')->put($s3Path, $csvContent);
+        // 6. Append new lines to existing content and upload
+        $updatedContent = rtrim($existingContent) . "\n" . implode("\n", $newCsvLines) . "\n";
+        Storage::disk('s3')->put($s3Path, $updatedContent);
 
-        $this->line("  ✓ {$table}: {$rowCount} rows → s3://jeweltag/{$tenantId}/{$table}.csv");
+        $this->line("  ✓ {$table}: Added " . count($newCsvLines) . " new rows (Skipped {$skippedCount} duplicates) → S3");
     }
 
     protected function toCsvLine(array $values): string

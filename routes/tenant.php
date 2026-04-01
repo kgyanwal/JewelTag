@@ -50,6 +50,10 @@ Route::middleware([
 Route::get('/repairs/{repair}/print', [ReceiptController::class, 'printRepair'])
     ->name('repair.print')
     ->middleware(['auth']);
+Route::get('/custom-order-receipt/{customOrder}', [ReceiptController::class, 'customOrderReceipt'])
+    ->name('custom-orders.deposit-receipt');
+
+    
     // Label Layouts
     Route::prefix('label-layout')->group(function () {
         Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);
