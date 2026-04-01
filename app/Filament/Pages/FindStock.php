@@ -165,22 +165,34 @@ class FindStock extends Page implements HasForms, HasTable
                                                     'memo'     => 'On Memo',
                                                 ])->live(),
 
-                                            Select::make('department')
-                                                ->options(fn() => collect($settings['departments'] ?? [])->pluck('name', 'name'))
-                                                ->searchable()->live(),
+                                            // 1. Department Fix
+Select::make('department')
+    ->options(fn() => collect($settings['departments'] ?? [])
+        ->filter(fn($item) => !empty($item['name'])) // 🚀 Strip out nulls
+        ->pluck('name', 'name'))
+    ->searchable()->live(),
 
-                                            Select::make('sub_department')
-                                                ->options(fn() => collect($settings['sub_departments'] ?? [])->mapWithKeys(fn($i) => [$i => $i]))
-                                                ->searchable()->live(),
+// 2. Sub-Department Fix
+Select::make('sub_department')
+    ->options(fn() => collect($settings['sub_departments'] ?? [])
+        ->filter() // 🚀 Strip out nulls
+        ->mapWithKeys(fn($i) => [$i => $i]))
+    ->searchable()->live(),
 
-                                            Select::make('category')
-                                                ->options(fn() => collect($settings['categories'] ?? [])->mapWithKeys(fn($i) => [$i => $i]))
-                                                ->searchable()->live(),
+// 3. Category Fix
+Select::make('category')
+    ->options(fn() => collect($settings['categories'] ?? [])
+        ->filter() // 🚀 Strip out nulls
+        ->mapWithKeys(fn($i) => [$i => $i]))
+    ->searchable()->live(),
 
-                                            Select::make('metal_type')
-                                                ->label('Metal Karat')
-                                                ->options(fn() => collect($settings['metal_types'] ?? [])->mapWithKeys(fn($i) => [$i => $i]))
-                                                ->searchable()->live(),
+// 4. Metal Type Fix
+Select::make('metal_type')
+    ->label('Metal Karat')
+    ->options(fn() => collect($settings['metal_types'] ?? [])
+        ->filter() // 🚀 Strip out nulls
+        ->mapWithKeys(fn($i) => [$i => $i]))
+    ->searchable()->live(),
 
                                             TextInput::make('size')->label('Size/Length')->live(),
                                         ]),
