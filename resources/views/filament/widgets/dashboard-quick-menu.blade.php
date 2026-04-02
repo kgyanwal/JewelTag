@@ -12,83 +12,105 @@
     $memoItems = $data['memoItems'] ?? 0;
     $tradeInRequests = $data['tradeInRequests'] ?? 0;
 
-   $timezone = $store->timezone ?? 'America/Denver';
+    $timezone = $store->timezone ?? 'America/Denver';
     $state = $store->state ?? 'NM';
-    
+
     // 🚀 THE FIX: Create a single Carbon instance for this request
     $now = now()->setTimezone($timezone);
     $tzAbbreviation = $now->format('T');
 
-    
+
     @endphp
 
     <div class="ultimate-jewel-dashboard" style="margin-top: -1rem;">
         <!-- Premium Metallic Header -->
-     <header class="dashboard-header">
-    <div class="header-platinum">
-        <div class="brand-display">
-            <div class="diamond-badge">
-                @if($store && $store->logo_path)
-                <img src="{{ tenant_asset($store->logo_path) }}"
-                    alt="{{ $store->name }}"
-                    class="diamond-logo"
-                    style="width: 100%; height: 100%; object-fit: contain;">
-                @else
-                <img src="{{ asset('jeweltaglogo.png') }}"
-                    alt="Default"
-                    class="diamond-logo">
-                @endif
-            </div>
-
-            <div class="brand-identity">
-                <h1 class="brand-name">
-                    {{ strtoupper($store->name ?? 'StoreName') }}
-                </h1>
-                <p class="brand-tag">
-                    {{ $store->location ?? 'Premium Jewelry Management Suite' }}
-                </p>
-            </div>
-
-            <div class="quick-stats-bar" style="display: flex; align-items: center; gap: 12px;">
-                <div class="stat-item">
-                    <span class="stat-value">${{ number_format($todaySales ?? 0, 2) }}</span>
-                    <span class="stat-label">Today's Sales</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{{ $totalStock ?? '0' }}</span>
-                    <span class="stat-label">Total Stock</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{{ $activeOrders ?? '0' }}</span>
-                    <span class="stat-label">Active Orders</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{{ $pendingRepairs ?? '0' }}</span>
-                    <span class="stat-label">Pending Repairs</span>
-                </div>
-
-                <div class="stat-item time-stat-item">
-                    <div class="time-widget-compact">
-                        <div class="time-badge">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>{{ $tzAbbreviation }} • {{ $state }}</span>
-                        </div>
-                      <div class="compact-time">
-    <span class="time-display">{{ $now->format('h:i:s A') }}</span>
-    <span class="date-display">{{ $now->format('M d') }}</span>
-</div>
-                        <div class="system-dot" title="System Active"></div>
+        <header class="dashboard-header">
+            <div class="header-platinum">
+                <div class="brand-display">
+                    <div class="diamond-badge">
+                        @if($store && $store->logo_path)
+                        <img src="{{ tenant_asset($store->logo_path) }}"
+                            alt="{{ $store->name }}"
+                            class="diamond-logo"
+                            style="width: 100%; height: 100%; object-fit: contain;">
+                        @else
+                        <img src="{{ asset('jeweltaglogo.png') }}"
+                            alt="Default"
+                            class="diamond-logo">
+                        @endif
                     </div>
-                </div>
 
-                @php
-                    $crmLink = $store->crm_url ?? route('filament.admin.resources.customers.index');
-                @endphp
+                    <div class="brand-identity">
+                        <h1 class="brand-name">
+                            {{ strtoupper($store->name ?? 'StoreName') }}
+                        </h1>
+                       <p class="brand-tag">
+    {{ $store->street ?? '' }},
+    {{ $store->city ?? '' }},
+    {{ $store->state ?? '' }}
+    {{ $store->postcode ?? '' }}
+</p>
+                    </div>
 
-                <a href="{{ $crmLink }}" target="_blank" class="crm-tile-link" style="text-decoration: none; display: block; padding-left: 15rem;">
-                    <div class="stat-item crm-link-item" style="
+                    <div class="quick-stats-bar" style="display: flex; align-items: center; gap: 12px;">
+                      <div class="stat-item" x-data="{ showSales: false }">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span class="stat-value">
+            <template x-if="showSales">
+                <span>${{ number_format($todaySales ?? 0, 2) }}</span>
+            </template>
+            <template x-if="!showSales">
+                <span>$...</span>
+            </template>
+        </span>
+
+        <button @click="showSales = !showSales" class="p-1 hover:bg-white/10 rounded-full transition-colors focus:outline-none" style="color: white;">
+            <svg x-show="showSales" class="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <svg x-show="!showSales" class="w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88L4.573 4.574m14.854 14.854L14.12 14.12M17.657 16.657L13.414 12.414m5.636 5.636A10.05 10.05 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+            </svg>
+        </button>
+    </div>
+    <span class="stat-label">Today's Sales</span>
+</div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ $totalStock ?? '0' }}</span>
+                            <span class="stat-label">Total Stock</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ $activeOrders ?? '0' }}</span>
+                            <span class="stat-label">Active Orders</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">{{ $pendingRepairs ?? '0' }}</span>
+                            <span class="stat-label">Pending Repairs</span>
+                        </div>
+
+                        <div class="stat-item time-stat-item">
+                            <div class="time-widget-compact">
+                                <div class="time-badge">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span>{{ $tzAbbreviation }} • {{ $state }}</span>
+                                </div>
+                                <div class="compact-time">
+                                    <span class="time-display">{{ $now->format('h:i:s A') }}</span>
+                                    <span class="date-display">{{ $now->format('M d') }}</span>
+                                </div>
+                                <div class="system-dot" title="System Active"></div>
+                            </div>
+                        </div>
+
+                        @php
+                        $crmLink = $store->crm_url ?? route('filament.admin.resources.customers.index');
+                        @endphp
+
+                        <a href="{{ $crmLink }}" target="_blank" class="crm-tile-link" style="text-decoration: none; display: block; padding-left: 15rem;">
+                            <div class="stat-item crm-link-item" style="
                         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
                         border: 1px solid rgba(255,255,255,0.2);
                         padding: 6px 16px;
@@ -102,20 +124,20 @@
                         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
                         height: 100%;
                         min-width: 100px;">
-                        
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <svg style="width: 16px; height: 16px; color: #fbbf24;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                            <span style="color: #ffffff; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;">CRM</span>
-                        </div>
-                        <span style="color: #94a3b8; font-size: 9px; text-transform: uppercase; font-weight: 600; margin-top: 1px;">Portal</span>
+
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <svg style="width: 16px; height: 16px; color: #fbbf24;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                    </svg>
+                                    <span style="color: #ffffff; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;">CRM</span>
+                                </div>
+                                <span style="color: #94a3b8; font-size: 9px; text-transform: uppercase; font-weight: 600; margin-top: 1px;">Portal</span>
+                            </div>
+                        </a>
                     </div>
-                </a>
+                </div>
             </div>
-        </div>
-    </div>
-</header>
+        </header>
 
         <div class="dashboard-body">
             <!-- Priority Actions Section - 5 symmetrical cards -->
@@ -142,7 +164,7 @@
                             </svg>
                         </div>
                         <div class="card-content">
-                            <h3>Laybuys <span class="badge" style="background: #065f46; color: white;">{{ $pendingLaybuys }}</span></h3>
+                            <h3>Layby <span class="badge" style="background: #065f46; color: white;">{{ $pendingLaybuys }}</span></h3>
                             <p>Active payment plans</p>
                         </div>
                         <div class="card-tag">Track</div>

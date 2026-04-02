@@ -20,6 +20,7 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class CustomerResource extends Resource
 {
@@ -27,6 +28,27 @@ class CustomerResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Customer';
     protected static ?int $navigationSort = 1;
+  protected static ?string $recordTitleAttribute = 'name';
+
+  
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['name', 'last_name', 'phone', 'email'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return trim("{$record->name} {$record->last_name}");
+    }
+
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Phone' => $record->phone,
+            'Email' => $record->email,
+        ];
+    }
     public static function form(Form $form): Form
     {
         return $form
@@ -66,53 +88,73 @@ class CustomerResource extends Resource
                                             TextInput::make('email')->email(),
                                         ]),
                                         Grid::make(3)->schema([
-    Select::make('sales_person')
-        ->label('Sales Person')
-        ->options(function () {
-            $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales'];
+                                            Select::make('sales_person')
+                                                ->label('Sales Person')
+                                                ->options(function () {
+                                                    $validRoles = ['Superadmin', 'Administration', 'Manager', 'Sales'];
 
-            return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
-                $q->whereIn('name', $validRoles);
-            })->pluck('name', 'name');
-        })
-        ->searchable()
-        ->preload(),
+                                                    return \App\Models\User::whereHas('roles', function ($q) use ($validRoles) {
+                                                        $q->whereIn('name', $validRoles);
+                                                    })->pluck('name', 'name');
+                                                })
+                                                ->searchable()
+                                                ->preload(),
+TextInput::make('dob')
+    ->label('Birth Date')
+    ->placeholder('MM / DD / YYYY')
+    ->mask('99/99/9999')
+    ->rule('before_or_equal:today')
+    ->rule('date_format:m/d/Y')
+    ->dehydrateStateUsing(fn($state) => $state 
+        ? \Carbon\Carbon::createFromFormat('m/d/Y', $state)->format('Y-m-d') 
+        : null
+    )
+    ->afterStateHydrated(function ($component, $state) {
+        if ($state) {
+            $component->state(
+                \Carbon\Carbon::parse($state)->format('m/d/Y')
+            );
+        }
+    }),
 
-    DatePicker::make('dob')
-        ->label('Birth Date'),
+                                            DatePicker::make('wedding_anniversary')
+                                                ->label('Wedding Date'),
+                                        ]),
 
-    DatePicker::make('wedding_anniversary')
-        ->label('Wedding Date'),
-]),
+                                        GoogleAutocomplete::make('address_search')
+                                            ->label('Search Address')
+                                            ->autocompletePlaceholder('Start typing address...')
+                                            ->countries(['US'])
 
-Section::make('Address')
-    ->columns(2)
-    ->collapsible()
-    ->schema([
-        TextInput::make('street')->columnSpanFull(),
-        TextInput::make('city'),
-        TextInput::make('state'),
-        Select::make('country')
-            ->options([
-                'Australia' => 'Australia',
-                'United States' => 'United States',
-                'Canada' => 'Canada'
-            ])
-            ->default('United States')
-            ->searchable(),
-        TextInput::make('postcode'),
-    ]),
-                                        Section::make('Address')
-                                            ->columns(2)->collapsible()
-                                            ->schema([
-                                                TextInput::make('street')->columnSpanFull(),
-                                                TextInput::make('city'),
-                                                TextInput::make('state'),
-                                                Select::make('country')
-                                                    ->options(['Australia' => 'Australia', 'United States' => 'United States', 'Canada' => 'Canada'])
-                                                    ->default('Australia')->searchable(),
-                                                TextInput::make('postcode'),
+                                            ->columnSpanFull()
+                                            ->withFields([
+                                                
+                                                TextInput::make('street')
+                                                    ->label('Street Address')
+                                                    ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
+                                                    ->columnSpanFull(),
+                                                TextInput::make('address_line_2')
+                                                    ->label('Address2/Apt/Suite')
+                                                    ->columnSpanFull(),
+                                                TextInput::make('city')
+                                                    ->label('City')
+                                                    ->extraInputAttributes(['data-google-field' => 'locality']),
+                                                TextInput::make('state')
+                                                    ->label('State')
+                                                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                TextInput::make('postcode')
+                                                    ->label('Zip Code')
+                                                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
                                             ]),
+                                       Select::make('country')
+    ->label('Country')
+    ->options([
+        'USA' => 'United States',
+    ])
+    ->default('USA')
+    ->searchable()
+    ->preload(),
+
                                     ]),
 
                                 // --- TAB 2: MARKETING & JEWELRY ---
@@ -120,7 +162,7 @@ Section::make('Address')
                                     ->icon('heroicon-o-megaphone')
                                     ->schema([
                                         Grid::make(3)->schema([
-                                           
+
                                             Select::make('gender')->options(['Male' => 'Male', 'Female' => 'Female', 'Others' => 'Others']),
                                         ]),
                                         Grid::make(3)->schema([
@@ -200,31 +242,69 @@ Section::make('Address')
             ])->columns(3);
     }
 
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\ImageColumn::make('image')->circular()->label(''),
-                Tables\Columns\TextColumn::make('customer_no')->label('ID')->sortable()->searchable(),
-                Tables\Columns\TextColumn::make('name')
-                    ->label('Customer Name')
-                    ->formatStateUsing(fn($record) => "{$record->name} {$record->last_name}")
-                    ->searchable(['name', 'last_name'])
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('phone')->label('Phone')->copyable(),
-                Tables\Columns\TextColumn::make('loyalty_tier')
-                    ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'gold' => 'warning',
-                        'silver' => 'gray',
-                        default => 'info',
-                    }),
-                Tables\Columns\IconColumn::make('is_active')->boolean()->label('Status'),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('loyalty_tier'),
-            ])
-            ->actions([
+   public static function table(Table $table): Table
+{
+    return $table
+        ->columns([
+            Tables\Columns\ImageColumn::make('image')
+                ->circular()
+                ->label(''),
+
+            Tables\Columns\TextColumn::make('customer_no')
+                ->label('ID')
+                ->sortable()
+                ->searchable()
+                ->color('gray'),
+
+            Tables\Columns\TextColumn::make('name')
+                ->label('Customer Name')
+                ->formatStateUsing(fn($record) => "{$record->name} {$record->last_name}")
+                ->description(fn($record) => $record->company) // Shows company name below the name
+                ->searchable(['name', 'last_name', 'company'])
+                ->sortable()
+                ->weight('bold'),
+
+            Tables\Columns\TextColumn::make('phone')
+                ->label('Phone')
+                ->icon('heroicon-m-phone')
+                ->copyable() // Click to copy number
+                ->searchable(),
+
+            Tables\Columns\TextColumn::make('email')
+                ->label('Email')
+                ->icon('heroicon-m-envelope')
+                ->copyable()
+                ->searchable()
+                ->toggleable(), // Allow users to hide this column if they want
+
+            Tables\Columns\TextColumn::make('city')
+                ->label('Location')
+                ->getStateUsing(fn($record) => $record->city && $record->state ? "{$record->city}, {$record->state}" : 'N/A')
+                ->sortable()
+                ->toggleable(),
+
+            Tables\Columns\TextColumn::make('loyalty_tier')
+                ->label('Tier')
+                ->badge()
+                ->color(fn(string $state): string => match ($state) {
+                    'gold' => 'warning',
+                    'silver' => 'gray',
+                    default => 'info',
+                })
+                ->sortable(),
+
+            Tables\Columns\IconColumn::make('is_active')
+                ->boolean()
+                ->label('Status')
+                ->sortable(),
+        ])
+        ->filters([
+            Tables\Filters\SelectFilter::make('loyalty_tier'),
+            Tables\Filters\TernaryFilter::make('is_active')
+                ->label('Active Status'),
+        ])
+        ->actions([
+            Tables\Actions\ActionGroup::make([ // Grouping actions keeps the UI clean
                 Tables\Actions\EditAction::make()
                     ->after(function ($record) {
                         if ($record->customer_alerts) {
@@ -237,8 +317,10 @@ Section::make('Address')
                         }
                     }),
                 Tables\Actions\DeleteAction::make(),
-            ]);
-    }
+            ]),
+        ])
+        ->defaultSort('created_at', 'desc');
+}
 
     private static function getFingerSizes(): array
     {
@@ -276,4 +358,3 @@ Section::make('Address')
         return $user->hasRole(['Superadmin', 'Administration', 'Sales Associate']);
     }
 }
-

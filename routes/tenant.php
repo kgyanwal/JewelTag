@@ -42,13 +42,18 @@ Route::middleware([
     });
 
     // 3. STORE-SPECIFIC FEATURES
-    Route::get('/sales/{record}/receipt', function (Sale $record) {
-        $record->load(['customer', 'items']);
-        return view('receipts.sale', ['sale' => $record]);
-    })->name('sales.receipt');
+   Route::get('/sales/{record}/receipt', [ReceiptController::class, 'show'])
+    ->name('sales.receipt')
+    ->middleware(['auth']);
 
     Route::get('/receipt/{sale}', [ReceiptController::class, 'show'])->name('receipt.show');
+Route::get('/repairs/{repair}/print', [ReceiptController::class, 'printRepair'])
+    ->name('repair.print')
+    ->middleware(['auth']);
+Route::get('/custom-order-receipt/{customOrder}', [ReceiptController::class, 'customOrderReceipt'])
+    ->name('custom-orders.deposit-receipt');
 
+    
     // Label Layouts
     Route::prefix('label-layout')->group(function () {
         Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);

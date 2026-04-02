@@ -17,10 +17,10 @@
         const txt = ['stock_no','desc','price','dwmtmk','deptcat','rfid'];
         txt.forEach(id => {
             let x = (['price','dwmtmk','deptcat','rfid'].includes(id) ? s2 : 0) + parseInt(this.fields[id+'_x']);
-            {{-- 🚀 BOUTIQUE SCALE: Reduced multiplier to keep text elegant and small --}}
-            let h = 6 + (parseInt(this.fields[id+'_font']) * 0.8); 
-            let w = this.fields[id+'_is_bold'] ? (h + 1) : h;
-            zpl += `^FO${x},${this.fields[id+'_y'] * 6.4}^A0N,${Math.round(h)},${Math.round(w)}^FD${this.fields[id+'_val']}^FS`;
+            {{-- ✅ FIX: Match ZebraPrinterService exactly — use raw font_size, apply 0.9/0.7 width ratio --}}
+            let h = parseInt(this.fields[id+'_font']);
+            let w = this.fields[id+'_is_bold'] ? Math.max(2, Math.round(h * 0.9)) : Math.max(2, Math.round(h * 0.7));
+            zpl += `^FO${x},${this.fields[id+'_y'] * 6.4}^A0N,${h},${w}^FD${this.fields[id+'_val']}^FS`;
         });
         {{-- Barcode point-mapped to jewelry wing --}}
         zpl += `^FO${this.fields.barcode_x},${this.fields.barcode_y * 6.4}^BY${this.fields.barcode_width},2.0^BCN,${this.fields.barcode_height * 4},N,N,N,A^FD${this.fields.barcode_val}^FS^XZ`;
@@ -39,7 +39,7 @@ x-init="$nextTick(() => {
             let finalX = x;
             if (['price', 'dwmtmk', 'deptcat', 'rfid'].includes(type)) { finalX = x - 337; }
             @this.set('data.' + type + '_x', Math.round(finalX), false);
-            @this.set('data.' + type + — 'y', finalY, false);
+            @this.set('data.' + type + '_y', finalY, false);
         }}
     });
 })">

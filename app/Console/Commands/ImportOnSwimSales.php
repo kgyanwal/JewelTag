@@ -9,168 +9,239 @@ use App\Models\Customer;
 use App\Models\ProductItem;
 use App\Models\Store;
 use App\Models\Repair;
+use App\Models\Tenant;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
 class ImportOnSwimSales extends Command
 {
-    protected $signature = 'import:onswim-sales {tenant} {--rollback}';
-    protected $description = 'Import sales grouped by unique job/date/customer to prevent massive single-sale errors';
+    /**
+     * Signature restored with all functional flags
+     */
+    protected $signature = 'import:onswim-sales {tenant} {--rollback} {--dry-run}';
+    protected $description = 'Import sales with pre-calculation, cross-format duplicate detection, and SQL constraint fixes';
 
     public function handle()
     {
+        set_time_limit(0);
+        ini_set('memory_limit', '1G');
+
         $tenantId = $this->argument('tenant');
-        
+        $isDryRun = $this->option('dry-run');
+
         try {
-            $tenant = \App\Models\Tenant::findOrFail($tenantId);
+            $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
+
+            // 🛡️ FIX 1: Authenticate admin to satisfy activity_logs foreign key constraint
+            $adminUser = User::first();
+            if ($adminUser) {
+                auth()->login($adminUser);
+            }
+
+            // 🚀 WORKING PATH & DATE PATTERN
+            $directoryPath = storage_path("/{$tenantId}/data");
+            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
+            $fileName = "sales_{$yesterday}.csv";
+            $filePath = "{$directoryPath}/{$fileName}";
+
+            if (!File::exists($filePath)) {
+                $this->error("❌ FILE NOT FOUND: {$filePath}");
+                return Command::SUCCESS;
+            }
+
         } catch (\Exception $e) {
-            $this->error("Could not find or initialize tenant: {$tenantId}");
-            return;
+            $this->error("Initialization Error: " . $e->getMessage());
+            return Command::FAILURE;
         }
 
-        // 1. SAFE ROLLBACK
+        // Handle Rollback
         if ($this->option('rollback')) {
-            $this->warn("Rolling back sales for tenant: {$tenantId}...");
-            Schema::disableForeignKeyConstraints();
-            SaleItem::truncate();
-            Sale::truncate();
-            Schema::enableForeignKeyConstraints();
-            $this->info("Sales and Items tables truncated successfully.");
+            $this->warn("Rolling back (deleting) ALL sales for tenant: {$tenantId}...");
+            if ($this->confirm('Are you sure?', false)) {
+                Schema::disableForeignKeyConstraints();
+                SaleItem::truncate();
+                Sale::truncate();
+                Schema::enableForeignKeyConstraints();
+                $this->info("Sales tables truncated.");
+            }
             return;
         }
 
-        // 2. LOAD FILE
-        $directoryPath = storage_path("app/data/{$tenantId}");
-        $filePath = "{$directoryPath}/sales_dsqdata_feb27_26.csv";
-
-        if (!file_exists($filePath)) {
-            $this->error("File not found at: {$filePath}");
-            return;
-        }
+        $walkInCustomer = Customer::withoutEvents(fn() => 
+            Customer::firstOrCreate(['customer_no' => 'WALKIN'], ['name' => 'Walk-in', 'last_name' => 'Customer', 'is_active' => true])
+        );
 
         $storeId = Store::first()?->id ?? 1;
         $file = fopen($filePath, 'r');
         $headers = array_map('trim', fgetcsv($file));
-        
+
         $rows = [];
-        while (($row = fgetcsv($file)) !== FALSE) {
+        while (($row = fgetcsv($file)) !== false) {
+            if (count($headers) !== count($row)) continue;
             $rows[] = array_combine($headers, $row);
         }
         fclose($file);
 
-        // 🚀 THE FIX: Grouping by a combination of identifiers
-        // This ensures that even if Job No is missing, separate days or customers create separate sales.
-        $salesGroups = collect($rows)->groupBy(function ($item) {
-            $job = trim($item['Job No.'] ?? '0');
-            $date = trim($item['Purchase Date'] ?? '00-00-00');
-            $cust = trim($item['Customer No.'] ?? 'WALKIN');
-            return "{$job}-{$date}-{$cust}";
-        });
+        // Grouping: One Job/Date/Customer combo = One Invoice
+        $salesGroups = collect($rows)->groupBy(fn($item) => 
+            trim($item['Job No.'] ?? '0') . '-' . trim($item['Purchase Date'] ?? '0') . '-' . trim($item['Customer No.'] ?? 'WALKIN')
+        );
 
         $this->info("Processing " . $salesGroups->count() . " individual sales...");
         $bar = $this->output->createProgressBar($salesGroups->count());
+        
+        $created = 0; $skipped = 0;
 
         DB::connection('tenant')->beginTransaction();
 
         try {
             foreach ($salesGroups as $uniqueKey => $items) {
                 $firstItem = $items->first();
-                
-                // Link Customer
                 $customer = $this->findCustomer($firstItem);
-                
-                // Format Date
-                $purchaseDate = !empty($firstItem['Purchase Date']) 
-                    ? Carbon::parse($firstItem['Purchase Date']) 
-                    : now();
+                $customerId = $customer?->id ?? $walkInCustomer->id;
 
-                // Generate a real invoice number based on the CSV data
-                $jobNo = trim($firstItem['Job No.'] ?? rand(1000, 9999));
-                $invoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
+                $purchaseDate = !empty($firstItem['Purchase Date']) ? Carbon::parse($firstItem['Purchase Date']) : now();
+                $rawJobNo = trim($firstItem['Job No.'] ?? '');
+                $jobNo = empty($rawJobNo) ? rand(10000, 99999) : $rawJobNo;
 
-                // Staff Array
-                $staff = array_filter([
-                    trim($firstItem['Sales Assistant'] ?? null),
-                    trim($firstItem['Sales Assistant 2'] ?? null)
-                ]);
+                // ── 🛡️ RESTORED: PRE-CALCULATE TOTAL for duplicate detection ──
+                $preCalcSubtotal = 0;
+                $preCalcTax = 0;
+                foreach ($items as $preItem) {
+                    $desc = strtoupper($preItem['Description'] ?? '');
+                    if (str_contains($desc, 'TRADE IN')) continue;
+                    $preCalcSubtotal += floatval($preItem['Sold Price'] ?? 0) * floatval($preItem['Qty'] ?? 1);
+                    $preCalcTax += floatval($preItem['Tax Amount'] ?? 0);
+                }
+                $preCalcTotal = $preCalcSubtotal + $preCalcTax;
 
-                // Create the Individual Sale
-                $sale = Sale::create([
-                    'invoice_number' => $invoiceNo,
-                    'customer_id' => $customer?->id,
-                    'store_id' => $storeId,
-                    'status' => 'completed',
-                    'sales_person_list' => array_values(array_unique($staff)) ?: ['System'],
-                    'created_at' => $purchaseDate,
-                    'payment_method' => 'cash',
-                    'is_split_payment' => false,
-                    'repair_number' => $firstItem['Repair Number'] ?? null,
-                ]);
+                // ── 🚀 INVOICE NUMBER GENERATION ──
+                $baseInvoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
+                $invoiceNo = $baseInvoiceNo;
 
-                $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
+                // ── 🛡️ RESTORED: CROSS-FORMAT DUPLICATE CHECK ──
+                if ($customerId !== $walkInCustomer->id && $preCalcTotal > 0) {
+                    $crossFormatDuplicate = Sale::where('customer_id', $customerId)
+                        ->whereBetween('created_at', [
+                            $purchaseDate->copy()->subDays(2)->startOfDay(),
+                            $purchaseDate->copy()->addDays(2)->endOfDay(),
+                        ])
+                        ->whereBetween('final_total', [
+                            $preCalcTotal - 1.00,
+                            $preCalcTotal + 1.00,
+                        ])
+                        ->where('invoice_number', 'not like', '%-' . $jobNo)
+                        ->first();
 
-                // Process specific items for this sale group only
-                foreach ($items as $item) {
-                    $desc = strtoupper($item['Description'] ?? '');
-                    
-                    if (str_contains($desc, 'TRADE IN')) {
-                        $val = abs(floatval($item['Discount Amount'] ?? 0));
-                        $tradeInTotal += $val;
-                        $tradeInDesc .= ($item['Job Description'] ?? 'Trade-in') . '; ';
-                        continue; 
+                    if ($crossFormatDuplicate) {
+                        $skipped++;
+                        $bar->advance();
+                        continue;
                     }
-
-                    $qty = floatval($item['Qty'] ?? 1);
-                    $soldPrice = floatval($item['Sold Price'] ?? 0);
-                    $taxAmount = floatval($item['Tax Amount'] ?? 0);
-                    $discAmount = floatval($item['Discount Amount'] ?? 0);
-
-                    $repairId = !empty($item['Repair Number']) 
-                        ? Repair::where('repair_no', $item['Repair Number'])->value('id') 
-                        : null;
-
-                    $sale->items()->create([
-                        'product_item_id' => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
-                        'repair_id' => $repairId,
-                        'custom_description' => $item['Description'] ?? 'Item',
-                        'job_description' => $item['Job Description'] ?? null,
-                        'qty' => $qty,
-                        'sold_price' => $soldPrice,
-                        'discount_amount' => $discAmount,
-                        'discount_percent' => floatval($item['Discount'] ?? 0),
-                        'is_manual' => empty($item['Stock/Item No.']),
-                        'store_id' => $storeId,
-                    ]);
-
-                    $subtotal += ($soldPrice * $qty);
-                    $taxTotal += $taxAmount;
-                    $discountTotal += $discAmount;
                 }
 
-                $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
+                if (!$isDryRun) {
+                    // ── 🚀 FIX 2: Added 0 defaults to satisfy DB NOT NULL constraints ──
+                    $sale = Sale::withoutEvents(fn() => 
+                        Sale::updateOrCreate(
+                            ['invoice_number' => $invoiceNo],
+                            [
+                                'customer_id'       => $customerId,
+                                'store_id'          => $storeId,
+                                'status'            => 'completed',
+                                'sales_person_list' => array_filter([trim($firstItem['Sales Assistant'] ?? ''), trim($firstItem['Sales Assistant 2'] ?? '')]) ?: ['System'],
+                                'created_at'        => $purchaseDate,
+                                'payment_method'    => 'cash',
+                                'repair_number'     => $firstItem['Repair Number'] ?? null,
+                                'subtotal'          => 0,
+                                'tax_amount'        => 0,
+                                'final_total'       => 0,
+                                'discount_amount'   => 0,
+                                'amount_paid'       => 0,
+                            ]
+                        )
+                    );
 
-                // Update this specific sale with its calculated totals
-                $sale->update([
-                    'subtotal' => $subtotal,
-                    'tax_amount' => $taxTotal,
-                    'discount_amount' => $discountTotal,
-                    'has_trade_in' => $tradeInTotal > 0,
-                    'trade_in_value' => $tradeInTotal,
-                    'trade_in_description' => rtrim($tradeInDesc, '; '),
-                    'final_total' => $finalTotal,
-                    'payment_method_1' => 'cash',
-                    'payment_amount_1' => $finalTotal,
-                ]);
+                    // Clear items for overwrite - bypasses heavy observers
+                    SaleItem::withoutEvents(fn() => $sale->items()->delete());
 
+                    $subtotal = 0; $taxTotal = 0; $discountTotal = 0; $tradeInTotal = 0; $tradeInDesc = '';
+
+                    foreach ($items as $item) {
+                        $desc = strtoupper($item['Description'] ?? '');
+
+                        if (str_contains($desc, 'TRADE IN')) {
+                            $val = abs(floatval($item['Discount Amount'] ?? 0));
+                            $tradeInTotal += $val;
+                            $tradeInDesc .= ($item['Job Description'] ?? 'Trade-in') . '; ';
+                            continue;
+                        }
+
+                        $qty = floatval($item['Qty'] ?? 1);
+                        $soldPrice = floatval($item['Sold Price'] ?? 0);
+                        $taxAmount = floatval($item['Tax Amount'] ?? 0);
+                        $discAmount = floatval($item['Discount Amount'] ?? 0);
+
+                        $repairId = !empty($item['Repair Number']) ? Repair::where('repair_no', $item['Repair Number'])->value('id') : null;
+
+                        // 🛡️ Bypasses Activity Log crashes on line-items
+                        SaleItem::withoutEvents(fn() =>
+                            $sale->items()->create([
+                                'product_item_id'    => ProductItem::where('barcode', $item['Stock/Item No.'])->value('id'),
+                                'repair_id'          => $repairId,
+                                'custom_description' => $item['Description'] ?? 'Item',
+                                'job_description'    => Str::limit(trim($item['Job Description'] ?? ''), 250, ''),
+                                'qty'                => $qty,
+                                'sold_price'         => $soldPrice,
+                                'discount_amount'    => $discAmount,
+                                'discount_percent'   => floatval($item['Discount'] ?? 0),
+                                'is_manual'          => empty($item['Stock/Item No.']),
+                                'store_id'           => $storeId,
+                            ])
+                        );
+
+                        $subtotal += ($soldPrice * $qty);
+                        $taxTotal += $taxAmount;
+                        $discountTotal += $discAmount;
+                    }
+
+                    $finalTotal = ($subtotal + $taxTotal) - $tradeInTotal;
+                    
+                    Sale::withoutEvents(fn() =>
+                        $sale->update([
+                            'subtotal'             => $subtotal,
+                            'tax_amount'           => $taxTotal,
+                            'discount_amount'      => $discountTotal,
+                            'has_trade_in'         => $tradeInTotal > 0,
+                            'trade_in_value'       => $tradeInTotal,
+                            'trade_in_description' => rtrim($tradeInDesc, '; '),
+                            'final_total'          => $finalTotal,
+                            'amount_paid'          => $finalTotal,
+                            'payment_amount_1'     => $finalTotal,
+                        ])
+                    );
+                    $created++;
+                }
                 $bar->advance();
             }
 
-            DB::connection('tenant')->commit();
-            $bar->finish();
-            $this->newLine();
-            $this->info("Individual Sales Imported Successfully.");
+            if ($isDryRun) {
+                DB::connection('tenant')->rollBack();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ DRY RUN COMPLETE.");
+            } else {
+                DB::connection('tenant')->commit();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ SUCCESS: Sales synchronized.");
+                $this->table(['Created/Updated', 'Skipped (Duplicates)'], [[$created, $skipped]]);
+            }
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
@@ -178,27 +249,32 @@ class ImportOnSwimSales extends Command
         }
     }
 
+    /**
+     * 🛡️ RESTORED: DUAL PHONE SEARCH
+     */
     private function findCustomer($data)
     {
         $onSwimCustNo = trim($data['Customer No.'] ?? '');
+        $email = strtolower(trim($data['Email'] ?? ''));
+        $searchPhones = array_filter([
+            preg_replace('/[^0-9]/', '', trim($data['Mobile'] ?? '')),
+            preg_replace('/[^0-9]/', '', trim($data['Customer Ph'] ?? ''))
+        ]);
+
         if (!empty($onSwimCustNo)) {
-            $found = Customer::where('customer_no', 'CUST-' . $onSwimCustNo)->first();
+            $found = Customer::withoutGlobalScopes()->where('customer_no', 'CUST-' . $onSwimCustNo)->first();
             if ($found) return $found;
         }
-
-        $email = trim($data['Email'] ?? '');
         if (!empty($email)) {
-            $found = Customer::where('email', $email)->first();
+            $found = Customer::withoutGlobalScopes()->where('email', $email)->first();
             if ($found) return $found;
         }
-
-        $rawPhone = !empty(trim($data['Mobile'] ?? '')) ? $data['Mobile'] : ($data['Customer Ph'] ?? null);
-        if (!empty($rawPhone)) {
-            $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
-            $found = Customer::where('phone', 'like', "%{$cleanPhone}%")->first();
-            if ($found) return $found;
+        foreach ($searchPhones as $cleanPhone) {
+            if (strlen($cleanPhone) >= 7) {
+                $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}")->first();
+                if ($found) return $found;
+            }
         }
-
         return null;
     }
 }

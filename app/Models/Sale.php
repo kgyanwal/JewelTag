@@ -15,23 +15,24 @@ class Sale extends Model
     use LogsActivity;
 
     protected $guarded = [];
-    
+
     protected $casts = [
         'split_payments' => 'array',
         'sales_person_list' => 'array',
         'created_at' => 'datetime',
-    'updated_at' => 'datetime',
-    'deleted_at' => 'datetime',
+        'special_jobs'     => 'array',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
-    public function customer(): BelongsTo 
-    { 
-        return $this->belongsTo(Customer::class); 
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
-    public function items(): HasMany 
-    { 
-        return $this->hasMany(SaleItem::class); 
+    public function items(): HasMany
+    {
+        return $this->hasMany(SaleItem::class);
     }
 
     public function productItem()
@@ -41,59 +42,54 @@ class Sale extends Model
 
     public function store(): BelongsTo
     {
-        
+
         return $this->belongsTo(Store::class);
     }
     public function laybuy()
     {
         return $this->hasOne(Laybuy::class, 'sale_id');
     }
-protected function serializeDate(\DateTimeInterface $date)
-    {
-        return \Illuminate\Support\Carbon::instance($date)
-            ->setTimezone(config('app.timezone', 'America/Denver'))
-            ->format('Y-m-d H:i:s');
-    }
+
     /**
      * Model Boot Logic
      */
     protected static function booted()
     {
         static::creating(function ($sale) {
-            $sale->store_id = $sale->store_id ?? 1; 
+            $sale->store_id = $sale->store_id ?? 1;
 
             if (empty($sale->invoice_number)) {
-                // 1. Get Prefix from settings (e.g., 'D')
+                // 1. Get Prefix (e.g., 'D')
                 $prefix = DB::table('site_settings')
                     ->where('key', 'barcode_prefix')
                     ->value('value') ?? 'D';
 
-                // 2. Generate Date String: MMDDYY (e.g., 021326)
-                $timezone = config('app.timezone') ?? 'America/Denver';
-            $datePart = now()->setTimezone($timezone)->format('mdy');
-                // 3. Find the highest sequence number for TODAY ONLY
-                $todayPattern = $prefix . $datePart . '%';
-                
-                $latestToday = self::where('invoice_number', 'LIKE', $todayPattern)
-                    ->orderBy('invoice_number', 'desc')
+                // 2. Find the latest invoice that is NOT a long date string
+                // We look for numbers where the length is small (e.g., Prefix + 4 digits = 5)
+                $lastSale = self::withTrashed()
+                    ->where('invoice_number', 'LIKE', "{$prefix}%")
+                    ->whereRaw("LENGTH(invoice_number) < 9") // 🚀 IGNORES D31126005 (length 9)
+                    ->orderByRaw('CAST(REPLACE(invoice_number, ?, "") AS UNSIGNED) DESC', [$prefix])
                     ->first();
 
-                if ($latestToday) {
-                    // Extract all digits following the date part and increment
-                    // This handles 01, 99, or 100+ correctly
-                    $lastInvoice = $latestToday->invoice_number;
-                    $sequencePart = substr($lastInvoice, strlen($prefix . $datePart));
-                    $nextSequence = (int) $sequencePart + 1;
+                if ($lastSale) {
+                    // Strip prefix and increment
+                    $lastNumber = (int) str_replace($prefix, '', $lastSale->invoice_number);
+                    $nextNumber = $lastNumber + 1;
                 } else {
-                    // First sale of the day
-                    $nextSequence = 1;
+                    // 🚀 STARTING POINT
+                    $nextNumber = 5001;
                 }
 
-                // 4. Combine: D + 021326 + 001 (padded to 3 digits)
-                // Result: D021326001, D021326100, etc.
-                $sale->invoice_number = $prefix . $datePart . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+                $sale->invoice_number = $prefix . $nextNumber;
             }
         });
+       static::saving(function ($sale) {
+    // Only set completed_at when status becomes completed
+    if ($sale->status === 'completed' && empty($sale->completed_at)) {
+        $sale->completed_at = now();
+    }
+});
     }
 
     public function getCustomerNameAttribute(): string
@@ -112,7 +108,14 @@ protected function serializeDate(\DateTimeInterface $date)
     {
         return "Invoice: " . $this->invoice_number;
     }
-
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+    public function salePayments(): HasMany
+{
+    return $this->hasMany(SalePayment::class);
+}
     public function getGlobalSearchResultDetails(): array
     {
         return [

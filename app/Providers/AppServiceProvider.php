@@ -39,70 +39,96 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // 🚀 AUTOMATION: Self-Healing Storage for 1,000 Stores
-        // This creates folders on every request if they are missing.
-        Event::listen(TenancyInitialized::class, function (TenancyInitialized $event) {
-            $storagePath = storage_path("tenant{$event->tenancy->tenant->id}");
+        /**
+         * ---------------------------------------------------------
+         * 1. CENTRAL DOMAIN PROTECTION & STATE MANAGEMENT
+         * ---------------------------------------------------------
+         */
+        $currentHost = request()->getHost();
+        $centralDomains = config('tenancy.central_domains', []);
+        $isCentralDomain = in_array($currentHost, $centralDomains);
+
+        if ($isCentralDomain) {
+            // Prevent the identification middleware from throwing 500 errors on landlord domains
+            config(['tenancy.identification_exception_handler' => null]);
             
+            // Ensure no tenant database connection is active on central domains
+            if (function_exists('tenancy') && tenancy()->initialized) {
+                tenancy()->end();
+            }
+        }
+
+        /**
+         * ---------------------------------------------------------
+         * 2. STORAGE AUTOMATION (Self-Healing Storage)
+         * ---------------------------------------------------------
+         */
+        $createTenantFolders = function ($tenantId) {
+            $storagePath = storage_path("tenant{$tenantId}");
             $folders = [
                 "$storagePath/framework/cache",
                 "$storagePath/framework/views",
                 "$storagePath/framework/sessions",
                 "$storagePath/app/public",
             ];
-
             foreach ($folders as $folder) {
                 if (!File::exists($folder)) {
                     File::makeDirectory($folder, 0775, true, true);
                 }
             }
-        });
+        };
 
-        // 🚀 AUTOMATION: Create folders immediately when a tenant is created
-        Event::listen(TenantCreated::class, function (TenantCreated $event) {
-            $storagePath = storage_path("tenant{$event->tenant->id}");
-            $folders = ["$storagePath/framework/cache", "$storagePath/framework/views", "$storagePath/framework/sessions", "$storagePath/app/public"];
-            foreach ($folders as $folder) {
-                if (!File::exists($folder)) {
-                    File::makeDirectory($folder, 0775, true, true);
-                }
-            }
-        });
+        // Create folders when tenancy initializes or when a new store is created
+        Event::listen(TenancyInitialized::class, fn (TenancyInitialized $event) => $createTenantFolders($event->tenancy->tenant->id));
+        Event::listen(TenantCreated::class, fn (TenantCreated $event) => $createTenantFolders($event->tenant->id));
 
-        // 🚨 LIVEWIRE MULTI-TENANCY FIX
-        Livewire::setUpdateRoute(function ($handle) {
-            $route = Route::post('/livewire/update', $handle)->middleware('web');
-            $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
+        /**
+         * ---------------------------------------------------------
+         * 3. LIVEWIRE + TENANCY ROUTE FIX
+         * ---------------------------------------------------------
+         */
+        Livewire::setUpdateRoute(function ($handle) use ($isCentralDomain) {
+            $route = Route::post('/livewire/update', $handle)->middleware(['web']);
             
-            if (! $isCentralDomain) {
+            if (!$isCentralDomain) {
+                // Apply tenancy identification ONLY for store domains
                 $route->middleware(InitializeTenancyByDomain::class);
+            } else {
+                // Ensure landlord domains skip tenant identification
+                $route->withoutMiddleware([InitializeTenancyByDomain::class]);
             }
+            
             return $route;
         });
 
-        // --- RESTORED WIDGETS ---
+        /**
+         * ---------------------------------------------------------
+         * 4. FILAMENT WIDGETS & POLICIES
+         * ---------------------------------------------------------
+         */
         Livewire::component('app.filament.widgets.stats-overview', StatsOverview::class);
         Livewire::component('app.filament.widgets.latest-sales', LatestSales::class);
         Livewire::component('app.filament.widgets.fastest-selling-items', FastestSellingItems::class);
         Livewire::component('app.filament.widgets.department-chart', DepartmentChart::class);
         Livewire::component('app.filament.widgets.dashboard-quick-menu', \App\Filament\Widgets\DashboardQuickMenu::class);
         
-        // --- RESTORED POLICIES ---
         Gate::policy(User::class, UserPolicy::class);
         Gate::policy(Sale::class, SalePolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(ProductItem::class, ProductItemPolicy::class);
-        
-        // --- GLOBAL SECURITY GATE ---
-        Gate::before(function ($user, $ability) {
-            $isCentralDomain = in_array(request()->getHost(), config('tenancy.central_domains', []));
 
-            // Landlord access for Master Panel
+        /**
+         * ---------------------------------------------------------
+         * 5. GLOBAL SECURITY GATE (ACL)
+         * ---------------------------------------------------------
+         */
+        Gate::before(function ($user, $ability) use ($isCentralDomain) {
+            // Master/Landlord panel access
             if ($isCentralDomain) {
-                return true; 
+                return (bool) $user->is_landlord; 
             }
 
-            // Superadmin access for Store Panels
+            // Tenant Store access (check for Superadmin role within the tenant DB)
             if (function_exists('tenancy') && tenancy()->initialized && method_exists($user, 'hasRole')) {
                 return $user->hasRole('Superadmin') ? true : null;
             }

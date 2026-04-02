@@ -13,7 +13,7 @@ use App\Models\CustomOrder;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, Toggle};
+use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, DatePicker, Textarea, Toggle};
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -28,7 +28,8 @@ use Aws\Sns\SnsClient;
 use Illuminate\Support\Str;
 use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action as FormAction;
-
+use Illuminate\Support\Facades\Session;
+use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class SaleResource extends Resource
 {
@@ -36,6 +37,29 @@ class SaleResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-shopping-cart';
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'Quick Sale';
+    protected static ?string $recordTitleAttribute = 'invoice_number';
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['invoice_number', 'customer.name', 'customer.phone', 'customer.last_name'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        $customer = $record->customer;
+        $name = $customer ? "{$customer->name} {$customer->last_name}" : 'Unknown';
+        return "Invoice #{$record->invoice_number} — {$name}";
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Customer' => $record->customer?->name . ' ' . $record->customer?->last_name,
+            'Total'    => '$' . number_format($record->final_total, 2),
+            'Status'   => ucfirst($record->status),
+            'Date'     => $record->created_at?->format('M d, Y'),
+        ];
+    }
 
     public static function form(Form $form): Form
     {
@@ -43,105 +67,152 @@ class SaleResource extends Resource
             ->schema([
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)->schema([
-                        Section::make('Stock Selection')->schema([
-                            Grid::make(4)->schema([
-                                Select::make('current_item_search')
-                                    ->label('Select Stock #')
-                                    ->searchable()
-                                    ->preload()
-                                    ->options(
-                                        fn() => ProductItem::where('qty', '>', 0)
-                                            ->where('status', 'in_stock')
-                                            ->get()
-                                            ->mapWithKeys(fn($item) => [
-                                                $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
-                                            ])
-                                    )
-                                    ->live()
-                                    ->dehydrated(false)
-                                    // 🚀 AUTOMATIC ADD LOGIC
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        if (!$state) return;
-
-                                        $item = ProductItem::find($state);
-                                        if (!$item) return;
-
-                                        // 1. Get current items or empty array
-                                        $currentItems = $get('items') ?? [];
-
-                                        // 2. Prepare the new row
-                                        $newRow = [
-                                            'product_item_id' => $item->id,
-                                            'repair_id' => null,
-                                            'stock_no_display' => $item->barcode,
-                                            'custom_description' => $item->custom_description ?? $item->barcode,
-                                            'qty' => $get('current_qty') ?? 1,
-                                            'sold_price' => $item->retail_price,
-                                            'discount_percent' => 0,
-                                            'discount_amount' => 0,
-                                            'is_tax_free' => false,
-                                        ];
-
-                                        // 3. Push to repeater and reset search
-                                        $currentItems[] = $newRow;
-
-                                        $set('items', $currentItems);
-                                        $set('current_item_search', null); // 🚀 Clears the search box for the next item
-                                        $set('current_qty', 1);
-
-                                        // 4. Trigger total calculation
-                                        self::updateTotals($get, $set);
-                                    })->columnSpan(3),
-
-                                TextInput::make('current_qty')
-                                    ->label('Qty')
-                                    ->numeric()
-                                    ->default(1)
-                                    ->dehydrated(false)
-                                    ->live(),
-                            ]),
-                            // 💡 The "ADD TO BILL" button is no longer needed but you can keep a placeholder if preferred.
-                        ]),
-                        Section::make('Trade-In Details')
+                        Section::make('Stock Selection')
+                            ->headerActions([
+                                FormAction::make('clear_draft')
+                                    ->label('Start Fresh / New Sale')
+                                    ->icon('heroicon-m-trash')
+                                    ->color('danger')
+                                    ->requiresConfirmation()
+                                    ->action(function () {
+                                        session()->forget('sale_draft');
+                                        return redirect(static::getUrl('create'));
+                                    }),
+                            ])
                             ->schema([
-                                Select::make('has_trade_in')
-                                    ->label('Is there a Trade-In?')
-                                    ->options([
-                                        1 => 'Yes',
-                                        0 => 'No'
-                                    ])
-                                    ->default(0) // 🚀 This fixes the "field is required" error by providing a default value
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                Grid::make(4)->schema([
+                                    Select::make('current_item_search')
+                                        ->label('Select Stock #')
+                                        ->searchable()
+                                        ->preload()
+                                        ->options(
+                                            fn() => ProductItem::where('qty', '>', 0)
+                                                ->where('status', 'in_stock')
+                                                ->get()
+                                                ->mapWithKeys(fn($item) => [
+                                                    $item->id => "{$item->barcode} - {$item->qty} left (\${$item->retail_price})"
+                                                ])
+                                        )
+                                        ->live()
+                                        ->dehydrated(false)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            if (!$state) return;
 
-                                Grid::make(2)
-                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-                                    ->schema([
-                                        TextInput::make('trade_in_value')
-                                            ->label('Trade-In Value (Deduction)')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                            $item = ProductItem::find($state);
+                                            if (!$item) return;
 
-                                        TextInput::make('trade_in_receipt_no')
-                                            ->label('Trade-In Tracking #')
-                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
-                                            ->readOnly(),
+                                            $currentItems = $get('items') ?? [];
+                                            $qty          = $get('current_qty') ?? 1;
 
-                                        Forms\Components\Textarea::make('trade_in_description')
-                                            ->label('Item Description')
-                                            ->placeholder('e.g. 14k White Gold Diamond Band')
-                                            ->required(fn(Get $get) => $get('has_trade_in') == 1) // 🚀 Only required if Yes
-                                            ->columnSpanFull()
-                                            ->rows(2),
-                                    ]),
+                                            $newRow = [
+                                                'product_item_id'    => $item->id,
+                                                'repair_id'          => null,
+                                                'stock_no_display'   => $item->barcode,
+                                                'custom_description' => $item->custom_description ?? $item->barcode,
+                                                'qty'                => $qty,
+                                                'sold_price'         => $item->retail_price,
+                                                'sale_price_override' => $item->retail_price * $qty,
+                                                'discount_percent'   => 0,
+                                                'discount_amount'    => 0,
+                                                'is_tax_free'        => false,
+                                            ];
+
+                                            $currentItems[] = $newRow;
+                                            $set('items', $currentItems);
+                                            $set('current_item_search', null);
+                                            $set('current_qty', 1);
+
+                                            self::updateTotals($get, $set);
+                                        })->columnSpan(3),
+
+                                    TextInput::make('current_qty')
+                                        ->label('Qty')
+                                        ->numeric()
+                                        ->default(1)
+                                        ->dehydrated(false)
+                                        ->live(),
+
+
+                                ]),
+
+                                \Filament\Forms\Components\Actions::make([
+                                    FormAction::make('add_non_tag_item')
+                                        ->label('+ Non-Tag Item')
+                                        ->color('gray')
+                                        ->outlined()
+                                        ->icon('heroicon-o-plus-circle')
+                                        ->modalHeading('Add Non-Tag Item')
+                                        ->modalWidth('lg')
+                                        ->modalSubmitActionLabel('Add to Bill')
+                                        ->form([
+                                            TextInput::make('description')
+                                                ->label('Description')
+                                                ->required()
+                                                ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
+
+                                            \Filament\Forms\Components\Grid::make(2)->schema([
+                                                TextInput::make('price')
+                                                    ->label('Unit Price')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->required()
+                                                    ->default(0),
+
+                                                TextInput::make('qty')
+                                                    ->label('Qty')
+                                                    ->numeric()
+                                                    ->required()
+                                                    ->default(1),
+                                            ]),
+
+                                            \Filament\Forms\Components\Grid::make(2)->schema([
+                                                TextInput::make('discount_percent')
+                                                    ->label('Discount %')
+                                                    ->numeric()
+                                                    ->suffix('%')
+                                                    ->default(0),
+
+                                                \Filament\Forms\Components\Toggle::make('is_tax_free')
+                                                    ->label('Tax Free?')
+                                                    ->default(false)
+                                                    ->inline(false),
+                                            ]),
+                                        ])
+                                        ->action(function (array $data, Get $get, Set $set) {
+                                            $price    = floatval($data['price'] ?? 0);
+                                            $qty      = intval($data['qty'] ?? 1);
+                                            $discPct  = floatval($data['discount_percent'] ?? 0);
+                                            $lineTotal = $price * $qty;
+                                            $discAmt  = $lineTotal * ($discPct / 100);
+                                            $finalPrice = $lineTotal - $discAmt;
+
+                                            $currentItems   = $get('items') ?? [];
+                                            $currentItems[] = [
+                                                'product_item_id'    => null,   // ← null = no stock link
+                                                'repair_id'          => null,
+                                                'custom_order_id'    => null,
+                                                'is_non_stock'       => true,
+                                                'stock_no_display'   => 'NON-TAG',
+                                                'custom_description' => $data['description'],
+                                                'qty'                => $qty,
+                                                'sold_price'         => $price,
+                                                'sale_price_override' => $finalPrice,
+                                                'discount_percent'   => $discPct,
+                                                'discount_amount'    => $discAmt,
+                                                'is_tax_free'        => $data['is_tax_free'] ?? false,
+                                            ];
+
+                                            $set('items', $currentItems);
+                                            self::updateTotals($get, $set);
+                                        }),
+                                ])->columnSpan(1),
+
                             ]),
+
                         Section::make('Current Bill Items')->schema([
                             Repeater::make('items')
                                 ->relationship('items')
+                                ->live()
                                 ->schema([
                                     Hidden::make('product_item_id')->dehydrated(),
                                     Hidden::make('repair_id')->dehydrated(),
@@ -153,19 +224,23 @@ class SaleResource extends Resource
                                         ->dehydrated(false)
                                         ->columnSpan(1),
 
-                                    TextInput::make('custom_description')
+                                    Forms\Components\Textarea::make('custom_description')
                                         ->label('Description')
-                                        ->columnSpan(3), // Adjusted span to fit new field
+                                        ->maxLength(200)
+                                        ->rows(2)
+                                        ->autosize(false)
+                                        ->extraInputAttributes([
+                                            'style' => 'max-height:60px; overflow-y:auto; resize:none;'
+                                        ])
+                                        ->columnSpan(3),
 
-                                    // 1. QUANTITY CHANGE: Update Line Total & Discount Amount
                                     TextInput::make('qty')
                                         ->numeric()
                                         ->default(1)
                                         ->required()
-                                        ->live(onBlur: true) // Wait until user leaves field
+                                        ->live(onBlur: true)
                                         ->columnSpan(1)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            // Logic to limit qty based on stock
                                             if ($pid = $get('product_item_id')) {
                                                 $productItem = ProductItem::find($pid);
                                                 if ($productItem && $state > $productItem->qty) {
@@ -174,8 +249,7 @@ class SaleResource extends Resource
                                                 }
                                             }
 
-                                            // Recalculate Discount Amount based on existing Percent
-                                            $price = floatval($get('sold_price'));
+                                            $price   = floatval($get('sold_price'));
                                             $percent = floatval($get('discount_percent'));
                                             $lineTotal = $price * $state;
                                             $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
@@ -183,80 +257,96 @@ class SaleResource extends Resource
                                             self::updateTotals($get, $set);
                                         }),
 
-                                    // 2. PRICE CHANGE: Update Discount Amount
                                     TextInput::make('sold_price')
                                         ->label('Price')
                                         ->numeric()
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            // Recalculate Discount Amount based on existing Percent
-                                            $qty = intval($get('qty'));
-                                            $percent = floatval($get('discount_percent'));
-                                            $lineTotal = floatval($state) * $qty;
-                                            $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
+                                            $qty     = intval($get('qty') ?? 1);
+                                            $percent = floatval($get('discount_percent') ?? 0);
 
+                                            $lineTotalBeforeDiscount = floatval($state) * $qty;
+                                            $newDiscountAmount       = $lineTotalBeforeDiscount * ($percent / 100);
+
+                                            $set('discount_amount', number_format($newDiscountAmount, 2, '.', ''));
                                             self::updateTotals($get, $set);
                                         }),
 
-                                    // 3. PERCENT CHANGE: Calculate Amount ($)
+                                    TextInput::make('sale_price_override')
+                                        ->label('Sale Price')
+                                        ->columnSpan(2)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $unitPrice    = floatval($get('sold_price') ?? 0);
+                                            $qty          = intval($get('qty') ?? 1);
+                                            $totalOriginal = $unitPrice * $qty;
+                                            $newFinalTotal = floatval($state ?? 0);
+
+                                            if ($totalOriginal > 0) {
+                                                $diff    = $totalOriginal - $newFinalTotal;
+                                                $percent = ($diff / $totalOriginal) * 100;
+
+                                                $set('discount_amount', number_format($diff, 2, '.', ''));
+                                                $set('discount_percent', number_format($percent, 2, '.', ''));
+                                            }
+                                            static::updateTotals($get, $set);
+                                        }),
+
                                     TextInput::make('discount_percent')
                                         ->label('Disc %')
                                         ->numeric()
                                         ->suffix('%')
                                         ->default(0)
-                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('sold_price'));
-                                            $qty = intval($get('qty'));
+                                            $price     = floatval($get('sold_price') ?? 0);
+                                            $qty       = intval($get('qty') ?? 1);
                                             $lineTotal = $price * $qty;
+                                            $percent   = floatval($state ?? 0);
 
-                                            // Calculate $ Amount from %
-                                            $amount = $lineTotal * (floatval($state) / 100);
-                                            $set('discount_amount', number_format($amount, 2, '.', ''));
+                                            $discountAmount = $lineTotal * ($percent / 100);
+                                            $finalPrice     = $lineTotal - $discountAmount;
 
-                                            self::updateTotals($get, $set);
+                                            $set('discount_amount', number_format($discountAmount, 2, '.', ''));
+                                            $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
+
+                                            static::updateTotals($get, $set);
                                         }),
 
-                                    // 4. NEW FIELD: AMOUNT CHANGE: Calculate Percent (%)
                                     TextInput::make('discount_amount')
                                         ->label('Disc $')
                                         ->numeric()
                                         ->default(0)
-                                        ->dehydrateStateUsing(fn($state) => $state ?: 0)
                                         ->prefix('$')
                                         ->live(onBlur: true)
                                         ->columnSpan(2)
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('sold_price'));
-                                            $qty = intval($get('qty'));
-                                            $lineTotal = $price * $qty;
+                                            $price          = floatval($get('sold_price') ?? 0);
+                                            $qty            = intval($get('qty') ?? 1);
+                                            $lineTotal      = $price * $qty;
+                                            $discountAmount = floatval($state ?? 0);
 
                                             if ($lineTotal > 0) {
-                                                // Calculate % from $ Amount
-                                                $percent = (floatval($state) / $lineTotal) * 100;
+                                                $percent = ($discountAmount / $lineTotal) * 100;
                                                 $set('discount_percent', number_format($percent, 2, '.', ''));
-                                            } else {
-                                                $set('discount_percent', 0);
                                             }
 
-                                            self::updateTotals($get, $set);
+                                            $set('sale_price_override', number_format($lineTotal - $discountAmount, 2, '.', ''));
+                                            static::updateTotals($get, $set);
                                         }),
+
                                     Checkbox::make('is_tax_free')
                                         ->label('No Tax')
                                         ->columnSpan(1)
                                         ->default(false)
                                         ->dehydrated(true)
                                         ->live()
-                                        // 💡 Show message only when checked
                                         ->hint(fn($state) => $state ? 'There is no tax involved here' : null)
                                         ->hintColor('warning')
-                                        // 💡 Trigger the recalculation logic immediately
                                         ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 ])
-
                                 ->columns(12)
                                 ->addable(false)
                                 ->deletable(true)
@@ -266,52 +356,183 @@ class SaleResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
-                        Section::make('Shipping & Handling')->schema([
-                            Grid::make(4)->schema([
-                                TextInput::make('shipping_charges')
-                                    ->label('Charges')->numeric()->prefix('$')->default(0)->required()->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
-                                Select::make('carrier')->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])->default('No carrier'),
-                                TextInput::make('tracking_number')->label('Tracking')->nullable(),
+                        Section::make('🛠️ Workshop / Special Jobs')
+                            ->description('Add one or more job instructions (Resize, Solder, Engraving, etc.)')
+                            ->icon('heroicon-o-wrench')
+                            ->collapsible()
+                            ->schema([
+                                Repeater::make('special_jobs')
+                                    ->label('')
+                                    ->schema([
+                                        Grid::make(3)->schema([
+                                            Select::make('job_type')
+                                                ->label('Service Type')
+                                                ->options(fn() => self::getServiceTypeOptions())
+                                                ->placeholder('Select Job Type')
+                                                ->helperText(new \Illuminate\Support\HtmlString(
+                                                    '<a href="' . \App\Filament\Pages\ManageSettings::getUrl() . '?tab=-sales-tab" target="_blank" style="color:#0284c7;font-weight:600;">⚙️ Add custom service types in Settings</a>'
+                                                ))
+                                                ->live()
+                                                ->required(),
+
+                                            Select::make('metal_type')
+                                                ->label('Metal')
+                                                ->options([
+                                                    '10k'      => '10k Gold',
+                                                    '14k'      => '14k Gold',
+                                                    '18k'      => '18k Gold',
+                                                    'Platinum' => 'Platinum',
+                                                    'Silver'   => 'Sterling Silver',
+                                                ])
+                                                ->placeholder('Select Metal'),
+
+                                            DatePicker::make('date_required')
+                                                ->label('Completion Date')
+                                                ->native(false)
+                                                ->displayFormat('M d, Y'),
+                                        ]),
+
+                                        Grid::make(2)
+                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
+                                            ->schema([
+                                                TextInput::make('current_size')
+                                                    ->label('Current Size'),
+                                                TextInput::make('target_size')
+                                                    ->label('Target Size'),
+                                            ]),
+
+                                        Textarea::make('job_instructions')
+                                            ->label('Bench Notes / Instructions')
+                                            ->placeholder('Describe exactly what the jeweler needs to do...')
+                                            ->columnSpanFull()
+                                            ->rows(2),
+                                    ])
+                                    ->columns(1)
+                                    ->addActionLabel('+ Add Another Job')
+                                    ->defaultItems(0)
+                                    ->collapsible()
+                                    ->itemLabel(
+                                        fn(array $state): string => ($state['job_type'] ?? 'New Job') .
+                                            ($state['metal_type'] ? ' — ' . $state['metal_type'] : '') .
+                                            ($state['date_required'] ? ' (Due: ' . \Carbon\Carbon::parse($state['date_required'])->format('M d') . ')' : '')
+                                    )
+                                    ->reorderable(false),
+
+                                // Keep legacy hidden fields for backward compatibility
+                                Hidden::make('job_type'),
+                                Hidden::make('metal_type'),
+                                Hidden::make('date_required'),
+                                Hidden::make('current_size'),
+                                Hidden::make('target_size'),
+                                Hidden::make('job_instructions'),
+                                Hidden::make('notes'),
                             ]),
 
-                            // 🆕 WARRANTY & FOLLOW-UP SECTION (Added Below Shipping)
-                            Grid::make(4)->schema([
-                                // 1. Warranty Toggle (Yes/No)
-                                Select::make('has_warranty')
-                                    ->label('Include Warranty?')
-                                    ->options([0 => 'No', 1 => 'Yes'])
+                        Section::make('Trade-In Details')
+                            ->schema([
+                                Select::make('has_trade_in')
+                                    ->label('Is there a Trade-In?')
+                                    ->options([1 => 'Yes', 0 => 'No'])
                                     ->default(0)
-                                    ->live(),
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                                // 2. Warranty Duration (Dynamic from Settings)
-                                Select::make('warranty_period')
-                                    ->label('Warranty Time')
-                                    ->visible(fn(Get $get) => $get('has_warranty') == 1) // Only show if Yes
-                                    ->required(fn(Get $get) => $get('has_warranty') == 1)
-                                    ->options(function () {
-                                        // Fetch from settings or use defaults
-                                        $json = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
-                                        $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
-                                        return array_combine($options, $options); // Key = Value
-                                    }),
+                                Grid::make(2)
+                                    ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                    ->schema([
+                                        TextInput::make('trade_in_value')
+                                            ->label('Trade-In Value (Deduction)')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-                                // 3. First Follow Up
-                                Forms\Components\DatePicker::make('follow_up_date')
-                                    ->label('Follow Up (2 Weeks)')
-                                    ->default(now()->addWeeks(2)) // 🟢 Default to 2 weeks from today
-                                    ->native(false)
-                                    ->displayFormat('M d, Y'),
+                                        TextInput::make('trade_in_receipt_no')
+                                            ->label('Trade-In Tracking #')
+                                            ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                            ->readOnly(),
 
-                                // 4. Second Follow Up
-                                Forms\Components\DatePicker::make('second_follow_up_date')
-                                    ->label('Follow Up Second')
-                                    ->default(now()->addMonths(6)) // Example default
-                                    ->native(false)
-                                    ->displayFormat('M d, Y'),
+                                        Forms\Components\Textarea::make('trade_in_description')
+                                            ->label('Item Description')
+                                            ->placeholder('e.g. 14k White Gold Diamond Band')
+                                            ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                            ->columnSpanFull()
+                                            ->rows(2),
+                                    ]),
                             ]),
-                        ]),
+
+
+
+                        Section::make('Warranty')
+                            ->icon('heroicon-o-shield-check')
+                            ->collapsible()
+                            ->schema([
+                                Grid::make(4)->schema([
+                                    Select::make('has_warranty')
+                                        ->label('Include Warranty?')
+                                        ->options([0 => 'No', 1 => 'Yes'])
+                                        ->default(0)
+                                        ->live(),
+
+                                    Select::make('warranty_period')
+                                        ->label('Warranty Duration')
+                                        ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->required(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->options(function () {
+                                            $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                            $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                                            return array_combine($options, $options);
+                                        }),
+
+                                    TextInput::make('warranty_charge')
+                                        ->label('Warranty Charge ($)')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->default(0)
+                                        ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                    Forms\Components\DatePicker::make('follow_up_date')
+                                        ->label('Follow Up (2 Weeks)')
+                                        ->default(now()->addWeeks(2))
+                                        ->native(false)
+                                        ->displayFormat('M d, Y'),
+                                ]),
+
+                                Grid::make(4)->schema([
+                                    Forms\Components\DatePicker::make('second_follow_up_date')
+                                        ->label('Second Follow Up')
+                                        ->default(now()->addMonths(6))
+                                        ->native(false)
+                                        ->displayFormat('M d, Y'),
+                                ]),
+                            ]),
+                        Section::make('Shipping & Handling')
+                            ->icon('heroicon-o-truck')
+                            ->collapsible()
+                            ->schema([
+                                Grid::make(4)->schema([
+                                    TextInput::make('shipping_charges')
+                                        ->label('Charges')->numeric()->prefix('$')->live(onBlur: true)->default(0)->required()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                    Checkbox::make('shipping_taxed')->label('Taxed?')->default(false),
+                                    Select::make('carrier')
+                                        ->options(['No carrier' => 'No carrier', 'UPS' => 'UPS', 'FedEx' => 'FedEx'])
+                                        ->default('No carrier'),
+                                    TextInput::make('tracking_number')->label('Tracking #')->nullable(),
+                                ]),
+                            ]),
+                        Section::make('Receipt Customization')
+                            ->schema([
+                                Textarea::make('notes')
+                                    ->label('Receipt Notes / Warranty')
+                                    ->placeholder('Add special notes to be printed on the invoice...')
+                                    ->rows(3)
+                                    ->helperText('This text will be saved in your database and printed on the customer receipt.'),
+                            ]),
                     ]),
 
                     Group::make()->columnSpan(4)->schema([
@@ -322,37 +543,28 @@ class SaleResource extends Resource
                                     Select::make('customer_id')
                                         ->label('Select Customer')
                                         ->relationship('customer', 'name')
-                                        // 🚀 ENHANCED PREVIEW: Shows Name + Phone + Cust # to differentiate duplicates
                                         ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
                                         ->searchable()
-
-->getSearchResultsUsing(function (string $search) {
-    return \App\Models\Customer::query()
-        ->where(function ($q) use ($search) {
-
-            // first name + last name
-            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-
-            // last name + first name
-            ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
-
-            ->orWhere('phone', 'like', "%{$search}%")
-            ->orWhere('customer_no', 'like', "%{$search}%");
-        })
-        ->limit(50)
-        ->get()
-        ->mapWithKeys(function ($customer) {
-            return [
-                $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
-            ];
-        });
-})
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            return \App\Models\Customer::query()
+                                                ->where(function ($q) use ($search) {
+                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhere('phone', 'like', "%{$search}%")
+                                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(function ($customer) {
+                                                    return [
+                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                    ];
+                                                });
+                                        })
                                         ->preload()
                                         ->required()
                                         ->live()
                                         ->columnSpanFull()
-
-                                        // 🚀 "SWIM-STYLE" POPUP: View selected customer details
                                         ->hintAction(
                                             FormAction::make('view_customer_details')
                                                 ->label('View Profile')
@@ -360,9 +572,9 @@ class SaleResource extends Resource
                                                 ->color('info')
                                                 ->visible(fn(Get $get) => $get('customer_id'))
                                                 ->modalHeading('Customer Profile Details')
-                                                ->modalSubmitAction(false) // View only
+                                                ->modalSubmitAction(false)
                                                 ->modalCancelActionLabel('Close')
-                                                ->slideOver() // 🚀 Opens like a 2nd window from the side
+                                                ->slideOver()
                                                 ->form(function (Get $get) {
                                                     $customer = \App\Models\Customer::find($get('customer_id'));
                                                     if (!$customer) return [];
@@ -372,49 +584,44 @@ class SaleResource extends Resource
                                                             Placeholder::make('img')
                                                                 ->label('')
                                                                 ->content(new HtmlString("
-                                            <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
-                                                <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
-                                                <div>
-                                                    <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
-                                                    <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
-                                                    <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
-                                                        Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        "))->columnSpanFull(),
-
+                                                                    <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                                        <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                        <div>
+                                                                            <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                            <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                            <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                                Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                "))->columnSpanFull(),
                                                             TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
                                                             TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
-                                                           TextInput::make('addr')
-                                        ->label('Full Address')
-                                        ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
-                                        ->readOnly()
-                                        ->columnSpanFull(),
-
+                                                            TextInput::make('addr')
+                                                                ->label('Full Address')
+                                                                ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                ->readOnly()
+                                                                ->columnSpanFull(),
                                                             Placeholder::make('history')
                                                                 ->label('Last Sale Date')
                                                                 ->content($customer->sales()->latest()->first()?->created_at?->format('M d, Y') ?? 'No previous sales')
                                                         ]),
-
                                                         Placeholder::make('full_details_link')
-                        ->label('')
-                        ->content(new HtmlString("
-                            <div class='mt-4 pt-4 border-t border-gray-200'>
-                                <a href='" . \App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $customer->id]) . "' 
-                                   target='_blank' 
-                                   class='inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary-600 rounded-lg hover:bg-primary-500 transition shadow-sm'>
-                                    <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'></path></svg>
-                                    View All Details (Full Profile)
-                                </a>
-                                <p class='text-[10px] text-gray-400 mt-2 italic'>Opens in a new browser tab</p>
-                            </div>
-                        "))->columnSpanFull(),
+                                                            ->label('')
+                                                            ->content(new HtmlString("
+                                                                <div class='mt-4 pt-4 border-t border-gray-200'>
+                                                                    <a href='" . \App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $customer->id]) . "'
+                                                                       target='_blank'
+                                                                       class='inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary-600 rounded-lg hover:bg-primary-500 transition shadow-sm'>
+                                                                        <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'></path></svg>
+                                                                        View All Details (Full Profile)
+                                                                    </a>
+                                                                    <p class='text-[10px] text-gray-400 mt-2 italic'>Opens in a new browser tab</p>
+                                                                </div>
+                                                            "))->columnSpanFull(),
                                                     ];
                                                 })
                                         )
-
-                                        // 🚀 CREATE NEW OPTION (Remains Enhanced)
                                         ->createOptionModalHeading('Quick Add New Customer')
                                         ->createOptionForm([
                                             Forms\Components\Tabs::make('New Customer')
@@ -430,70 +637,195 @@ class SaleResource extends Resource
                                                                 Forms\Components\TextInput::make('phone')
                                                                     ->label('Mobile Phone')
                                                                     ->tel()
-                                                                    ->required()
-                                                                    ->unique('customers', 'phone'),
-
-                                                                Forms\Components\Grid::make(2)->schema([
-                                                                    Forms\Components\DatePicker::make('dob')
-                                                                        ->label('Birth Date')
-                                                                        ->placeholder('Jan 01, 1990')
-                                                                        ->displayFormat('M d, Y')
-                                                                        ->native(false) // 🚀 Enables the custom calendar UI
-                                                                        ->live(), // 🚀 Ensures typing is registered
-
-                                                                    Forms\Components\DatePicker::make('wedding_anniversary')
-                                                                        ->label('Wedding Date')
-                                                                        ->placeholder('Jun 15, 2010')
-                                                                        ->displayFormat('M d, Y')
-                                                                        ->native(false)
-                                                                        ->live(),
-                                                                ]),
+                                                                    ->prefix('+1')
+                                                                    ->mask('(999) 999-9999')
+                                                                    ->placeholder('(555) 555-5555')
+                                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                                    ->rule('regex:/^[0-9]{10}$/')
+                                                                    ->afterStateHydrated(function ($component, $state) {
+                                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                                        }
+                                                                    }),
                                                                 Forms\Components\TextInput::make('email')->label('Email')->email(),
                                                             ]),
-                                                            Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                DatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                                Forms\Components\DatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                                            ]),
+                                                            Forms\Components\Section::make('Customer Address')
+                                                                ->description('Search for an address to automatically fill the fields below.')
+                                                                ->columns(2)
+                                                                ->collapsible()
+                                                                ->schema([
+                                                                    GoogleAutocomplete::make('address_search')
+                                                                        ->label('Search Address')
+                                                                        ->autocompletePlaceholder('Start typing address...')
+                                                                        ->countries(['US'])
+                                                                        ->columnSpanFull()
+                                                                        ->withFields([
+                                                                            TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                                            TextInput::make('address_line_2')->label('Address 2 / Apt / Suite')->extraInputAttributes(['data-google-field' => 'subpremise']),
+                                                                            TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                                            TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])->columnSpan(1),
+                                                                            TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code'])->columnSpan(1),
+                                                                        ]),
+                                                                    Forms\Components\Select::make('country')->label('Country')->default('United States')->searchable(),
+                                                                ]),
                                                         ]),
                                                 ]),
-                                            Forms\Components\Hidden::make('customer_no')
-                                                ->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                            Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
                                         ])
                                         ->createOptionUsing(function (array $data) {
                                             return \App\Models\Customer::create($data)->id;
                                         }),
                                 ]),
 
-                                // 🚀 SALES PERSON LIST (Now follows customer selection)
                                 Select::make('sales_person_list')
                                     ->label('Sales Staff')
                                     ->multiple()
                                     ->searchable()
                                     ->preload()
-                                    ->options(fn() => User::pluck('name', 'name')->toArray())
-                                    ->default(fn() => [auth()->user()->name])
-                                    ->required(),
+                                    ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
+                                    ->default(fn() => [Session::get('active_staff_name') ?? auth()->user()->name])
+                                    ->required()
+                                    ->live(onBlur: true),  // ← only re-renders on blur, not on every keystroke
                             ]),
+
                         Section::make('Payment & Status')->schema([
+                            Placeholder::make('custom_order_payment_logs')
+                                ->label('PREVIOUS DEPOSITS LOG')
+                                // FIX: Check the URL query parameter AND the repeater items for custom_order_id
+                                ->visible(function (Get $get) {
+                                    $items = $get('items') ?? [];
+                                    return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
+                                        || request()->has('custom_order_id');
+                                })
+                                ->content(function (Get $get) {
+                                    // Try to get custom_order_id from items or URL
+                                    $items = $get('items') ?? [];
+                                    $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
+                                        ?? request()->get('custom_order_id');
+
+                                    if (!$customOrderId) return null;
+
+                                    $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
+                                        ->orderBy('paid_at', 'asc')
+                                        ->get();
+
+                                    if ($payments->isEmpty()) {
+                                        return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
+                                    }
+
+                                    $rows = "";
+                                    foreach ($payments as $payment) {
+                                        $date = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
+                                        $method = strtoupper($payment->method);
+                                        $amount = number_format($payment->amount, 2);
+
+                                        $rows .= "
+                <div style='display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9;'>
+                    <div style='display:flex; flex-direction:column;'>
+                        <span style='font-size:10px; font-weight:700; color:#334155;'>{$method}</span>
+                        <span style='font-size:9px; color:#94a3b8;'>{$date}</span>
+                    </div>
+                    
+<span style='font-size:11px; font-weight:700; color:#10b981;'>+\${$amount}</span>
+                </div>";
+                                    }
+
+                                    $totalDeposited = $payments->sum('amount');
+
+                                    return new HtmlString("
+            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
+                <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; display:flex; align-items:center; gap:5px;'>
+                    <svg style='width:12px; height:12px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'></path></svg>
+                    Custom Order Payment Trail
+                </div>
+                <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
+                    {$rows}
+                </div>
+                <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; pt-2; border-top: 1px solid #bae6fd; padding-top:8px;'>
+                    <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
+                    <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
+                </div>
+                <div style='margin-top:5px; font-size:9px; color:#64748b; font-style:italic;'>
+                    * This credit has been deducted from the balance below.
+                </div>
+            </div>
+        ");
+                                }),
                             Toggle::make('is_split_payment')
                                 ->label('Enable Split Payment')
                                 ->onColor('warning')
                                 ->live()
                                 ->columnSpanFull(),
 
-                            // Standard Payment (Hidden if Split is ON)
+                            // ── STANDARD PAYMENT ──────────────────────────────────
                             Select::make('payment_method')
                                 ->label('Payment Method')
                                 ->options(self::getPaymentOptions())
-                                ->default('cash')
+                                ->placeholder('Select Payment Method')  // ← replaces ->default('cash')
                                 ->required(fn(Get $get) => !$get('is_split_payment'))
-                                ->visible(fn(Get $get) => !$get('is_split_payment')),
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                }),
 
-                            // 🚀 NEW: Dynamic Split Payment Repeater
+                            // Big blue display of total to collect
+                            TextInput::make('display_total_due')
+                                ->label('Total Amount to Collect')
+                                ->prefix('$')
+                                ->readOnly()
+                                ->extraInputAttributes(['style' => 'font-size: 1.5rem; font-weight: 900; color: #0284c7; background-color: #f0f9ff;'])
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->dehydrated(false),
+
+                            // ✅ Amount received from customer — saves to amount_paid column
+                            TextInput::make('amount_paid')
+                                ->label('Amount Received')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(0)
+                                ->live(onBlur: true)
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                    self::syncStatus($get, $set);
+                                })
+                                ->helperText('What the customer physically handed over')
+                                ->hintAction(
+                                    \Filament\Forms\Components\Actions\Action::make('fill_full_amount')
+                                        ->label('Collect Full Amount')
+                                        ->icon('heroicon-o-banknotes')
+                                        ->color('success')
+                                        ->action(function (Get $get, Set $set) {
+                                            $total = floatval($get('final_total') ?? 0);
+                                            $set('amount_paid', number_format($total, 2, '.', ''));
+                                            self::updateTotals($get, $set);
+                                            self::syncStatus($get, $set);
+                                        })
+                                ),
+
+                            // Change to give back — read only, auto-calculated
+                            TextInput::make('change_given')
+                                ->label('Change Given')
+                                ->prefix('$')
+                                ->readOnly()
+                                ->default('0.00')
+                                ->dehydrated(false)
+                                ->live()
+                                ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
+
+                            // ── SPLIT PAYMENT ─────────────────────────────────────
                             Repeater::make('split_payments')
                                 ->label('Payment Breakdown')
                                 ->schema([
                                     Grid::make(2)->schema([
                                         Select::make('method')
                                             ->options(self::getPaymentOptions())
-                                            
                                             ->required()
                                             ->label('Method'),
                                         TextInput::make('amount')
@@ -505,296 +837,558 @@ class SaleResource extends Resource
                                     ]),
                                 ])
                                 ->visible(fn(Get $get) => $get('is_split_payment'))
-                                ->defaultItems(2) // 👈 Initially visible two
-                                ->maxItems(6)     // 👈 Limit to six
-                                ->addActionLabel('Add Another Payment Method') // 👈 Acts as "Load More"
+                                ->defaultItems(2)
+                                ->maxItems(6)
+                                ->addActionLabel('Add Another Payment Method')
                                 ->reorderable(false)
                                 ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    self::updateTotals($get, $set);
+                                    self::syncStatus($get, $set);
+                                }),
 
-                            // 🔹 Live Balance Calculation
                             Placeholder::make('split_calc')
                                 ->label('Remaining Balance')
                                 ->content(function (Get $get) {
-                                    $total = (float) $get('final_total');
+                                    $total    = (float) $get('final_total');
                                     $payments = $get('split_payments') ?? [];
-
-                                    $sum = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                    $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                     $remaining = $total - $sum;
 
-                                    $color = round($remaining, 2) == 0 ? 'text-green-600' : 'text-red-600';
+                                    if ($remaining < 0) {
+                                        return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
+                                    }
+                                    $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
                                     return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
                                 })
                                 ->visible(fn(Get $get) => $get('is_split_payment')),
 
                             Select::make('status')
                                 ->label('Sale Status')
-                                ->options(['completed' => 'Completed', 'pending' => 'Pending', 'inprogress' => 'In Progress'])
-                                ->default('completed')
-                                ->required(),
+                                ->options([
+                                    'completed'  => 'Completed',
+                                    'inprogress' => 'In Progress',
+                                    'pending'    => 'Pending',
+                                ])
+                                ->default('inprogress')
+                                ->required()
+                                ->live(),
                         ]),
 
                         Section::make('Financial Summary')->schema([
                             self::totalRow('TAX TOTAL', 'tax_amount'),
                             self::totalRow('SUBTOTAL', 'subtotal'),
-                            Placeholder::make('total_display')
+
+                            Placeholder::make('balance_due_display')
                                 ->label('BALANCE DUE')
-                                ->content(fn(Get $get) => '$' . (number_format((float)($get('final_total') ?? 0), 2)))
-                                ->extraAttributes(['class' => 'text-red-600 font-bold text-3xl']),
+                                ->content(function (Get $get) {
+                                    $total  = floatval($get('final_total') ?? 0);
+                                    $method = $get('payment_method') ?? '';
 
-                            Forms\Components\Actions::make([
-                                // Action::make('complete')
-                                //     ->label('COMPLETE SALE')
-                                //     ->color('success')
-                                //     ->button()
-                                //     ->extraAttributes(['class' => 'w-full'])
-                                //     // 1. Hide the button if the record is already completed
-                                //     ->hidden(fn($record) => $record && $record->status === 'completed')
-                                //     // 2. Determine whether to call create() or save() based on the page context
-                                //     ->action(function ($livewire, $record) {
-                                //         if (method_exists($livewire, 'save')) {
-                                //             $livewire->save(); // Context: Edit Page
-                                //         } else {
-                                //             $livewire->create(); // Context: Create Page
-                                //         }
+                                    if (!$get('is_split_payment')) {
+                                        $tendered = floatval($get('amount_paid') ?? 0);
 
-                                //         \Filament\Notifications\Notification::make()
-                                //             ->title('Sale Finalized')
-                                //             ->success()
-                                //             ->send();
-                                //     }),
-                            ]),
+                                        // ✅ Fully paid
+                                        // ✅ Case: Fully Paid (Green Color)
+                                        if (round($total, 2) <= 0 || ($tendered > 0 && round($tendered, 2) >= round($total, 2))) {
+                                            return new HtmlString("
+                <div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px;'>
+                    <span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span>
+                    <div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div>
+                </div>
+            ");
+                                        }
+
+                                        // 🔴 Case: Partial Payment (Red Color)
+                                        if ($tendered > 0 && $tendered < $total) {
+                                            $remaining = $total - $tendered;
+                                            return new HtmlString("
+                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
+            ");
+                                        }
+
+                                        // 🔴 Method selected but nothing entered yet
+                                        if (!empty($method)) {
+                                            return new HtmlString("
+                                                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+                                                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Enter Amount Received above</div>
+                                            ");
+                                        }
+
+                                        // 🔴 Nothing selected
+                                        // ✅ Total is $0 — fully covered by deposits/trade-in
+                                        if (round($total, 2) <= 0) {
+                                            return new HtmlString("
+        <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+        <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Covered by Prior Deposits</div>
+    ");
+                                        }
+
+                                        // 🔴 Nothing selected
+                                        return new HtmlString("
+    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
+");
+                                    }
+
+                                    // ── SPLIT ──────────────────────────────────────
+                                    $payments = $get('split_payments') ?? [];
+                                    $paidSum  = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                    $remaining = $total - $paidSum;
+
+                                    if (round($remaining, 2) <= 0) {
+                                        $overpaid = abs($remaining);
+                                        return new HtmlString("
+                                            <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+                                            <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Paid</div>
+                                            " . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "
+                                        ");
+                                    }
+
+                                    return new HtmlString("
+                                        <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                                        <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Remaining balance</div>
+                                    ");
+                                })
+                                ->live(),
                         ]),
-
-
-
-
                     ]),
                 ]),
+
                 Hidden::make('final_total'),
                 Hidden::make('subtotal'),
                 Hidden::make('tax_amount'),
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
-                Hidden::make('custom_order_id')
-                    ->dehydrated(false), // 👈 Add this: tells Filament NOT to insert into 'sales' table
-
-                Hidden::make('repair_id')
-                    ->dehydrated(false),
+                Hidden::make('change_given')->dehydrated(false),
+                Hidden::make('balance_due'),
+                Hidden::make('custom_order_id')->dehydrated(false),
+                Hidden::make('repair_id')->dehydrated(false),
             ])
             ->statePath('data');
-        
     }
 
+    public function recordNewPayment(Sale $sale, $amount, $method)
+    {
+        \App\Models\Payment::create([
+            'sale_id' => $sale->id,
+            'amount'  => $amount,
+            'method'  => $method,
+            'paid_at' => now(),
+        ]);
+    }
+
+    // ── Drop this into SaleResource.php, replacing the existing table() method ──
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn(Builder $query) => $query->where('status', '!=', 'void'))
+            ->modifyQueryUsing(
+                fn(Builder $query) => $query
+                    ->where('status', '!=', 'void')
+                    ->with(['customer', 'items.productItem', 'payments'])  // ← eager load: kills N+1
+            )
             ->columns([
-                TextColumn::make('invoice_number')->label('Inv #')->searchable()->sortable()->grow(false),
-                TextColumn::make('customer.name')->label('Customer')->searchable(['name', 'phone'])->sortable(),
+                TextColumn::make('invoice_number')
+                    ->label('Inv #')
+                    ->searchable()
+                    ->sortable()
+                    ->grow(false),
+
+                TextColumn::make('customer_name_display')
+                    ->label('Customer')
+                    ->getStateUsing(
+                        fn($record) =>
+                        $record->customer
+                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+                            : '—'
+                    )
+                    ->searchable(
+                        query: function (Builder $query, string $search): Builder {
+                            return $query->whereHas(
+                                'customer',
+                                fn($q) =>
+                                $q->where('name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            );
+                        }
+                    )
+                    ->sortable(false),
+
                 TextColumn::make('sales_person_list')
                     ->label('Sales Staff')
                     ->badge()
                     ->separator(',')
                     ->searchable(),
+
                 TextColumn::make('items')
                     ->label('Sold Items')
                     ->listWithLineBreaks()
                     ->getStateUsing(function ($record) {
+                        // items->productItem already eager loaded — no N+1
                         return $record->items->map(function ($item) {
-                            if ($item->productItem) return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? 'Item');
-                            if ($item->repair_id) return "REPAIR: #" . ($item->repair->repair_no ?? 'SVC');
+                            if ($item->productItem)
+                                return $item->productItem->barcode . ' — '
+                                    . ($item->productItem->custom_description ?? 'Item');
+                            if ($item->repair_id)
+                                return 'REPAIR: #' . ($item->repair->repair_no ?? 'SVC');
                             return $item->custom_description;
                         })->toArray();
                     })
-                    ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
-                TextColumn::make('payment_method')->label('Method')->badge()->color('gray')->grow(false),
-                TextColumn::make('final_total')->label('Total')->money('USD')->weight('bold')->color('success')->alignRight(),
+                    ->limitList(1)
+                    ->expandableLimitedList()
+                    ->size('xs')
+                    ->color('gray'),
+
+                TextColumn::make('status')
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'completed'          => 'success',
+                        'refunded'           => 'danger',
+                        'partially_refunded' => 'warning',
+                        'cancelled'          => 'gray',
+                        default              => 'gray',
+                    })
+                    ->formatStateUsing(fn(string $state) => ucfirst($state)),
+
+                TextColumn::make('payment_method')
+                    ->label('Method')
+                    ->formatStateUsing(
+                        fn($record) =>
+                        $record->is_split_payment ? 'SPLIT' : $record->payment_method
+                    )
+                    ->badge()
+                    ->color(fn($state) => $state === 'SPLIT' ? 'warning' : 'gray'),
+
+              // ── payments already eager loaded — no extra query per row
+TextColumn::make('payment_status_summary')
+    ->label('PAYMENT SUMMARY')
+    ->getStateUsing(function ($record) {
+        // 1. Check if this is a Custom Order conversion with a deposit
+        $isCustomDeposit = $record->has_trade_in
+            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+
+        // 2. The Bill Total (Grand Total of the Sale)
+        // We use final_total because trade_in_value has already been subtracted from it in the DB
+        // If it's a conversion, we add it back just for the visual "Bill Total"
+        $total = floatval($record->final_total);
+        if ($isCustomDeposit) {
+            $total += floatval($record->trade_in_value);
+        }
+
+        // 3. The actual money collected
+        // Sum the payments table (this already includes the linked Custom Order deposits)
+        $paid = floatval($record->payments->sum('amount'));
+
+        // Fallback for legacy data or non-linked amounts
+        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+            $paid = floatval($record->amount_paid);
+        }
+
+        // 4. Calculate Balance
+        $balance = max(0, $total - $paid);
+
+        // 5. Build the HTML
+        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+
+        if ($balance > 0.01) {
+            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+        } else {
+            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+        }
+
+        return new HtmlString($html);
+    }),
+
+
+                    
                 Tables\Columns\TextColumn::make('created_at')
-    ->label('Date')
-    ->dateTime('M d, y')
-    // 🚀 THE FIX: Use a closure to grab the dynamic request timezone
-    ->timezone(fn() => config('app.timezone')) 
-    ->sortable()
-    ->grow(false),
+                    ->label('Date')
+                    ->dateTime('M d, y')
+                    ->timezone(fn() => config('app.timezone'))
+                    ->sortable()
+                    ->grow(false),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('payment_method')->label('Payment Type')
-                    ->options(['cash' => 'CASH', 'laybuy' => 'LAYBUY', 'visa' => 'VISA']),
-                Tables\Filters\TernaryFilter::make('has_trade_in')->label('Trade-Ins')
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Type')
+                    ->options(fn() => self::getPaymentOptions()),
+                Tables\Filters\TernaryFilter::make('has_trade_in')
+                    ->label('Trade-Ins'),
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Sale Status')
+                    ->options([
+                        'completed'  => 'Completed',
+                        'pending'    => 'Pending',
+                        'inprogress' => 'In Progress',
+                        'cancelled'  => 'Cancelled',
+                    ]),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn($record) => $record->status !== 'completed' || auth()->user()->hasRole('Superadmin')),
-                Tables\Actions\ViewAction::make()->label('View')->icon('heroicon-o-eye')->color('info'),
-                Tables\Actions\DeleteAction::make()
-                    ->label('Archive')
-                    ->icon('heroicon-o-archive-box-arrow-down')
-                    ->modalHeading('Delete Sale')
-                    ->modalDescription('Are you sure? Items will return to stock and this sale will move to Archives.')
-                    // 🔒 Security Check: Only allow Superadmin OR Administration
-                    ->visible(fn() => auth()->user()->hasAnyRole(['Superadmin', 'Administration'])),
+                Tables\Actions\EditAction::make(),
+
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('printStandard')
+                        ->label('Print Standard Receipt')
+                        ->icon('heroicon-o-printer')
+                        ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
+                        ->openUrlInNewTab()
+                        ->extraAttributes([
+                            'onclick' => "setTimeout(() => { let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); } }, 100); return false;"
+                        ]),
+
+                    Tables\Actions\Action::make('printGift')
+                        ->label('Print Gift Receipt')
+                        ->icon('heroicon-o-gift')
+                        ->color('success')
+                        ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'gift']))
+                        ->openUrlInNewTab(),
+
+                    Tables\Actions\Action::make('printJob')
+                        ->label('Print Workshop Card')
+                        ->icon('heroicon-o-wrench')
+                        ->color('warning')
+                        ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'job']))
+                        ->openUrlInNewTab(),
+
+                    Tables\Actions\Action::make('emailReceipt')
+                        ->label('Email to Customer')
+                        ->icon('heroicon-o-envelope')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->action(function (Sale $record) {
+                            if (!$record->customer || empty($record->customer->email)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Missing')->body('Customer has no email address.')
+                                    ->danger()->send();
+                                return;
+                            }
+                            $mailable = new \App\Mail\CustomerReceipt($record);
+                            $sent     = $mailable->sendDirectly();
+                            if ($sent) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Receipt Sent')
+                                    ->body("Successfully emailed to {$record->customer->email}")
+                                    ->success()->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Email Error')->body('Check Laravel logs for SES details.')
+                                    ->danger()->send();
+                            }
+                        }),
+
+                    Tables\Actions\Action::make('smsReceipt')
+                        ->label('Send via SMS')
+                        ->icon('heroicon-o-device-phone-mobile')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Send Receipt via SMS')
+                        ->action(function (Sale $record) {
+                            $phone = $record->customer->phone ?? null;
+                            if (empty($phone)) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')->body('Customer has no phone number.')
+                                    ->danger()->send();
+                                return;
+                            }
+                            $digits = preg_replace('/[^0-9]/', '', $phone);
+                            if (\Illuminate\Support\Str::startsWith($digits, '1') && strlen($digits) === 11) {
+                                $digits = substr($digits, 1);
+                            }
+                            $formattedPhone = '+1' . $digits;
+                            $store          = $record->store;
+                            $baseUrl        = $store && !empty($store->domain_url)
+                                ? rtrim($store->domain_url, '/')
+                                : config('app.url');
+                            $link      = $baseUrl . '/receipt/' . $record->id;
+                            $storeName = $store->name ?? 'Diamond Square';
+                            $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
+                            try {
+                                $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+                                $sns      = new \Aws\Sns\SnsClient([
+                                    'version'     => 'latest',
+                                    'region'      => $settings['aws_sms_default_region'] ?? config('services.sns.region'),
+                                    'credentials' => [
+                                        'key'    => $settings['aws_sms_access_key_id'] ?? config('services.sns.key'),
+                                        'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret'),
+                                    ],
+                                ]);
+                                $sns->publish([
+                                    'Message'     => $message,
+                                    'PhoneNumber' => $formattedPhone,
+                                    'MessageAttributes' => [
+                                        'OriginationNumber' => [
+                                            'DataType'    => 'String',
+                                            'StringValue' => $settings['aws_sns_sms_from'] ?? config('services.sns.sms_from'),
+                                        ],
+                                    ],
+                                ]);
+                                \Filament\Notifications\Notification::make()->title('SMS Sent')->success()->send();
+                            } catch (\Exception $e) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('SMS Failed')->body($e->getMessage())->danger()->send();
+                            }
+                        }),
+                ])
+                    ->label('Receipt / Share')
+                    ->icon('heroicon-m-printer')
+                    ->color('gray')
+                    ->button()
+                    ->outlined(),
 
                 Tables\Actions\Action::make('refund')
                     ->label('Refund')
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('danger')
-                    ->requiresConfirmation()
                     ->visible(fn(Sale $record) => $record->status === 'completed')
-                    ->url(fn(Sale $record): string => RefundResource::getUrl('create', [
-                        'sale_id' => $record->id,
-                    ])),
-                Tables\Actions\Action::make('printReceipt')->label('Receipt')->icon('heroicon-o-printer')->color('info')
-                    ->url(fn(Sale $record): string => route('sales.receipt', $record))->openUrlInNewTab(),
-                // Inside SaleResource.php table actions
-                Tables\Actions\Action::make('emailReceipt')
-                    ->label('Email Receipt')
-                    ->icon('heroicon-o-envelope')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->action(function (Sale $record) {
-                        if (!$record->customer || empty($record->customer->email)) {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Email Missing')
-                                ->body('Customer has no email address.')
-                                ->danger()
-                                ->send();
-                            return;
-                        }
-
-                        // Initialize mailable and call the direct send method
-                        $mailable = new \App\Mail\CustomerReceipt($record);
-                        $sent = $mailable->sendDirectly();
-
-                        if ($sent) {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Receipt Sent')
-                                ->body("Successfully emailed to {$record->customer->email}")
-                                ->success()
-                                ->send();
-                        } else {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Email Error')
-                                ->body('Check Laravel logs for SES details.')
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-
-
-                Tables\Actions\Action::make('smsReceipt')
-                    ->label('SMS Receipt')
-                    ->icon('heroicon-o-device-phone-mobile')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->modalHeading('Send Receipt via SMS')
-                    ->action(function (Sale $record) {
-                        // 1. Get Customer Phone
-                        $phone = $record->customer->phone;
-                        if (empty($phone)) {
-                            Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
-                            return;
-                        }
-
-                        // 2. Format Phone (+1 for USA)
-                        $digits = preg_replace('/[^0-9]/', '', $phone);
-
-                        // 🔹 FIX: Used 'Str::' instead of 'Illuminate\Support\Str::'
-                        if (Str::startsWith($digits, '1') && strlen($digits) === 11) {
-                            $digits = substr($digits, 1);
-                        }
-                        $formattedPhone = '+1' . $digits;
-
-                        // ---------------------------------------------------------
-                        // 3. GENERATE DYNAMIC LINK BASED ON STORE
-                        // ---------------------------------------------------------
-
-                        $store = $record->store;
-
-                        $baseUrl = $store && !empty($store->domain_url)
-                            ? rtrim($store->domain_url, '/')
-                            : config('app.url');
-
-                        $link = $baseUrl . "/receipt/" . $record->id;
-
-                        // ---------------------------------------------------------
-
-                        // 4. Create Message
-                        $storeName = $store->name ?? 'Diamond Square';
-                        $message = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
-
-                        // 5. Send via AWS SNS
-                        try {
-                            $sns = new SnsClient([
-                                'version' => 'latest',
-                                'region'  => config('services.sns.region'),
-                                'credentials' => [
-                                    'key'    => config('services.sns.key'),
-                                    'secret' => config('services.sns.secret'),
-                                ],
-                            ]);
-
-                            $sns->publish([
-                                'Message' => $message,
-                                'PhoneNumber' => $formattedPhone,
-                                'MessageAttributes' => [
-                                    'OriginationNumber' => [
-                                        'DataType' => 'String',
-                                        'StringValue' => config('services.sns.sms_from'),
-                                    ],
-                                ],
-                            ]);
-
-                            Notification::make()->title('SMS Sent')->success()->send();
-                        } catch (\Exception $e) {
-                            Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
-                        }
-                    }),
+                    ->url(
+                        fn(Sale $record) =>
+                        \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])
+                    ),
             ])
             ->defaultSort('created_at', 'desc');
     }
-
-    public static function updateTotals(Get $get, Set $set)
+    public static function getServiceTypeOptions(): array
     {
-        $items = $get('items') ?? [];
-        $shipping = floatval($get('shipping_charges') ?? 0);
-        $subtotal = 0;
-        $taxableSubtotal = 0; // 🚀 Added to track only taxable items
+        $defaultTypes = [
+            'Resize',
+            'Solder / Weld',
+            'Bail Change',
+            'Shortening',
+            'Stone Setting',
+            'Engraving',
+            'Polishing / Rhodium',
+        ];
 
-        foreach ($items as $item) {
-            $price = floatval($item['sold_price'] ?? 0);
-            $qty = intval($item['qty'] ?? 1);
-            $percent = floatval($item['discount_percent'] ?? 0);
+        $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
+        $types = $json ? json_decode($json, true) : $defaultTypes;
 
-            $rowTotal = $price * $qty;
-            $rowAfterDiscount = ($rowTotal - ($rowTotal * ($percent / 100)));
+        return collect($types)
+            ->filter()
+            ->mapWithKeys(fn($type) => [$type => $type])
+            ->toArray();
+    }
+    public static function mapResizeToNotes(Get $get, Set $set): void
+    {
+        $type    = $get('job_type');
+        $current = $get('current_size');
+        $target  = $get('target_size');
+        $date    = $get('date_required');
+        $instr   = $get('job_instructions');
 
-            $subtotal += $rowAfterDiscount;
+        if (!$type) return;
 
-            // 🚀 THE LOGIC: Check if the 'No Tax' checkbox is UNCHECKED
-            if (!($item['is_tax_free'] ?? false)) {
-                $taxableSubtotal += $rowAfterDiscount;
+        $parts   = [];
+        $parts[] = strtoupper($type) . " JOB:";
+
+        if ($type === 'Resize') {
+            if ($current) $parts[] = "From {$current}";
+            if ($target)  $parts[] = "To {$target}";
+        }
+
+        if ($date) {
+            try {
+                $parts[] = "Due: " . \Carbon\Carbon::parse($date)->format('M d, Y');
+            } catch (\Exception $e) {
             }
         }
 
-        $dbTax = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        if ($instr) $parts[] = "Notes: {$instr}";
 
-        // 🚀 Tax now calculates ONLY on taxable items + shipping (if shipping is taxed)
-        $tax = ($taxableSubtotal + ($get('shipping_taxed') ? $shipping : 0)) * (floatval($dbTax) / 100);
+        $set('notes', implode(' | ', $parts));
+    }
 
-        $tradeIn = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+    public static function updateTotals(callable|Get $get, callable|Set $set): void
+    {
+        $items           = $get('items') ?? [];
+        $shipping        = floatval($get('shipping_charges') ?? 0);
+        $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
+        $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
-        $set('subtotal', number_format($subtotal + $shipping, 2, '.', ''));
-        $set('tax_amount', number_format($tax, 2, '.', ''));
-        $set('final_total', number_format(($subtotal + $shipping + $tax) - $tradeIn, 2, '.', ''));
+        $itemsSubtotal = 0;
+        $taxableBasis  = 0;
+
+        foreach ($items as $item) {
+            $qty = intval($item['qty'] ?? 1);
+
+            if (!empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0) {
+                $rowTotal = floatval($item['sale_price_override']);
+            } else {
+                $price    = floatval($item['sold_price'] ?? 0);
+                $discount = floatval($item['discount_amount'] ?? 0);
+                $rowTotal = ($price * $qty) - $discount;
+            }
+
+            $itemsSubtotal += $rowTotal;
+
+            if (!($item['is_tax_free'] ?? false)) {
+                $taxableBasis += $rowTotal;
+            }
+        }
+
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = floatval($dbTax) / 100;
+
+        if ($isShippingTaxed) $taxableBasis += $shipping;
+
+        $totalTax   = $taxableBasis * $taxRate;
+        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+        $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
+
+        $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
+        $set('tax_amount',  number_format($totalTax,      2, '.', ''));
+        $set('final_total', number_format($grandTotal,    2, '.', ''));
+
+        // ── AUTO-FILL LOGIC ───────────────────────────────────────────────────
+        $isSplit = $get('is_split_payment');
+
+        if ($isSplit) {
+            $payments   = $get('split_payments') ?? [];
+            $amountPaid = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        } else {
+            $amountPaid = floatval($get('amount_paid') ?? 0);
+        }
+
+        $changeGiven = max(0, $amountPaid - $grandTotal);
+        $balanceDue  = max(0, $grandTotal - $amountPaid);
+
+        $set('change_given',      number_format($changeGiven, 2, '.', ''));
+        $set('balance_due',       number_format($balanceDue,  2, '.', ''));
+        $set('display_total_due', number_format($grandTotal,  2, '.', ''));
+
+        self::syncStatus($get, $set);
+    }
+
+    public static function syncStatus(callable|Get $get, callable|Set $set): void
+    {
+        $total   = floatval($get('final_total') ?? 0);
+        $isSplit = $get('is_split_payment');
+
+        if ($isSplit) {
+            $payments  = $get('split_payments') ?? [];
+            $paidSum   = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            $fullyPaid = round($paidSum, 2) >= round($total, 2);
+        } else {
+            $tendered  = floatval($get('amount_paid') ?? 0);
+            // If total is $0 (fully covered by trade-in/deposits), mark as completed
+            if (round($total, 2) <= 0) {
+                $fullyPaid = true;
+            } else {
+                $fullyPaid = $tendered > 0 && round($tendered, 2) >= round($total, 2);
+            }
+        }
+
+        $set('status', $fullyPaid ? 'completed' : 'pending');
     }
 
     public static function getPaymentOptions(): array
     {
-        $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
         $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
-        $methods = $json ? json_decode($json, true) : $defaultMethods;
-        $options = [];
+        $methods        = $json ? json_decode($json, true) : $defaultMethods;
+        $options        = [];
 
         foreach ($methods as $method) {
             if (strtoupper($method) === 'LAYBUY') {
@@ -805,6 +1399,7 @@ class SaleResource extends Resource
         }
         return $options;
     }
+
     protected static function totalRow($label, $field)
     {
         return TextInput::make($field)->label($label)->prefix('$')->readOnly()->extraInputAttributes(['class' => 'text-right']);
@@ -813,10 +1408,10 @@ class SaleResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListSales::route('/'),
+            'index'  => Pages\ListSales::route('/'),
             'create' => Pages\CreateSale::route('/create'),
-            'edit' => Pages\EditSale::route('/{record}/edit'),
-            'view' => Pages\ViewSale::route('/{record}'),
+            'edit'   => Pages\EditSale::route('/{record}/edit'),
+            'view'   => Pages\ViewSale::route('/{record}'),
         ];
     }
 }
