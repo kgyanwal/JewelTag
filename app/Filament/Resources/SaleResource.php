@@ -30,6 +30,8 @@ use Filament\Notifications\Notification;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Illuminate\Support\Facades\Session;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
+use App\Models\DailyClosing;
+use App\Models\SaleEditRequest;
 
 class SaleResource extends Resource
 {
@@ -75,7 +77,11 @@ class SaleResource extends Resource
                                     ->color('danger')
                                     ->requiresConfirmation()
                                     ->action(function () {
-                                        session()->forget('sale_draft');
+                                        foreach (array_keys(session()->all()) as $key) {
+                                            if (str_starts_with($key, 'sale_draft_')) {
+                                                session()->forget($key);
+                                            }
+                                        }
                                         return redirect(static::getUrl('create'));
                                     }),
                             ])
@@ -131,8 +137,6 @@ class SaleResource extends Resource
                                         ->default(1)
                                         ->dehydrated(false)
                                         ->live(),
-
-
                                 ]),
 
                                 \Filament\Forms\Components\Actions::make([
@@ -149,46 +153,26 @@ class SaleResource extends Resource
                                                 ->label('Description')
                                                 ->required()
                                                 ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
-
                                             \Filament\Forms\Components\Grid::make(2)->schema([
-                                                TextInput::make('price')
-                                                    ->label('Unit Price')
-                                                    ->numeric()
-                                                    ->prefix('$')
-                                                    ->required()
-                                                    ->default(0),
-
-                                                TextInput::make('qty')
-                                                    ->label('Qty')
-                                                    ->numeric()
-                                                    ->required()
-                                                    ->default(1),
+                                                TextInput::make('price')->label('Unit Price')->numeric()->prefix('$')->required()->default(0),
+                                                TextInput::make('qty')->label('Qty')->numeric()->required()->default(1),
                                             ]),
-
                                             \Filament\Forms\Components\Grid::make(2)->schema([
-                                                TextInput::make('discount_percent')
-                                                    ->label('Discount %')
-                                                    ->numeric()
-                                                    ->suffix('%')
-                                                    ->default(0),
-
-                                                \Filament\Forms\Components\Toggle::make('is_tax_free')
-                                                    ->label('Tax Free?')
-                                                    ->default(false)
-                                                    ->inline(false),
+                                                TextInput::make('discount_percent')->label('Discount %')->numeric()->suffix('%')->default(0),
+                                                \Filament\Forms\Components\Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false),
                                             ]),
                                         ])
                                         ->action(function (array $data, Get $get, Set $set) {
-                                            $price    = floatval($data['price'] ?? 0);
-                                            $qty      = intval($data['qty'] ?? 1);
-                                            $discPct  = floatval($data['discount_percent'] ?? 0);
-                                            $lineTotal = $price * $qty;
-                                            $discAmt  = $lineTotal * ($discPct / 100);
+                                            $price     = floatval($data['price'] ?? 0);
+                                            $qty       = intval($data['qty'] ?? 1);
+                                            $discPct   = floatval($data['discount_percent'] ?? 0);
+                                            $lineTotal  = $price * $qty;
+                                            $discAmt   = $lineTotal * ($discPct / 100);
                                             $finalPrice = $lineTotal - $discAmt;
 
                                             $currentItems   = $get('items') ?? [];
                                             $currentItems[] = [
-                                                'product_item_id'    => null,   // ← null = no stock link
+                                                'product_item_id'    => null,
                                                 'repair_id'          => null,
                                                 'custom_order_id'    => null,
                                                 'is_non_stock'       => true,
@@ -205,23 +189,195 @@ class SaleResource extends Resource
                                             $set('items', $currentItems);
                                             self::updateTotals($get, $set);
                                         }),
+
+                                    FormAction::make('create_new_custom_order')
+    ->label('+ New Custom Order')
+    ->color('success')
+    ->outlined()
+    ->icon('heroicon-o-paint-brush')
+    ->modalHeading('Design New Custom Piece')
+    ->modalDescription('This adds the item to the receipt and generates a tracking ticket upon checkout.')
+    ->modalWidth('2xl')
+    ->modalSubmitActionLabel('Add to Bill')
+    ->form([
+        \Filament\Forms\Components\Grid::make(2)->schema([
+            \Filament\Forms\Components\TextInput::make('product_name')
+                ->label('What are we making?')
+                ->placeholder('e.g. 14k Diamond Tennis Bracelet')
+                ->required(),
+                
+            // ── ADDED: METAL TYPE DROPDOWN ──
+            \Filament\Forms\Components\Select::make('metal_type')
+                ->label('Metal Type')
+                ->options([
+                    '10k'      => '10k Gold',
+                    '14k'      => '14k Gold',
+                    '18k'      => '18k Gold',
+                    'platinum' => 'Platinum',
+                    'silver'   => 'Silver',
+                    'other'    => 'Other',
+                ])
+                ->default('14k')
+                ->required(),
+        ]),
+            
+        \Filament\Forms\Components\Grid::make(3)->schema([
+            \Filament\Forms\Components\TextInput::make('quoted_price')
+                ->label('Base Price')
+                ->numeric()
+                ->prefix('$')
+                ->required()
+                ->live(onBlur: true)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    $price = floatval($state);
+                    $pct = floatval($get('discount_percent') ?? 0);
+                    $amt = $price * ($pct / 100);
+                    $set('discount_amount', number_format($amt, 2, '.', ''));
+                    $set('final_price', number_format($price - $amt, 2, '.', ''));
+                }),
+                
+            \Filament\Forms\Components\TextInput::make('discount_percent')
+                ->label('Discount %')
+                ->numeric()
+                ->suffix('%')
+                ->default(0)
+                ->live(onBlur: true)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    $price = floatval($get('quoted_price') ?? 0);
+                    $pct = floatval($state);
+                    $amt = $price * ($pct / 100);
+                    $set('discount_amount', number_format($amt, 2, '.', ''));
+                    $set('final_price', number_format($price - $amt, 2, '.', ''));
+                }),
+                
+            \Filament\Forms\Components\TextInput::make('discount_amount')
+                ->label('Discount $')
+                ->numeric()
+                ->prefix('$')
+                ->default(0)
+                ->live(onBlur: true)
+                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                    $price = floatval($get('quoted_price') ?? 0);
+                    $amt = floatval($state);
+                    if ($price > 0) {
+                        $pct = ($amt / $price) * 100;
+                        $set('discount_percent', number_format($pct, 2, '.', ''));
+                    }
+                    $set('final_price', number_format($price - $amt, 2, '.', ''));
+                }),
+        ]),
+
+        \Filament\Forms\Components\Grid::make(2)->schema([
+            \Filament\Forms\Components\TextInput::make('final_price')
+                ->label('Final Price')
+                ->prefix('$')
+                ->readOnly()
+                ->extraInputAttributes(['class' => 'font-bold text-success-600 bg-success-50']),
+
+            \Filament\Forms\Components\DatePicker::make('due_date')
+                ->label('Promised By Date')
+                ->native(false)
+                ->required(),
+        ]),
+        
+        \Filament\Forms\Components\Textarea::make('design_notes')
+            ->label('Design Notes & Instructions')
+            ->rows(3),
+    ])
+    ->action(function (array $data, Get $get, Set $set) {
+        $currentItems = $get('items') ?? [];
+        
+        $price = floatval($data['quoted_price']);
+        $finalPrice = floatval($data['final_price'] ?? $price);
+        $discPct = floatval($data['discount_percent'] ?? 0);
+        $discAmt = floatval($data['discount_amount'] ?? 0);
+        
+        $currentItems[] = [
+            'product_item_id'     => null,
+            'repair_id'           => null,
+            'custom_order_id'     => null,
+            'is_non_stock'        => false,
+            'is_new_custom_order' => true, 
+            'new_custom_data'     => $data, // Holds metal_type now
+            'stock_no_display'    => 'NEW CUSTOM',
+            'custom_description'  => "CUSTOM COMMISSION: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
+            'qty'                 => 1,
+            'sold_price'          => $price,
+            'sale_price_override' => $finalPrice,
+            'discount_percent'    => $discPct,
+            'discount_amount'     => $discAmt,
+            'is_tax_free'         => false,
+        ];
+
+        $set('items', $currentItems);
+        self::updateTotals($get, $set);
+    })
                                 ])->columnSpan(1),
 
                             ]),
 
-                        Section::make('Current Bill Items')->schema([
-                            Repeater::make('items')
-                                ->relationship('items')
+                       Section::make('Current Bill Items')->schema([
+    Repeater::make('items')
+        ->relationship('items')
+        ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
+            if (!empty($data['is_new_custom_order'])) {
+                $customOrder = \App\Models\CustomOrder::create([
+                    'customer_id'  => $livewire->data['customer_id'] ?? null,
+                    'staff_id'     => auth()->id(),
+                    'order_type'   => 'custom',
+                    'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
+                    'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', // ── ADDED ──
+                    'quoted_price' => $data['sale_price_override'] ?? 0, 
+                    'due_date'     => $data['new_custom_data']['due_date'] ?? null,
+                    'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
+                    'status'       => 'in_production',
+                    'amount_paid'  => $data['sale_price_override'] ?? 0,
+                    'balance_due'  => 0, // Safe fallback
+                ]);
+                $data['custom_order_id'] = $customOrder->id;
+            }
+            
+            unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+            return $data;
+        })
+        ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
+            if (!empty($data['is_new_custom_order'])) {
+                $customOrder = \App\Models\CustomOrder::create([
+                    'customer_id'  => $livewire->data['customer_id'] ?? null,
+                    'staff_id'     => auth()->id(),
+                    'order_type'   => 'custom',
+                    'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
+                    'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', // ── ADDED ──
+                    'quoted_price' => $data['sale_price_override'] ?? 0, 
+                    'due_date'     => $data['new_custom_data']['due_date'] ?? null,
+                    'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
+                    'status'       => 'in_production',
+                    'amount_paid'  => $data['sale_price_override'] ?? 0,
+                    'balance_due'  => 0, // Safe fallback
+                ]);
+                $data['custom_order_id'] = $customOrder->id;
+            }
+            unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+            return $data;
+        })
+                                // ────────────────────────────────────────────────────────
                                 ->live()
                                 ->schema([
                                     Hidden::make('product_item_id')->dehydrated(),
                                     Hidden::make('repair_id')->dehydrated(),
                                     Hidden::make('custom_order_id')->dehydrated(),
 
+                                    // Hidden fields must be defined in schema to hold state
+                                    Hidden::make('is_new_custom_order')->default(false)->dehydrated(),
+                                    Hidden::make('new_custom_data')->dehydrated(),
+
                                     TextInput::make('stock_no_display')
                                         ->label('Item')
                                         ->readOnly()
                                         ->dehydrated(false)
+                                        ->extraInputAttributes(fn($state) => [
+                                            'class' => str_contains($state ?? '', 'CUSTOM') ? 'text-blue-600 font-bold bg-blue-50' : '',
+                                        ])
                                         ->columnSpan(1),
 
                                     Forms\Components\Textarea::make('custom_description')
@@ -248,12 +404,10 @@ class SaleResource extends Resource
                                                     $state = $productItem->qty;
                                                 }
                                             }
-
                                             $price   = floatval($get('sold_price'));
                                             $percent = floatval($get('discount_percent'));
                                             $lineTotal = $price * $state;
                                             $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
-
                                             self::updateTotals($get, $set);
                                         }),
 
@@ -265,10 +419,8 @@ class SaleResource extends Resource
                                         ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                             $qty     = intval($get('qty') ?? 1);
                                             $percent = floatval($get('discount_percent') ?? 0);
-
                                             $lineTotalBeforeDiscount = floatval($state) * $qty;
                                             $newDiscountAmount       = $lineTotalBeforeDiscount * ($percent / 100);
-
                                             $set('discount_amount', number_format($newDiscountAmount, 2, '.', ''));
                                             self::updateTotals($get, $set);
                                         }),
@@ -311,7 +463,6 @@ class SaleResource extends Resource
 
                                             $set('discount_amount', number_format($discountAmount, 2, '.', ''));
                                             $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
-
                                             static::updateTotals($get, $set);
                                         }),
 
@@ -356,7 +507,7 @@ class SaleResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                         ]),
 
-                        Section::make('🛠️ Workshop / Special Jobs')
+                        Section::make('🛠️ Repair / Special Jobs')
                             ->description('Add one or more job instructions (Resize, Solder, Engraving, etc.)')
                             ->icon('heroicon-o-wrench')
                             ->collapsible()
@@ -418,7 +569,6 @@ class SaleResource extends Resource
                                     )
                                     ->reorderable(false),
 
-                                // Keep legacy hidden fields for backward compatibility
                                 Hidden::make('job_type'),
                                 Hidden::make('metal_type'),
                                 Hidden::make('date_required'),
@@ -462,8 +612,6 @@ class SaleResource extends Resource
                                             ->rows(2),
                                     ]),
                             ]),
-
-
 
                         Section::make('Warranty')
                             ->icon('heroicon-o-shield-check')
@@ -689,20 +837,18 @@ class SaleResource extends Resource
                                     ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
                                     ->default(fn() => [Session::get('active_staff_name') ?? auth()->user()->name])
                                     ->required()
-                                    ->live(onBlur: true),  // ← only re-renders on blur, not on every keystroke
+                                    ->live(onBlur: true),
                             ]),
 
                         Section::make('Payment & Status')->schema([
                             Placeholder::make('custom_order_payment_logs')
                                 ->label('PREVIOUS DEPOSITS LOG')
-                                // FIX: Check the URL query parameter AND the repeater items for custom_order_id
                                 ->visible(function (Get $get) {
                                     $items = $get('items') ?? [];
                                     return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
                                         || request()->has('custom_order_id');
                                 })
                                 ->content(function (Get $get) {
-                                    // Try to get custom_order_id from items or URL
                                     $items = $get('items') ?? [];
                                     $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
                                         ?? request()->get('custom_order_id');
@@ -724,36 +870,36 @@ class SaleResource extends Resource
                                         $amount = number_format($payment->amount, 2);
 
                                         $rows .= "
-                <div style='display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9;'>
-                    <div style='display:flex; flex-direction:column;'>
-                        <span style='font-size:10px; font-weight:700; color:#334155;'>{$method}</span>
-                        <span style='font-size:9px; color:#94a3b8;'>{$date}</span>
-                    </div>
-                    
-<span style='font-size:11px; font-weight:700; color:#10b981;'>+\${$amount}</span>
-                </div>";
+                                        <div style='display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9;'>
+                                            <div style='display:flex; flex-direction:column;'>
+                                                <span style='font-size:10px; font-weight:700; color:#334155;'>{$method}</span>
+                                                <span style='font-size:9px; color:#94a3b8;'>{$date}</span>
+                                            </div>
+                                            
+                                        <span style='font-size:11px; font-weight:700; color:#10b981;'>+\${$amount}</span>
+                                        </div>";
                                     }
 
                                     $totalDeposited = $payments->sum('amount');
 
                                     return new HtmlString("
-            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
-                <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; display:flex; align-items:center; gap:5px;'>
-                    <svg style='width:12px; height:12px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'></path></svg>
-                    Custom Order Payment Trail
-                </div>
-                <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
-                    {$rows}
-                </div>
-                <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; pt-2; border-top: 1px solid #bae6fd; padding-top:8px;'>
-                    <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
-                    <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
-                </div>
-                <div style='margin-top:5px; font-size:9px; color:#64748b; font-style:italic;'>
-                    * This credit has been deducted from the balance below.
-                </div>
-            </div>
-        ");
+                                    <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
+                                        <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; display:flex; align-items:center; gap:5px;'>
+                                            <svg style='width:12px; height:12px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'></path></svg>
+                                            Custom Order Payment Trail
+                                        </div>
+                                        <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
+                                            {$rows}
+                                        </div>
+                                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; pt-2; border-top: 1px solid #bae6fd; padding-top:8px;'>
+                                            <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
+                                            <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
+                                        </div>
+                                        <div style='margin-top:5px; font-size:9px; color:#64748b; font-style:italic;'>
+                                            * This credit has been deducted from the balance below.
+                                        </div>
+                                    </div>
+                                    ");
                                 }),
                             Toggle::make('is_split_payment')
                                 ->label('Enable Split Payment')
@@ -761,11 +907,10 @@ class SaleResource extends Resource
                                 ->live()
                                 ->columnSpanFull(),
 
-                            // ── STANDARD PAYMENT ──────────────────────────────────
                             Select::make('payment_method')
                                 ->label('Payment Method')
                                 ->options(self::getPaymentOptions())
-                                ->placeholder('Select Payment Method')  // ← replaces ->default('cash')
+                                ->placeholder('Select Payment Method')
                                 ->required(fn(Get $get) => !$get('is_split_payment'))
                                 ->visible(fn(Get $get) => !$get('is_split_payment'))
                                 ->live()
@@ -773,7 +918,6 @@ class SaleResource extends Resource
                                     self::updateTotals($get, $set);
                                 }),
 
-                            // Big blue display of total to collect
                             TextInput::make('display_total_due')
                                 ->label('Total Amount to Collect')
                                 ->prefix('$')
@@ -782,7 +926,6 @@ class SaleResource extends Resource
                                 ->visible(fn(Get $get) => !$get('is_split_payment'))
                                 ->dehydrated(false),
 
-                            // ✅ Amount received from customer — saves to amount_paid column
                             TextInput::make('amount_paid')
                                 ->label('Amount Received')
                                 ->numeric()
@@ -808,7 +951,6 @@ class SaleResource extends Resource
                                         })
                                 ),
 
-                            // Change to give back — read only, auto-calculated
                             TextInput::make('change_given')
                                 ->label('Change Given')
                                 ->prefix('$')
@@ -819,7 +961,6 @@ class SaleResource extends Resource
                                 ->visible(fn(Get $get) => !$get('is_split_payment'))
                                 ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
 
-                            // ── SPLIT PAYMENT ─────────────────────────────────────
                             Repeater::make('split_payments')
                                 ->label('Payment Breakdown')
                                 ->schema([
@@ -888,27 +1029,23 @@ class SaleResource extends Resource
                                     if (!$get('is_split_payment')) {
                                         $tendered = floatval($get('amount_paid') ?? 0);
 
-                                        // ✅ Fully paid
-                                        // ✅ Case: Fully Paid (Green Color)
                                         if (round($total, 2) <= 0 || ($tendered > 0 && round($tendered, 2) >= round($total, 2))) {
                                             return new HtmlString("
-                <div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px;'>
-                    <span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span>
-                    <div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div>
-                </div>
-            ");
+                                            <div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px;'>
+                                                <span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span>
+                                                <div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div>
+                                            </div>
+                                            ");
                                         }
 
-                                        // 🔴 Case: Partial Payment (Red Color)
                                         if ($tendered > 0 && $tendered < $total) {
                                             $remaining = $total - $tendered;
                                             return new HtmlString("
-                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
-                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
-            ");
+                                            <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                                            <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
+                                            ");
                                         }
 
-                                        // 🔴 Method selected but nothing entered yet
                                         if (!empty($method)) {
                                             return new HtmlString("
                                                 <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
@@ -916,23 +1053,19 @@ class SaleResource extends Resource
                                             ");
                                         }
 
-                                        // 🔴 Nothing selected
-                                        // ✅ Total is $0 — fully covered by deposits/trade-in
                                         if (round($total, 2) <= 0) {
                                             return new HtmlString("
-        <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
-        <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Covered by Prior Deposits</div>
-    ");
+                                            <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
+                                            <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Covered by Prior Deposits</div>
+                                            ");
                                         }
 
-                                        // 🔴 Nothing selected
                                         return new HtmlString("
-    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
-    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
-");
+                                        <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
+                                        <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
+                                        ");
                                     }
 
-                                    // ── SPLIT ──────────────────────────────────────
                                     $payments = $get('split_payments') ?? [];
                                     $paidSum  = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                     $remaining = $total - $paidSum;
@@ -979,14 +1112,13 @@ class SaleResource extends Resource
         ]);
     }
 
-    // ── Drop this into SaleResource.php, replacing the existing table() method ──
     public static function table(Table $table): Table
     {
         return $table
             ->modifyQueryUsing(
                 fn(Builder $query) => $query
                     ->where('status', '!=', 'void')
-                    ->with(['customer', 'items.productItem', 'payments'])  // ← eager load: kills N+1
+                    ->with(['customer', 'items.productItem', 'payments'])
             )
             ->columns([
                 TextColumn::make('invoice_number')
@@ -994,7 +1126,21 @@ class SaleResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->grow(false),
+                TextColumn::make('sale_type_badge')
+                    ->label('TYPE')
+                    ->getStateUsing(function ($record) {
+                        $isLaybuy     = $record->payment_method === 'laybuy';
+                        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
+                        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
+                        $hasSpecialJob = !empty($record->special_jobs);
 
+                        if ($isLaybuy) return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+                        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
+                        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
+                        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
+                        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
+                    })
+                    ->grow(false),
                 TextColumn::make('customer_name_display')
                     ->label('Customer')
                     ->getStateUsing(
@@ -1026,7 +1172,6 @@ class SaleResource extends Resource
                     ->label('Sold Items')
                     ->listWithLineBreaks()
                     ->getStateUsing(function ($record) {
-                        // items->productItem already eager loaded — no N+1
                         return $record->items->map(function ($item) {
                             if ($item->productItem)
                                 return $item->productItem->barcode . ' — '
@@ -1061,49 +1206,37 @@ class SaleResource extends Resource
                     ->badge()
                     ->color(fn($state) => $state === 'SPLIT' ? 'warning' : 'gray'),
 
-              // ── payments already eager loaded — no extra query per row
-TextColumn::make('payment_status_summary')
-    ->label('PAYMENT SUMMARY')
-    ->getStateUsing(function ($record) {
-        // 1. Check if this is a Custom Order conversion with a deposit
-        $isCustomDeposit = $record->has_trade_in
-            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+                TextColumn::make('payment_status_summary')
+                    ->label('PAYMENT SUMMARY')
+                    ->getStateUsing(function ($record) {
+                        $isCustomDeposit = $record->has_trade_in
+                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-        // 2. The Bill Total (Grand Total of the Sale)
-        // We use final_total because trade_in_value has already been subtracted from it in the DB
-        // If it's a conversion, we add it back just for the visual "Bill Total"
-        $total = floatval($record->final_total);
-        if ($isCustomDeposit) {
-            $total += floatval($record->trade_in_value);
-        }
+                        $total = floatval($record->final_total);
+                        if ($isCustomDeposit) {
+                            $total += floatval($record->trade_in_value);
+                        }
 
-        // 3. The actual money collected
-        // Sum the payments table (this already includes the linked Custom Order deposits)
-        $paid = floatval($record->payments->sum('amount'));
+                        $paid = floatval($record->payments->sum('amount'));
 
-        // Fallback for legacy data or non-linked amounts
-        if ($paid == 0 && floatval($record->amount_paid) > 0) {
-            $paid = floatval($record->amount_paid);
-        }
+                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+                            $paid = floatval($record->amount_paid);
+                        }
 
-        // 4. Calculate Balance
-        $balance = max(0, $total - $paid);
+                        $balance = max(0, $total - $paid);
 
-        // 5. Build the HTML
-        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-        if ($balance > 0.01) {
-            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
-        } else {
-            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-        }
+                        if ($balance > 0.01) {
+                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+                        } else {
+                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+                        }
 
-        return new HtmlString($html);
-    }),
+                        return new HtmlString($html);
+                    }),
 
-
-                    
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Date')
                     ->dateTime('M d, y')
@@ -1250,6 +1383,7 @@ TextColumn::make('payment_status_summary')
             ])
             ->defaultSort('created_at', 'desc');
     }
+
     public static function getServiceTypeOptions(): array
     {
         $defaultTypes = [
@@ -1270,6 +1404,7 @@ TextColumn::make('payment_status_summary')
             ->mapWithKeys(fn($type) => [$type => $type])
             ->toArray();
     }
+
     public static function mapResizeToNotes(Get $get, Set $set): void
     {
         $type    = $get('job_type');
@@ -1341,7 +1476,6 @@ TextColumn::make('payment_status_summary')
         $set('tax_amount',  number_format($totalTax,      2, '.', ''));
         $set('final_total', number_format($grandTotal,    2, '.', ''));
 
-        // ── AUTO-FILL LOGIC ───────────────────────────────────────────────────
         $isSplit = $get('is_split_payment');
 
         if ($isSplit) {
@@ -1372,7 +1506,6 @@ TextColumn::make('payment_status_summary')
             $fullyPaid = round($paidSum, 2) >= round($total, 2);
         } else {
             $tendered  = floatval($get('amount_paid') ?? 0);
-            // If total is $0 (fully covered by trade-in/deposits), mark as completed
             if (round($total, 2) <= 0) {
                 $fullyPaid = true;
             } else {

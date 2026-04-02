@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\SaleResource;
 use App\Models\Sale;
 use App\Models\DailyClosing;
 use App\Models\Store;
@@ -125,7 +126,18 @@ class EndOfDayClosing extends Page
             }
         }
     }
+public function isReadOnly(): bool
+{
+    $saleDate = $this->record->created_at->format('Y-m-d');
+    $isClosed = SaleResource::isDateClosed($saleDate);
+    
+    // If day is closed and user is NOT superadmin, make page read-only
+    if ($isClosed && !auth()->user()->hasRole('Superadmin')) {
+        return true;
+    }
 
+    return false;
+}
     protected function getHeaderActions(): array
     {
         return [

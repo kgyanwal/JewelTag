@@ -2,12 +2,17 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\SaleEditRequestResource;
 use App\Filament\Resources\SaleResource;
+use App\Helpers\Staff;
+use App\Models\DailyClosing;
 use App\Models\Sale;
+use App\Models\SaleEditRequest;
 use Filament\Forms\Components\{DatePicker, Grid, Section, Select, TextInput, Placeholder, Toggle, Group};
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Tables\Columns\{TextColumn, IconColumn};
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -166,7 +171,21 @@ class FindSale extends Page implements HasForms, HasTable
                     ->weight('bold')
                     ->color('primary')
                     ->copyable(),
+TextColumn::make('sale_type_badge')
+    ->label('TYPE')
+    ->getStateUsing(function ($record) {
+        $isLaybuy     = $record->payment_method === 'laybuy';
+        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
+        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
+        $hasSpecialJob = !empty($record->special_jobs);
 
+        if ($isLaybuy) return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
+        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
+        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
+        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
+    })
+    ->grow(false),
                 // ── customer relationship is now eager loaded so no extra query per row
                 TextColumn::make('customer_name_display')
                     ->label('Customer')
@@ -267,12 +286,112 @@ class FindSale extends Page implements HasForms, HasTable
                     ),
             ])
             ->actions([
-                \Filament\Tables\Actions\EditAction::make()
-                    ->label('Edit')
-                    ->url(
-                        fn(Sale $record): string =>
-                        SaleResource::getUrl('edit', ['record' => $record])
-                    ),
+             \Filament\Tables\Actions\EditAction::make()
+                    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
+                    ->visible(function (Sale $record) {
+                        $user = Staff::user();
+ 
+                        // Superadmin/Admin always can edit
+                        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
+ 
+                        // Laybuy always editable
+                        if ($record->payment_method === 'laybuy') return true;
+ 
+                        // Custom order always editable
+                        $record->loadMissing('items');
+                        if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
+ 
+                        // Pending always editable
+                        if ($record->status === 'pending') return true;
+ 
+                        // Completed with balance due — allow to fix
+                        if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
+ 
+                        // Day not closed — editable
+                        $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
+                        if (!$dayClosed) return true;
+ 
+                        // Day closed — only show Edit if approved request exists
+                        return SaleEditRequest::where('sale_id', $record->id)
+                            ->where('user_id', auth()->id())
+                            ->where('status', 'approved')
+                            ->exists();
+                    }),
+ 
+                // ── REQUEST EDIT — shown when day is closed + no pending/approved request ──
+                Action::make('request_edit')
+                    ->label('Request Edit')
+                    ->icon('heroicon-o-pencil-square')
+                    ->color('warning')
+                    ->visible(function (Sale $record) {
+                        $user = Staff::user();
+ 
+                        // Admins don't need to request
+                        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
+ 
+                        // Laybuy/custom — no request needed
+                        if ($record->payment_method === 'laybuy') return false;
+                        $record->loadMissing('items');
+                        if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return false;
+ 
+                        // Only for completed + fully paid + day closed
+                        if ($record->status !== 'completed') return false;
+                        if (floatval($record->balance_due) > 0) return false;
+ 
+                        $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
+                        if (!$dayClosed) return false;
+ 
+                        // Hide if already has pending or approved request
+                        return !SaleEditRequest::where('sale_id', $record->id)
+                            ->where('user_id', auth()->id())
+                            ->whereIn('status', ['pending', 'approved'])
+                            ->exists();
+                    })
+                    ->requiresConfirmation()
+                    ->modalHeading('Request Edit Approval')
+                    ->modalDescription('This sale\'s day is EOD locked. Your request will be sent to Administration for approval.')
+                    ->modalSubmitActionLabel('Send Request')
+                    ->action(function (Sale $record) {
+                        SaleEditRequestResource::create([
+                            'sale_id'          => $record->id,
+                            'user_id'          => auth()->id(),
+                            'status'           => 'pending',
+                            'proposed_changes' => [],
+                        ]);
+ 
+                        // Notify all admins in-app
+                        $admins = \App\Models\User::role(['Superadmin', 'Administration'])->get();
+                        foreach ($admins as $admin) {
+                            Notification::make()
+                                ->title('Edit Request')
+                                ->body(auth()->user()->name . ' requested to edit ' . $record->invoice_number)
+                                ->warning()
+                                ->sendToDatabase($admin);
+                        }
+ 
+                        Notification::make()
+                            ->title('Request Sent')
+                            ->body('Your edit request has been sent to Administration for approval.')
+                            ->success()
+                            ->send();
+                    }),
+ 
+                // ── PENDING INDICATOR — disabled button while waiting ─────────
+                Action::make('edit_pending')
+                    ->label('Edit Pending...')
+                    ->icon('heroicon-o-clock')
+                    ->color('gray')
+                    ->disabled()
+                    ->visible(function (Sale $record) {
+                        $user = Staff::user();
+                        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
+ 
+                        return SaleEditRequest::where('sale_id', $record->id)
+                            ->where('user_id', auth()->id())
+                            ->where('status', 'pending')
+                            ->exists();
+                    }),
+ 
 
                 Action::make('quick_view')
                     ->label('View')
@@ -459,7 +578,7 @@ class FindSale extends Page implements HasForms, HasTable
                                     ->success()->send();
                             } else {
                                 \Filament\Notifications\Notification::make()
-                                    ->title('Email Error')->body('Check Laravel logs for SES details.')
+                                    ->title('Email Error')->body('Ensure there is customer email & contact superadmin for other errors.')
                                     ->danger()->send();
                             }
                         }),

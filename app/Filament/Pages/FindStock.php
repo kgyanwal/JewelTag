@@ -411,39 +411,124 @@ Select::make('metal_type')
             ])
             ->actions([
                 TableActionGroup::make([
-                    ViewAction::make()
-                        ->modalHeading('Detailed Jewelry Specifications')
-                        ->modalWidth('5xl')
-                        ->infolist(fn(Infolist $infolist) => $infolist->schema([
-                            InfoSection::make('Inventory Identity')->schema([
-                                InfoGrid::make(3)->schema([
-                                    TextEntry::make('barcode')->label('Stock Number')->weight('black')->size('lg'),
-                                    TextEntry::make('status')->badge()->color('success'),
-                                    TextEntry::make('retail_price')->label('Showroom Price')->money('USD')->color('success')->weight('bold'),
-                                ]),
-                                TextEntry::make('custom_description')->label('Display Description'),
-                            ]),
-                            InfoSection::make('Diamond & Gemstone Specifications')->schema([
-                                InfoGrid::make(4)->schema([
-                                    TextEntry::make('metal_type')->label('Metal Karat'),
-                                    TextEntry::make('diamond_weight')->label('Total Carat Wt.'),
-                                    TextEntry::make('shape')->label('Stone Shape'),
-                                    TextEntry::make('color')->label('Stone Color'),
-                                    TextEntry::make('clarity')->label('Clarity Grade'),
-                                    TextEntry::make('cut')->label('Cut Grade'),
-                                    TextEntry::make('certificate_number')->label('GIA/IGI Certificate'),
-                                    IconEntry::make('is_lab_grown')->label('Lab Grown Diamond')->boolean(),
-                                ]),
-                            ])->columns(2),
-                            InfoSection::make('Procurement History')->schema([
-                                InfoGrid::make(3)->schema([
-                                    TextEntry::make('supplier.company_name')->label('Original Vendor'),
-                                    TextEntry::make('cost_price')->label('Acquisition Cost')->money('USD'),
-                                    TextEntry::make('date_in')->label('Date Received')->date(),
-                                    TextEntry::make('rfid_code')->label('RFID EPC Tag')->fontFamily('mono'),
-                                ]),
-                            ]),
-                        ])),
+                  ViewAction::make()
+    ->modalHeading('Stock Item Details')
+    ->modalWidth('5xl')
+    ->infolist(fn(Infolist $infolist, $record) => $infolist->schema([
+        InfoSection::make('Inventory Identity')->schema([
+            InfoGrid::make(3)->schema([
+                TextEntry::make('barcode')->label('Stock Number')->weight('black')->size('lg'),
+                TextEntry::make('status')->badge()->color('success'),
+                TextEntry::make('retail_price')->label('Showroom Price')->money('USD')->color('success')->weight('bold'),
+            ]),
+            TextEntry::make('custom_description')->label('Display Description'),
+        ]),
+
+        InfoSection::make('Diamond & Gemstone Specifications')->schema([
+            InfoGrid::make(4)->schema([
+                TextEntry::make('metal_type')->label('Metal Karat'),
+                TextEntry::make('diamond_weight')->label('Total Carat Wt.'),
+                TextEntry::make('shape')->label('Stone Shape'),
+                TextEntry::make('color')->label('Stone Color'),
+                TextEntry::make('clarity')->label('Clarity Grade'),
+                TextEntry::make('cut')->label('Cut Grade'),
+                TextEntry::make('certificate_number')->label('GIA/IGI Certificate'),
+                IconEntry::make('is_lab_grown')->label('Lab Grown Diamond')->boolean(),
+            ]),
+        ])->columns(2),
+
+        InfoSection::make('Procurement History')->schema([
+            InfoGrid::make(3)->schema([
+                TextEntry::make('supplier.company_name')->label('Original Vendor'),
+                TextEntry::make('cost_price')->label('Acquisition Cost')->money('USD'),
+                TextEntry::make('date_in')->label('Date Received')->date(),
+                TextEntry::make('rfid_code')->label('RFID EPC Tag')->fontFamily('mono'),
+            ]),
+        ]),
+
+        // ── WHO BOUGHT THIS ITEM ──────────────────────────────────────
+        InfoSection::make('🛒 Sales History — Who Bought This')
+            ->schema([
+                \Filament\Infolists\Components\TextEntry::make('sales_history')
+                    ->label('')
+                    ->state(fn() => 'loaded')
+                    ->formatStateUsing(function () use ($record) {
+                        $saleItems = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->with(['sale.customer', 'sale.payments'])
+                            ->latest()
+                            ->get();
+
+                        if ($saleItems->isEmpty()) {
+                            return new HtmlString("
+                                <div class='text-center py-6 text-gray-400 italic text-sm'>
+                                    No sales recorded for this item.
+                                </div>
+                            ");
+                        }
+
+                        $rows = $saleItems->map(function ($si) {
+                            $sale     = $si->sale;
+                            $customer = $sale?->customer;
+                            $name     = $customer
+                                ? trim($customer->name . ' ' . ($customer->last_name ?? ''))
+                                : 'Walk-in';
+                            $phone    = $customer?->phone ?? '—';
+                            $invoice  = $sale?->invoice_number ?? '—';
+                            $date     = $sale?->created_at?->format('M d, Y') ?? '—';
+                            $total    = '$' . number_format($sale?->final_total ?? 0, 2);
+                            $paid     = '$' . number_format($sale?->payments?->sum('amount') ?? 0, 2);
+                            $balance  = floatval($sale?->balance_due ?? 0);
+                            $status   = $sale?->status ?? 'unknown';
+                            $method   = strtoupper($sale?->payment_method ?? '—');
+
+                            $statusColor = match ($status) {
+                                'completed' => 'bg-success-100 text-success-700',
+                                'pending'   => 'bg-warning-100 text-warning-700',
+                                default     => 'bg-gray-100 text-gray-600',
+                            };
+
+                            $balanceBadge = $balance > 0.01
+                                ? "<span class='bg-danger-100 text-danger-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>Balance: \${$balance}</span>"
+                                : "<span class='bg-success-100 text-success-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>✓ Fully Paid</span>";
+
+                            $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale?->id]);
+
+                            return "
+                                <div class='border border-gray-100 rounded-xl p-4 mb-3 bg-white shadow-sm hover:shadow-md transition'>
+                                    <div class='flex justify-between items-start mb-3'>
+                                        <div>
+                                            <a href='{$editUrl}' target='_blank'
+                                               class='font-mono font-black text-primary-600 text-sm hover:underline'>
+                                                Invoice #{$invoice}
+                                            </a>
+                                            <span class='ml-2 text-xs text-gray-400'>{$date}</span>
+                                        </div>
+                                        <div class='flex gap-2 items-center'>
+                                            <span class='{$statusColor} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase'>{$status}</span>
+                                            {$balanceBadge}
+                                        </div>
+                                    </div>
+                                    <div class='grid grid-cols-2 gap-3 text-sm'>
+                                        <div>
+                                            <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Customer</div>
+                                            <div class='font-semibold text-gray-800'>{$name}</div>
+                                            <div class='text-xs text-gray-500'>{$phone}</div>
+                                        </div>
+                                        <div>
+                                            <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Payment</div>
+                                            <div class='font-semibold text-gray-800'>{$total} total</div>
+                                            <div class='text-xs text-gray-500'>Paid: {$paid} via {$method}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ";
+                        })->implode('');
+
+                        return new HtmlString("<div class='space-y-1'>{$rows}</div>");
+                    })
+                    ->html(),
+            ]),
+    ])),
 
                     EditAction::make()
                         ->url(fn($record) => ProductItemResource::getUrl('edit', ['record' => $record])),
