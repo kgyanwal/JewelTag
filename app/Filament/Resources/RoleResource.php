@@ -86,6 +86,7 @@ class RoleResource extends Resource
                             ->relationship('permissions', 'name')
                             ->multiple()
                             ->preload()
+                            
                             ->searchable()
                             ->label('Select Permissions')
                             ->createOptionForm([

@@ -6,43 +6,32 @@ return [
 
         'name' => env('APP_NAME', 'jewelry-pos'),
 
-        'source' => [
-            'files' => [
-                /* * 🔴 CHANGED: Leave this array EMPTY to skip backing up files.
-                 * This ensures you only get the SQL database dump.
-                 */
-                'include' => [
-                    // storage_path('app/public'), 
-                ],
-
-                'exclude' => [
-                    base_path('vendor'),
-                    base_path('node_modules'),
-                    storage_path('app/backup-temp'),
-                ],
-                'follow_links' => false,
-                'ignore_unreadable_directories' => false,
-                'relative_path' => null,
-            ],
-
-            /*
-             * 🟢 This part stays active, so it will still backup your DB.
-             */
-            'databases' => [
-                env('DB_CONNECTION', 'mysql'),
-            ],
+   'source' => [
+    'files' => [
+        'include' => [],
+        'exclude' => [
+            base_path('vendor'),
+            base_path('node_modules'),
+            storage_path('app/backup-temp'),
         ],
+        'follow_links' => false,
+        'ignore_unreadable_directories' => false,
+        'relative_path' => null,
+    ],
 
-        'destination' => [
-            'compression_method' => ZipArchive::CM_DEFAULT,
-            'compression_level' => 9,
-            'filename_prefix' => 'backup-',
-            'disks' => [
-                's3', 
-            ],
-            'continue_on_failure' => false,
-        ],
+    // 🔴 CHANGE THIS: use 'tenant' instead of env('DB_CONNECTION')
+    'databases' => [
+        'tenant',  // ← this is the tenant DB connection Stancl switches dynamically
+    ],
+],
 
+'destination' => [
+    'compression_method' => ZipArchive::CM_DEFAULT,
+    'compression_level' => 9,
+    'filename_prefix' => 'backup-',  // will be overridden per-tenant in the command
+    'disks' => ['s3'],
+    'continue_on_failure' => false,
+],
         'temporary_directory' => storage_path('app/backup-temp'),
         'password' => env('BACKUP_ARCHIVE_PASSWORD'),
         'encryption' => 'default',

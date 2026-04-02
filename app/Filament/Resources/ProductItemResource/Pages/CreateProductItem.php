@@ -4,18 +4,61 @@ namespace App\Filament\Resources\ProductItemResource\Pages;
 
 use App\Filament\Resources\ProductItemResource;
 use App\Services\InvoiceOcrService;
+use App\Services\ZebraPrinterService; // 👈 Import the printer service
 use App\Models\ProductItem;
-use App\Models\Store;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Model;
-use App\Helpers\Staff; // 👈 Import Staff Helper
-use Filament\Forms\Components\TextInput; // 👈 Import Input
+use Filament\Notifications\Actions\Action as NotificationAction; // 👈 Import Notification Action
+use App\Helpers\Staff;
+use Filament\Forms\Components\TextInput;
+
 class CreateProductItem extends CreateRecord
 {
     protected static string $resource = ProductItemResource::class;
+
+    /**
+     * 🚀 Redirect back to the create page instead of the list
+     * This allows the "Create New Tag" requirement by staying on the same page.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('create');
+    }
+
+    /**
+     * 🚀 THE CORE FIX: This triggers AFTER the stock is saved in the DB.
+     */
+    protected function afterCreate(): void
+    {
+        $record = $this->record;
+
+        Notification::make()
+            ->success()
+            ->title('Stock Assembled Successfully')
+            ->body("Stock No: **{$record->barcode}** has been added.")
+            ->persistent() // Keeps it on screen until they click
+            ->actions([
+                // 1. PRINT OPTION
+                NotificationAction::make('print_tag')
+                    ->label('Print Tag Now')
+                    ->icon('heroicon-o-printer')
+                    ->color('info')
+                    ->button()
+                    ->emit('zebra-print', [
+                        'zpl' => app(ZebraPrinterService::class)->getZplCode($record, false)
+                    ]),
+
+                // 2. CREATE NEW OPTION
+                NotificationAction::make('new_item')
+                    ->label('Add Another')
+                    ->icon('heroicon-o-plus-circle')
+                    ->color('gray')
+                    ->url($this->getResource()::getUrl('create')),
+            ])
+            ->send();
+    }
 
     protected function getHeaderActions(): array
     {
@@ -27,7 +70,12 @@ class CreateProductItem extends CreateRecord
                     $path = storage_path('app/public/' . $data['invoice_image']);
                     try {
                         $extracted = $ocrService->extractDataFromImage($path);
-                        $this->form->fill(['supplier_code' => $extracted['supplier_code'] ?? null, 'cost_price' => $extracted['cost_price'] ?? 0, 'custom_description' => $extracted['custom_description'] ?? '', 'qty' => 1]);
+                        $this->form->fill([
+                            'supplier_code' => $extracted['supplier_code'] ?? null, 
+                            'cost_price' => $extracted['cost_price'] ?? 0, 
+                            'custom_description' => $extracted['custom_description'] ?? '', 
+                            'qty' => 1
+                        ]);
                         Notification::make()->title('Invoice Data Retrieved!')->success()->send();
                     } catch (\Exception $e) {
                         Notification::make()->title('OCR Error')->body($e->getMessage())->danger()->send();
@@ -35,28 +83,23 @@ class CreateProductItem extends CreateRecord
                 }),
         ];
     }
+
     protected function getFormActions(): array
     {
         return [
             Action::make('create')
-                ->label('Add to Inventory')
+                ->label('Assemble Stock & Print') // 👈 Changed label for clarity
                 ->color('primary')
                 ->icon('heroicon-o-plus')
                 ->size(\Filament\Support\Enums\ActionSize::Large)
-
-                // 🎨 CUSTOM UI STYLING (Shadows, Width, Bold Text)
                 ->extraAttributes([
                     'class' => 'w-full md:w-1/2 mx-auto shadow-xl font-black tracking-wider ring-1 ring-green-600/20 transform hover:scale-105 transition-all duration-300',
                     'style' => 'height: 3.5rem; font-size: 1.1rem;',
                 ])
-
-                // Pop-up Config
                 ->requiresConfirmation()
                 ->modalHeading('Staff Verification')
                 ->modalDescription('Enter your PIN to authorize adding this stock.')
                 ->modalSubmitActionLabel('Verify & Save')
-
-                // PIN Form
                 ->form([
                     TextInput::make('verification_pin')
                         ->label('Enter PIN')
@@ -66,35 +109,29 @@ class CreateProductItem extends CreateRecord
                         ->numeric()
                         ->autofocus(),
                 ])
-
-                // Logic
                 ->action(function (array $data) {
-                    // Get Active Staff
                     $staff = Staff::user() ?? auth()->user();
-
                     if (!$staff) {
                         Notification::make()->title('Error')->body('No active staff session found.')->danger()->send();
                         return;
                     }
 
-                    // Verify PIN
                     if ($staff->pin_code !== $data['verification_pin']) {
                         Notification::make()
                             ->title('Invalid PIN')
                             ->body('Access Denied. Inventory was not added.')
                             ->danger()
                             ->send();
-                        return; // 🛑 Stop execution
+                        return; 
                     }
 
-                    // ✅ Valid PIN: Run the creation logic
                     $this->create();
                 }),
 
-            // Keep the cancel button
             parent::getCancelFormAction(),
         ];
     }
+
     protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
     {
         $qty = (int) ($data['qty'] ?? 1);
@@ -107,9 +144,7 @@ class CreateProductItem extends CreateRecord
         
         unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
-        // 🔹 FETCH DYNAMIC PREFIX USING THE UPDATED HELPER
         $dynamicPrefix = ProductItemResource::getPrefixForSubDepartment($subDepartment);
-
         $firstRecord = null;
 
         for ($i = 0; $i < $qty; $i++) {
@@ -117,8 +152,7 @@ class CreateProductItem extends CreateRecord
             $itemData['store_id'] = $storeId;
             $itemData['is_trade_in'] = ($tradeInNo !== null);
             $itemData['original_trade_in_no'] = $tradeInNo;
-
-            // 🔹 Apply Prefix
+            $itemData['web_item'] = $itemData['web_item'] ?? false;
             $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
 
             if (!$isRepair) {

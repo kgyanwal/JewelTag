@@ -39,14 +39,24 @@ class PinCodeAuth extends Page
 
 public function verify()
 {
-    $staff = User::where('pin_code', $this->pin_code)->where('is_active', true)->first();
+    $staff = User::where('pin_code', $this->pin_code)
+        ->where('is_active', true)
+        ->first();
 
     if (!$staff) {
+        $this->pin_code = ''; // Clear input on failure
         Notification::make()->title('Invalid PIN')->danger()->send();
         return;
     }
 
-    // 🚀 APPEND/OVERRIDE: This ensures Associate B can finish Associate A's work
+    // 1. 🚀 CRITICAL FIX: Clear the old staff data first
+    Session::forget(['active_staff_id', 'active_staff_name', 'active_staff_role', 'pin_verified_at']);
+    
+    // 2. 🚀 CRITICAL FIX: Regenerate the session ID 
+    // This prevents "sticky" session data from the previous associate
+    Session::regenerate();
+
+    // 3. Put the NEW associate data
     Session::put([
         'active_staff_id' => $staff->id,
         'active_staff_name' => $staff->name,
@@ -54,10 +64,13 @@ public function verify()
         'pin_verified_at' => now(), 
     ]);
 
-    // Success notification
-    Notification::make()->title("Terminal Session: {$staff->name}")->success()->send();
+    Notification::make()
+        ->title("Terminal Session: {$staff->name}")
+        ->success()
+        ->send();
 
-    return redirect()->intended(url('/admin/sales/create'));
+    // Use a hard redirect to ensure the middleware picks up the new session immediately
+    return redirect()->to(url('/admin'));
 }
 
     public function logoutMaster()

@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
    ->withMiddleware(function (Middleware $middleware) {
     $middleware->appendToGroup('web', [
         // 1. Initialize Tenancy first
-        \Stancl\Tenancy\Middleware\InitializeTenancyByDomain::class,
+        // \Stancl\Tenancy\Middleware\InitializeTenancyByDomain::class,
         // 2. IMMEDIATELY set the timezone so everything following uses it
         \App\Http\Middleware\SetTenantTimezone::class, 
     ]);

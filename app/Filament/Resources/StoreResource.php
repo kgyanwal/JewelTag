@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\StoreResource\Pages;
 use App\Models\Store;
-use App\Helpers\LocationHelper;
 use Filament\Forms;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
@@ -14,7 +13,6 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Log;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class StoreResource extends Resource
@@ -27,113 +25,108 @@ class StoreResource extends Resource
     {
         return $form
             ->schema([
-                Section::make('Store Identity')->schema([
-                    TextInput::make('name')
-                        ->label('Store Name')
-                        ->required()
-                        ->maxLength(255),
+                Section::make('Store Identity')
+                    ->description('This information appears at the top of receipts.')
+                    ->schema([
+                        TextInput::make('name')
+                            ->label('Brand Name (Header)')
+                            ->placeholder('e.g., CONCHO')
+                            ->required()
+                            ->maxLength(255),
 
-                    TextInput::make('domain_url')
-                        ->label('Website Domain')
-                        ->url()
-                        ->placeholder('https://thediamondsq.com')
-                        ->suffixIcon('heroicon-m-globe-alt')
-                        ->columnSpanFull(),
-                ])->columns(2),
+                        TextInput::make('legal_name')
+                            ->label('Legal Business Name')
+                            ->placeholder('e.g., Your Jewelry LLC'),
 
-                Section::make('Location Details')->schema([
-                    GoogleAutocomplete::make('address_search')
-    ->label('Search Address')
-    ->autocompletePlaceholder('Start typing address...')
-    ->countries(['US'])
-    ->placesApiNew()
-    ->withFields([
 
-        TextInput::make('address_line_1')
-            ->label('Address Line 1')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'formatted_address'
-            ])
-            ->columnSpanFull(),
+                        TextInput::make('tagline')
+                            ->label('Store Tagline')
+                            ->placeholder('e.g., Albuquerque\'s Finest Custom Jeweler')
+                            ->columnSpanFull(),
 
-        TextInput::make('address_line_2')
-            ->label('Address Line 2')
-            ->columnSpanFull(),
+                        TextInput::make('domain_url')
+                            ->label('Website URL')
+                            ->url()
+                            ->placeholder('https://thediamondsq.com')
+                            ->suffixIcon('heroicon-m-globe-alt')
+                            ->columnSpanFull(),
+                    ])->columns(2),
 
-        TextInput::make('city')
-            ->label('City')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'locality'
+                Section::make('Location Details')
+    ->description('Search for an address to automatically fill the fields below.')
+    ->schema([
+        GoogleAutocomplete::make('address_search')
+            ->label('Search Address')
+            ->autocompletePlaceholder('Start typing address...')
+            ->countries(['US'])
+            ->columnSpanFull()
+            ->withFields([
+                TextInput::make('street')
+                    ->label('Street Address')
+                    ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+
+                TextInput::make('address_line_2')
+                    ->label('Address 2 / Apt / Suite')
+                    ->extraInputAttributes(['data-google-field' => 'subpremise']),
+
+               TextInput::make('city')
+                    ->label('City')
+                    ->extraInputAttributes([
+                        'data-google-field' => 'locality',  // ✅ Single field only
+                        'data-google-value' => 'short_name'  // ✅ Gets "NYC" instead of "New York City"
+                    ]),
+
+                TextInput::make('state')
+                    ->label('State')
+                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])
+                    ->columnSpan(1),
+
+                TextInput::make('postcode')
+                    ->label('Zip Code')
+                    ->extraInputAttributes(['data-google-field' => 'postal_code'])
+                    ->columnSpan(1),
+
+                TextInput::make('country')
+                    ->label('Country')
+                    ->extraInputAttributes(['data-google-field' => 'country'])
+                    ->default('United States'),
             ]),
+    ]),
 
-        Select::make('state')
-            ->label('State')
-            ->options(LocationHelper::getUsStates())
-            ->searchable()
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'administrative_area_level_1_short'
-            ]),
 
-        TextInput::make('zip_code')
-            ->label('ZIP Code')
-            ->required()
-            ->extraInputAttributes([
-                'data-google-field' => 'postal_code'
-            ]),
-    ])
-    ->columnSpanFull(),
-                ])->columns(2),
-
-                Section::make('Timezone Settings')->schema([
-
-                    Select::make('timezone')
-                        ->label('Store Timezone')
-                        ->options(
-                            collect(\DateTimeZone::listIdentifiers())
-                                ->mapWithKeys(fn($tz) => [$tz => $tz])
-                                ->toArray()
-                        )
-                        ->searchable()
-                        ->default('America/Denver')
-                        ->required()
-                        ->helperText('This timezone will control store time display'),
-
-                ])->columns(1),
-
-                Section::make('Contact Information')->schema([
+                Section::make('Contact Information & Settings')->schema([
                     TextInput::make('phone')
                         ->label('Phone Number')
                         ->tel()
                         ->prefix('+1')
                         ->mask('999-999-9999')
-                        ->dehydrateStateUsing(
-                            fn($state) => $state
-                                ? '+1' . preg_replace('/\D/', '', $state)
-                                : null
-                        ),
+                        ->dehydrateStateUsing(fn($state) => $state ? '+1' . preg_replace('/\D/', '', $state) : null),
 
                     TextInput::make('email')
                         ->label('Email Address')
                         ->email(),
+
+                    Select::make('timezone')
+                        ->label('Store Timezone')
+                        ->options(collect(\DateTimeZone::listIdentifiers())->mapWithKeys(fn($tz) => [$tz => $tz])->toArray())
+                        ->searchable()
+                        ->default('America/Denver')
+                        ->required(),
                 ])->columns(2),
 
-                Section::make('Branding')->schema([
+                Section::make('Branding & System')->schema([
                     FileUpload::make('logo_path')
                         ->label('Store Logo')
                         ->image()
                         ->directory('store-logos')
-                        ->visibility('public')
-                        ->columnSpanFull(),
-                ]),
-                TextInput::make('crm_url')
-    ->label('CRM Portal Link')
-    ->url()
-    ->placeholder('https://crm.yourdomain.com')
-    ->suffixIcon('heroicon-m-link')
-    ->helperText('The dynamic link used for the dashboard CRM tile.'),
+                        ->visibility('public'),
+
+                    TextInput::make('crm_url')
+                        ->label('CRM Portal Link')
+                        ->url()
+                        ->placeholder('https://crm.yourdomain.com')
+                        ->suffixIcon('heroicon-m-link'),
+                ])->columns(2),
             ]);
     }
 
@@ -141,10 +134,15 @@ class StoreResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')->sortable()->searchable(),
+                Tables\Columns\TextColumn::make('name')
+                    ->label('Brand')
+                    ->sortable()
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('legal_name')
+                    ->label('Legal Entity')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('city')->sortable(),
                 Tables\Columns\TextColumn::make('state')->sortable(),
-                Tables\Columns\TextColumn::make('timezone'),
                 Tables\Columns\TextColumn::make('phone'),
             ])
             ->actions([
@@ -160,12 +158,10 @@ class StoreResource extends Resource
             'edit' => Pages\EditStore::route('/{record}/edit'),
         ];
     }
-    public static function shouldRegisterNavigation(): bool
-{
-    // 🔹 Use your Staff helper to check the identity of the person who entered the PIN
-    $staff = \App\Helpers\Staff::user();
 
-    // Only allow specific roles to see the Administration menu
-    return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
-}
+    public static function shouldRegisterNavigation(): bool
+    {
+        $staff = \App\Helpers\Staff::user();
+        return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+    }
 }

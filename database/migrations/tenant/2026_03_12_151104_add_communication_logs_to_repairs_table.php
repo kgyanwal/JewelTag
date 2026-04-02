@@ -11,8 +11,9 @@ return new class extends Migration
      */
    public function up(): void
 {
-    Schema::table('stores', function (Blueprint $table) {
-        $table->string('crm_url')->nullable()->after('domain_url');
+    Schema::table('repairs', function (Blueprint $table) {
+        $table->timestamp('notified_at')->nullable()->after('status');
+        $table->text('last_message')->nullable()->after('notified_at');
     });
 }
 
@@ -21,7 +22,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('stores', function (Blueprint $table) {
+        Schema::table('repairs', function (Blueprint $table) {
             //
         });
     }

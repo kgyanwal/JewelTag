@@ -33,6 +33,7 @@ class MasterPanelProvider extends PanelProvider
             | UI ENHANCEMENTS (REFIXED VISIBILITY)
             |--------------------------------------------------------------------------
             */
+            ->domains(config('tenancy.central_domains'))
             ->renderHook(
                 'panels::head.done',
                 fn () => new HtmlString("
@@ -104,6 +105,7 @@ class MasterPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Master/Resources'), for: 'App\\Filament\\Master\\Resources')
             ->discoverPages(in: app_path('Filament/Master/Pages'), for: 'App\\Filament\\Master\\Pages')
             ->pages([
+                \App\Filament\Master\Pages\Welcome::class,
                 Pages\Dashboard::class,
             ])
             ->widgets([

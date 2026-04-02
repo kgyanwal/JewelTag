@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\Sale;
 use App\Models\User;
+use App\Models\Store;
 use Filament\Pages\Page;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
@@ -21,22 +22,23 @@ class MySalesReport extends Page implements HasTable
 {
     use InteractsWithTable;
 
-    protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-line';
+    protected static ?string $navigationIcon  = 'heroicon-o-presentation-chart-line';
     protected static ?string $navigationGroup = 'Analytics & Reports';
     protected static ?string $navigationLabel = 'My Sales Report';
-    protected static ?string $title = 'Sales Performance Report';
-    protected static string $view = 'filament.pages.my-sales-report';
+    protected static ?string $title           = 'Sales Performance Report';
+    protected static string  $view            = 'filament.pages.my-sales-report';
 
     public function table(Table $table): Table
     {
-        // 🚀 CRITICAL: Define privilege check once for reuse
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
+        $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
 
         return $table
             ->query(
                 Sale::query()
+                    ->with('customer')
                     ->where('status', 'completed')
-                    // 🔒 SECURITY: Strictly filter by the logged-in user if not an Admin
+                    ->where('balance_due', 0)
                     ->when(!$isPrivileged, function (Builder $query) {
                         $query->whereJsonContains('sales_person_list', auth()->user()->name);
                     })
@@ -45,16 +47,35 @@ class MySalesReport extends Page implements HasTable
                 TextColumn::make('created_at')
                     ->label('Date')
                     ->dateTime('M d, Y')
+                    ->timezone($tz)
                     ->sortable(),
 
                 TextColumn::make('invoice_number')
                     ->label('Invoice')
+                    ->weight('bold')
+                    ->color('primary')
                     ->searchable(),
 
-                TextColumn::make('customer.name')
+                TextColumn::make('customer_name_display')
                     ->label('Customer')
-                    ->formatStateUsing(fn($record) => "{$record->customer->name} {$record->customer->last_name}")
-                    ->searchable(),
+                    ->getStateUsing(
+                        fn($record) =>
+                        $record->customer
+                            ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? ''))
+                            : '—'
+                    )
+                    ->searchable(
+                        query: function (Builder $query, string $search): Builder {
+                            return $query->whereHas(
+                                'customer',
+                                fn($q) =>
+                                $q->where('name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            );
+                        }
+                    )
+                    ->sortable(false),
 
                 TextColumn::make('sales_person_list')
                     ->label('Associates')
@@ -62,104 +83,204 @@ class MySalesReport extends Page implements HasTable
                     ->separator(','),
 
                 TextColumn::make('subtotal')
-                    ->label('Subtotal (Ex. Tax)')
+                    ->label('Subtotal (My Sale)')
                     ->alignRight()
                     ->formatStateUsing(function ($state, $record) {
-                        $count = is_array($record->sales_person_list) ? count($record->sales_person_list) : 1;
-                        $perPerson = $state / $count;
-                        
-                        $html = "<div class='font-bold text-gray-900'>$" . number_format($state, 2) . "</div>";
+                        $staffList = is_string($record->sales_person_list)
+                            ? json_decode($record->sales_person_list, true)
+                            : ($record->sales_person_list ?? []);
+                        $count     = max(1, is_array($staffList) ? count($staffList) : 1);
+                        $perPerson = floatval($state) / $count;
+
+                        $html = "<div class='font-bold text-gray-900 text-lg'>$"
+                            . number_format($perPerson, 2) . "</div>";
+
                         if ($count > 1) {
-                            $html .= "<div class='text-xs text-primary-600 italic'>$" . number_format($perPerson, 2) . " total sold amount</div>";
+                            $html .= "<div class='text-xs text-gray-400'>Invoice Total: $"
+                                . number_format($state, 2) . "</div>";
+                            $html .= "<div class='text-[10px] text-primary-600 font-medium uppercase tracking-wider'>"
+                                . "Split with {$count}</div>";
+                        } else {
+                            $html .= "<div class='text-[10px] text-gray-400 font-medium uppercase tracking-wider'>"
+                                . "Full Sale Amount</div>";
                         }
+
                         return new HtmlString($html);
                     })
                     ->summarize(
+                        // Single summarizer — shows Split Total | Solo Total | My Total in one cell
                         Summarizer::make()
-                            ->label('Individual Split Total')
+                            ->label('')
                             ->using(function ($query) {
-                                $sales = $query->get();
-                                $totalIndividualShare = 0;
+                                $sales = $query->get(['subtotal', 'sales_person_list']);
+
+                                $splitTotal     = 0;
+                                $splitTotalFull = 0;
+                                $soloTotal      = 0;
+                                $myTotal        = 0;
 
                                 foreach ($sales as $sale) {
-                                    $staffList = is_string($sale->sales_person_list) 
-                                        ? json_decode($sale->sales_person_list, true) 
-                                        : $sale->sales_person_list;
-                                        
-                                    $count = is_array($staffList) ? count($staffList) : 1;
-                                    $totalIndividualShare += ($sale->subtotal / $count);
+                                    $staffList = is_string($sale->sales_person_list)
+                                        ? json_decode($sale->sales_person_list, true)
+                                        : ($sale->sales_person_list ?? []);
+                                    $count  = max(1, is_array($staffList) ? count($staffList) : 1);
+                                    $share  = floatval($sale->subtotal) / $count;
+                                    $myTotal += $share;
+
+                                    if ($count > 1) {
+                                        $splitTotal     += $share;
+                                        $splitTotalFull += floatval($sale->subtotal);  // full invoice amount
+                                    } else {
+                                        $soloTotal += $share;
+                                    }
                                 }
-                                return "$" . number_format($totalIndividualShare, 2);
+
+                                return new HtmlString(
+                                    "<div style='display:flex;gap:24px;justify-content:flex-end;align-items:center;flex-wrap:wrap;'>"
+                                        . "<div style='text-align:right;'>"
+                                        .   "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;'>Split Sales</div>"
+                                        .   "<div style='font-size:16px;font-weight:900;color:#d97706;'>$" . number_format($splitTotal, 2) . "</div>"
+                                        .   "<div style='font-size:11px;font-weight:600;color:#00c0ff;'>Total: $" . number_format($splitTotalFull, 2) . "</div>"
+                                        . "</div>"
+                                        . "<div style='text-align:right;'>"
+                                        .   "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;'>Solo Sales</div>"
+                                        .   "<div style='font-size:16px;font-weight:900;color:#0284c7;'>$" . number_format($soloTotal, 2) . "</div>"
+                                        . "</div>"
+                                        . "<div style='text-align:right;padding:4px 10px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;'>"
+                                        .   "<div style='font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.05em;'>My Total</div>"
+                                        .   "<div style='font-size:18px;font-weight:900;color:#15803d;'>$" . number_format($myTotal, 2) . "</div>"
+                                        . "</div>"
+                                        . "</div>"
+                                );
                             })
                     ),
             ])
             ->filters([
                 Filter::make('created_at')
                     ->form([
-                        DatePicker::make('from')->label('Start Date')->default(now()->startOfMonth()),
-                        DatePicker::make('until')->label('End Date')->default(now()),
+                        DatePicker::make('from')
+                            ->label('Start Date')
+                            ->default(now()->startOfMonth()),
+                        DatePicker::make('until')
+                            ->label('End Date')
+                            ->default(now()),
                     ])
-                    ->query(function (Builder $query, array $data): Builder {
+                    ->query(function (Builder $query, array $data) use ($tz): Builder {
                         return $query
-                            ->when($data['from'], fn($q) => $q->whereDate('created_at', '>=', $data['from']))
-                            ->when($data['until'], fn($q) => $q->whereDate('created_at', '<=', $data['until']));
+                            ->when(
+                                $data['from'],
+                                fn($q) =>
+                                $q->where(
+                                    'created_at',
+                                    '>=',
+                                    Carbon::parse($data['from'], $tz)->startOfDay()->utc()
+                                )
+                            )
+                            ->when(
+                                $data['until'],
+                                fn($q) =>
+                                $q->where(
+                                    'created_at',
+                                    '<=',
+                                    Carbon::parse($data['until'], $tz)->endOfDay()->utc()
+                                )
+                            );
                     }),
 
-                // 👥 ROLE-BASED ASSOCIATE FILTER FIX
                 Filter::make('staff_filter')
                     ->label('Associate')
                     ->form([
                         Select::make('associate')
-                            ->options(User::pluck('name', 'name'))
+                            ->options(
+                                $isPrivileged
+                                    ? User::orderBy('name')->pluck('name', 'name')
+                                    : []
+                            )
                             ->placeholder('All Associates'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
+                        if (!auth()->user()->hasAnyRole(['Superadmin', 'Administration'])) {
+                            return $query;
+                        }
                         return $query->when(
-                            $data['associate'],
-                            fn(Builder $q, $state) => $q->whereJsonContains('sales_person_list', $state)
+                            $data['associate'] ?? null,
+                            fn(Builder $q, $state) =>
+                            $q->whereJsonContains('sales_person_list', $state)
                         );
                     })
-                    // 🚀 HIDDEN: This prevents Rabin from seeing the "Associate" dropdown entirely
                     ->hidden(!$isPrivileged),
             ])
-            ->defaultSort('created_at', 'desc');
+            ->defaultSort('created_at', 'desc')
+            ->filtersLayout(\Filament\Tables\Enums\FiltersLayout::AboveContentCollapsible)
+            ->filtersTriggerAction(
+                fn($action) => $action->label('Filter / Date Range')->icon('heroicon-o-funnel')
+            );
     }
 
-    protected function getViewData(): array
+    public function getStats(): array
     {
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
+        $isSuperadmin = auth()->user()->hasRole('Superadmin');
+        $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
+        $currentUser  = auth()->user()->name;
 
-        $query = Sale::query()
+        $filters       = $this->tableFilters ?? [];
+        $filteredAssoc = $isPrivileged ? ($filters['staff_filter']['associate'] ?? null) : null;
+        $viewingUser   = $filteredAssoc ?? $currentUser;
+
+        $applyDates = function (Builder $q) use ($filters, $tz): Builder {
+            if (!empty($filters['created_at']['from'])) {
+                $q->where(
+                    'created_at',
+                    '>=',
+                    Carbon::parse($filters['created_at']['from'], $tz)->startOfDay()->utc()
+                );
+            }
+            if (!empty($filters['created_at']['until'])) {
+                $q->where(
+                    'created_at',
+                    '<=',
+                    Carbon::parse($filters['created_at']['until'], $tz)->endOfDay()->utc()
+                );
+            }
+            return $q;
+        };
+
+        $personalQuery = Sale::query()
             ->where('status', 'completed')
-            ->when(!$isPrivileged, function ($q) {
-                // 🔒 Security: Only query Rabin's sales if logged in as Rabin (Sales role)
-                $q->whereJsonContains('sales_person_list', auth()->user()->name);
-            });
+            ->where('balance_due', 0)
+            ->whereJsonContains('sales_person_list', $viewingUser);
+        $applyDates($personalQuery);
+        $sales = $personalQuery->get(['subtotal', 'tax_amount', 'sales_person_list']);
 
-        $filters = $this->getTableFilters();
-        
-        if ($dateFilter = ($filters['created_at'] ?? null)) {
-            $query->when($dateFilter['from'], fn($q) => $q->whereDate('created_at', '>=', $dateFilter['from']));
-            $query->when($dateFilter['until'], fn($q) => $q->whereDate('created_at', '<=', $dateFilter['until']));
-        }
-        
-        // Final Individual Share Calculation
-        $sales = $query->get();
-        $individualSubtotal = 0;
+        $netShare = 0;
         foreach ($sales as $sale) {
-            $staffList = is_string($sale->sales_person_list) 
-                ? json_decode($sale->sales_person_list, true) 
-                : $sale->sales_person_list;
+            $staffList = is_string($sale->sales_person_list)
+                ? json_decode($sale->sales_person_list, true)
+                : ($sale->sales_person_list ?? []);
+            $count    = max(1, is_array($staffList) ? count($staffList) : 1);
+            $netShare += (floatval($sale->subtotal) / $count);
+        }
 
-            $count = is_array($staffList) ? count($staffList) : 1;
-            $individualSubtotal += ($sale->subtotal / $count);
+        $storeTotal = null;
+        if ($isSuperadmin) {
+            $storeQuery = Sale::query()
+                ->where('status', 'completed')
+                ->where('balance_due', 0);
+            $applyDates($storeQuery);
+            $storeTotal = $storeQuery->sum('subtotal');
         }
 
         return [
-            'isPrivileged' => $isPrivileged,
-            'totalSalesCount' => $sales->count(),
-            'aggregateSubtotal' => $individualSubtotal,
-            'totalTax' => $query->sum('tax_amount'),
+            'count'          => $sales->count(),
+            'net_share'      => $netShare,
+            'tax'            => $sales->sum('tax_amount'),
+            'store_total'    => $storeTotal,
+            'is_privileged'  => $isPrivileged,
+            'is_superadmin'  => $isSuperadmin,
+            'user_name'      => $currentUser,
+            'viewing_user'   => $viewingUser,
+            'filtered_assoc' => $filteredAssoc,
         ];
     }
 }

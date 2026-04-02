@@ -1,0 +1,7 @@
+Customer,Date Sold,Job No.,Last Date Paid,Invoice Total,Payment Total,Balance,Staff,Date Required
+Test Customer One,3/19/2026,5096,3/19/2026,$968.67,$300.00,$668.67,Anthony,4/15/2026
+Test Customer Two,3/18/2026,5095,-,$852.50,-,$852.50,Jeanette,
+Test Customer Three,3/14/2026,5094,3/14/2026,$1200.00,$1000.00,$200.00,Jeanette/Anthony,5/01/2026
+Test Customer Four,3/13/2026,5093,3/13/2026,$5200.00,$1200.00,$4000.00,Paul,
+Test Customer Five,3/5/2026,5092,3/5/2026,$3253.00,$3252.50,$0.50,Kevin,
+Test Customer Six,3/14/2026,5091,-,$4332.11,-,$4332.11,Kyle,

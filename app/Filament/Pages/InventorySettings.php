@@ -151,14 +151,18 @@ class InventorySettings extends Page implements HasTable // 🚀 IMPLEMENT THIS
             ->success()
             ->send();
     }
-
+// Add this to your class methods
+public function save(): void
+{
+    $this->save_all_logic();
+}
     protected function getFormActions(): array
     {
         return [
             Action::make('save_all')
                 ->label('Save All Sections')
                 ->icon('heroicon-o-check-circle')
-                ->submit('save_all_logic')
+                ->action('save_all_logic')
                 ->color('primary'),
         ];
     }

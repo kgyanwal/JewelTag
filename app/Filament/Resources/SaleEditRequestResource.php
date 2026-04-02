@@ -81,7 +81,10 @@ class SaleEditRequestResource extends Resource
                     ->action(fn ($record) => $record->update(['status' => 'rejected'])),
             ]);
     }
-
+public static function canCreate(): bool
+    {
+        return false;
+    }
     public static function shouldRegisterNavigation(): bool
     {
         return \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false;

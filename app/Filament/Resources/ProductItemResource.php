@@ -4,6 +4,9 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductItemResource\Pages;
 use App\Models\ProductItem;
+use App\Models\Supplier;
+use App\Models\Tenant;
+use App\Models\User;
 use App\Services\ZebraPrinterService;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -11,7 +14,8 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Actions\Action as FormAction;
-
+use Filament\Forms\Set;
+use Illuminate\Support\Str;
 use Filament\Forms\Components\{
     Section,
     Grid,
@@ -32,6 +36,7 @@ use Filament\Tables\Actions\{
     ActionGroup
 };
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\DB;
 
 class ProductItemResource extends Resource
 {
@@ -39,6 +44,12 @@ class ProductItemResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-archive-box';
     protected static ?string $navigationLabel = 'Assemble Stock';
     protected static ?string $navigationGroup = 'Inventory';
+   protected static ?string $recordTitleAttribute = 'barcode';
+
+  public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+{
+    return "{$record->barcode} — " . \Illuminate\Support\Str::limit($record->custom_description, 40);
+}
 
     /**
      * Converts RFID Hex to a short alphanumeric tag (Option 2)
@@ -114,6 +125,114 @@ class ProductItemResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
+            Section::make()
+    ->compact()
+    ->schema([
+        /* ───────── TOP RADIO TOGGLE ───────── */
+        Radio::make('entry_type')
+            ->label('')
+            ->options([
+                'new' => 'Assemble New Stock Item',
+                'copy' => 'Copy Existing Item',
+            ])
+            ->default('new')
+            ->inline()
+            ->live()
+            ->extraAttributes(['class' => 'font-bold text-lg'])
+            ->afterStateUpdated(fn (Set $set) => $set('template_item_id', null)),
+
+        /* ───────── ADVANCED FILTER BAR (Visible only when 'copy' is selected) ───────── */
+        Grid::make(12)
+            ->visible(fn (Get $get) => $get('entry_type') === 'copy')
+            ->schema([
+                
+                // 1. Filter by Vendor
+                Select::make('filter_vendor')
+                    ->label('Filter Vendor')
+                    ->options(\App\Models\Supplier::pluck('company_name', 'id'))
+                    ->searchable()
+                    ->placeholder('All Vendors')
+                    ->live()
+                    ->columnSpan(3),
+
+                // 2. Filter by Department
+                Select::make('filter_dept')
+                    ->label('Filter Dept')
+                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->pluck('name', 'name'))
+                    ->placeholder('All Depts')
+                    ->live()
+                    ->columnSpan(3),
+
+                // 3. Filter by Category
+                Select::make('filter_category')
+                    ->label('Filter Category')
+                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->mapWithKeys(fn($i)=>[$i=>$i]))
+                    ->placeholder('All Categories')
+                    ->live()
+                    ->columnSpan(3),
+
+                /* ───────── DYNAMIC STOCK SELECTOR (Filtered by above choices) ───────── */
+                Select::make('template_item_id')
+                    ->label('Select Stock:')
+                    ->placeholder('SEARCH FILTERED ITEMS...')
+                    // 🚀 THE LOGIC: This dropdown now changes based on the filters above
+                    ->options(function (Get $get) {
+                        $query = ProductItem::query();
+
+                        if ($get('filter_vendor')) $query->where('supplier_id', $get('filter_vendor'));
+                        if ($get('filter_dept')) $query->where('department', $get('filter_dept'));
+                        if ($get('filter_category')) $query->where('category', $get('filter_category'));
+
+                        return $query->latest()
+                            ->limit(50)
+                            ->get()
+                            ->mapWithKeys(fn($i) => [
+                                $i->id => "{$i->barcode} - " . Str::limit($i->custom_description, 30)
+                            ]);
+                    })
+                    ->searchable()
+                    ->live()
+                    ->required(fn(Get $get) => $get('entry_type') === 'copy')
+                    ->columnSpan(3)
+                    ->afterStateUpdated(function ($state, Set $set) {
+                        if (!$state) return;
+                        $item = ProductItem::find($state);
+                        if (!$item) return;
+
+                        // 📋 CLONE ALL FIELDS LIVE
+                        $set('supplier_id', $item->supplier_id);
+                        $set('supplier_code', $item->supplier_code);
+                        $set('is_memo', $item->is_memo);
+                        $set('memo_status', $item->memo_status);
+                        $set('department', $item->department);
+                        $set('sub_department', $item->sub_department);
+                        $set('category', $item->category);
+                        $set('metal_type', $item->metal_type);
+                        $set('metal_weight', $item->metal_weight);
+                        $set('diamond_weight', $item->diamond_weight);
+                        $set('size', $item->size);
+                        $set('custom_description', $item->custom_description);
+                        $set('cost_price', $item->cost_price);
+                        $set('retail_price', $item->retail_price);
+                        $set('web_price', $item->web_price);
+                        
+                        // CLONE JEWELRY SPECS (Hidden Fields)
+                        $set('certificate_number', $item->certificate_number);
+                        $set('certificate_agency', $item->certificate_agency);
+                        $set('shape', $item->shape);
+                        $set('color', $item->color);
+                        $set('clarity', $item->clarity);
+                        $set('cut', $item->cut);
+                        $set('polish', $item->polish);
+                        $set('symmetry', $item->symmetry);
+                        $set('fluorescence', $item->fluorescence);
+                        $set('measurements', $item->measurements);
+                        $set('is_lab_grown', $item->is_lab_grown);
+
+                        Notification::make()->title('Template Applied')->success()->send();
+                    }),
+            ]),
+    ]),
             Section::make('Assemble New Stock Item')
                 ->columns(12)
                 ->schema([
@@ -218,7 +337,7 @@ class ProductItemResource extends Resource
 
                     CheckboxList::make('print_options')
                         ->options(['print_tag' => 'Print Barcode Tag', 'print_rfid' => 'Print RFID Tag', 'encode_rfid' => 'Encode RFID Data'])
-                        ->columns(3)->columnSpan(12),
+                        ->columns(3)->dehydrated(false)->columnSpan(12),
 
                     Toggle::make('enable_rfid_tracking')->label('Enable RFID Tracking')->default(true)->live()->columnSpan(6),
 
@@ -234,111 +353,112 @@ class ProductItemResource extends Resource
                     TextInput::make('supplier_code')->label('Vendor Code')->columnSpan(3),
 
                     Select::make('department')
-    ->label('Department')
-    ->hintAction(
-        FormAction::make('Help')
-            ->icon('heroicon-o-information-circle')
-            ->tooltip('Go to Inventory Settings → Categories to configure Department')
-    )
-    ->options(function () {
-        $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
-        return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
-    })
-    ->required()
-    ->searchable()
-    ->live()
-    ->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
-    ->columnSpan(3)
-    // 🚀 NEW: Quick Add Department
-    ->createOptionForm([
-        TextInput::make('name')->label('New Department Name')->required(),
-        TextInput::make('multiplier')->label('Pricing Multiplier')->numeric()->default(2.5),
-    ])
-    ->createOptionUsing(function (array $data) {
-        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'departments']);
-        $currentValue = $record->value ?? [];
-        $currentValue[] = ['name' => $data['name'], 'multiplier' => $data['multiplier']];
-        $record->update(['value' => $currentValue]);
-        return $data['name'];
-    }),
+                        ->label('Department')
+                        ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Department')
+                        )
+                        ->options(function () {
+                            $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+                            return collect($depts)->filter(fn($item) => !empty($item['name']))->pluck('name', 'name');
+                        })
+                        ->required()
+                        ->searchable()
+                        ->live()
+                        ->afterStateUpdated(fn(Get $get, Forms\Set $set) => self::runSmartPricing($get, $set))
+                        ->columnSpan(3)
+                        // 🚀 NEW: Quick Add Department
+                        ->createOptionForm([
+                            TextInput::make('name')->label('New Department Name')->required(),
+                            TextInput::make('multiplier')->label('Pricing Multiplier')->numeric()->default(2.5),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'departments']);
+                            $currentValue = $record->value ?? [];
+                            $currentValue[] = ['name' => $data['name'], 'multiplier' => $data['multiplier']];
+                            $record->update(['value' => $currentValue]);
+                            return $data['name'];
+                        }),
 
-Select::make('sub_department')
-    ->label('Sub-Department')
-    ->options(function () {
-        $data = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
-        return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
-    })
-    ->searchable()
-    ->live()
-    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, $state) {
-        $prefix = self::getPrefixForSubDepartment($state);
-        $newBarcode = self::generatePersistentBarcode($prefix);
-        $set('barcode', $newBarcode);
-    })
-    ->columnSpan(3)
-    // 🚀 NEW: Quick Add Sub-Department
-    ->createOptionForm([
-        TextInput::make('name')->label('New Sub-Department')->required(),
-        TextInput::make('prefix')->label('Barcode Prefix')->required()->maxLength(3),
-    ])
-    ->createOptionUsing(function (array $data) {
-        $subDeptRecord = \App\Models\InventorySetting::firstOrCreate(['key' => 'sub_departments']);
-        $subs = $subDeptRecord->value ?? [];
-        $subs[] = $data['name'];
-        $subDeptRecord->update(['value' => $subs]);
+                    Select::make('sub_department')
+                        ->label('Sub-Department')
+                        ->options(function () {
+                            $data = \App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [];
+                            return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+                        })
+                        ->searchable()
+                        ->live()
+                        ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, $state) {
+                            $prefix = self::getPrefixForSubDepartment($state);
+                            $newBarcode = self::generatePersistentBarcode($prefix);
+                            $set('barcode', $newBarcode);
+                        })
+                        ->columnSpan(3)
+                        // 🚀 NEW: Quick Add Sub-Department
+                        ->createOptionForm([
+                            TextInput::make('name')->label('New Sub-Department')->required(),
+                            TextInput::make('prefix')->label('Barcode Prefix')->required()->maxLength(3),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            $subDeptRecord = \App\Models\InventorySetting::firstOrCreate(['key' => 'sub_departments']);
+                            $subs = $subDeptRecord->value ?? [];
+                            $subs[] = $data['name'];
+                            $subDeptRecord->update(['value' => $subs]);
 
-        $siteSettings = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'sub_department_prefixes')->first();
-        $prefixes = $siteSettings ? json_decode($siteSettings->value, true) : [];
-        $prefixes[] = ['sub_department' => $data['name'], 'prefix' => strtoupper($data['prefix'])];
-        \Illuminate\Support\Facades\DB::table('site_settings')->updateOrInsert(
-            ['key' => 'sub_department_prefixes'],
-            ['value' => json_encode($prefixes), 'updated_at' => now()]
-        );
-        return $data['name'];
-    }),
+                            $siteSettings = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'sub_department_prefixes')->first();
+                            $prefixes = $siteSettings ? json_decode($siteSettings->value, true) : [];
+                            $prefixes[] = ['sub_department' => $data['name'], 'prefix' => strtoupper($data['prefix'])];
+                            \Illuminate\Support\Facades\DB::table('site_settings')->updateOrInsert(
+                                ['key' => 'sub_department_prefixes'],
+                                ['value' => json_encode($prefixes), 'updated_at' => now()]
+                            );
+                            return $data['name'];
+                        }),
 
-Select::make('category')
-    ->label('Category')
-    ->options(function () {
-        $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
-        return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
-    })
-    ->searchable()
-    ->dehydrated()
-    ->columnSpan(2)
-    // 🚀 NEW: Quick Add Category
-    ->createOptionForm([
-        TextInput::make('name')->label('New Category Name')->required(),
-    ])
-    ->createOptionUsing(function (array $data) {
-        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'categories']);
-        $current = $record->value ?? [];
-        $current[] = $data['name'];
-        $record->update(['value' => $current]);
-        return $data['name'];
-    }),
+                    Select::make('category')
+                        ->label('Category')
+                        ->options(function () {
+                            $data = \App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [];
+                            return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+                        })
+                        ->searchable()
+                        ->dehydrated()
+                        ->columnSpan(2)
+                        // 🚀 NEW: Quick Add Category
+                        ->createOptionForm([
+                            TextInput::make('name')->label('New Category Name')->required(),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'categories']);
+                            $current = $record->value ?? [];
+                            $current[] = $data['name'];
+                            $record->update(['value' => $current]);
+                            return $data['name'];
+                        }),
 
-Select::make('metal_type')
-    ->label('Metal Karat')
-    ->hintAction(
-        FormAction::make('Help')
-            ->icon('heroicon-o-information-circle')
-            ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
-    )
-    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->toArray())
-    ->searchable()
-    ->columnSpan(2)
-    // 🚀 NEW: Quick Add Metal Karat
-    ->createOptionForm([
-        TextInput::make('name')->label('New Metal Karat (e.g. 14k White)')->required(),
-    ])
-    ->createOptionUsing(function (array $data) {
-        $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'metal_types']);
-        $current = $record->value ?? [];
-        $current[] = $data['name'];
-        $record->update(['value' => $current]);
-        return $data['name'];
-    }),
+                    Select::make('metal_type')
+                        ->label('Metal Karat')
+                        ->hintAction(
+                            FormAction::make('Help')
+                                ->icon('heroicon-o-information-circle')
+                                ->tooltip('Go to Inventory Settings → Categories to configure Metal Karat')
+                        )
+                        ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'metal_types')->first()?->value ?? [])->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray())
+
+                        ->searchable()
+                        ->columnSpan(2)
+                        // 🚀 NEW: Quick Add Metal Karat
+                        ->createOptionForm([
+                            TextInput::make('name')->label('New Metal Karat (e.g. 14k White)')->required(),
+                        ])
+                        ->createOptionUsing(function (array $data) {
+                            $record = \App\Models\InventorySetting::firstOrCreate(['key' => 'metal_types']);
+                            $current = $record->value ?? [];
+                            $current[] = $data['name'];
+                            $record->update(['value' => $current]);
+                            return $data['name'];
+                        }),
                     TextInput::make('size')->columnSpan(2),
                     TextInput::make('metal_weight')->label('Metal Weight')->columnSpan(2),
                     TextInput::make('diamond_weight')->label('Diamond Weight (CTW)')->placeholder('1.25 CTW')->columnSpan(6),
@@ -351,7 +471,77 @@ Select::make('metal_type')
                     TextInput::make('web_price')->label('Web price')->prefix('$')->numeric()->live()->columnSpan(3),
                     TextInput::make('discount_percent')->label('Discount percent')->suffix('%')->default(0)->numeric()->columnSpan(2),
 
-                    Textarea::make('custom_description')->rows(3)->columnSpan(12),
+                  Textarea::make('custom_description')
+                    ->label('Description')
+                    ->rows(3)
+                    ->columnSpan(12)
+                    // 🚀 ON-SWIM STYLE POPUP
+                    ->hintAction(
+                        Forms\Components\Actions\Action::make('moreDetails')
+                            ->label('Add Jewelry Specs')
+                            ->icon('heroicon-o-sparkles')
+                            ->color('info')
+                            ->modalHeading('Detailed Specifications')
+                            ->modalWidth('4xl')
+                            ->fillForm(fn (Get $get) => [
+                                'certificate_number' => $get('certificate_number'),
+                                'certificate_agency' => $get('certificate_agency'),
+                                'shape' => $get('shape'),
+                                'color' => $get('color'),
+                                'clarity' => $get('clarity'),
+                                'cut' => $get('cut'),
+                                'polish' => $get('polish'),
+                                'symmetry' => $get('symmetry'),
+                                'fluorescence' => $get('fluorescence'),
+                                'measurements' => $get('measurements'),
+                                'is_lab_grown' => $get('is_lab_grown'),
+                            ])
+                            ->form([
+                                Grid::make(3)->schema([
+                                    TextInput::make('certificate_number')->label('Cert #'),
+                                    Select::make('certificate_agency')
+                                        ->options(['GIA' => 'GIA', 'IGI' => 'IGI', 'AGS' => 'AGS', 'HRD' => 'HRD']),
+                                    Toggle::make('is_lab_grown')->label('Lab Grown?')->inline(false),
+                                ]),
+                                Section::make('Stone Details')->schema([
+                                    Grid::make(4)->schema([
+                                        TextInput::make('shape'),
+                                        TextInput::make('color'),
+                                        TextInput::make('clarity'),
+                                        TextInput::make('cut'),
+                                        TextInput::make('polish'),
+                                        TextInput::make('symmetry'),
+                                        TextInput::make('fluorescence'),
+                                        TextInput::make('measurements'),
+                                    ]),
+                                ]),
+                            ])
+                            ->action(function (array $data, Set $set) {
+                                foreach ($data as $key => $value) {
+                                    $set($key, $value);
+                                }
+                            })
+                    ),
+
+                // 🚀 HIDDEN STORAGE (Connects the popup to your database)
+               Hidden::make('certificate_number')->default(''),
+Hidden::make('certificate_agency')->default(''),
+Hidden::make('is_lab_grown')->default(false),
+
+Hidden::make('shape')->default(''),
+Hidden::make('color')->default(''),
+Hidden::make('clarity')->default(''),
+Hidden::make('cut')->default(''),
+Hidden::make('polish')->default(''),
+Hidden::make('symmetry')->default(''),
+Hidden::make('fluorescence')->default(''),
+Hidden::make('measurements')->default(''),
+
+Hidden::make('markup')->default(0),
+Hidden::make('web_item')->default(false),
+Hidden::make('markup')->default(0.00),
+Hidden::make('web_item')->default(false),
+                    
                     TextInput::make('barcode')
                         ->label('Stock Number')
                         // Sets an initial value on page load
@@ -388,6 +578,73 @@ Select::make('metal_type')
             ])
             ->actions([
                 ActionGroup::make([
+                    Action::make('transferStock')
+                        ->label('Transfer Stock')
+                        ->icon('heroicon-o-truck')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->form([
+                            Select::make('target_tenant_id')
+                                ->label('Destination Store')
+                                ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
+                                ->required()
+                                ->searchable(),
+                        ])
+                        ->action(function (ProductItem $record, array $data) {
+                            $sourceTenantId = tenant('id');
+                            $targetTenantId = $data['target_tenant_id'];
+
+                            // 1. Capture source data before switching
+                            $itemData = $record->toArray();
+                            $barcode = $record->barcode;
+                            $sourceVendorName = $record->supplier?->company_name;
+                            $sourceVendorCode = $record->supplier_code;
+
+                            try {
+                                DB::transaction(function () use ($itemData, $targetTenantId, $sourceVendorName, $sourceVendorCode, $record, $sourceTenantId, $barcode) {
+                                    
+                                    // 2. Switch context to Destination
+                                    $targetTenant = Tenant::find($targetTenantId);
+                                    tenancy()->initialize($targetTenant);
+
+                                    // 3. Find Vendor in Destination
+                                    $targetSupplier = Supplier::where('company_name', $sourceVendorName)
+                                        ->orWhere('supplier_code', $sourceVendorCode)
+                                        ->first();
+
+                                    if (!$targetSupplier) {
+                                        throw new \Exception("Vendor '{$sourceVendorName}' not found in destination store.");
+                                    }
+
+                                    // 4. Prepare data
+                                    unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
+                                    $itemData['supplier_id'] = $targetSupplier->id; 
+                                    $itemData['status'] = 'in_stock';
+
+                                    // 5. Create item
+                                    ProductItem::create($itemData);
+
+                                    // 🚀 6. Notify Destination Store (All users with admin roles)
+                                    $recipients = User::role(['Superadmin', 'Administration', 'Manager'])->get();
+                                    Notification::make()
+                                        ->title('New Stock Transferred')
+                                        ->body("Stock #{$barcode} has arrived from Store {$sourceTenantId}.")
+                                        ->icon('heroicon-o-building-storefront')
+                                        ->success()
+                                        ->sendToDatabase($recipients);
+
+                                    // 7. Switch back and delete from source
+                                    tenancy()->initialize(Tenant::find($sourceTenantId));
+                                    $record->delete();
+                                }, 5); // 5 attempts for deadlock safety
+
+                                Notification::make()->title('Transfer Successful')->body("Item {$barcode} moved to {$targetTenantId}")->success()->send();
+
+                            } catch (\Exception $e) {
+                                tenancy()->initialize(Tenant::find($sourceTenantId));
+                                Notification::make()->title('Transfer Error')->body($e->getMessage())->danger()->persistent()->send();
+                            }
+                        }),
                     EditAction::make(),
                     ViewAction::make(),
                     Action::make('addToWishlist')
@@ -450,8 +707,10 @@ Select::make('metal_type')
                         }
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, true));
                     }),
+                    
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function runSmartPricing(Get $get, Forms\Set $set): void

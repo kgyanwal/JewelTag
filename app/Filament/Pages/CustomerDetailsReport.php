@@ -111,8 +111,52 @@ class CustomerDetailsReport extends Page implements HasForms, HasTable
             ->paginated([10, 25, 50]);
     }
 
-    public function exportReport()
-    {
-        Notification::make()->title('Export Initiated')->success()->send();
-    }
+  public function exportReport(): \Symfony\Component\HttpFoundation\StreamedResponse
+{
+    $allPossible = $this->getColumnOptions();
+    $fields = $this->selectedFields;
+
+    // Build query with same filters as table
+    $query = Customer::query()
+        ->when($this->filterData['date_from'] ?? null, fn($q, $d) => $q->whereDate('created_at', '>=', $d))
+        ->when($this->filterData['date_to'] ?? null, fn($q, $d) => $q->whereDate('created_at', '<=', $d))
+        ->when($this->filterData['postcode'] ?? null, fn($q, $v) => $q->where('postcode', 'like', "%{$v}%"))
+        ->latest();
+
+    $filename = 'customer-report-' . now()->format('Y-m-d-His') . '.csv';
+
+    return response()->streamDownload(function () use ($query, $fields, $allPossible) {
+        $handle = fopen('php://output', 'w');
+
+        // Header row — use the human-readable labels
+        $headers = array_map(fn($f) => $allPossible[$f] ?? $f, $fields);
+        fputcsv($handle, $headers);
+
+        // Data rows — chunk for memory efficiency
+        $query->chunk(200, function ($customers) use ($handle, $fields) {
+            foreach ($customers as $customer) {
+                $row = [];
+                foreach ($fields as $field) {
+                    if ($field === 'address') {
+                        $row[] = trim("{$customer->street} {$customer->city} {$customer->state} {$customer->postcode}");
+                    } elseif ($field === 'is_active') {
+                        $row[] = $customer->is_active ? 'Active' : 'Inactive';
+                    } elseif ($field === 'dob' || $field === 'wedding_anniversary') {
+                        $row[] = $customer->$field ? \Carbon\Carbon::parse($customer->$field)->format('m/d/Y') : '';
+                    } elseif ($field === 'created_at') {
+                        $row[] = $customer->created_at?->format('m/d/Y');
+                    } else {
+                        $row[] = $customer->$field ?? '';
+                    }
+                }
+                fputcsv($handle, $row);
+            }
+        });
+
+        fclose($handle);
+    }, $filename, [
+        'Content-Type'        => 'text/csv',
+        'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+    ]);
+}
 }
