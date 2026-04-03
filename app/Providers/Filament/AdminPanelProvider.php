@@ -330,6 +330,7 @@ HTML
                 \App\Filament\Pages\FindStock::class,
                 \App\Filament\Pages\FindCustomer::class,
                 \App\Filament\Pages\FindSale::class,
+                \App\Filament\Pages\FindPayment::class,
                 \App\Filament\Pages\CustomerDetailsReport::class,
                 \App\Filament\Pages\SoldItemsReport::class,
                 \App\Filament\Pages\InventorySettings::class,
