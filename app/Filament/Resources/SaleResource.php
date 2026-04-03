@@ -261,10 +261,13 @@ class SaleResource extends Resource
                                             ]),
                                             Grid::make(3)->schema([
                                                 TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
-                                                TextInput::make('amount_paid')
+                                                
+                                                // 🛑 CHANGE 1: Rename this field to avoid colliding with the main form
+                                                TextInput::make('custom_deposit_amount') 
                                                     ->label('Deposit Amount')
                                                     ->numeric()->prefix('$')->default(0)
                                                     ->helperText('How much are they paying today?'),
+                                                    
                                                 Select::make('deposit_method')
                                                     ->label('Deposit Payment Method')
                                                     ->options(self::getPaymentOptions())
@@ -279,7 +282,7 @@ class SaleResource extends Resource
                                         ->action(function (array $data, Get $get, Set $set) {
                                             $currentItems = $get('items') ?? [];
                                             $price = floatval($data['quoted_price']);
-                                            $deposit = floatval($data['amount_paid'] ?? 0);
+                                            $deposit = floatval($data['custom_deposit_amount'] ?? 0); 
                                             $method = $data['deposit_method'] ?? 'CASH';
 
                                             $currentItems[] = [
@@ -333,18 +336,27 @@ class SaleResource extends Resource
                                 ->relationship('items')
                                 ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
                                     if (!empty($data['is_new_custom_order'])) {
+                                        // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
+                                        $quotedPrice = floatval($data['sale_price_override'] ?? 0);
+                                        $isTaxFree = !empty($data['is_tax_free']);
+                                        $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                        $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
+                                        $depositAmt = floatval($data['new_custom_data']['custom_deposit_amount'] ?? $data['new_custom_data']['amount_paid'] ?? 0);
+
                                         $customOrder = \App\Models\CustomOrder::create([
                                             'customer_id'  => $livewire->data['customer_id'] ?? null,
                                             'staff_id'     => auth()->id(),
                                             'order_type'   => 'custom',
                                             'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
                                             'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', 
-                                            'quoted_price' => $data['sale_price_override'] ?? 0, 
+                                            'quoted_price' => $quotedPrice, 
                                             'due_date'     => $data['new_custom_data']['due_date'] ?? null,
                                             'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
                                             'status'       => 'in_production',
-                                            'amount_paid'  => $data['new_custom_data']['amount_paid'] ?? 0,
-                                            'balance_due'  => max(0, floatval($data['sale_price_override']) - floatval($data['new_custom_data']['amount_paid'] ?? 0)),
+                                            // ── SAVE THE ACCURATE MATH ──
+                                            'amount_paid'  => $depositAmt,
+                                            'balance_due'  => max(0, $grandTotal - $depositAmt),
                                         ]);
                                         $data['custom_order_id'] = $customOrder->id;
                                     }
@@ -353,18 +365,27 @@ class SaleResource extends Resource
                                 })
                                 ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
                                     if (!empty($data['is_new_custom_order'])) {
+                                        // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
+                                        $quotedPrice = floatval($data['sale_price_override'] ?? 0);
+                                        $isTaxFree = !empty($data['is_tax_free']);
+                                        $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                        $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
+                                        $depositAmt = floatval($data['new_custom_data']['custom_deposit_amount'] ?? $data['new_custom_data']['amount_paid'] ?? 0);
+
                                         $customOrder = \App\Models\CustomOrder::create([
                                             'customer_id'  => $livewire->data['customer_id'] ?? null,
                                             'staff_id'     => auth()->id(),
                                             'order_type'   => 'custom',
                                             'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
                                             'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', 
-                                            'quoted_price' => $data['sale_price_override'] ?? 0, 
+                                            'quoted_price' => $quotedPrice, 
                                             'due_date'     => $data['new_custom_data']['due_date'] ?? null,
                                             'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
                                             'status'       => 'in_production',
-                                            'amount_paid'  => $data['new_custom_data']['amount_paid'] ?? 0,
-                                            'balance_due'  => max(0, floatval($data['sale_price_override']) - floatval($data['new_custom_data']['amount_paid'] ?? 0)),
+                                            // ── SAVE THE ACCURATE MATH ──
+                                            'amount_paid'  => $depositAmt,
+                                            'balance_due'  => max(0, $grandTotal - $depositAmt),
                                         ]);
                                         $data['custom_order_id'] = $customOrder->id;
                                     }
@@ -956,13 +977,20 @@ class SaleResource extends Resource
                                     $method = $get('payment_method') ?? '';
 
                                     // ── 1. CALCULATE CUSTOM DEPOSIT VS REGULAR PAYMENT ──
+                                    // ── 1. CALCULATE CUSTOM DEPOSIT VS REGULAR PAYMENT ──
                                     $items = $get('items') ?? [];
                                     $intendedCustomDeposit = 0;
                                     
-                                    // Extract ONLY the deposit intended for custom pieces
                                     foreach ($items as $item) {
                                         if (!empty($item['is_new_custom_order'])) {
-                                            $intendedCustomDeposit += floatval($item['new_custom_data']['amount_paid'] ?? 0);
+                                            // For brand new items being added right now
+                                            $intendedCustomDeposit += floatval($item['new_custom_data']['custom_deposit_amount'] ?? $item['new_custom_data']['amount_paid'] ?? 0);
+                                        } elseif (!empty($item['custom_order_id'])) {
+                                            // 🛑 FIX: For existing sales, look up the original deposit from the database
+                                            $co = \App\Models\CustomOrder::find($item['custom_order_id']);
+                                            if ($co) {
+                                                $intendedCustomDeposit += floatval($co->amount_paid);
+                                            }
                                         }
                                     }
 
@@ -973,7 +1001,6 @@ class SaleResource extends Resource
                                         : floatval($get('amount_paid') ?? 0);
 
                                     // ── 3. SEPARATE AMOUNTS ──
-                                    // min() ensures that if they manually delete a payment row, the deposit doesn't artificially exceed total paid
                                     $actualCustomDeposit  = min($intendedCustomDeposit, $paidSum);
                                     $regularPaymentAmount = $paidSum - $actualCustomDeposit;
                                     $remaining            = $total - $paidSum;

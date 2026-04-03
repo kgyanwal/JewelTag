@@ -461,6 +461,10 @@ class CustomOrderResource extends Resource
                                 ->prefix('$')
                                 ->default(0)
                                 ->readOnly()
+                                ->afterStateHydrated(function (Get $get, Set $set) {
+                                    // Instantly recalculate and fix the balance on page load
+                                    self::calculateBalance($get, $set); 
+                                })
                                 ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
                             // Financial summary
@@ -576,10 +580,38 @@ class CustomOrderResource extends Resource
                     ->color('success')
                     ->grow(false),
 
-                Tables\Columns\TextColumn::make('balance_due')
-                    ->label('BALANCE')
+                // ── 1. NEW PAID COLUMN ──
+                Tables\Columns\TextColumn::make('total_paid')
+                    ->label('PAID')
+                    ->getStateUsing(function (CustomOrder $record) {
+                        // Check for recorded payments first, fallback to the initial amount_paid column
+                        $paidFromPayments = $record->payments()->sum('amount');
+                        return $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
+                    })
                     ->money('USD')
-                    ->sortable()
+                    ->color('info')
+                    ->grow(false),
+
+                // ── 2. DYNAMIC BALANCE CALCULATION ──
+                Tables\Columns\TextColumn::make('computed_balance')
+                    ->label('BALANCE')
+                    ->getStateUsing(function (CustomOrder $record) {
+                        // Dynamically calculate the true grand total including tax
+                        $quoted    = floatval($record->quoted_price);
+                        $isTaxFree = (bool)($record->is_tax_free);
+                        $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                        $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                        $grandTotal = $quoted + ($quoted * $taxRate);
+
+                        // Fetch the true total paid
+                        $paidFromPayments = $record->payments()->sum('amount');
+                        $totalPaid = $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
+
+                        // Return the accurate remaining balance
+                        return max(0, $grandTotal - $totalPaid);
+                    })
+                    ->money('USD')
+                    ->sortable(false) // Dynamic columns cannot be natively sorted via DB
                     ->grow(false)
                     ->color(fn($state) => $state > 0 ? 'danger' : 'success')
                     ->weight('bold'),
@@ -978,8 +1010,13 @@ class CustomOrderResource extends Resource
     public static function calculateBalance(Get $get, Set $set): void
     {
         $quoted    = floatval($get('quoted_price') ?? 0);
-        $paid      = floatval($get('amount_paid') ?? 0);
         $isTaxFree = (bool)($get('is_tax_free') ?? false);
+
+        // Account for split deposits vs regular deposits
+        $isSplit = (bool)($get('is_split_deposit') ?? false);
+        $paid = $isSplit 
+            ? collect($get('split_deposit_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
+            : floatval($get('amount_paid') ?? 0);
 
         $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
