@@ -976,6 +976,7 @@ class SaleResource extends Resource
             'amount'  => $amount,
             'method'  => $method,
             'paid_at' => now(),
+            'store_id' => $sale->store_id,
         ]);
     }
 
