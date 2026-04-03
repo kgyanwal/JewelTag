@@ -813,6 +813,37 @@ class SaleResource extends Resource
                                 ->label('Enable Split Payment')
                                 ->onColor('warning')
                                 ->live()
+                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                    if ($state) {
+                                        // ── OFF -> ON: Migrate standard payment into the split list ──
+                                        $existingAmount = floatval($get('amount_paid') ?? 0);
+                                        $existingMethod = $get('payment_method') ?? 'VISA';
+                                        $currentSplits  = $get('split_payments') ?? [];
+
+                                        // If they already paid something, push it into the first repeater row
+                                        if ($existingAmount > 0 && empty($currentSplits)) {
+                                            $set('split_payments', [
+                                                (string) \Illuminate\Support\Str::uuid() => [
+                                                    'method' => $existingMethod,
+                                                    'amount' => $existingAmount,
+                                                ]
+                                            ]);
+                                        }
+                                    } else {
+                                        // ── ON -> OFF: Combine splits back into a standard payment ──
+                                        $currentSplits = $get('split_payments') ?? [];
+                                        if (!empty($currentSplits)) {
+                                            $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                            $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
+                                            
+                                            $set('amount_paid', number_format($totalSplit, 2, '.', ''));
+                                            $set('payment_method', $firstMethod);
+                                        }
+                                    }
+                                    
+                                    // Recalculate totals immediately so the UI updates
+                                    self::updateTotals($get, $set);
+                                })
                                 ->columnSpanFull(),
 
                             Select::make('payment_method')
