@@ -324,6 +324,7 @@ HTML
                 \App\Filament\Resources\InventoryAuditResource::class,
                 \App\Filament\Resources\WishlistResource::class,
                 \App\Filament\Resources\SalePaymentResource::class,
+                \App\Filament\Resources\StockTransferResource::class,
             ])
             ->pages([
                 \App\Filament\Pages\Dashboard::class,
@@ -347,6 +348,7 @@ HTML
                 \App\Filament\Pages\SoldStockReport::class,
                  \App\Filament\Pages\DepositSalesReport::class,
                  \App\Filament\Pages\NonStockReport::class,
+                 
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,

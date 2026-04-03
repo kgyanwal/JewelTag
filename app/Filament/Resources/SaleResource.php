@@ -291,7 +291,7 @@ class SaleResource extends Resource
                                                 'custom_order_id'     => null,
                                                 'is_non_stock'        => false,
                                                 'is_new_custom_order' => true, 
-                                                'new_custom_data'     => $data, 
+                                                'new_custom_data'     => json_encode($data),
                                                 'stock_no_display'    => 'NEW CUSTOM',
                                                 'custom_description'  => "CUSTOM Order Sale: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
                                                 'qty'                 => 1,
@@ -335,58 +335,86 @@ class SaleResource extends Resource
                             Repeater::make('items')
                                 ->relationship('items')
                                 ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
-                                    if (!empty($data['is_new_custom_order'])) {
-                                        // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
-                                        $quotedPrice = floatval($data['sale_price_override'] ?? 0);
-                                        $isTaxFree = !empty($data['is_tax_free']);
-                                        $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                        $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
-                                        $depositAmt = floatval($data['new_custom_data']['custom_deposit_amount'] ?? $data['new_custom_data']['amount_paid'] ?? 0);
+                                   if (!empty($data['is_new_custom_order'])) {
+    // 🚀 Decode the JSON string back into an array
+    $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
+    
+    // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
+    $quotedPrice = floatval($data['sale_price_override'] ?? 0);
+    $isTaxFree = !empty($data['is_tax_free']);
+    $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+    $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
+    $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
 
-                                        $customOrder = \App\Models\CustomOrder::create([
-                                            'customer_id'  => $livewire->data['customer_id'] ?? null,
-                                            'staff_id'     => auth()->id(),
-                                            'order_type'   => 'custom',
-                                            'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
-                                            'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', 
-                                            'quoted_price' => $quotedPrice, 
-                                            'due_date'     => $data['new_custom_data']['due_date'] ?? null,
-                                            'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
-                                            'status'       => 'in_production',
-                                            // ── SAVE THE ACCURATE MATH ──
-                                            'amount_paid'  => $depositAmt,
-                                            'balance_due'  => max(0, $grandTotal - $depositAmt),
-                                        ]);
+ $customOrder = \App\Models\CustomOrder::create([
+        'customer_id'  => $livewire->data['customer_id'] ?? null,
+        'staff_id'     => auth()->id(),
+        'order_type'   => 'custom',
+        'product_name' => $customData['product_name'] ?? 'Custom',
+        'metal_type'   => $customData['metal_type'] ?? '14k', 
+        'quoted_price' => $quotedPrice, 
+        'due_date'     => $customData['due_date'] ?? null,
+        'design_notes' => $customData['design_notes'] ?? null,
+        'status'       => 'in_production',
+        'is_tax_free'  => $isTaxFree, 
+        'amount_paid'  => $depositAmt,
+        'balance_due'  => max(0, $grandTotal - $depositAmt),
+        
+        // 🚀 THE FIX: Insert the piece into the JSON items array so the CustomOrderResource Repeater can read it
+        'items'        => [
+            [
+                'product_name' => $customData['product_name'] ?? 'Custom',
+                'metal_type'   => $customData['metal_type'] ?? '14k',
+                'quoted_price' => $quotedPrice,
+                'design_notes' => $customData['design_notes'] ?? null,
+                'is_tax_free'  => $isTaxFree,
+            ]
+        ],
+    ]);
                                         $data['custom_order_id'] = $customOrder->id;
                                     }
                                     unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
                                     return $data;
                                 })
                                 ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
-                                    if (!empty($data['is_new_custom_order'])) {
-                                        // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
-                                        $quotedPrice = floatval($data['sale_price_override'] ?? 0);
-                                        $isTaxFree = !empty($data['is_tax_free']);
-                                        $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                        $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
-                                        $depositAmt = floatval($data['new_custom_data']['custom_deposit_amount'] ?? $data['new_custom_data']['amount_paid'] ?? 0);
+                                 if (!empty($data['is_new_custom_order'])) {
+    // 🚀 Decode the JSON string back into an array
+    $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
+    
+    // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
+    $quotedPrice = floatval($data['sale_price_override'] ?? 0);
+    $isTaxFree = !empty($data['is_tax_free']);
+    $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+    $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
+    $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
 
-                                        $customOrder = \App\Models\CustomOrder::create([
-                                            'customer_id'  => $livewire->data['customer_id'] ?? null,
-                                            'staff_id'     => auth()->id(),
-                                            'order_type'   => 'custom',
-                                            'product_name' => $data['new_custom_data']['product_name'] ?? 'Custom',
-                                            'metal_type'   => $data['new_custom_data']['metal_type'] ?? '14k', 
-                                            'quoted_price' => $quotedPrice, 
-                                            'due_date'     => $data['new_custom_data']['due_date'] ?? null,
-                                            'design_notes' => $data['new_custom_data']['design_notes'] ?? null,
-                                            'status'       => 'in_production',
-                                            // ── SAVE THE ACCURATE MATH ──
-                                            'amount_paid'  => $depositAmt,
-                                            'balance_due'  => max(0, $grandTotal - $depositAmt),
-                                        ]);
+  $customOrder = \App\Models\CustomOrder::create([
+        'customer_id'  => $livewire->data['customer_id'] ?? null,
+        'staff_id'     => auth()->id(),
+        'order_type'   => 'custom',
+        'product_name' => $customData['product_name'] ?? 'Custom',
+        'metal_type'   => $customData['metal_type'] ?? '14k', 
+        'quoted_price' => $quotedPrice, 
+        'due_date'     => $customData['due_date'] ?? null,
+        'design_notes' => $customData['design_notes'] ?? null,
+        'status'       => 'in_production',
+        'is_tax_free'  => $isTaxFree, 
+        'amount_paid'  => $depositAmt,
+        'balance_due'  => max(0, $grandTotal - $depositAmt),
+        
+        // 🚀 THE FIX: Insert the piece into the JSON items array so the CustomOrderResource Repeater can read it
+        'items'        => [
+            [
+                'product_name' => $customData['product_name'] ?? 'Custom',
+                'metal_type'   => $customData['metal_type'] ?? '14k',
+                'quoted_price' => $quotedPrice,
+                'design_notes' => $customData['design_notes'] ?? null,
+                'is_tax_free'  => $isTaxFree,
+            ]
+        ],
+    ]);
                                         $data['custom_order_id'] = $customOrder->id;
                                     }
                                     unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
@@ -732,7 +760,7 @@ class SaleResource extends Resource
                                                 })
                                         )
                                         ->createOptionModalHeading('Quick Add New Customer')
-                                        ->createOptionForm([
+                                       ->createOptionForm([
                                             Forms\Components\Tabs::make('New Customer')
                                                 ->tabs([
                                                     Forms\Components\Tabs\Tab::make('Contact')
@@ -750,12 +778,47 @@ class SaleResource extends Resource
                                                                     ->mask('(999) 999-9999')
                                                                     ->placeholder('(555) 555-5555')
                                                                     ->stripCharacters(['(', ')', '-', ' '])
-                                                                    ->rule('regex:/^[0-9]{10}$/'),
-                                                                Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                                                    ->rule('regex:/^[0-9]{10}$/')
+                                                                    // 🚀 THE FIX: Checks the DB before saving and shows a nice UI error
+                                                                    ->unique('customers', 'phone') 
+                                                                    ->afterStateHydrated(function ($component, $state) {
+                                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                                        }
+                                                                    }),
+                                                                    
+                                                                Forms\Components\TextInput::make('email')
+                                                                    ->label('Email')
+                                                                    ->email()
+                                                                    // 🚀 THE FIX: Prevents duplicate emails from crashing the page too
+                                                                    ->unique('customers', 'email'), 
                                                             ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                DatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                                Forms\Components\DatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                                            ]),
+                                                            Forms\Components\Section::make('Customer Address')
+                                                                ->description('Search for an address to automatically fill the fields below.')
+                                                                ->columns(2)
+                                                                ->collapsible()
+                                                                ->schema([
+                                                                    GoogleAutocomplete::make('address_search')
+                                                                        ->label('Search Address')
+                                                                        ->autocompletePlaceholder('Start typing address...')
+                                                                        ->countries(['US'])
+                                                                        ->columnSpanFull()
+                                                                        ->withFields([
+                                                                            TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                                            TextInput::make('address_line_2')->label('Address 2 / Apt / Suite')->extraInputAttributes(['data-google-field' => 'subpremise']),
+                                                                            TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                                            TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1'])->columnSpan(1),
+                                                                            TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code'])->columnSpan(1),
+                                                                        ]),
+                                                                    Forms\Components\Select::make('country')->label('Country')->default('United States')->searchable(),
+                                                                ]),
                                                         ]),
                                                 ]),
-                                            Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                            Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
                                         ])
                                         ->createOptionUsing(function (array $data) {
                                             return Customer::create($data)->id;

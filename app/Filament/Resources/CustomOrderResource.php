@@ -463,7 +463,7 @@ class CustomOrderResource extends Resource
                                 ->readOnly()
                                 ->afterStateHydrated(function (Get $get, Set $set) {
                                     // Instantly recalculate and fix the balance on page load
-                                    self::calculateBalance($get, $set); 
+                                    self::calculateBalance($get, $set);
                                 })
                                 ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
@@ -539,7 +539,7 @@ class CustomOrderResource extends Resource
         ]);
     }
 
-   public static function table(Table $table): Table
+    public static function table(Table $table): Table
     {
         return $table
             ->columns([
@@ -631,9 +631,10 @@ class CustomOrderResource extends Resource
 
                 Tables\Columns\TextColumn::make('notified_at')
                     ->label('NOTIFIED')
-                    ->getStateUsing(fn($record) => $record->is_customer_notified && $record->notified_at
-                        ? $record->notified_at->format('M d, y')
-                        : 'No'
+                    ->getStateUsing(
+                        fn($record) => $record->is_customer_notified && $record->notified_at
+                            ? $record->notified_at->format('M d, y')
+                            : 'No'
                     )
                     ->icon(fn($state) => $state !== 'No' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
                     ->color(fn($state) => $state !== 'No' ? 'success' : 'gray')
@@ -666,7 +667,18 @@ class CustomOrderResource extends Resource
                     ->color('success')
                     ->button()
                     ->size('sm')
-                    ->visible(fn(CustomOrder $record) => !in_array($record->status, ['completed', 'cancelled']) && $record->balance_due > 0)
+                    ->visible(function (CustomOrder $record) {
+                        if (in_array($record->status, ['completed', 'cancelled'])) return false;
+
+                        // Use live calculation, not the stale DB column
+                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
+                        $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+
+                        return ($grandTotal - $paid) > 0.01;
+                    })
                     ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
                     ->modalSubmitActionLabel('✓ Record Payment')
                     ->modalWidth('lg')
@@ -739,7 +751,14 @@ class CustomOrderResource extends Resource
                                 ->numeric()
                                 ->required()
                                 ->prefix('$')
-                                ->default(fn() => $record->fresh()->balance_due)
+                                ->default(function () use ($record) {
+                                    $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                                    $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                    $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                    $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
+                                    $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+                                    return round(max(0, $grandTotal - $paid), 2);
+                                })
                                 ->extraInputAttributes([
                                     'style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;',
                                 ])
@@ -781,57 +800,70 @@ class CustomOrderResource extends Resource
                         ];
                     })
                     ->action(function (CustomOrder $record, array $data) {
-                        DB::transaction(function () use ($record, $data) {
-                            $amountPaid    = round((float) $data['amount'], 2);
-                            $newAmountPaid = $record->amount_paid + $amountPaid;
-                            $newBalance    = max(0, $record->quoted_price - $newAmountPaid);
+    DB::transaction(function () use ($record, $data) {
+        $amountPaid = round((float) $data['amount'], 2);
 
-                            $record->update([
-                                'amount_paid' => $newAmountPaid,
-                                'balance_due' => $newBalance,
-                            ]);
+        $isTaxFree  = (bool)($record->is_tax_free ?? false);
+        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
 
-                            if ($data['is_split'] ?? false) {
-                                foreach ($data['split_payments'] ?? [] as $payment) {
-                                    \App\Models\Payment::create([
-                                        'custom_order_id' => $record->id,
-                                        'sale_id'         => $record->sale_id ?? null,
-                                        'amount'          => round((float) $payment['amount'], 2),
-                                        'method'          => strtoupper(trim($payment['method'])),
-                                        'paid_at'         => now(),
-                                    ]);
-                                }
-                            } else {
-                                \App\Models\Payment::create([
-                                    'custom_order_id' => $record->id,
-                                    'sale_id'         => $record->sale_id ?? null,
-                                    'amount'          => $amountPaid,
-                                    'method'          => strtoupper(trim($data['payment_method'])),
-                                    'paid_at'         => now(),
-                                ]);
-                            }
+        $alreadyPaid   = $record->payments()->sum('amount');
+        $newTotalPaid  = round($alreadyPaid + $amountPaid, 2);
+        $newBalanceDue = round(max(0, $grandTotal - $newTotalPaid), 2);
 
-                            if ($record->sale_id) {
-                                $sale = Sale::find($record->sale_id);
-                                if ($sale) {
-                                    $totalPaid = $sale->payments()->sum('amount');
-                                    $bal       = round(max(0, $sale->final_total - $totalPaid), 2);
-                                    $sale->update([
-                                        'amount_paid'  => $totalPaid,
-                                        'balance_due'  => $bal,
-                                        'status'       => $bal <= 0 ? 'completed' : 'pending',
-                                        'completed_at' => $bal <= 0 ? now() : null,
-                                    ]);
-                                }
-                            }
-                        });
+        $record->update([
+            'amount_paid' => $newTotalPaid,
+            'balance_due' => $newBalanceDue,
+        ]);
 
-                        Notification::make()
-                            ->title('Payment Recorded')
-                            ->body('Balance has been updated.')
-                            ->success()
-                            ->send();
-                    }),
+        if ($data['is_split'] ?? false) {
+            foreach ($data['split_payments'] ?? [] as $payment) {
+                \App\Models\Payment::create([
+                    'custom_order_id' => $record->id,
+                    'sale_id'         => $record->sale_id ?? null,
+                    'amount'          => round((float) $payment['amount'], 2),
+                    'method'          => strtoupper(trim($payment['method'])),
+                    'paid_at'         => now(),
+                ]);
+            }
+        } else {
+            \App\Models\Payment::create([
+                'custom_order_id' => $record->id,
+                'sale_id'         => $record->sale_id ?? null,
+                'amount'          => $amountPaid,
+                'method'          => strtoupper(trim($data['payment_method'])),
+                'paid_at'         => now(),
+            ]);
+        }
+
+        // ── SYNC LINKED SALE ─────────────────────────────────
+        if ($record->sale_id) {
+            $sale = \App\Models\Sale::find($record->sale_id);
+            if ($sale) {
+                // All payments ever made for this sale (including custom order deposits)
+                $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                $saleBal       = round(max(0, $sale->final_total - $saleTotalPaid), 2);
+                $sale->update([
+                    'amount_paid'  => $saleTotalPaid,
+                    'balance_due'  => $saleBal,
+                    'status'       => $saleBal <= 0 ? 'completed' : 'pending',
+                    'completed_at' => $saleBal <= 0 ? now() : null,
+                ]);
+            }
+        }
+
+        if ($newBalanceDue <= 0 && $record->status !== 'completed') {
+            $record->update(['status' => 'completed']);
+        }
+    });
+
+    Notification::make()
+        ->title('✅ Payment Recorded')
+        ->body('Balance updated successfully.')
+        ->success()
+        ->send();
+}),
 
                 // ── GROUPED SECONDARY ACTIONS ─────────────────────────
                 Tables\Actions\ActionGroup::make([
@@ -884,15 +916,16 @@ class CustomOrderResource extends Resource
                                 }),
                         ]),
 
-                   Tables\Actions\Action::make('printDepositReceipt')
-    ->label('Print Receipt')
-    ->icon('heroicon-o-printer')
-    ->color('gray')
-    ->url(fn(CustomOrder $record) => $record->sale_id
-        ? route('sales.receipt', ['record' => $record->sale_id, 'type' => 'standard'])
-        : route('custom-orders.deposit-receipt', ['customOrder' => $record->id])
-    )
-    ->openUrlInNewTab(),
+                    Tables\Actions\Action::make('printDepositReceipt')
+                        ->label('Print Receipt')
+                        ->icon('heroicon-o-printer')
+                        ->color('gray')
+                        ->url(
+                            fn(CustomOrder $record) => $record->sale_id
+                                ? route('sales.receipt', ['record' => $record->sale_id, 'type' => 'standard'])
+                                : route('custom-orders.deposit-receipt', ['customOrder' => $record->id])
+                        )
+                        ->openUrlInNewTab(),
 
                     Tables\Actions\Action::make('notifyDelay')
                         ->label('Notify: Delay')
@@ -981,11 +1014,11 @@ class CustomOrderResource extends Resource
                         ]),
 
                 ])
-                ->label('More')
-                ->icon('heroicon-m-ellipsis-horizontal')
-                ->color('gray')
-                ->button()
-                ->size('sm'),
+                    ->label('More')
+                    ->icon('heroicon-m-ellipsis-horizontal')
+                    ->color('gray')
+                    ->button()
+                    ->size('sm'),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -1014,7 +1047,7 @@ class CustomOrderResource extends Resource
 
         // Account for split deposits vs regular deposits
         $isSplit = (bool)($get('is_split_deposit') ?? false);
-        $paid = $isSplit 
+        $paid = $isSplit
             ? collect($get('split_deposit_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
             : floatval($get('amount_paid') ?? 0);
 

@@ -500,7 +500,12 @@ class ProductItemResource extends Resource
                                 Grid::make(3)->schema([
                                     TextInput::make('certificate_number')->label('Cert #'),
                                     Select::make('certificate_agency')
-                                        ->options(['GIA' => 'GIA', 'IGI' => 'IGI', 'AGS' => 'AGS', 'HRD' => 'HRD']),
+    ->options(function () {
+        $json = DB::table('site_settings')->where('key', 'certificate_agencies')->value('value');
+        $data = $json ? json_decode($json, true) : ['GIA', 'IGI', 'AGS', 'HRD'];
+        return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+    })
+    ->searchable(),
                                     Toggle::make('is_lab_grown')->label('Lab Grown?')->inline(false),
                                 ]),
                                 Section::make('Stone Details')->schema([

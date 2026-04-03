@@ -352,12 +352,12 @@ TextColumn::make('sale_type_badge')
                     ->modalDescription('This sale\'s day is EOD locked. Your request will be sent to Administration for approval.')
                     ->modalSubmitActionLabel('Send Request')
                     ->action(function (Sale $record) {
-                        SaleEditRequestResource::create([
-                            'sale_id'          => $record->id,
-                            'user_id'          => auth()->id(),
-                            'status'           => 'pending',
-                            'proposed_changes' => [],
-                        ]);
+                        \App\Models\SaleEditRequest::create([
+    'sale_id'          => $record->id,
+    'user_id'          => auth()->id(),
+    'status'           => 'pending',
+    'proposed_changes' => [], // Ensure this is an array as per your model cast
+]);
  
                         // Notify all admins in-app
                         $admins = \App\Models\User::role(['Superadmin', 'Administration'])->get();
