@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\Payment;
 use App\Models\Store;
 use Filament\Forms\Components\{Grid, Section, Select, TextInput, Group};
+use App\Forms\Components\CustomDatePicker; // Ensure this matches your component namespace
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -36,7 +37,7 @@ class FindPayment extends Page implements HasForms, HasTable
 
     public function updated($property): void
     {
-        if (str_starts_with($property, 'data.')) {
+        if (str_starts_with($property, 'data. ')) {
             $this->resetTable();
         }
     }
@@ -84,14 +85,11 @@ class FindPayment extends Page implements HasForms, HasTable
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->resetTable()),
 
-                            // --- PURE TEXT DATE INPUT ---
-                            TextInput::make('payment_date')
+                            CustomDatePicker::make('payment_date')
                                 ->label('Payment Date')
-                                ->placeholder('mm/dd/yyyy')
-                                ->mask('99/99/9999')
+                                ->displayFormat('m/d/Y')
                                 ->live()
-                                ->afterStateUpdated(fn() => $this->resetTable())
-                                ->extraInputAttributes(['style' => 'cursor: text !important;']),
+                                ->afterStateUpdated(fn() => $this->resetTable()),
 
                             Select::make('store_id')
                                 ->label('Store')
@@ -110,27 +108,22 @@ class FindPayment extends Page implements HasForms, HasTable
                                         ->size('sm')
                                         ->link()
                                         ->action(fn(Get $get, $set) => $set('show_range', !$get('show_range'))),
+
                                 ]),
 
                                 Grid::make(4)
                                     ->schema([
-                                        // --- PURE TEXT FROM DATE ---
-                                        TextInput::make('date_from')
+                                        CustomDatePicker::make('date_from')
                                             ->label('From Date')
-                                            ->placeholder('mm/dd/yyyy')
-                                            ->mask('99/99/9999')
+                                            ->displayFormat('m/d/Y')
                                             ->live()
-                                            ->afterStateUpdated(fn() => $this->resetTable())
-                                            ->extraInputAttributes(['style' => 'cursor: text !important;']),
+                                            ->afterStateUpdated(fn() => $this->resetTable()),
 
-                                        // --- PURE TEXT TO DATE ---
-                                        TextInput::make('date_to')
+                                        CustomDatePicker::make('date_to')
                                             ->label('To Date')
-                                            ->placeholder('mm/dd/yyyy')
-                                            ->mask('99/99/9999')
+                                            ->displayFormat('m/d/Y')
                                             ->live()
-                                            ->afterStateUpdated(fn() => $this->resetTable())
-                                            ->extraInputAttributes(['style' => 'cursor: text !important;']),
+                                            ->afterStateUpdated(fn() => $this->resetTable()),
                                     ])
                                     ->visible(fn(Get $get) => $get('show_range')),
                             ])
@@ -147,47 +140,36 @@ class FindPayment extends Page implements HasForms, HasTable
                 $f = $this->data;
 
                 return $query->with(['sale.customer', 'store'])
-                    ->when(
-                        $f['job_number'] ?? null,
-                        fn($q, $v) =>
-                        $q->whereHas('sale', fn($sq) => $sq->where('invoice_number', 'like', "%{$v}%"))
-                    )
-                    ->when(
-                        $f['last_name'] ?? null,
-                        fn($q, $v) =>
-                        $q->whereHas('sale.customer', fn($sq) => $sq->where('last_name', 'like', "%{$v}%"))
-                    )
-                    ->when(
-                        $f['first_name'] ?? null,
-                        fn($q, $v) =>
-                        $q->whereHas('sale.customer', fn($sq) => $sq->where('name', 'like', "%{$v}%"))
-                    )
+                    ->when($f['job_number'] ?? null, fn($q, $v) =>
+                    $q->whereHas('sale', fn($sq) => $sq->where('invoice_number', 'like', "%{$v}%")))
+                    ->when($f['last_name'] ?? null, fn($q, $v) =>
+                    $q->whereHas('sale.customer', fn($sq) => $sq->where('last_name', 'like', "%{$v}%")))
+                    ->when($f['first_name'] ?? null, fn($q, $v) =>
+                    $q->whereHas('sale.customer', fn($sq) => $sq->where('name', 'like', "%{$v}%")))
                     ->when($f['amount'] ?? null, function ($q, $v) {
                         $digits = str_replace(['$', ','], '', $v);
                         return $q->where('amount', 'like', "%{$digits}%");
                     })
                     ->when($f['payment_type'] ?? null, fn($q, $v) => $q->where('method', $v))
 
+                    // Date Filters - All three now use CustomDatePicker (YYYY-MM-DD)
                     ->when($f['payment_date'] ?? null, function ($q, $v) {
-                        try {
-                            return $q->whereDate('created_at', \Carbon\Carbon::createFromFormat('m/d/Y', $v)->format('Y-m-d'));
-                        } catch (\Exception $e) {
-                            return $q;
+                        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                            return $q->whereDate('created_at', $v);
                         }
+                        return $q;
                     })
                     ->when($f['date_from'] ?? null, function ($q, $v) {
-                        try {
-                            return $q->whereDate('created_at', '>=', \Carbon\Carbon::createFromFormat('m/d/Y', $v)->format('Y-m-d'));
-                        } catch (\Exception $e) {
-                            return $q;
+                        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                            return $q->whereDate('created_at', '>=', $v);
                         }
+                        return $q;
                     })
                     ->when($f['date_to'] ?? null, function ($q, $v) {
-                        try {
-                            return $q->whereDate('created_at', '<=', \Carbon\Carbon::createFromFormat('m/d/Y', $v)->format('Y-m-d'));
-                        } catch (\Exception $e) {
-                            return $q;
+                        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                            return $q->whereDate('created_at', '<=', $v);
                         }
+                        return $q;
                     })
 
                     ->when($f['store_id'] ?? null, fn($q, $v) => $q->where('store_id', $v))
@@ -241,7 +223,18 @@ class FindPayment extends Page implements HasForms, HasTable
 
     public function resetFilters(): void
     {
-        $this->form->fill(['show_range' => false]);
+        $this->form->fill([
+            'show_range' => false,
+            'job_number' => null,
+            'last_name' => null,
+            'first_name' => null,
+            'amount' => null,
+            'payment_type' => null,
+            'payment_date' => null,
+            'date_from' => null,
+            'date_to' => null,
+            'store_id' => null,
+        ]);
         $this->resetTable();
     }
 }

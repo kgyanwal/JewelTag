@@ -34,42 +34,33 @@ class SaleEditRequestResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'pending' => 'warning',
+                        'pending'  => 'warning',
                         'approved' => 'success',
                         'rejected' => 'danger',
-                        default => 'gray',
+                        default    => 'gray',
                     }),
             ])
             ->actions([
-                // 🔹 VIEW THE CHANGES
-                Tables\Actions\ViewAction::make()
-                    ->infolist(fn ($record) => [
-                        \Filament\Infolists\Components\Section::make('Proposed Changes')
-                            ->schema([
-                                \Filament\Infolists\Components\KeyValueEntry::make('proposed_changes')
-                                    ->label('Form Data Snapshot')
-                            ])
-                    ]),
-
-                // 🔹 APPROVE ACTION
+                // 🔹 APPROVE ACTION (Unlocks the sale)
                 Tables\Actions\Action::make('approve')
-                    ->label('Approve & Update')
-                    ->icon('heroicon-o-check')
+                    ->label('Approve & Unlock')
+                    ->icon('heroicon-o-unlock')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn ($record) => $record->status === 'pending' && \App\Helpers\Staff::user()?->hasRole('Superadmin'))
+                    ->visible(fn ($record) => $record->status === 'pending')
                     ->action(function ($record) {
-                        $sale = $record->sale;
                         
-                        // Apply the captured JSON changes to the real Sale
-                        $sale->update($record->proposed_changes);
-
+                        // 🚀 FIX: We just mark it approved so the cashier can now click the Edit button!
                         $record->update([
-                            'status' => 'approved',
+                            'status'      => 'approved',
                             'approved_by' => auth()->id(),
                         ]);
 
-                        Notification::make()->title('Sale Updated Successfully')->success()->send();
+                        Notification::make()
+                            ->title('Sale Unlocked')
+                            ->body('The cashier can now edit this sale.')
+                            ->success()
+                            ->send();
                     }),
 
                 // 🔹 REJECT ACTION
@@ -78,16 +69,21 @@ class SaleEditRequestResource extends Resource
                     ->color('danger')
                     ->requiresConfirmation()
                     ->visible(fn ($record) => $record->status === 'pending')
-                    ->action(fn ($record) => $record->update(['status' => 'rejected'])),
+                    ->action(function ($record) {
+                        $record->update(['status' => 'rejected']);
+                        Notification::make()->title('Request Rejected')->danger()->send();
+                    }),
             ]);
     }
-public static function canCreate(): bool
+
+    public static function canCreate(): bool
     {
         return false;
     }
+
     public static function shouldRegisterNavigation(): bool
     {
-        return \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+        return \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin');
     }
 
     public static function getPages(): array

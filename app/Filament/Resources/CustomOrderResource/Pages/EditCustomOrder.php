@@ -14,8 +14,6 @@ class EditCustomOrder extends EditRecord
 {
     protected static string $resource = CustomOrderResource::class;
 
-    // Store payment method data before save since dehydrated(false) fields
-    // are not available in afterSave()
     public ?string $depositMethod        = null;
     public bool    $isSplitDeposit       = false;
     public array   $splitDepositPayments = [];
@@ -27,6 +25,56 @@ class EditCustomOrder extends EditRecord
         ];
     }
 
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $record = $this->record;
+
+        $isTaxFree  = (bool)($record->is_tax_free ?? false);
+        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
+
+        // ── SOURCE OF TRUTH: all payments linked to this custom order ──────
+        // Includes payments made directly on the custom order AND
+        // payments made via the linked sale (e.g. $500 paid at sale checkout)
+        $directPayments = Payment::where('custom_order_id', $record->id)->sum('amount');
+
+        // Also check sale payments if linked — don't double-count
+        $salePayments = 0;
+        if ($record->sale_id) {
+            $salePayments = Payment::where('sale_id', $record->sale_id)
+                ->whereNull('custom_order_id')
+                ->sum('amount');
+        }
+
+        $actualPaid = $directPayments + $salePayments;
+
+        // Fallback if no payments recorded at all
+        if ($actualPaid == 0) {
+            $actualPaid = floatval($record->amount_paid);
+        }
+
+        $trueBalance = round(max(0, $grandTotal - $actualPaid), 2);
+
+        // ── SELF-HEAL: update DB if stale ─────────────────────────────────
+        if (
+            abs(floatval($record->balance_due) - $trueBalance) > 0.01 ||
+            abs(floatval($record->amount_paid) - $actualPaid) > 0.01
+        ) {
+            $record->update([
+                'balance_due' => $trueBalance,
+                'amount_paid' => round($actualPaid, 2),
+                'status'      => $trueBalance <= 0 ? 'completed' : $record->status,
+            ]);
+        }
+
+        // Inject corrected values into form
+        $data['balance_due'] = $trueBalance;
+        $data['amount_paid'] = round($actualPaid, 2);
+
+        return $data;
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
         // FIX: dehydrated(false) fields are stripped from $data but still
@@ -35,17 +83,26 @@ class EditCustomOrder extends EditRecord
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
-        // Recalculate balance_due with tax
+        // ── CALCULATE BALANCE FROM PAYMENTS TABLE (not form field) ────────
         $quoted    = floatval($data['quoted_price'] ?? 0);
-        $paid      = floatval($data['amount_paid'] ?? 0);
         $isTaxFree = (bool)($data['is_tax_free'] ?? false);
 
-        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $tax     = $quoted * $taxRate;
-        $total   = $quoted + $tax;
+        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $grandTotal = $quoted * (1 + $taxRate);
 
-        $data['balance_due'] = round(max(0, $total - $paid), 2);
+        // Use actual recorded payments as truth
+        $directPayments = Payment::where('custom_order_id', $this->record->id)->sum('amount');
+        $salePayments   = 0;
+        if ($this->record->sale_id) {
+            $salePayments = Payment::where('sale_id', $this->record->sale_id)
+                ->whereNull('custom_order_id')
+                ->sum('amount');
+        }
+
+        $actualPaid          = $directPayments + $salePayments;
+        $data['amount_paid'] = round($actualPaid, 2);
+        $data['balance_due'] = round(max(0, $grandTotal - $actualPaid), 2);
 
         return $data;
     }
@@ -68,7 +125,7 @@ class EditCustomOrder extends EditRecord
         DB::transaction(function () use ($order) {
 
             if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
-                // ── SPLIT: delete old payments and re-create with correct methods/amounts
+                // ── SPLIT: delete old payments and re-create ───────────────
                 Payment::where('custom_order_id', $order->id)->delete();
 
                 foreach ($this->splitDepositPayments as $payment) {
@@ -82,12 +139,12 @@ class EditCustomOrder extends EditRecord
                 }
 
             } elseif ($this->depositMethod) {
-                // ── SINGLE: get all payments for this custom order
+                // ── SINGLE: get all payments for this custom order ─────────
                 $existingPayments = Payment::where('custom_order_id', $order->id)
                     ->orderBy('paid_at', 'asc')
                     ->get();
 
-                // Fallback: find orphaned payment by amount and date if none linked yet
+                // Fallback: find orphaned payment if none linked yet
                 if ($existingPayments->isEmpty()) {
                     $existingPayments = Payment::whereNull('custom_order_id')
                         ->whereNull('sale_id')
@@ -97,29 +154,28 @@ class EditCustomOrder extends EditRecord
                 }
 
                 if ($existingPayments->count() > 1) {
-                    // Duplicates exist — delete all except the first one
+                    // Duplicates exist — keep first, delete the rest
                     $first = $existingPayments->first();
                     Payment::where('custom_order_id', $order->id)
                         ->where('id', '!=', $first->id)
                         ->delete();
 
-                    // Update the first one with correct method and link
-                  $first->update([
-    'method'          => strtoupper(trim($this->depositMethod)),
-    'amount'          => round((float) $order->amount_paid, 2),
-    'custom_order_id' => $order->id,
-]);
+                    $first->update([
+                        'method'          => strtoupper(trim($this->depositMethod)),
+                        'amount'          => round((float) $order->amount_paid, 2),
+                        'custom_order_id' => $order->id,
+                    ]);
 
-              } elseif ($existingPayments->count() === 1) {
-    // Single payment exists — update method AND amount to match current amount_paid
-    $existingPayments->first()->update([
-        'method'          => strtoupper(trim($this->depositMethod)),
-        'amount'          => round((float) $order->amount_paid, 2),
-        'custom_order_id' => $order->id,
-    ]);
+                } elseif ($existingPayments->count() === 1) {
+                    // Update existing payment
+                    $existingPayments->first()->update([
+                        'method'          => strtoupper(trim($this->depositMethod)),
+                        'amount'          => round((float) $order->amount_paid, 2),
+                        'custom_order_id' => $order->id,
+                    ]);
 
                 } else {
-                    // No payment exists at all — create one
+                    // No payment exists — create one
                     Payment::create([
                         'custom_order_id' => $order->id,
                         'sale_id'         => $order->sale_id ?? null,
@@ -130,7 +186,7 @@ class EditCustomOrder extends EditRecord
                 }
             }
 
-            // Sync linked sale if exists
+            // ── SYNC LINKED SALE ───────────────────────────────────────────
             if ($order->sale_id) {
                 $sale = Sale::find($order->sale_id);
                 if ($sale) {

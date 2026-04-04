@@ -24,14 +24,22 @@
 
     /* Date picker — keep native input 100% functional, styled display on top */
     .eod-datepicker {
-        position: relative; display: inline-block;
-    }
-    .eod-datepicker-face {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 7px 14px; border: 1px solid #2d2d2d; border-radius: 7px;
-        background: #1a1a1a; cursor: pointer; transition: border-color .15s;
-        pointer-events: none; /* let the native input handle clicks */
-    }
+    position: relative; display: inline-block;
+    cursor: default;
+}
+.eod-datepicker-face {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px; border: 1px solid #2d2d2d; border-radius: 7px;
+    background: #1a1a1a; cursor: default; transition: border-color .15s;
+    pointer-events: none;
+}
+.eod-datepicker input[type="date"] {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: default !important; z-index: 10;
+    border: none; background: transparent;
+    -webkit-appearance: none;
+}
+    
     .eod-datepicker:hover .eod-datepicker-face { border-color: #484848; }
     .eod-datepicker-face svg { width: 14px; height: 14px; stroke: #888; flex-shrink:0; fill:none; }
     .eod-datepicker-face span { font-size: 13px; color: #e0e0e0; font-weight: 600; letter-spacing: .02em; }

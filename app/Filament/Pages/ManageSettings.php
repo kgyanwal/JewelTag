@@ -48,6 +48,11 @@ class ManageSettings extends Page
         $rawSt    = $stJson ? json_decode($stJson, true) : $defaults;
         $fmtSt    = collect($rawSt)->map(fn($i) => ['name' => $i])->toArray();
 
+
+        // ── Certificate Agencies ──────────────────────────────────────────────────
+$caJson   = $settings['certificate_agencies'] ?? null;
+$rawCa    = $caJson ? json_decode($caJson, true) : ['GIA', 'IGI', 'AGS', 'HRD', 'EGL', 'GSI'];
+$fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
         $this->form->fill([
             'tax_rate'                  => $settings['tax_rate'] ?? '7.63',
             'barcode_prefix'            => $settings['barcode_prefix'] ?? 'D',
@@ -66,6 +71,7 @@ class ManageSettings extends Page
             'aws_sms_secret_access_key' => $settings['aws_sms_secret_access_key'] ?? '',
             'aws_sms_default_region'    => $settings['aws_sms_default_region'] ?? 'us-east-2',
             'aws_sns_sms_from'          => $settings['aws_sns_sms_from'] ?? '',
+            'certificate_agencies' => $fmtCa,
         ]);
     }
 
@@ -93,7 +99,13 @@ class ManageSettings extends Page
         DB::table('site_settings')->updateOrInsert(['key' => 'payment_methods'], ['value' => json_encode($flat), 'updated_at' => now()]);
         Notification::make()->title('✅ Payment methods saved')->success()->send();
     }
-
+public function saveCertificateAgencies(): void
+{
+    $state = $this->form->getState();
+    $flat  = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
+    DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flat), 'updated_at' => now()]);
+    Notification::make()->title('✅ Certificate agencies saved')->success()->send();
+}
     public function saveWarranties(): void
     {
         $state = $this->form->getState();
@@ -331,6 +343,29 @@ class ManageSettings extends Page
                                             ->action(fn() => $this->savePrefixes()),
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+                                    // Certificate Agencies
+Section::make('certificate_agencies_section')
+    ->key('certificate_agencies_section')
+    ->description(new \Illuminate\Support\HtmlString(
+        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🏅</div>
+            <div>
+                <div style="font-size:15px;font-weight:800;color:#0f172a;">Certificate Agencies</div>
+                <div style="font-size:12px;color:#64748b;margin-top:2px;">Grading labs available when adding jewelry specs (GIA, IGI, etc).</div>
+            </div>
+        </div>'
+    ))
+    ->schema([
+        Repeater::make('certificate_agencies')->hiddenLabel()
+            ->schema([TextInput::make('name')->required()->placeholder('e.g. GIA, IGI, AGS')])
+            ->addActionLabel('+ Add Agency')->grid(3),
+    ])
+    ->footerActions([
+        \Filament\Forms\Components\Actions\Action::make('save_certificate_agencies')
+            ->label('Save Certificate Agencies')->icon('heroicon-o-check-circle')->color('success')
+            ->action(fn() => $this->saveCertificateAgencies()),
+    ])
+    ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
 
                         // ── 4. INTEGRATIONS ───────────────────────────────────
@@ -440,6 +475,9 @@ class ManageSettings extends Page
 
         $flatServiceTypes = collect($state['service_types'] ?? [])->pluck('name')->filter()->values()->toArray();
         DB::table('site_settings')->updateOrInsert(['key' => 'service_types'], ['value' => json_encode($flatServiceTypes), 'updated_at' => now()]);
+
+        $flatCa = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
+DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flatCa), 'updated_at' => now()]);
 
         Notification::make()->title('✅ All settings saved successfully')->success()->send();
     }

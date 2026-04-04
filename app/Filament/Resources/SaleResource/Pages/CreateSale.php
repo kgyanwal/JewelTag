@@ -13,11 +13,13 @@ use App\Helpers\Staff;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
+use Illuminate\Support\Str;
 
 class CreateSale extends CreateRecord
 {
     protected static string $resource = SaleResource::class;
     protected bool $hasUnsavedChangesAlert = true;
+    public ?string $draftId = null;
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
@@ -33,17 +35,24 @@ class CreateSale extends CreateRecord
     {
         parent::mount();
 
-        if (session()->has('sale_draft')) {
-            $this->data = session('sale_draft');
+        // ── TAB-ISOLATED DRAFT ────────────────────────────────────────────────
+        $this->draftId = request()->query('draft_id', Str::uuid()->toString());
+
+        if (!request()->has('draft_id')) {
+            $this->redirect(request()->fullUrlWithQuery(['draft_id' => $this->draftId]));
+            return;
         }
+
+        $sessionKey = "sale_draft_{$this->draftId}";
 
         $repairId      = request()->get('repair_id');
         $customOrderId = request()->get('custom_order_id');
+
         if ($repairId || $customOrderId) {
-            session()->forget('sale_draft');
+            session()->forget($sessionKey);
             $this->data = [];
-        } elseif (session()->has('sale_draft')) {
-            $this->data = session('sale_draft');
+        } elseif (session()->has($sessionKey)) {
+            $this->data = session($sessionKey);
         }
 
         // ── HANDLE REPAIR ────────────────────────────────────────────────────
@@ -85,68 +94,54 @@ class CreateSale extends CreateRecord
         }
 
         // ── HANDLE CUSTOM ORDER ───────────────────────────────────────────────
-      if ($customOrderId) {
-    $customOrder = \App\Models\CustomOrder::find($customOrderId);
-    if ($customOrder) {
-        $this->data['customer_id'] = $customOrder->customer_id;
-        
-        // Load the Custom Order as a line item
-        $this->data['items'] = [[
-            'product_item_id'     => null,
-            'repair_id'           => null,
-            'custom_order_id'     => $customOrder->id,
-            'stock_no_display'    => 'CUSTOM #' . $customOrder->order_no,
-            'custom_description'  => "Custom {$customOrder->product_name}: " . ($customOrder->design_notes ?? ''),
-            'qty'                 => 1,
-            'sold_price'          => $customOrder->quoted_price ?? 0,
-            'sale_price_override' => $customOrder->quoted_price ?? 0,
-            'discount_percent'    => 0,
-            'discount_amount'     => 0,
-            'is_tax_free'         => true, // Tax was already handled in Custom Order
-        ]];
+        if ($customOrderId) {
+            $customOrder = \App\Models\CustomOrder::find($customOrderId);
+            if ($customOrder) {
+                $this->data['customer_id'] = $customOrder->customer_id;
 
-        // Calculate actual money already paid
-       // Calculate actual money already paid from payments table
-$actualPaid = \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount');
+                // 1. Map Custom Order to a Sale Item
+                $this->data['items'] = [[
+                    'custom_order_id'     => $customOrder->id,
+                    'stock_no_display'    => 'CUSTOM #' . $customOrder->order_no,
+                    'custom_description'  => "Custom {$customOrder->product_name}",
+                    'qty'                 => 1,
+                    'sold_price'          => $customOrder->quoted_price,
+                    'sale_price_override' => $customOrder->quoted_price,
+                    'is_tax_free'         => true, // Usually tax is handled at Custom Order level
+                ]];
 
-// Fallback to amount_paid column if no payment records exist
-if ($actualPaid == 0 && $customOrder->amount_paid > 0) {
-    $actualPaid = floatval($customOrder->amount_paid);
-}
+                // 2. Map existing Trade-In if any
+                if ($customOrder->has_trade_in) {
+                    $this->data['has_trade_in']    = 1;
+                    $this->data['trade_in_value']  = $customOrder->trade_in_value;
+                    $this->data['trade_in_description'] = $customOrder->trade_in_description;
+                }
 
-if ($actualPaid > 0) {
-    // Cap trade-in at quoted_price to avoid negative totals
-    // (customer may have overpaid due to tax collected at deposit stage)
-    $tradeInValue = min($actualPaid, floatval($customOrder->quoted_price));
-    $overpaid     = round($actualPaid - $tradeInValue, 2);
+                // 3. Map Prior Deposits to Split Payments
+                $priorPayments = \App\Models\Payment::where('custom_order_id', $customOrder->id)->get();
+                $totalPriorPaid = $priorPayments->sum('amount');
+                
+                $this->data['is_split_payment'] = true;
+                $this->data['split_payments'] = $priorPayments->map(fn($p) => [
+                    'method' => $p->method,
+                    'amount' => $p->amount,
+                    'is_prior_deposit' => true, // Helper flag for UI
+                ])->toArray();
 
-    $this->data['has_trade_in']        = 1;
-    $this->data['trade_in_value']      = $tradeInValue;
-    $this->data['trade_in_receipt_no'] = 'DEP-' . $customOrder->order_no;
-    $this->data['trade_in_description'] = 'Prior Deposit(s) on Custom Order #' . $customOrder->order_no
-        . ($overpaid > 0.01
-            ? ' (Overpaid: $' . number_format($overpaid, 2) . ' — refund or apply as store credit)'
-            : '');
-} else {
-    $this->data['has_trade_in'] = 0;
-    $tradeInValue = 0;
-}
+                // 4. Calculate what is actually owed TODAY
+                $netBill = floatval($customOrder->quoted_price) - floatval($customOrder->trade_in_value ?? 0);
+                $dueToday = max(0, $netBill - $totalPriorPaid);
 
-// Reset payment fields so cashier handles the remaining balance
-$this->data['amount_paid']    = 0;
-$this->data['payment_method'] = null;
+                if ($dueToday > 0) {
+                    $this->data['split_payments'][] = [
+                        'method' => 'CASH',
+                        'amount' => $dueToday,
+                    ];
+                }
 
-// If fully paid via deposits, pre-fill payment method
-$remainingBalance = max(0, floatval($customOrder->quoted_price) - $tradeInValue);
-if ($remainingBalance <= 0) {
-    $this->data['payment_method'] = 'DEPOSIT';
-    $this->data['notes'] = "Fully paid via prior deposits on Custom Order #{$customOrder->order_no}."
-        . (isset($overpaid) && $overpaid > 0.01
-            ? " Customer overpaid by \${$overpaid} — please refund or apply as store credit."
-            : '');
-}
-    }
-}
+                $this->recalculateFinancials();
+            }
+        }
 
         if ($repairId || $customOrderId) {
             $this->data['has_trade_in']          = $this->data['has_trade_in'] ?? 0;
@@ -220,10 +215,21 @@ if ($remainingBalance <= 0) {
                         return;
                     }
                     $existingStaff = $formState['sales_person_list'] ?? [];
+                    $terminalDefault = Session::get('active_staff_name') ?? auth()->user()->name;
+
+                    $existingStaff = array_values(array_filter(
+                        $existingStaff,
+                        fn($s) => $s !== $terminalDefault
+                    ));
+
                     if (!in_array($actualStaff->name, $existingStaff)) {
                         $existingStaff[] = $actualStaff->name;
                     }
-                    $formState['sales_person_list'] = array_values($existingStaff);
+
+                    $formState['sales_person_list'] = !empty($existingStaff) 
+                        ? array_values($existingStaff) 
+                        : [$actualStaff->name];
+                        
                     $get = fn($path) => data_get($formState, $path);
                     $set = function ($path, $value) use (&$formState) {
                         data_set($formState, $path, $value);
@@ -272,7 +278,8 @@ if ($remainingBalance <= 0) {
             if (
                 empty($item['product_item_id']) &&
                 empty($item['repair_id']) &&
-                empty($item['custom_order_id'])
+                empty($item['custom_order_id']) &&
+                empty($item['is_new_custom_order'])
             ) {
                 continue;
             }
@@ -312,54 +319,81 @@ if ($remainingBalance <= 0) {
                 $totalSplitPaid = 0;
 
                 foreach ($sale->split_payments as $payment) {
-                    // FIX: Cast amount to float and normalize method to uppercase
                     $amount = round((float) $payment['amount'], 2);
                     $method = strtoupper(trim($payment['method']));
 
-                    \App\Models\Payment::create([
-                        'sale_id' => $sale->id,
-                        'amount'  => $amount,
-                        'method'  => $method,
-                        'paid_at' => now(),
-                    ]);
+                    // 🚀 Check if this part of the split was a prior deposit
+                    $existingDeposit = \App\Models\Payment::whereNull('sale_id')
+                        ->where('amount', $amount)
+                        ->where('method', $method)
+                        ->whereIn('custom_order_id', $sale->items->pluck('custom_order_id')->filter())
+                        ->first();
 
+                    if ($existingDeposit) {
+                        // Link existing money (Does NOT hit today's EoD because paid_at is old)
+                        $existingDeposit->update(['sale_id' => $sale->id]);
+                    } else {
+                        // Create new record for fresh money collected today (Hits EoD)
+                        \App\Models\Payment::create([
+                            'sale_id' => $sale->id,
+                            'amount'  => $amount,
+                            'method'  => $method,
+                            'paid_at' => now(),
+                        ]);
+                    }
                     $totalSplitPaid += $amount;
                 }
 
-                // FIX: Update amount_paid on the sale to reflect actual collected amount
                 $sale->update(['amount_paid' => round($totalSplitPaid, 2)]);
+
             } else {
-                // ✅ Use actual amount_paid entered by cashier, capped at final_total
-                // If 0 (e.g. non-cash auto-filled), fall back to final_total
+                // ── NON-SPLIT LOGIC ──────────────────────────────────────────
                 $actualPaid = min(
                     floatval($sale->amount_paid) > 0 ? floatval($sale->amount_paid) : floatval($sale->final_total),
                     floatval($sale->final_total)
                 );
 
-                \App\Models\Payment::create([
-                    'sale_id' => $sale->id,
-                    'amount'  => $actualPaid,
-                    'method'  => strtoupper(trim($sale->payment_method)), // FIX: normalize method
-                    'paid_at' => now(),
-                ]);
+                // 🚀 Check if this single payment was actually a prior deposit
+                $existingFullDeposit = \App\Models\Payment::whereNull('sale_id')
+                    ->where('amount', $actualPaid)
+                    ->whereIn('custom_order_id', $sale->items->pluck('custom_order_id')->filter())
+                    ->first();
 
-                // FIX: Sync amount_paid on sale
+                if ($existingFullDeposit) {
+                    // Just link the existing record
+                    $existingFullDeposit->update([
+                        'sale_id' => $sale->id,
+                        'method'  => strtoupper(trim($sale->payment_method))
+                    ]);
+                } else {
+                    // It is fresh money handed over today
+                    \App\Models\Payment::create([
+                        'sale_id' => $sale->id,
+                        'amount'  => $actualPaid,
+                        'method'  => strtoupper(trim($sale->payment_method)),
+                        'paid_at' => now(),
+                    ]);
+                }
+                
                 $sale->update(['amount_paid' => $actualPaid]);
             }
 
-            // ── ITEMS ──────────────────────────────────────────────────────────
             // ── ITEMS ──────────────────────────────────────────────────────────
             foreach ($sale->items as $saleItem) {
                 if ($saleItem->custom_order_id) {
                     $customOrder = \App\Models\CustomOrder::find($saleItem->custom_order_id);
                     if ($customOrder) {
-                        // ── Link all prior deposit payments to this sale ──────
+                        // Link all prior deposit payments to this sale
                         \App\Models\Payment::where('custom_order_id', $customOrder->id)
                             ->whereNull('sale_id')
                             ->update(['sale_id' => $sale->id]);
 
+                        // Determine if it's a completely NEW order created during this sale
+                        $isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
+
                         $customOrder->update([
-                            'status'      => 'completed',
+                            // If we just built it now, keep it in production queue. Otherwise it's done.
+                            'status'      => $isBrandNew ? 'in_production' : 'completed',
                             'sale_id'     => $sale->id,
                             'balance_due' => 0,
                             'amount_paid' => $customOrder->quoted_price,
@@ -415,7 +449,7 @@ if ($remainingBalance <= 0) {
             }
         });
 
-        session()->forget('sale_draft');
+        session()->forget("sale_draft_{$this->draftId}");
         $this->data = [];
     }
 
@@ -426,6 +460,8 @@ if ($remainingBalance <= 0) {
 
     public function updated($property): void
     {
-        session(['sale_draft' => $this->data]);
+        if ($this->draftId) {
+            session(["sale_draft_{$this->draftId}" => $this->data]);
+        }
     }
 }
