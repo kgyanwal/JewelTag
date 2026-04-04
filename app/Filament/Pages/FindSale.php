@@ -8,7 +8,8 @@ use App\Helpers\Staff;
 use App\Models\DailyClosing;
 use App\Models\Sale;
 use App\Models\SaleEditRequest;
-use Filament\Forms\Components\{DatePicker, Grid, Section, Select, TextInput, Placeholder, Toggle, Group};
+use Filament\Forms\Components\{Grid, Section, Select, TextInput, Placeholder, Toggle, Group};
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -88,11 +89,14 @@ class FindSale extends Page implements HasForms, HasTable
                             Select::make('payment_method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
                                 ->placeholder('All Methods')
-                                ->live(),               // selects are fine as ->live() — no typing
-
-                            DatePicker::make('date_from')
+                                ->live(), 
+                                              // selects are fine as ->live() — no typing
+                            CustomDatePicker::make('date_from')
                                 ->label('Date From')
-                                ->live(),               // date pickers are fine too
+                                ->displayFormat('m/d/Y')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+                            // date pickers are fine too
 
                             Select::make('job_type')
                                 ->label('Job Type')
