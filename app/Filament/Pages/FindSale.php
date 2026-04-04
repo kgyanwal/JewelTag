@@ -171,21 +171,21 @@ class FindSale extends Page implements HasForms, HasTable
                     ->weight('bold')
                     ->color('primary')
                     ->copyable(),
-TextColumn::make('sale_type_badge')
-    ->label('TYPE')
-    ->getStateUsing(function ($record) {
-        $isLaybuy     = $record->payment_method === 'laybuy';
-        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
-        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
-        $hasSpecialJob = !empty($record->special_jobs);
+                TextColumn::make('sale_type_badge')
+                    ->label('TYPE')
+                    ->getStateUsing(function ($record) {
+                        $isLaybuy     = $record->payment_method === 'laybuy';
+                        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
+                        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
+                        $hasSpecialJob = !empty($record->special_jobs);
 
-        if ($isLaybuy) return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
-        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
-        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
-        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
-        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
-    })
-    ->grow(false),
+                        if ($isLaybuy) return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+                        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
+                        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
+                        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
+                        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
+                    })
+                    ->grow(false),
                 // ── customer relationship is now eager loaded so no extra query per row
                 TextColumn::make('customer_name_display')
                     ->label('Customer')
@@ -233,43 +233,43 @@ TextColumn::make('sale_type_badge')
                     ->toggleable(),
 
                 // ── payments already eager loaded — no extra query per row
-            TextColumn::make('payment_status_summary')
-    ->label('PAYMENT SUMMARY')
-    ->getStateUsing(function ($record) {
-        // 1. Identify if this is a Custom Order Conversion
-        $isCustomDeposit = $record->has_trade_in
-            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+                TextColumn::make('payment_status_summary')
+                    ->label('PAYMENT SUMMARY')
+                    ->getStateUsing(function ($record) {
+                        // 1. Identify if this is a Custom Order Conversion
+                        $isCustomDeposit = $record->has_trade_in
+                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-        // 2. The Bill Total (Grand Total)
-        // We add trade_in_value back because final_total is already "Net" in the DB
-        $total = floatval($record->final_total);
-        if ($isCustomDeposit) {
-            $total += floatval($record->trade_in_value);
-        }
+                        // 2. The Bill Total (Grand Total)
+                        // We add trade_in_value back because final_total is already "Net" in the DB
+                        $total = floatval($record->final_total);
+                        if ($isCustomDeposit) {
+                            $total += floatval($record->trade_in_value);
+                        }
 
-        // 3. The actual money collected
-        // We sum the payments table. 
-        // IMPORTANT: Our CreateSale logic already linked custom order payments to this sale_id.
-        $paid = floatval($record->payments->sum('amount'));
+                        // 3. The actual money collected
+                        // We sum the payments table. 
+                        // IMPORTANT: Our CreateSale logic already linked custom order payments to this sale_id.
+                        $paid = floatval($record->payments->sum('amount'));
 
-        // Fallback for legacy data not using the payments table
-        if ($paid == 0 && floatval($record->amount_paid) > 0) {
-            $paid = floatval($record->amount_paid);
-        }
+                        // Fallback for legacy data not using the payments table
+                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
+                            $paid = floatval($record->amount_paid);
+                        }
 
-        $balance = max(0, $total - $paid);
+                        $balance = max(0, $total - $paid);
 
-        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-        if ($balance > 0.01) {
-            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
-        } else {
-            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-        }
+                        if ($balance > 0.01) {
+                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+                        } else {
+                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+                        }
 
-        return new HtmlString($html);
-    }),
+                        return new HtmlString($html);
+                    }),
 
                 TextColumn::make('status')
                     ->badge()
@@ -286,38 +286,38 @@ TextColumn::make('sale_type_badge')
                     ),
             ])
             ->actions([
-             \Filament\Tables\Actions\EditAction::make()
+                \Filament\Tables\Actions\EditAction::make()
                     ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
- 
+
                         // Superadmin/Admin always can edit
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
- 
+
                         // Laybuy always editable
                         if ($record->payment_method === 'laybuy') return true;
- 
+
                         // Custom order always editable
                         $record->loadMissing('items');
                         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
- 
+
                         // Pending always editable
                         if ($record->status === 'pending') return true;
- 
+
                         // Completed with balance due — allow to fix
                         if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
- 
+
                         // Day not closed — editable
                         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
                         if (!$dayClosed) return true;
- 
+
                         // Day closed — only show Edit if approved request exists
                         return SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
                             ->where('status', 'approved')
                             ->exists();
                     }),
- 
+
                 // ── REQUEST EDIT — shown when day is closed + no pending/approved request ──
                 Action::make('request_edit')
                     ->label('Request Edit')
@@ -325,22 +325,22 @@ TextColumn::make('sale_type_badge')
                     ->color('warning')
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
- 
+
                         // Admins don't need to request
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
- 
+
                         // Laybuy/custom — no request needed
                         if ($record->payment_method === 'laybuy') return false;
                         $record->loadMissing('items');
                         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return false;
- 
+
                         // Only for completed + fully paid + day closed
                         if ($record->status !== 'completed') return false;
                         if (floatval($record->balance_due) > 0) return false;
- 
+
                         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
                         if (!$dayClosed) return false;
- 
+
                         // Hide if already has pending or approved request
                         return !SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
@@ -353,12 +353,12 @@ TextColumn::make('sale_type_badge')
                     ->modalSubmitActionLabel('Send Request')
                     ->action(function (Sale $record) {
                         \App\Models\SaleEditRequest::create([
-    'sale_id'          => $record->id,
-    'user_id'          => auth()->id(),
-    'status'           => 'pending',
-    'proposed_changes' => [], // Ensure this is an array as per your model cast
-]);
- 
+                            'sale_id'          => $record->id,
+                            'user_id'          => auth()->id(),
+                            'status'           => 'pending',
+                            'proposed_changes' => [], // Ensure this is an array as per your model cast
+                        ]);
+
                         // Notify all admins in-app
                         $admins = \App\Models\User::role(['Superadmin', 'Administration'])->get();
                         foreach ($admins as $admin) {
@@ -368,14 +368,14 @@ TextColumn::make('sale_type_badge')
                                 ->warning()
                                 ->sendToDatabase($admin);
                         }
- 
+
                         Notification::make()
                             ->title('Request Sent')
                             ->body('Your edit request has been sent to Administration for approval.')
                             ->success()
                             ->send();
                     }),
- 
+
                 // ── PENDING INDICATOR — disabled button while waiting ─────────
                 Action::make('edit_pending')
                     ->label('Edit Pending...')
@@ -385,13 +385,13 @@ TextColumn::make('sale_type_badge')
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
- 
+
                         return SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
                             ->where('status', 'pending')
                             ->exists();
                     }),
- 
+
 
                 Action::make('quick_view')
                     ->label('View')
@@ -511,17 +511,17 @@ TextColumn::make('sale_type_badge')
                                                         . number_format($record->final_total, 2) . "</span>"
                                                 )),
                                         ]),
-                                       Placeholder::make('f_paid')
-    ->label('Total Payments Received')
-    ->content(function() use ($record) {
-        // Source of truth: Sum of all payments linked to this Sale ID
-        $amt = $record->payments->sum('amount');
-        
-        return new HtmlString(
-            "<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$" 
-            . number_format($amt, 2) . "</div>"
-        );
-    }),
+                                        Placeholder::make('f_paid')
+                                            ->label('Total Payments Received')
+                                            ->content(function () use ($record) {
+                                                // Source of truth: Sum of all payments linked to this Sale ID
+                                                $amt = $record->payments->sum('amount');
+
+                                                return new HtmlString(
+                                                    "<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$"
+                                                        . number_format($amt, 2) . "</div>"
+                                                );
+                                            }),
                                     ]),
                             ]),
 

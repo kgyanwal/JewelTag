@@ -275,7 +275,12 @@ class StockTransferResource extends Resource
 
                             // 🚀 INJECT 'T' PREFIX LOGIC FOR RECEIVER
                             $originalBarcode = $itemData['barcode'];
-                            $barcode = Str::startsWith($originalBarcode, 'T') ? $originalBarcode : 'T' . $originalBarcode;
+                            
+                            // Check if it already starts with 'T' to prevent 'TTR1001'
+                            $barcode = Str::startsWith($originalBarcode, 'T') 
+                                ? $originalBarcode 
+                                : 'T' . $originalBarcode;
+                                
                             $itemData['barcode'] = $barcode;
 
                             $supplierId         = $fallbackSupplierId; // Default to fallback
@@ -410,6 +415,8 @@ class StockTransferResource extends Resource
 
                                 foreach ($snapshot as $snap) {
                                     if (empty($snap['barcode'])) continue;
+                                    
+                                    // 🚀 Ensure we restore in the source DB, DO NOT DELETE IT
                                     ProductItem::where('barcode', $snap['barcode'])
                                         ->where('status', 'on_hold')
                                         ->update(['status' => 'in_stock']);
@@ -485,6 +492,84 @@ class StockTransferResource extends Resource
                         return $record->status === 'pending'
                             && $record->from_tenant === tenant('id');
                     }),
+                    // ── QUICK VIEW MODAL ──────────────────────────────────────
+                Tables\Actions\Action::make('quick_view')
+                    ->label('View Items')
+                    ->icon('heroicon-o-eye')
+                    ->color('info')
+                    ->slideOver()
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->form(fn(StockTransfer $record): array => [
+                        \Filament\Forms\Components\Group::make()->schema([
+                            \Filament\Forms\Components\Section::make('Transfer Overview')
+                                ->columns(2)
+                                ->schema([
+                                    \Filament\Forms\Components\Placeholder::make('v_number')
+                                        ->label('Transfer #')
+                                        ->content(new HtmlString("<span class='font-mono font-bold text-lg text-primary-600'>{$record->transfer_number}</span>")),
+                                    \Filament\Forms\Components\Placeholder::make('v_status')
+                                        ->label('Status')
+                                        ->content(new HtmlString(
+                                            "<span class='px-2 py-1 rounded text-xs font-bold uppercase " .
+                                                match ($record->status) {
+                                                    'accepted', 'completed' => 'bg-success-100 text-success-700',
+                                                    'denied'                => 'bg-danger-100 text-danger-700',
+                                                    'in_transit'            => 'bg-blue-100 text-blue-700',
+                                                    default                 => 'bg-warning-100 text-warning-700',
+                                                } . "'>{$record->status}</span>"
+                                        )),
+                                    \Filament\Forms\Components\Placeholder::make('v_from')
+                                        ->label('From Tenant')
+                                        ->content($record->from_tenant),
+                                    \Filament\Forms\Components\Placeholder::make('v_to')
+                                        ->label('To Tenant')
+                                        ->content($record->to_tenant),
+                                ]),
+
+                            \Filament\Forms\Components\Section::make('Items in Transfer')->schema([
+                                \Filament\Forms\Components\Placeholder::make('v_items')
+                                    ->label('')
+                                    ->content(function () use ($record) {
+                                        $snapshot = is_array($record->item_snapshot) ? $record->item_snapshot : [];
+                                        
+                                        if (empty($snapshot)) {
+                                            return new HtmlString("<div class='text-gray-400 italic text-sm py-4'>No items found in this transfer payload.</div>");
+                                        }
+
+                                        $html  = '<table class="w-full text-sm text-left border-collapse">';
+                                        $html .= '<thead class="bg-gray-50 text-gray-600 uppercase text-[10px]"><tr>';
+                                        $html .= '<th class="p-2">Barcode</th><th class="p-2">Description</th>';
+                                        $html .= '<th class="p-2">Metal</th><th class="p-2 text-right">Retail Price</th>';
+                                        $html .= '</tr></thead><tbody>';
+
+                                        foreach ($snapshot as $item) {
+                                            // Format the data safely whether it came from the DB directly or the snapshot array
+                                            $barcode = $item['barcode'] ?? 'N/A';
+                                            $desc    = $item['custom_description'] ?? 'No Description';
+                                            $metal   = $item['metal_type'] ?? '—';
+                                            $price   = isset($item['retail_price']) ? '$' . number_format((float)$item['retail_price'], 2) : '—';
+
+                                            $html .= "<tr class='border-b border-gray-100 hover:bg-gray-50 transition'>";
+                                            $html .= "<td class='p-2 font-mono font-bold text-primary-600'>{$barcode}</td>";
+                                            $html .= "<td class='p-2 text-gray-700'>" . e($desc) . "</td>";
+                                            $html .= "<td class='p-2 text-gray-500'>{$metal}</td>";
+                                            $html .= "<td class='p-2 text-right font-semibold text-success-600'>{$price}</td>";
+                                            $html .= "</tr>";
+                                        }
+
+                                        $html .= '</tbody></table>';
+                                        return new HtmlString($html);
+                                    }),
+                            ]),
+
+                            \Filament\Forms\Components\Section::make('Notes')->collapsed()->schema([
+                                \Filament\Forms\Components\Placeholder::make('v_notes')
+                                    ->label('')
+                                    ->content($record->notes ?? 'No notes recorded.'),
+                            ]),
+                        ]),
+                    ]),
             ])
             ->defaultSort('created_at', 'desc');
     }

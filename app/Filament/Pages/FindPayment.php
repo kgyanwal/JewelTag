@@ -71,18 +71,24 @@ class FindPayment extends Page implements HasForms, HasTable
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->resetTable()),
 
-                            Select::make('payment_type')
-                                ->label('Payment Type')
-                                ->options([
-                                    'CASH' => 'Cash',
-                                    'VISA' => 'Visa',
-                                    'MASTERCARD' => 'Mastercard',
-                                    'AMEX' => 'Amex',
-                                    'LAYBUY' => 'Laybuy',
-                                ])
-                                ->placeholder('Any')
-                                ->live()
-                                ->afterStateUpdated(fn() => $this->resetTable()),
+                           Select::make('payment_type')
+    ->label('Payment Type')
+    ->options(function () {
+        $json = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $methods = $json ? json_decode($json, true) : [];
+        
+        $options = [];
+        if (is_array($methods)) {
+            foreach ($methods as $method) {
+                $options[strtoupper($method)] = strtoupper($method);
+            }
+        }
+        
+        return $options;
+    })
+    ->placeholder('Any')
+    ->live()
+    ->afterStateUpdated(fn() => $this->resetTable()),
 
                             // --- PURE TEXT DATE INPUT ---
                             TextInput::make('payment_date')
@@ -230,12 +236,22 @@ class FindPayment extends Page implements HasForms, HasTable
                     ->placeholder('N/A')
                     ->weight('medium'),
             ])
-            ->actions([
+           ->actions([
+                // 🚀 Added guard to ensure sale_id exists before generating URL
                 \Filament\Tables\Actions\Action::make('view_sale')
                     ->label('View Sale')
                     ->icon('heroicon-o-eye')
                     ->color('info')
-                    ->url(fn(Payment $record): string => \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id])),
+                    ->visible(fn(Payment $record): bool => !empty($record->sale_id))
+                    ->url(fn(Payment $record): string => \App\Filament\Resources\SaleResource::getUrl('view', ['record' => $record->sale_id])), // Changed from 'edit' to 'view' based on your prompt
+
+                // 🚀 Fallback action if this is just a deposit for a custom order
+                \Filament\Tables\Actions\Action::make('view_custom_order')
+                    ->label('View Order')
+                    ->icon('heroicon-o-sparkles')
+                    ->color('warning')
+                    ->visible(fn(Payment $record): bool => empty($record->sale_id) && !empty($record->custom_order_id))
+                    ->url(fn(Payment $record): string => \App\Filament\Resources\CustomOrderResource::getUrl('edit', ['record' => $record->custom_order_id])),
             ]);
     }
 

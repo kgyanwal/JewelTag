@@ -261,7 +261,17 @@ class SaleResource extends Resource
                                             ]),
                                             Grid::make(3)->schema([
                                                 TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
-                                                
+                                                Placeholder::make('total_with_tax')
+                                                    ->label('Total (w/ Tax)')
+                                                    ->content(function (Get $get) {
+                                                        $quoted    = floatval($get('quoted_price') ?? 0);
+                                                        $isTaxFree = (bool)($get('is_tax_free') ?? true); // Default true from your toggle
+                                                        $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                                        $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                                        $total     = $quoted + ($quoted * $taxRate);
+                                                        
+                                                        return new HtmlString("<span class='font-bold text-success-600 text-lg'>$" . number_format($total, 2) . "</span>");
+                                                    }),
                                                 // 🛑 CHANGE 1: Rename this field to avoid colliding with the main form
                                                 TextInput::make('custom_deposit_amount') 
                                                     ->label('Deposit Amount')
@@ -276,6 +286,7 @@ class SaleResource extends Resource
                                             ]),
                                             Grid::make(2)->schema([
                                                 DatePicker::make('due_date')->label('Promised By Date')->native(false)->required(),
+                                             
                                                 Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(3),
                                             ]),
                                         ])
@@ -299,7 +310,7 @@ class SaleResource extends Resource
                                                 'sale_price_override' => $price,
                                                 'discount_percent'    => 0,
                                                 'discount_amount'     => 0,
-                                                'is_tax_free'         => true,
+                                               'is_tax_free'         => $data['is_tax_free'] ?? true,
                                             ];
 
                                             $set('items', $currentItems);
@@ -1044,11 +1055,16 @@ class SaleResource extends Resource
                                     $items = $get('items') ?? [];
                                     $intendedCustomDeposit = 0;
                                     
-                                    foreach ($items as $item) {
-                                        if (!empty($item['is_new_custom_order'])) {
-                                            // For brand new items being added right now
-                                            $intendedCustomDeposit += floatval($item['new_custom_data']['custom_deposit_amount'] ?? $item['new_custom_data']['amount_paid'] ?? 0);
-                                        } elseif (!empty($item['custom_order_id'])) {
+                                   foreach ($items as $item) {
+    if (!empty($item['is_new_custom_order'])) {
+        // 🚀 THE FIX: Decode the JSON string to successfully read the deposit amount
+        $customData = is_string($item['new_custom_data']) 
+            ? json_decode($item['new_custom_data'], true) 
+            : ($item['new_custom_data'] ?? []);
+            
+        $intendedCustomDeposit += floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
+        
+    } elseif (!empty($item['custom_order_id'])) {
                                             // 🛑 FIX: For existing sales, look up the original deposit from the database
                                             $co = \App\Models\CustomOrder::find($item['custom_order_id']);
                                             if ($co) {

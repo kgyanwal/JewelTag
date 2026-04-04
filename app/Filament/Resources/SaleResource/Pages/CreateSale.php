@@ -389,15 +389,24 @@ class CreateSale extends CreateRecord
                             ->update(['sale_id' => $sale->id]);
 
                         // Determine if it's a completely NEW order created during this sale
-                        $isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
+$isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
 
-                        $customOrder->update([
-                            // If we just built it now, keep it in production queue. Otherwise it's done.
-                            'status'      => $isBrandNew ? 'in_production' : 'completed',
-                            'sale_id'     => $sale->id,
-                            'balance_due' => 0,
-                            'amount_paid' => $customOrder->quoted_price,
-                        ]);
+if ($isBrandNew) {
+    // 🚀 THE FIX: If it is a new order, just update status and link sale. 
+    // Do NOT overwrite the balance_due or amount_paid, keep the deposit math!
+    $customOrder->update([
+        'status'  => 'in_production',
+        'sale_id' => $sale->id,
+    ]);
+} else {
+    // If we are checking out an OLD order, mark it fully paid and completed
+    $customOrder->update([
+        'status'      => 'completed',
+        'sale_id'     => $sale->id,
+        'balance_due' => 0,
+        'amount_paid' => $customOrder->quoted_price,
+    ]);
+}
                     }
                 }
 
