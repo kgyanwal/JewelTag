@@ -5,62 +5,83 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\Sale;
 use App\Models\DepositSale;
+use App\Models\Customer;
 use App\Models\Tenant;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\File;
 
 class ImportOnSwimDeposits extends Command
 {
-    protected $signature = 'import:onswim-deposits {tenant} {--dry-run} {--rollback}';
-    protected $description = 'Import OnSwim Deposit Sales into deposit_sales table';
+    protected $signature = 'import:onswim-deposits {tenant} {--rollback} {--dry-run}';
+    protected $description = 'Import OnSwim Deposit Sales with robust matching, SQL constraint fixes, and optional dry-run.';
 
     private int   $matched  = 0;
     private int   $skipped  = 0;
     private int   $created  = 0;
     private int   $updated  = 0;
-    private array $warnings = [];
-    private array $notFound = [];
 
     public function handle()
     {
+        set_time_limit(0);
+        ini_set('memory_limit', '1G');
+
         $tenantId   = $this->argument('tenant');
         $isDryRun   = $this->option('dry-run');
-        $isRollback = $this->option('rollback');
 
         try {
             $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
-        } catch (\Exception $e) {
-            $this->error("Could not initialize tenant: {$tenantId}");
-            return 1;
-        }
 
-        // ── Rollback ──────────────────────────────────────────────
-        if ($isRollback) {
-            if (!$this->confirm("⚠️  Delete ALL Deposit records for [{$tenantId}]?")) {
-                $this->info("Rollback cancelled.");
-                return 0;
+            // Authenticate admin to satisfy potential activity_logs foreign key constraints
+            $adminUser = User::first();
+            if ($adminUser) {
+                auth()->login($adminUser);
             }
-            $count = DepositSale::count();
-            DepositSale::truncate();
-            $this->warn("Rolled back: {$count} records deleted.");
-            return 0;
+
+            // Path & File Logic
+            $directoryPath = storage_path("/{$tenantId}/data");
+            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
+            $fileName = "deposits_{$yesterday}.csv";
+            $filePath = "{$directoryPath}/{$fileName}";
+
+            if (!File::exists($filePath)) {
+                $this->newLine();
+                $this->error("❌ FILE NOT FOUND: {$filePath}");
+                return Command::FAILURE;
+            }
+
+        } catch (\Exception $e) {
+            $this->error("Initialization Error: " . $e->getMessage());
+            return Command::FAILURE;
         }
 
-        // ── Dynamic File Path Logic ──────────────────────────────
-        // 🚀 Matches your stock structure: storage/tenantId/data/
-        $directoryPath = storage_path("/{$tenantId}/data");
-        
-        // Looks for filename like: deposits_2026_03_31.csv
-        $yesterday = Carbon::yesterday()->format('Y_m_d'); 
-        $fileName = "deposits_{$yesterday}.csv";
-        $filePath = "{$directoryPath}/{$fileName}";
+        // Handle Rollback
+        if ($this->option('rollback')) {
+            $this->warn("Rolling back (deleting) ALL deposit sales for tenant: {$tenantId}...");
+            if ($this->confirm('Are you sure? This cannot be undone.', false)) {
+                Schema::disableForeignKeyConstraints();
+                DepositSale::truncate();
+                Schema::enableForeignKeyConstraints();
+                $this->info("Deposit sales table truncated.");
+            }
+            return Command::SUCCESS;
+        }
 
-        if (!File::exists($filePath)) {
-            $this->error("❌ FILE NOT FOUND: {$filePath}");
-            $this->line("Place your OnSwim Deposit CSV in: {$directoryPath}");
-            return 1;
+        // Ensure fallback customer exists to prevent NOT NULL customer_id constraint errors
+        $walkInCustomer = Customer::withoutEvents(fn() => 
+            Customer::firstOrCreate(
+                ['customer_no' => 'WALKIN'], 
+                ['name' => 'Walk-in', 'last_name' => 'Customer', 'is_active' => true]
+            )
+        );
+
+        if ($isDryRun) {
+            $this->newLine();
+            $this->warn("🛠️  DRY RUN ENABLED: No changes will be saved to the database.");
+            $this->newLine();
         }
 
         // ── Read CSV ──────────────────────────────────────────────
@@ -72,7 +93,7 @@ class ImportOnSwimDeposits extends Command
         if (!empty($missing)) {
             $this->error("CSV missing columns: " . implode(', ', $missing));
             fclose($file);
-            return 1;
+            return Command::FAILURE;
         }
 
         $rows = [];
@@ -80,99 +101,165 @@ class ImportOnSwimDeposits extends Command
             if (count($row) !== count($header)) continue;
             $data = array_combine($header, $row);
             if (empty(trim($data['Job No.'] ?? ''))) continue;
-            if (empty(trim($data['Customer'] ?? '')) || is_numeric(trim($data['Customer'] ?? ''))) continue;
             $rows[] = $data;
         }
         fclose($file);
 
         $total = count($rows);
-        $this->info($isDryRun ? "🔍 DRY RUN — {$total} rows" : "📥 Importing {$total} rows...");
+        $this->info("Processing {$total} rows from {$fileName}...");
+        $bar = $this->output->createProgressBar($total);
 
         // ── Build Job No → Sale lookup map ────────────────────────
         $jobToSale = [];
         Sale::select('id', 'invoice_number', 'customer_id')->chunk(500, function ($sales) use (&$jobToSale) {
             foreach ($sales as $sale) {
                 $inv = $sale->invoice_number ?? '';
-                if (str_contains($inv, '-')) {
-                    $jobNo = end(explode('-', $inv));
-                    if (is_numeric($jobNo)) { $jobToSale[(int)$jobNo] = $sale; continue; }
-                }
                 $numeric = preg_replace('/[^0-9]/', '', $inv);
                 if (!empty($numeric)) $jobToSale[(int)$numeric] = $sale;
             }
         });
 
-        $bar = $this->output->createProgressBar($total);
-        $bar->start();
-
-        if (!$isDryRun) DB::beginTransaction();
+        // Start transaction
+        DB::connection('tenant')->beginTransaction();
 
         try {
             foreach ($rows as $data) {
                 $jobNo = trim($data['Job No.']);
                 $numericJob = (int) preg_replace('/[^0-9]/', '', $jobNo);
                 
+                // 1. Try to link the exact Sale
                 $sale = $jobToSale[$numericJob] ?? Sale::where('invoice_number', 'like', "%{$jobNo}")->first();
 
-                if (!$sale) {
-                    $this->notFound[] = "Job #{$jobNo} ({$data['Customer']})";
-                    $this->skipped++;
-                    $bar->advance();
-                    continue;
+                // 2. Resolve Customer ID (Strict NOT NULL fallback)
+                if ($sale) {
+                    $customerId = $sale->customer_id;
+                    $this->matched++; // Matched directly to a Sale
+                } else {
+                    $customer = $this->findCustomer($data);
+                    $customerId = $customer ? $customer->id : $walkInCustomer->id;
+                    $this->skipped++; // Skipped linking to a sale, but will still import
                 }
 
-                $this->matched++;
                 $invoiceTotal = $this->cleanMoney($data['Invoice Total']);
                 $amountPaid   = $this->cleanMoney($data['Payment Total']);
                 $balance      = $this->cleanMoney($data['Balance']);
                 $status       = $balance <= 0.50 ? 'completed' : 'active';
 
-                $staff        = trim($data['Staff'] ?? 'System');
-                $staffList    = array_values(array_filter(preg_split('/[\/,]+/', $staff)));
+                // Format Staff JSON array and primary Sales Person string
+                $staffRaw     = trim($data['Staff'] ?? 'System');
+                $staffList    = array_values(array_filter(preg_split('/[\/,]+/', $staffRaw)));
+                $salesPerson  = !empty($staffList) ? $staffList[0] : 'System';
 
                 $payload = [
-                    'customer_id'    => $sale->customer_id,
-                    'deposit_no'     => 'DEP-' . $jobNo,
+                    'customer_id'    => $customerId,
+                    'sale_id'        => $sale ? $sale->id : null,
                     'total_amount'   => $invoiceTotal,
                     'amount_paid'    => $amountPaid,
                     'balance_due'    => max(0, $balance),
                     'status'         => $status,
-                    'sales_person'   => $staffList[0] ?? 'System',
-                    'staff_list'     => $staffList,
+                    'sales_person'   => $salesPerson,
+                    'staff_list'     => $staffList, // Array casts natively to JSON column
                     'start_date'     => $this->parseDate($data['Date Sold']),
-                    'last_paid_date' => $this->parseDate($data['Last Date Paid']),
-                    'due_date'       => $this->parseDate($data['Date Required']),
-                    'notes'          => "Imported. Job #{$jobNo}. Last Paid: " . ($data['Last Date Paid'] ?? 'N/A'),
+                    'last_paid_date' => $this->parseDate($data['Last Date Paid'] ?? null),
+                    'due_date'       => $this->parseDate($data['Date Required'] ?? null),
+                    'notes'          => "Imported from Onswim. Job #{$jobNo}.",
                 ];
 
                 if (!$isDryRun) {
-                    $exists = DepositSale::where('sale_id', $sale->id)->exists();
-                    DepositSale::updateOrCreate(['sale_id' => $sale->id], $payload);
-                    $sale->update(['amount_paid' => $amountPaid, 'balance_due' => max(0, $balance)]);
+                    $depositNo = 'DEP-' . $jobNo;
+                    $exists = DepositSale::where('deposit_no', $depositNo)->exists();
+                    
+                    // withoutEvents prevents model observers from interfering
+                    DepositSale::withoutEvents(function() use ($depositNo, $payload) {
+                        DepositSale::updateOrCreate(
+                            ['deposit_no' => $depositNo], // Unique constraints
+                            $payload
+                        );
+                    });
+                    
+                    // Sync the main sale record balance if a sale was found
+                    if ($sale) {
+                        Sale::withoutEvents(fn() => 
+                            $sale->update([
+                                'amount_paid' => max($sale->amount_paid, $amountPaid), 
+                                'balance_due' => max(0, $balance)
+                            ])
+                        );
+                    }
+
                     $exists ? $this->updated++ : $this->created++;
                 }
 
                 $bar->advance();
             }
-            if (!$isDryRun) DB::commit();
+
+            if ($isDryRun) {
+                DB::connection('tenant')->rollBack();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ DRY RUN COMPLETE. No data modified.");
+            } else {
+                DB::connection('tenant')->commit();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ SUCCESS: Deposits synchronized.");
+            }
+
         } catch (\Exception $e) {
-            if (!$isDryRun) DB::rollBack();
-            $this->error("\nError: " . $e->getMessage());
-            return 1;
+            DB::connection('tenant')->rollBack();
+            $this->error("\nDatabase Error: " . $e->getMessage());
+            return Command::FAILURE;
         }
 
-        $bar->finish();
-        $this->newLine(2);
         $this->table(['Metric', 'Count'], [
-            ['Total Rows', $total], ['Matched', $this->matched], ['Created', $this->created], ['Updated', $this->updated]
+            ['Total Rows', $total], 
+            ['Matched to Sales', $this->matched], 
+            ['Unlinked (Fallback Customer)', $this->skipped],
+            ['Created', $this->created], 
+            ['Updated/Overwritten', $this->updated]
         ]);
 
-        return 0;
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Robust customer search matching the Sales script logic
+     */
+    private function findCustomer($data)
+    {
+        $name = trim($data['Customer'] ?? '');
+        $email = strtolower(trim($data['Email'] ?? ''));
+        $searchPhones = array_filter([
+            preg_replace('/[^0-9]/', '', trim($data['Mobile'] ?? '')),
+            preg_replace('/[^0-9]/', '', trim($data['Customer Ph'] ?? ''))
+        ]);
+
+        // 1. Try to find by Name
+        if (!empty($name)) {
+            $found = Customer::withoutGlobalScopes()->where('name', 'like', "%{$name}%")->first();
+            if ($found) return $found;
+        }
+
+        // 2. Try by Email
+        if (!empty($email)) {
+            $found = Customer::withoutGlobalScopes()->where('email', $email)->first();
+            if ($found) return $found;
+        }
+
+        // 3. Try by Phone
+        foreach ($searchPhones as $cleanPhone) {
+            if (strlen($cleanPhone) >= 7) {
+                $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}")->first();
+                if ($found) return $found;
+            }
+        }
+
+        return null;
     }
 
     private function cleanMoney($value): float {
-        $clean = str_replace(['$', ',', ' '], '', trim((string)($value ?? '0')));
-        return ($clean === '-' || $clean === '') ? 0.00 : (float)$clean;
+        $clean = str_replace(['$', ',', ' ', '-'], '', trim((string)($value ?? '0')));
+        return ($clean === '') ? 0.00 : (float)$clean;
     }
 
     private function parseDate($date): ?string {
