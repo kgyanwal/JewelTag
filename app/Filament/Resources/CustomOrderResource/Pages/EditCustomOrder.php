@@ -75,32 +75,35 @@ class EditCustomOrder extends EditRecord
         return $data;
     }
 
-    protected function mutateFormDataBeforeSave(array $data): array
+   protected function mutateFormDataBeforeSave(array $data): array
     {
-        // FIX: dehydrated(false) fields are stripped from $data but still
-        // available in $this->data (Livewire component state)
+        // Capture dehydrated(false) fields
         $this->depositMethod        = $this->data['initial_payment_method'] ?? null;
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
-        // ── CALCULATE BALANCE FROM PAYMENTS TABLE (not form field) ────────
-        $quoted    = floatval($data['quoted_price'] ?? 0);
-        $isTaxFree = (bool)($data['is_tax_free'] ?? false);
-
+        // ── CALCULATE GRAND TOTAL ────────
+        $quoted     = floatval($data['quoted_price'] ?? 0);
+        $isTaxFree  = (bool)($data['is_tax_free'] ?? false);
         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
         $grandTotal = $quoted * (1 + $taxRate);
 
-        // Use actual recorded payments as truth
-        $directPayments = Payment::where('custom_order_id', $this->record->id)->sum('amount');
-        $salePayments   = 0;
-        if ($this->record->sale_id) {
-            $salePayments = Payment::where('sale_id', $this->record->sale_id)
-                ->whereNull('custom_order_id')
-                ->sum('amount');
+        // 🚀 THE FIX: If an admin explicitly edited the amount_paid field, TRUST THE FORM DATA.
+        // Otherwise, fall back to what is currently in the DB.
+        $formAmountPaid = floatval($data['amount_paid'] ?? 0);
+
+        if (\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])) {
+            $actualPaid = $formAmountPaid;
+        } else {
+            $directPayments = Payment::where('custom_order_id', $this->record->id)->sum('amount');
+            $salePayments   = 0;
+            if ($this->record->sale_id) {
+                $salePayments = Payment::where('sale_id', $this->record->sale_id)->whereNull('custom_order_id')->sum('amount');
+            }
+            $actualPaid = $directPayments + $salePayments;
         }
 
-        $actualPaid          = $directPayments + $salePayments;
         $data['amount_paid'] = round($actualPaid, 2);
         $data['balance_due'] = round(max(0, $grandTotal - $actualPaid), 2);
 

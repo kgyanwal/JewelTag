@@ -62,16 +62,29 @@ class FindStock extends Page implements HasForms, HasTable
         $this->form->fill();
     }
 
+    // 🚀 1. Override native table search (Top right search bar)
+    public function updatedTableSearch(): void
+    {
+        $this->resetPage($this->getTablePaginationPageName());
+    }
+
+    // 🚀 2. Override native column searches
+    public function updatedTableColumnSearches(): void
+    {
+        $this->resetPage($this->getTablePaginationPageName());
+    }
+
+    // 🚀 3. Override your custom form filters
     public function updated($property): void
     {
         if (str_starts_with($property, 'data.')) {
-            $this->resetTable();
+            $this->resetPage($this->getTablePaginationPageName());
         }
     }
 
     public function applyFilters(): void
     {
-        $this->resetTable();
+        $this->resetPage($this->getTablePaginationPageName());
     }
 
     protected function getHeaderActions(): array
@@ -83,7 +96,9 @@ class FindStock extends Page implements HasForms, HasTable
                 ->color('danger')
                 ->action(function () {
                     $this->form->fill();
-                    $this->resetTable();
+                    // Cleanly deselect records and reset page without destroying table state completely
+                    $this->deselectAllTableRecords();
+                    $this->resetPage($this->getTablePaginationPageName());
                     Notification::make()->title('Filters Cleared')->success()->send();
                 }),
 
@@ -284,8 +299,6 @@ class FindStock extends Page implements HasForms, HasTable
             ->when($f['is_trade_in'] !== null && $f['is_trade_in'] !== '', fn($q) => $q->where('is_trade_in', $f['is_trade_in']))
             ->when($f['price_from'] ?? null,    fn($q, $v) => $q->where('retail_price', '>=', $v))
             ->when($f['price_to'] ?? null,      fn($q, $v) => $q->where('retail_price', '<=', $v))
-
-            // 🚀 THE FIX: Changed 'saleItems' to 'saleItem' to match the relationship name in the Model!
             ->when(
                 $f['job_number'] ?? null,
                 fn($q, $v) =>
@@ -551,176 +564,183 @@ class FindStock extends Page implements HasForms, HasTable
                         }),
 
                     TableAction::make('transfer_stock')
-    ->label('Transfer to Store')
-    ->icon('heroicon-o-truck')
-    ->color('info')
-    ->form([
-        Select::make('target_tenant_id')
-            ->label('Destination Store')
-            ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
-            ->required(),
-        \Filament\Forms\Components\Textarea::make('notes')
-            ->label('Transfer Notes / Reason')
-            ->placeholder('e.g. Sending for display, customer request...')
-            ->rows(2),
-    ])
-    ->action(function (ProductItem $record, array $data) {
-        $sourceTenantId = tenant('id');
-        $targetTenantId = $data['target_tenant_id'];
+                        ->label('Transfer to Store')
+                        ->icon('heroicon-o-truck')
+                        ->color('info')
+                        ->form([
+                            Select::make('target_tenant_id')
+                                ->label('Destination Store')
+                                ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
+                                ->required(),
+                            \Filament\Forms\Components\Textarea::make('notes')
+                                ->label('Transfer Notes / Reason')
+                                ->placeholder('e.g. Sending for display, customer request...')
+                                ->rows(2),
+                        ])
+                        ->action(function (ProductItem $record, array $data) {
+                            $sourceTenantId = tenant('id');
+                            $targetTenantId = $data['target_tenant_id'];
 
-        // 1. Create transfer log in SOURCE tenant
-        $transfer = \App\Models\StockTransfer::create([
-            'transfer_number' => 'TRF-' . date('Ymd') . '-' . rand(100, 999),
-            'from_store_id'   => $record->store_id ?? 1,
-            'to_store_id'     => 1, // default store in destination tenant
-            'from_tenant'     => $sourceTenantId,
-            'to_tenant'       => $targetTenantId,
-            'status'          => 'pending',
-            'item_snapshot'   => [$record->toArray()],
-            'barcode'         => $record->barcode,
-            'transferred_by'  => auth()->user()->name,
-            'notes'           => $data['notes'] ?? null,
-            'transfer_date'   => now(),
-        ]);
+                            // 1. Create transfer log in SOURCE tenant
+                            $transfer = \App\Models\StockTransfer::create([
+                                'transfer_number' => 'TRF-' . date('Ymd') . '-' . rand(100, 999),
+                                'from_store_id'   => $record->store_id ?? 1,
+                                'to_store_id'     => 1, // default store in destination tenant
+                                'from_tenant'     => $sourceTenantId,
+                                'to_tenant'       => $targetTenantId,
+                                'status'          => 'pending',
+                                'item_snapshot'   => [$record->toArray()],
+                                'barcode'         => $record->barcode,
+                                'transferred_by'  => auth()->user()->name,
+                                'notes'           => $data['notes'] ?? null,
+                                'transfer_date'   => now(),
+                            ]);
 
-        // Link the item to the transfer
-        \App\Models\StockTransferItem::create([
-            'stock_transfer_id' => $transfer->id,
-            'product_item_id'   => $record->id,
-        ]);
+                            // Link the item to the transfer
+                            \App\Models\StockTransferItem::create([
+                                'stock_transfer_id' => $transfer->id,
+                                'product_item_id'   => $record->id,
+                            ]);
 
-        // 2. Mark item as on_hold while awaiting acceptance
-        $record->update(['status' => 'on_hold']);
+                            // 2. Mark item as on_hold while awaiting acceptance
+                            $record->update(['status' => 'on_hold']);
 
-        // 3. Switch to destination tenant and create mirror transfer record
-        $destTenant = Tenant::find($targetTenantId);
-        if ($destTenant) {
-            tenancy()->initialize($destTenant);
+                            // 3. Switch to destination tenant and create mirror transfer record
+                            $destTenant = Tenant::find($targetTenantId);
+                            if ($destTenant) {
+                                tenancy()->initialize($destTenant);
 
-            \App\Models\StockTransfer::create([
-                'transfer_number' => $transfer->transfer_number,
-                'from_store_id'   => $record->store_id ?? 1,
-                'to_store_id'     => 1,
-                'from_tenant'     => $sourceTenantId,
-                'to_tenant'       => $targetTenantId,
-                'status'          => 'pending',
-                'item_snapshot'   => [$record->toArray()],
-                'barcode'         => $record->barcode,
-                'transferred_by'  => auth()->user()->name,
-                'notes'           => $data['notes'] ?? null,
-                'transfer_date'   => now(),
-            ]);
+                                \App\Models\StockTransfer::create([
+                                    'transfer_number' => $transfer->transfer_number,
+                                    'from_store_id'   => $record->store_id ?? 1,
+                                    'to_store_id'     => 1,
+                                    'from_tenant'     => $sourceTenantId,
+                                    'to_tenant'       => $targetTenantId,
+                                    'status'          => 'pending',
+                                    'item_snapshot'   => [$record->toArray()],
+                                    'barcode'         => $record->barcode,
+                                    'transferred_by'  => auth()->user()->name,
+                                    'notes'           => $data['notes'] ?? null,
+                                    'transfer_date'   => now(),
+                                ]);
 
-            // Notify all users in destination tenant
-            $recipients = User::all();
-            \Filament\Notifications\Notification::make()
-                ->title('📦 Incoming Stock Transfer')
-                ->body("Item #{$record->barcode} is being sent from store {$sourceTenantId}. Go to Stock Transfers to Accept or Deny.")
-                ->warning()
-                ->sendToDatabase($recipients);
+                                // Notify all users in destination tenant
+                                $recipients = User::all();
+                                \Filament\Notifications\Notification::make()
+                                    ->title('📦 Incoming Stock Transfer')
+                                    ->body("Item #{$record->barcode} is being sent from store {$sourceTenantId}. Go to Stock Transfers to Accept or Deny.")
+                                    ->warning()
+                                    ->sendToDatabase($recipients);
 
-            tenancy()->initialize(Tenant::find($sourceTenantId));
-        }
+                                tenancy()->initialize(Tenant::find($sourceTenantId));
+                            }
 
-        Notification::make()
-            ->title('Transfer Request Sent')
-            ->body("Item #{$record->barcode} is pending — awaiting acceptance from {$targetTenantId}.")
-            ->success()
-            ->send();
-    }),
+                            Notification::make()
+                                ->title('Transfer Request Sent')
+                                ->body("Item #{$record->barcode} is pending — awaiting acceptance from {$targetTenantId}.")
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ])
-            ->bulkActions([
+           ->bulkActions([
                 BulkAction::make('bulk_hold')
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
-                    ->action(fn(EloquentCollection $records) => $records->each->update(['status' => 'on_hold'])),
+                    // 🚀 Reverted back to the standard, stable $records collection
+                    ->action(function (EloquentCollection $records, BulkAction $action) {
+                        $records->each->update(['status' => 'on_hold']);
+                        Notification::make()->title('Items placed on hold')->success()->send();
+                        $action->deselectRecordsAfterCompletion();
+                    }),
 
-              BulkAction::make('bulk_transfer')
-    ->label('Batch Transfer')
-    ->icon('heroicon-o-truck')
-    ->color('info')
-    ->form([
-        Select::make('target_tenant_id')
-            ->label('Destination Store')
-            ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
-            ->required(),
-        \Filament\Forms\Components\Textarea::make('notes')
-            ->label('Transfer Notes / Reason')
-            ->rows(2),
-    ])
-    ->action(function (EloquentCollection $records, array $data) {
-        $sourceTenantId = tenant('id');
-        $targetTenantId = $data['target_tenant_id'];
-        $transferNumber = 'TRF-' . date('Ymd') . '-' . rand(100, 999);
-        $staffName      = auth()->user()->name;
-        $succeeded      = 0;
-        $failed         = 0;
+                BulkAction::make('bulk_transfer')
+                    ->label('Batch Transfer')
+                    ->icon('heroicon-o-truck')
+                    ->color('info')
+                    ->form([
+                        Select::make('target_tenant_id')
+                            ->label('Destination Store')
+                            ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
+                            ->required(),
+                        \Filament\Forms\Components\Textarea::make('notes')
+                            ->label('Transfer Notes / Reason')
+                            ->rows(2),
+                    ])
+                    ->action(function (EloquentCollection $records, array $data, BulkAction $action) {
+                        $sourceTenantId = tenant('id');
+                        $targetTenantId = $data['target_tenant_id'];
+                        $transferNumber = 'TRF-' . date('Ymd') . '-' . rand(100, 999);
+                        $staffName      = auth()->user()->name;
+                        $succeeded      = 0;
+                        $failed         = 0;
 
-        foreach ($records as $record) {
-            try {
-                // Create transfer log in SOURCE
-                $transfer = \App\Models\StockTransfer::create([
-                    'transfer_number' => $transferNumber,
-                    'from_store_id'   => $record->store_id ?? 1,
-                    'to_store_id'     => 1,
-                    'from_tenant'     => $sourceTenantId,
-                    'to_tenant'       => $targetTenantId,
-                    'status'          => 'pending',
-                    'item_snapshot'   => [$record->toArray()],
-                    'barcode'         => $record->barcode,
-                    'transferred_by'  => $staffName,
-                    'notes'           => $data['notes'] ?? null,
-                    'transfer_date'   => now(),
-                ]);
+                        foreach ($records as $record) {
+                            try {
+                                // Create transfer log in SOURCE
+                                $transfer = \App\Models\StockTransfer::create([
+                                    'transfer_number' => $transferNumber,
+                                    'from_store_id'   => $record->store_id ?? 1,
+                                    'to_store_id'     => 1,
+                                    'from_tenant'     => $sourceTenantId,
+                                    'to_tenant'       => $targetTenantId,
+                                    'status'          => 'pending',
+                                    'item_snapshot'   => [$record->toArray()],
+                                    'barcode'         => $record->barcode,
+                                    'transferred_by'  => $staffName,
+                                    'notes'           => $data['notes'] ?? null,
+                                    'transfer_date'   => now(),
+                                ]);
 
-                \App\Models\StockTransferItem::create([
-                    'stock_transfer_id' => $transfer->id,
-                    'product_item_id'   => $record->id,
-                ]);
+                                \App\Models\StockTransferItem::create([
+                                    'stock_transfer_id' => $transfer->id,
+                                    'product_item_id'   => $record->id,
+                                ]);
 
-                $record->update(['status' => 'on_hold']);
-                $succeeded++;
-            } catch (\Exception $e) {
-                $failed++;
-            }
-        }
+                                $record->update(['status' => 'on_hold']);
+                                $succeeded++;
+                            } catch (\Exception $e) {
+                                $failed++;
+                            }
+                        }
 
-        // Create ONE mirror record in destination for the whole batch
-        $destTenant = Tenant::find($targetTenantId);
-        if ($destTenant) {
-            tenancy()->initialize($destTenant);
+                        // Create ONE mirror record in destination for the whole batch
+                        $destTenant = Tenant::find($targetTenantId);
+                        if ($destTenant) {
+                            tenancy()->initialize($destTenant);
 
-            \App\Models\StockTransfer::create([
-                'transfer_number' => $transferNumber,
-                'from_store_id'   => 1,
-                'to_store_id'     => 1,
-                'from_tenant'     => $sourceTenantId,
-                'to_tenant'       => $targetTenantId,
-                'status'          => 'pending',
-                'item_snapshot'   => $records->map->toArray()->values()->toArray(),
-                'transferred_by'  => $staffName,
-                'notes'           => $data['notes'] ?? null,
-                'transfer_date'   => now(),
-            ]);
+                            \App\Models\StockTransfer::create([
+                                'transfer_number' => $transferNumber,
+                                'from_store_id'   => 1,
+                                'to_store_id'     => 1,
+                                'from_tenant'     => $sourceTenantId,
+                                'to_tenant'       => $targetTenantId,
+                                'status'          => 'pending',
+                                'item_snapshot'   => $records->map->toArray()->values()->toArray(),
+                                'transferred_by'  => $staffName,
+                                'notes'           => $data['notes'] ?? null,
+                                'transfer_date'   => now(),
+                            ]);
 
-            $recipients = User::all();
-            \Filament\Notifications\Notification::make()
-                ->title('📦 Incoming Batch Transfer')
-                ->body("{$succeeded} items being sent from store {$sourceTenantId}. Go to Stock Transfers to Accept or Deny.")
-                ->warning()
-                ->sendToDatabase($recipients);
+                            $recipients = User::all();
+                            \Filament\Notifications\Notification::make()
+                                ->title('📦 Incoming Batch Transfer')
+                                ->body("{$succeeded} items being sent from store {$sourceTenantId}. Go to Stock Transfers to Accept or Deny.")
+                                ->warning()
+                                ->sendToDatabase($recipients);
 
-            tenancy()->initialize(Tenant::find($sourceTenantId));
-        }
+                            tenancy()->initialize(Tenant::find($sourceTenantId));
+                        }
 
-        Notification::make()
-            ->title('Batch Transfer Sent')
-            ->body("✅ {$succeeded} items pending · ❌ {$failed} failed")
-            ->success()
-            ->send();
-    }),
+                        Notification::make()
+                            ->title('Batch Transfer Sent')
+                            ->body("✅ {$succeeded} items pending · ❌ {$failed} failed")
+                            ->success()
+                            ->send();
+
+                        $action->deselectRecordsAfterCompletion();
+                    }),
 
                 BulkAction::make('bulk_print_tags')
                     ->label('Print Selected Tags')
@@ -729,15 +749,17 @@ class FindStock extends Page implements HasForms, HasTable
                     ->requiresConfirmation()
                     ->modalHeading('Confirm Bulk Tags Print?')
                     ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
-                    ->after(function (EloquentCollection $records) {
+                    ->action(function (EloquentCollection $records, BulkAction $action) {
                         $service     = new ZebraPrinterService();
                         $combinedZpl = "";
+                        
                         foreach ($records as $record) {
                             $combinedZpl .= $service->getZplCode($record);
                         }
+                        
                         $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
-                    })
-                    ->action(fn() => null),
+                        $action->deselectRecordsAfterCompletion();
+                    }),
             ])
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('No stock matches your criteria');
