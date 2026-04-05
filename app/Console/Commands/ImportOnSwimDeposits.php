@@ -225,36 +225,51 @@ class ImportOnSwimDeposits extends Command
     /**
      * Robust customer search matching the Sales script logic
      */
+    /**
+     * Robust customer search for Deposits CSV (which only has full names)
+     */
     private function findCustomer($data)
     {
-        $name = trim($data['Customer'] ?? '');
-        $email = strtolower(trim($data['Email'] ?? ''));
-        $searchPhones = array_filter([
-            preg_replace('/[^0-9]/', '', trim($data['Mobile'] ?? '')),
-            preg_replace('/[^0-9]/', '', trim($data['Customer Ph'] ?? ''))
-        ]);
+        $fullName = trim($data['Customer'] ?? '');
+        
+        if (empty($fullName)) {
+            return null;
+        }
 
-        // 1. Try to find by Name
-        if (!empty($name)) {
-            $found = Customer::withoutGlobalScopes()->where('name', 'like', "%{$name}%")->first();
+        // 1. Try matching the exact full string against first and last name combined
+        $found = Customer::withoutGlobalScopes()
+            ->where(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%")
+            ->orWhere('name', 'LIKE', "%{$fullName}%")
+            ->first();
+
+        if ($found) return $found;
+
+        // 2. Split the name into First and Last and try to match
+        $parts = explode(' ', $fullName);
+        $firstName = $fullName;
+        $lastName = '';
+
+        if (count($parts) >= 2) {
+            $firstName = array_shift($parts); // Grabs the first word
+            $lastName  = implode(' ', $parts);  // Combines the rest for the last name
+
+            $found = Customer::withoutGlobalScopes()
+                ->where('name', 'LIKE', "%{$firstName}%")
+                ->where('last_name', 'LIKE', "%{$lastName}%")
+                ->first();
+
             if ($found) return $found;
         }
 
-        // 2. Try by Email
-        if (!empty($email)) {
-            $found = Customer::withoutGlobalScopes()->where('email', $email)->first();
-            if ($found) return $found;
-        }
-
-        // 3. Try by Phone
-        foreach ($searchPhones as $cleanPhone) {
-            if (strlen($cleanPhone) >= 7) {
-                $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}")->first();
-                if ($found) return $found;
-            }
-        }
-
-        return null;
+        // 3. IF NOT FOUND: Create a basic customer so we don't lose their name!
+        return Customer::withoutEvents(fn() => 
+            Customer::create([
+                'customer_no' => 'DEP-CUST-' . strtoupper(substr(md5($fullName . time()), 0, 8)),
+                'name'        => $firstName,
+                'last_name'   => empty($lastName) ? '.' : $lastName, // Fallback if no last name
+                'is_active'   => true,
+            ])
+        );
     }
 
     private function cleanMoney($value): float {
