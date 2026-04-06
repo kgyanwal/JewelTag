@@ -65,7 +65,7 @@ $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
             'repair_terms'              => $settings['repair_terms'] ?? '',
             'aws_access_key_id'         => $settings['aws_access_key_id'] ?? '',
             'aws_secret_access_key'     => $settings['aws_secret_access_key'] ?? '',
-            'aws_default_region'        => $settings['aws_default_region'] ?? 'us-east-1',
+            'aws_default_region'        => $settings['aws_default_region'] ?? '',
             'aws_bucket'                => $settings['aws_bucket'] ?? '',
             'aws_sms_access_key_id'     => $settings['aws_sms_access_key_id'] ?? '',
             'aws_sms_secret_access_key' => $settings['aws_sms_secret_access_key'] ?? '',

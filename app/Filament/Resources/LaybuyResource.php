@@ -13,7 +13,8 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Forms\Components\{TextInput, Select, Section, Grid, Placeholder, Textarea, DatePicker, Repeater, Hidden, Group};
+use Filament\Forms\Components\{TextInput, Select, Section, Grid, Placeholder, Textarea, Repeater, Hidden, Group};
+use App\Forms\Components\CustomDatePicker;
 use App\Filament\Resources\LaybuyResource\Pages;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
@@ -275,7 +276,7 @@ class LaybuyResource extends Resource
 
                         Section::make('Timeline')
                             ->schema([
-                                DatePicker::make('due_date')->label('Payment Deadline')->default(now()->addMonths(3))->required(),
+                                CustomDatePicker::make('due_date')->label('Payment Deadline')->default(now()->addMonths(3))->required(),
                                 TextInput::make('sales_person')->default(fn() => auth()->user()->name)->readOnly(),
                                 Textarea::make('notes')->rows(3)->placeholder('Internal notes...'),
                             ]),

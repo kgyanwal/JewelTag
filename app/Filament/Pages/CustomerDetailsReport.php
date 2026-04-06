@@ -10,7 +10,9 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Forms\Components\{Section, Grid, DatePicker, CheckboxList, TextInput, Actions, Group};
+use Filament\Forms\Components\{Section, Grid, CheckboxList, TextInput, Actions, Group};
+use App\Forms\Components\CustomDatePicker;
+use COM;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
@@ -68,8 +70,8 @@ class CustomerDetailsReport extends Page implements HasForms, HasTable
                 ->description('Configure dates and specific data points for extraction.')
                 ->schema([
                     Grid::make(3)->schema([
-                        DatePicker::make('date_from')->label('Date Created From')->live(),
-                        DatePicker::make('date_to')->label('Date Created To')->live(),
+                        CustomDatePicker::make('date_from')->label('Date Created From')->live(),
+                        CustomDatePicker::make('date_to')->label('Date Created To')->live(),
                         TextInput::make('postcode')->placeholder('Filter by Postcode')->live(),
                     ]),
 

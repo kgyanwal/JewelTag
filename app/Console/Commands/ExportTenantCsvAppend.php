@@ -53,14 +53,40 @@ class ExportTenantCsvAppend extends Command
         }
     }
 
-    protected function exportTenant(string $tenantId): void
+  protected function exportTenant(string $tenantId): void
     {
-        // Allow --date override for testing, defaults to yesterday
+        // 1. Fetch this specific tenant's AWS settings from their database
+        $settings = DB::table('site_settings')
+            ->whereIn('key', ['aws_access_key_id', 'aws_secret_access_key', 'aws_default_region', 'aws_bucket'])
+            ->pluck('value', 'key');
+
+        $key    = $settings['aws_access_key_id'] ?? null;
+        $secret = $settings['aws_secret_access_key'] ?? null;
+        $region = $settings['aws_default_region'] ?? 'us-east-1';
+        $bucket = $settings['aws_bucket'] ?? null;
+
+        // 2. Safety Check: If they haven't filled out their settings, skip them nicely
+        if (empty($key) || empty($secret) || empty($bucket)) {
+            $this->warn("  ⚠ Missing AWS credentials or bucket in Settings for tenant {$tenantId}. Skipping.");
+            return;
+        }
+
+        // 3. 🚀 Dynamically configure Laravel's S3 disk for this specific tenant
+        config([
+            'filesystems.disks.s3.key'    => $key,
+            'filesystems.disks.s3.secret' => $secret,
+            'filesystems.disks.s3.region' => $region,
+            'filesystems.disks.s3.bucket' => $bucket,
+        ]);
+
+        // 4. CRITICAL: Clear Laravel's cached disk instance so it uses the new credentials
+        Storage::forgetDisk('s3');
+
         $dateOption = $this->option('date');
         $exportDate = $dateOption ? Carbon::parse($dateOption) : Carbon::yesterday();
         $dateLabel  = $exportDate->format('Y-m-d');
 
-        $this->line("  📅 Exporting date: {$dateLabel}");
+        $this->line("  📅 Exporting date: {$dateLabel} to bucket: {$bucket}");
 
         foreach ($this->tables as $table => $dateColumn) {
             $this->exportTable($tenantId, $table, $dateColumn, $exportDate, $dateLabel);

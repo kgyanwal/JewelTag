@@ -10,7 +10,8 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{DatePicker, Section, TextInput, Select, Toggle, Grid, Textarea, Placeholder, Repeater, Hidden, Group};
+use Filament\Forms\Components\{ Section, TextInput, Select, Toggle, Grid, Textarea, Placeholder, Repeater, Hidden, Group};
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Notifications\Notification;
 use Illuminate\Support\HtmlString;
@@ -116,8 +117,8 @@ class RepairResource extends Resource
                                                         TextInput::make('email')->label('Email')->email(),
                                                     ]),
                                                     Grid::make(2)->schema([
-                                                        DatePicker::make('dob')->maxDate(now())->rule('before_or_equal:today')->label('Birth Date'),
-                                                        DatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                                       CustomDatePicker::make('dob')->maxDate(now())->rule('before_or_equal:today')->label('Birth Date'),
+                                                        CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                     ]),
                                                     Section::make('Customer Address')
                                                         ->columns(2)->collapsible()
@@ -297,9 +298,8 @@ class RepairResource extends Resource
                                     ->preload()
                                     ->default(fn() => auth()->user()?->name),
 
-                                DatePicker::make('date_dropped')
+                                CustomDatePicker::make('date_dropped')
                                     ->label('Date Dropped')
-                                    ->native(false)
                                     ->displayFormat('M d, Y'),
                             ]),
 
@@ -311,9 +311,8 @@ class RepairResource extends Resource
                                     ->preload()
                                     ->default(fn() => auth()->user()?->name),
 
-                                DatePicker::make('date_picked_up')
+                                CustomDatePicker::make('date_picked_up')
                                     ->label('Date Picked/Received')
-                                    ->native(false)
                                     ->displayFormat('M d, Y'),
                             ]),
 
@@ -330,9 +329,8 @@ class RepairResource extends Resource
                 ->extraInputAttributes(['data-google-field' => '{establishment} {route}']),
         ]),
 
-                                DatePicker::make('customer_pickup_date')
+                                CustomDatePicker::make('customer_pickup_date')
                                     ->label('Customer Pickup Date')
-                                    ->native(false)
                                     ->displayFormat('M d, Y'),
                             ]),
 

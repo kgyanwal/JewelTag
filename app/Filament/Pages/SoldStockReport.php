@@ -12,7 +12,7 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 
@@ -80,8 +80,8 @@ class SoldStockReport extends Page implements HasTable
             ->filters([
                 Filter::make('sold_date')
                     ->form([
-                        DatePicker::make('from')->label('Sold From'),
-                        DatePicker::make('until')->label('Sold Until'),
+                        CustomDatePicker::make('from')->label('Sold From'),
+                        CustomDatePicker::make('until')->label('Sold Until'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query

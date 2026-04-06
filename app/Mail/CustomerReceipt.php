@@ -29,6 +29,13 @@ class CustomerReceipt extends Mailable
             // 🚀 1. Fetch dynamic settings from the database
             $settings = DB::table('site_settings')->pluck('value', 'key');
 
+            // 1. Get Store Data
+        $store = $this->sale->store;
+        
+        // 2. Set dynamic "From" identity
+        // Use the store's email, or fallback to the system default if missing
+        $store_email = !empty($store->email) ? $store->email : config('mail.from.address');
+        $store_name  = !empty($store->name)  ? $store->name  : 'Our Store';
             // 🚀 2. Safely check for DB credentials, fallback to config
             $key = !empty($settings['aws_access_key_id']) 
                 ? $settings['aws_access_key_id'] 
@@ -40,7 +47,7 @@ class CustomerReceipt extends Mailable
 
             $region = !empty($settings['aws_default_region']) 
                 ? $settings['aws_default_region'] 
-                : config('services.ses.region', 'us-east-1');
+                : config('services.ses.region');
 
             // 🚀 3. Prevent 500 Crash: If keys are entirely missing, abort safely
             if (empty($key) || empty($secret)) {
@@ -81,7 +88,7 @@ class CustomerReceipt extends Mailable
             $recipient = $this->sale->customer->email;
             
             $rawEmail = "From: {$store_name} <{$store_email}>\n";
-            $rawEmail .= "To: {$recipient}\n";
+        $rawEmail .= "To: {$recipient}\n";
             $rawEmail .= "Subject: {$subject}\n";
             $rawEmail .= "MIME-Version: 1.0\n";
             $rawEmail .= "Content-Type: multipart/mixed; boundary=\"{$boundary}\"\n\n";
@@ -91,11 +98,11 @@ class CustomerReceipt extends Mailable
             
             // 8. DYNAMIC MESSAGE BODY
             $rawEmail .= "Dear {$customer_name},\n\n" .
-                "Thank you for shopping with us! {$store_name} greatly appreciates your purchase.\n\n" .
-                "We hope you absolutely love your new jewelry. We are so happy to be a part of your Jewelry Joy!\n\n" .
-                "Please find your receipt attached to this email.\n\n" .
-                "Thank you for choosing {$store_name} for your jewelry needs. We look forward to serving you again soon!\n\n" .
-                "Warm regards,\n\n" .
+                "Thank you for shopping with us! {$store_name} greatly appreciates your purchase.\n" .
+                "We hope you absolutely love your new jewelry. We are so happy to be a part of your Jewelry Joy!\n" .
+                "Please find your receipt attached to this email.\n" .
+                "Thank you for choosing {$store_name} for your jewelry needs. We look forward to serving you again soon!" .
+                "Warm regards,\n" .
                 "The {$store_name} Family\n" .
                 "{$store_address}\n" .
                 "{$store_phone}\n" .
