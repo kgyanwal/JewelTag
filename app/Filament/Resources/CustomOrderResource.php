@@ -12,7 +12,8 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{Section, Grid, Group, Select, TextInput, Textarea, FileUpload, DatePicker, Toggle, Placeholder, Repeater, Hidden, DateTimePicker};
+use Filament\Forms\Components\{Section, Grid, Group, Select, TextInput, Textarea, FileUpload, Toggle, Placeholder, Repeater, Hidden, DateTimePicker};
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Notifications\Notification;
 use Filament\Forms\Get;
@@ -332,9 +333,9 @@ class CustomOrderResource extends Resource
                             ]),
 
                             Grid::make(3)->schema([
-                                DatePicker::make('due_date')->label('Vendor Due Date')->native(false),
-                                DatePicker::make('expected_delivery_date')->label('Cust. Delivery Date')->native(false),
-                                DatePicker::make('follow_up_date')->label('Follow Up Date')->native(false),
+                                CustomDatePicker::make('due_date')->label('Vendor Due Date'),
+                                CustomDatePicker::make('expected_delivery_date')->label('Cust. Delivery Date'),
+                                CustomDatePicker::make('follow_up_date')->label('Follow Up Date'),
                             ]),
                         ]),
                 ]),

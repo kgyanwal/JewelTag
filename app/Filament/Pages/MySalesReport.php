@@ -11,7 +11,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\Filter;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Select;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -158,10 +158,10 @@ class MySalesReport extends Page implements HasTable
             ->filters([
                 Filter::make('created_at')
                     ->form([
-                        DatePicker::make('from')
+                        CustomDatePicker::make('from')
                             ->label('Start Date')
                             ->default(now()->startOfMonth()),
-                        DatePicker::make('until')
+                        CustomDatePicker::make('until')
                             ->label('End Date')
                             ->default(now()),
                     ])

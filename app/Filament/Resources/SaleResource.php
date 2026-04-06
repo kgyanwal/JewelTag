@@ -15,7 +15,8 @@ use App\Models\SaleEditRequest;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, DatePicker, Textarea, Toggle};
+use Filament\Forms\Components\{Section, Grid, Group, Repeater, Select, TextInput, Placeholder, Hidden, Checkbox, Textarea, Toggle};
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Tables;
@@ -266,7 +267,7 @@ class SaleResource extends Resource
                                                 Placeholder::make('spacer')->label('')->content(''), 
                                                 Toggle::make('is_tax_free')->label('Tax Free Order?')->default(false)->inline(false)->live(),
                                             ]),
-                                            DatePicker::make('due_date')->label('Promised By Date')->native(false)->required(),
+                                            CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
                                             Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
                                         ])
                                         ->action(function (array $data, Get $get, Set $set) {
@@ -434,7 +435,7 @@ class SaleResource extends Resource
                                                         Placeholder::make('spacer')->label('')->content(''), 
                                                         Toggle::make('is_tax_free')->label('Tax Free Order?')->inline(false)->live(),
                                                     ]),
-                                                    DatePicker::make('due_date')->label('Promised By Date')->native(false)->required(),
+                                                    CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
                                                     Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
                                                 ])
                                                 ->action(function (array $data, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
@@ -641,9 +642,8 @@ class SaleResource extends Resource
                                                         'Silver'   => 'Sterling Silver',
                                                     ])
                                                     ->placeholder('Select Metal'),
-                                                DatePicker::make('date_required')
+                                               CustomDatePicker::make('date_required')
                                                     ->label('Completion Date')
-                                                    ->native(false)
                                                     ->displayFormat('M d, Y'),
                                             ]),
                                             Grid::make(2)
@@ -723,11 +723,10 @@ class SaleResource extends Resource
                                             ->visible(fn(Get $get) => $get('has_warranty') == 1)
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                        DatePicker::make('follow_up_date')
+                                        CustomDatePicker::make('follow_up_date')
                                             ->label('Follow Up (2 Weeks)')
-                                            ->default(now()->addWeeks(2))
-                                            ->native(false)
-                                            ->displayFormat('M d, Y'),
+                                            ->default(now()->addWeeks(2)->format('Y-m-d'))
+                                            ->displayFormat('m/d/Y')
                                     ]),
                                 ]),
                             Section::make('Shipping & Handling')
@@ -852,8 +851,8 @@ class SaleResource extends Resource
                                                                         ->unique('customers', 'email'),
                                                                 ]),
                                                                 Forms\Components\Grid::make(2)->schema([
-                                                                    DatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
-                                                                    Forms\Components\DatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                                                    CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                                    CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                                 ]),
                                                                 Forms\Components\Section::make('Customer Address')
                                                                     ->description('Search for an address to automatically fill the fields below.')

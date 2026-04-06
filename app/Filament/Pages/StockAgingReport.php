@@ -8,7 +8,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +39,7 @@ class StockAgingReport extends Page implements HasForms
         return $form->schema([
             Section::make('Report Filters')->schema([
                 Grid::make(3)->schema([
-                    DatePicker::make('as_of_date')
+                    CustomDatePicker::make('as_of_date')
                         ->label('To Date')
                         ->default(now())
                         ->live()

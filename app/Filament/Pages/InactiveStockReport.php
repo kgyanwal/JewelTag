@@ -10,7 +10,8 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Forms\Components\{Section, Grid, Select, DatePicker, TextInput, CheckboxList};
+use Filament\Forms\Components\{Section, Grid, Select, TextInput, CheckboxList};
+use App\Forms\Components\CustomDatePicker;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -45,8 +46,8 @@ class InactiveStockReport extends Page implements HasForms, HasTable
             Section::make('Report Filters')
                 ->schema([
                     Grid::make(3)->schema([
-                        DatePicker::make('filterData.inactivated_from')->label('Inactivated From')->live(),
-                        DatePicker::make('filterData.inactivated_to')->label('To')->live(),
+                        CustomDatePicker::make('filterData.inactivated_from')->label('Inactivated From')->live(),
+                        CustomDatePicker::make('filterData.inactivated_to')->label('To')->live(),
                         Select::make('filterData.reason')
                             ->label('Reason')
                             ->options(ProductItem::whereNotNull('inactivated_reason')->distinct()->pluck('inactivated_reason', 'inactivated_reason'))
