@@ -307,7 +307,7 @@ class SaleResource extends Resource
                                     ])->columnSpan(1),
                                 ]),
 
-                            Section::make('Current Bill Items')->schema([
+                           Section::make('Current Bill Items')->schema([
                                 Repeater::make('items')
                                     ->relationship('items')
                                     ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
@@ -486,12 +486,15 @@ class SaleResource extends Resource
                                             ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
                                             ->columnSpan(3),
 
+                                        // 🚀 THE FIX: Disable Quantity for Custom Orders
                                         TextInput::make('qty')
                                             ->numeric()
                                             ->default(1)
                                             ->required()
                                             ->live(onBlur: true)
                                             ->columnSpan(1)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated()
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 if ($pid = $get('product_item_id')) {
                                                     $productItem = ProductItem::find($pid);
@@ -507,11 +510,14 @@ class SaleResource extends Resource
                                                 self::updateTotals($get, $set);
                                             }),
 
+                                        // 🚀 THE FIX: Disable Unit Price for Custom Orders
                                         TextInput::make('sold_price')
                                             ->label('Price')
                                             ->numeric()
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated()
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $qty     = intval($get('qty') ?? 1);
                                                 $percent = floatval($get('discount_percent') ?? 0);
@@ -521,10 +527,13 @@ class SaleResource extends Resource
                                                 self::updateTotals($get, $set);
                                             }),
 
+                                        // 🚀 THE FIX: Disable Sale Price Override for Custom Orders
                                         TextInput::make('sale_price_override')
                                             ->label('Sale Price')
                                             ->columnSpan(2)
                                             ->live(onBlur: true)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated()
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $unitPrice    = floatval($get('sold_price') ?? 0);
                                                 $qty          = intval($get('qty') ?? 1);
@@ -540,6 +549,7 @@ class SaleResource extends Resource
                                                 self::updateTotals($get, $set);
                                             }),
 
+                                        // 🚀 THE FIX: Disable Discount Percent for Custom Orders
                                         TextInput::make('discount_percent')
                                             ->label('Disc %')
                                             ->numeric()
@@ -547,6 +557,8 @@ class SaleResource extends Resource
                                             ->default(0)
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated()
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $price     = floatval($get('sold_price') ?? 0);
                                                 $qty       = intval($get('qty') ?? 1);
@@ -561,6 +573,7 @@ class SaleResource extends Resource
                                                 self::updateTotals($get, $set);
                                             }),
 
+                                        // 🚀 THE FIX: Disable Discount Amount for Custom Orders
                                         TextInput::make('discount_amount')
                                             ->label('Disc $')
                                             ->numeric()
@@ -568,6 +581,8 @@ class SaleResource extends Resource
                                             ->prefix('$')
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated()
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $price          = floatval($get('sold_price') ?? 0);
                                                 $qty            = intval($get('qty') ?? 1);
@@ -588,6 +603,8 @@ class SaleResource extends Resource
                                             ->default(false)
                                             ->dehydrated(true)
                                             ->live()
+                                            // 🚀 THE FIX: Disable Tax Free toggle for Custom Orders (it has its own in the modal)
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                     ])
                                     ->columns(12)

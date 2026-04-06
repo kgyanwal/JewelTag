@@ -648,11 +648,12 @@ class FindStock extends Page implements HasForms, HasTable
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
-                    // 🚀 Reverted back to the standard, stable $records collection
-                    ->action(function (EloquentCollection $records, BulkAction $action) {
-                        $records->each->update(['status' => 'on_hold']);
+                    // 🚀 THE FIX: Use the raw array of selected IDs from Livewire
+                    ->action(function (\Filament\Tables\Contracts\HasTable $livewire) {
+                        $selectedIds = $livewire->selectedTableRecords;
+                        ProductItem::whereIn('id', $selectedIds)->update(['status' => 'on_hold']);
                         Notification::make()->title('Items placed on hold')->success()->send();
-                        $action->deselectRecordsAfterCompletion();
+                        $livewire->selectedTableRecords = []; // Clear checkboxes
                     }),
 
                 BulkAction::make('bulk_transfer')
@@ -668,7 +669,11 @@ class FindStock extends Page implements HasForms, HasTable
                             ->label('Transfer Notes / Reason')
                             ->rows(2),
                     ])
-                    ->action(function (EloquentCollection $records, array $data, BulkAction $action) {
+                    ->action(function (array $data, \Filament\Tables\Contracts\HasTable $livewire) {
+                        // 🚀 THE FIX: Get ALL selected IDs regardless of the search bar
+                        $selectedIds = $livewire->selectedTableRecords;
+                        $records = ProductItem::whereIn('id', $selectedIds)->get();
+
                         $sourceTenantId = tenant('id');
                         $targetTenantId = $data['target_tenant_id'];
                         $transferNumber = 'TRF-' . date('Ymd') . '-' . rand(100, 999);
@@ -739,7 +744,8 @@ class FindStock extends Page implements HasForms, HasTable
                             ->success()
                             ->send();
 
-                        $action->deselectRecordsAfterCompletion();
+                        // 🚀 THE FIX: Clear checkboxes after successful transfer
+                        $livewire->selectedTableRecords = [];
                     }),
 
                 BulkAction::make('bulk_print_tags')
@@ -749,7 +755,11 @@ class FindStock extends Page implements HasForms, HasTable
                     ->requiresConfirmation()
                     ->modalHeading('Confirm Bulk Tags Print?')
                     ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
-                    ->action(function (EloquentCollection $records, BulkAction $action) {
+                    ->action(function (\Filament\Tables\Contracts\HasTable $livewire) {
+                        // 🚀 THE FIX: Use the raw array of selected IDs from Livewire
+                        $selectedIds = $livewire->selectedTableRecords;
+                        $records = ProductItem::whereIn('id', $selectedIds)->get();
+                        
                         $service     = new ZebraPrinterService();
                         $combinedZpl = "";
                         
@@ -757,8 +767,8 @@ class FindStock extends Page implements HasForms, HasTable
                             $combinedZpl .= $service->getZplCode($record);
                         }
                         
-                        $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
-                        $action->deselectRecordsAfterCompletion();
+                        $livewire->dispatch('print-zpl-locally', zpl: $combinedZpl);
+                        $livewire->selectedTableRecords = []; // Clear checkboxes
                     }),
             ])
             ->defaultSort('created_at', 'desc')

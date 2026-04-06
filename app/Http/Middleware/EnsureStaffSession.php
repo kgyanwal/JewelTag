@@ -26,7 +26,11 @@ public function handle(Request $request, Closure $next)
             'next' => $request->fullUrl()
         ]);
     }
-
+if (tenant() && tenant('is_active') === false) {
+        // If they are not active, log them out and show a billing error
+        auth()->logout();
+        abort(403, 'ACCOUNT SUSPENDED: Please update your billing information or contact support to restore access.');
+    }
     return $next($request);
 }
 
