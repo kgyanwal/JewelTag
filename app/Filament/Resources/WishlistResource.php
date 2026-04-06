@@ -10,6 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
@@ -34,7 +35,7 @@ class WishlistResource extends Resource
                 ->searchable()
                 ->required(),
             Forms\Components\Textarea::make('notes'),
-            Forms\Components\DatePicker::make('follow_up_date'),
+            CustomDatePicker::make('follow_up_date'),
             Forms\Components\Select::make('status')
                 ->options([
                     'active' => 'Active',

@@ -16,7 +16,7 @@ use App\Models\InventorySetting;
 use App\Models\Supplier;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -140,12 +140,12 @@ class SoldItemsReport extends Page implements HasForms, HasTable
                     ->collapsible()
                     ->schema([
                         Grid::make(3)->schema([
-                            DatePicker::make('from_date')
+                           CustomDatePicker::make('from_date')
                                 ->label('Start Date')
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->refreshIntelligence()),
                             
-                            DatePicker::make('to_date')
+                            CustomDatePicker::make('to_date')
                                 ->label('End Date')
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->refreshIntelligence()),

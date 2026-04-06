@@ -12,7 +12,7 @@ class CustomDatePicker extends Field
     use CanBeDisabled;
 
     protected string $view = 'forms.components.custom-date-picker';
-    protected string $displayFormat = 'm/d/Y';
+    protected string $displayFormat = 'mm/dd/yyyy';
 
     /**
      * Forces the component to be reactive with Livewire.

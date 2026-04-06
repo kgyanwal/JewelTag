@@ -11,6 +11,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Enums\FiltersLayout;
 use Illuminate\Database\Eloquent\Builder;
+use App\Forms\Components\CustomDatePicker;
 use Illuminate\Support\Facades\DB;
 
 class ActivityLogResource extends Resource
@@ -91,7 +92,7 @@ class ActivityLogResource extends Resource
                                 ->preload(),
 
                             // 2. Exact Date
-                            Forms\Components\DatePicker::make('exact_date')
+                            CustomDatePicker::make('exact_date')
                                 ->label('Date'),
 
                             // 3. Hour (0-23)

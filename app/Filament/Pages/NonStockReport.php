@@ -11,6 +11,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\DB;
 use Filament\Tables\Columns\Summarizers\Sum;
+use App\Forms\Components\CustomDatePicker;
 
 class NonStockReport extends Page implements Tables\Contracts\HasTable
 {
@@ -119,8 +120,8 @@ class NonStockReport extends Page implements Tables\Contracts\HasTable
 
                 Tables\Filters\Filter::make('date_range')
                     ->form([
-                        \Filament\Forms\Components\DatePicker::make('from')->label('From'),
-                        \Filament\Forms\Components\DatePicker::make('until')->label('Until'),
+                        CustomDatePicker::make('from')->label('From'),  
+                        CustomDatePicker::make('until')->label('Until'),
                     ])
                     ->query(function ($query, array $data) {
                         return $query

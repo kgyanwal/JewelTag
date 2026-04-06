@@ -11,6 +11,7 @@ use App\Services\ZebraPrinterService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Actions\Action as FormAction;
@@ -685,7 +686,7 @@ Hidden::make('web_item')->default(false),
                                 ->label('Notes')
                                 ->placeholder('e.g. Loves this for anniversary, budget is tight'),
 
-                            Forms\Components\DatePicker::make('follow_up_date')
+                            CustomDatePicker::make('follow_up_date')
                                 ->label('Follow Up Date'),
                         ])
                         ->action(function (ProductItem $record, array $data) {
