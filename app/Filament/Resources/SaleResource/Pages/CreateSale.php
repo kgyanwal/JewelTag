@@ -184,7 +184,13 @@ class CreateSale extends CreateRecord
                 ->label('Complete Sale')
                 ->color('success')
                 ->icon('heroicon-o-check')
-                
+                ->disabled(function () {
+                    $hasCustomer = !empty($this->data['customer_id']);
+                    $hasItems    = !empty($this->data['items']);
+                    $hasPayment  = !empty($this->data['payment_method']) || !empty($this->data['is_split_payment']);
+                    
+                    return !$hasCustomer || !$hasItems || !$hasPayment;
+                })
                 ->extraAttributes([
                     'class'             => 'w-full md:w-auto',
                     'wire:loading.attr' => 'disabled',
@@ -391,29 +397,29 @@ class CreateSale extends CreateRecord
 
                         // Determine if it's a completely NEW order created during this sale
                         $isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
-if ($isBrandNew) {
-    // 🚀 THE FIX: If it is a new order, just update status and link sale. 
-    // Do NOT overwrite the balance_due or amount_paid, keep the deposit math!
-    $customOrder->update([
-        'status'  => 'in_production',
-        'sale_id' => $sale->id,
-    ]);
-} else {
-    // 🚀 THE FIX: Calculate the TRUE grand total including tax to ensure the balance zeros out properly
-    $quotedPrice = floatval($customOrder->quoted_price);
-    $isTaxFree   = (bool)($customOrder->is_tax_free);
-    $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
-    $grandTotal  = $quotedPrice + ($quotedPrice * $taxRate);
+                        if ($isBrandNew) {
+                            // 🚀 THE FIX: If it is a new order, just update status and link sale. 
+                            // Do NOT overwrite the balance_due or amount_paid, keep the deposit math!
+                            $customOrder->update([
+                                'status'  => 'in_production',
+                                'sale_id' => $sale->id,
+                            ]);
+                        } else {
+                            // 🚀 THE FIX: Calculate the TRUE grand total including tax to ensure the balance zeros out properly
+                            $quotedPrice = floatval($customOrder->quoted_price);
+                            $isTaxFree   = (bool)($customOrder->is_tax_free);
+                            $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                            $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                            $grandTotal  = $quotedPrice + ($quotedPrice * $taxRate);
 
-    // If we are checking out an OLD order, mark it fully paid at the correct post-tax amount
-    $customOrder->update([
-        'status'      => 'completed',
-        'sale_id'     => $sale->id,
-        'balance_due' => 0,
-        'amount_paid' => $grandTotal, // 🚀 Now uses grandTotal instead of pre-tax quoted_price
-    ]);
-}
+                            // If we are checking out an OLD order, mark it fully paid at the correct post-tax amount
+                            $customOrder->update([
+                                'status'      => 'completed',
+                                'sale_id'     => $sale->id,
+                                'balance_due' => 0,
+                                'amount_paid' => $grandTotal, // 🚀 Now uses grandTotal instead of pre-tax quoted_price
+                            ]);
+                        }
                     }
                 }
 

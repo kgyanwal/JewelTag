@@ -279,38 +279,65 @@ class SaleResource extends Resource
                                             $draftId = (string) Str::uuid();
                                             $data['draft_id'] = $draftId;
 
-                                            $currentItems = $get('items') ?? [];
-                                            $currentItems[$draftId] = [
-                                                'product_item_id' => null, 'repair_id' => null, 'custom_order_id' => null,
-                                                'is_non_stock' => false, 'is_new_custom_order' => true, 
-                                                'new_custom_data' => json_encode($data), 'stock_no_display' => 'NEW CUSTOM',
-                                                'custom_description' => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
-                                                'qty' => 1, 'sold_price' => $price, 'sale_price_override' => $price,
-                                                'discount_percent' => 0, 'discount_amount' => 0, 'is_tax_free' => $data['is_tax_free'] ?? false,
-                                            ];
-                                            $set('items', $currentItems);
+                                                // Assign a strict ID
+                                                $draftId = (string) Str::uuid();
+                                                $data['draft_id'] = $draftId;
 
-                                            if ($deposit > 0) {
-                                                $set('is_split_payment', true);
-                                                $splits = $get('split_payments') ?? [];
-                                                $cleanSplits = [];
-                                                // Destroy empty default rows
-                                                foreach ($splits as $k => $v) {
-                                                    if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
+                                                $currentItems = $get('items') ?? [];
+                                                $currentItems[$draftId] = [
+                                                    'product_item_id' => null,
+                                                    'repair_id' => null,
+                                                    'custom_order_id' => null,
+                                                    'is_non_stock' => false,
+                                                    'is_new_custom_order' => true,
+                                                    'new_custom_data' => json_encode($data),
+                                                    'stock_no_display' => 'NEW CUSTOM',
+                                                    'custom_description' => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
+                                                    'qty' => 1,
+                                                    'sold_price' => $price,
+                                                    'sale_price_override' => $price,
+                                                    'discount_percent' => 0,
+                                                    'discount_amount' => 0,
+                                                    'is_tax_free' => $data['is_tax_free'] ?? false,
+                                                ];
+                                                $set('items', $currentItems);
+
+                                                if ($deposit > 0) {
+                                                    $set('is_split_payment', true);
+                                                    $splits = $get('split_payments') ?? [];
+                                                    $cleanSplits = [];
+                                                    // Destroy empty default rows
+                                                    foreach ($splits as $k => $v) {
+                                                        if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
+                                                    }
+                                                    // Link this deposit strictly to the draft ID
+                                                    $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
+                                                    $set('split_payments', $cleanSplits);
                                                 }
-                                                // Link this deposit strictly to the draft ID
-                                                $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
-                                                $set('split_payments', $cleanSplits);
-                                            }
 
-                                            self::updateTotals($get, $set);
-                                        }),
+                                                self::updateTotals($get, $set);
+                                            }),
                                     ])->columnSpan(1),
                                 ]),
 
-                           Section::make('Current Bill Items')->schema([
+                            Section::make('Current Bill Items')->schema([
                                 Repeater::make('items')
                                     ->relationship('items')
+                                    ->mutateRelationshipDataBeforeFillUsing(function (array $data): array {
+        if (!empty($data['product_item_id'])) {
+            $item = \App\Models\ProductItem::find($data['product_item_id']);
+            $data['stock_no_display'] = $item ? $item->barcode : 'UNKNOWN STOCK';
+        } elseif (!empty($data['custom_order_id'])) {
+            $co = \App\Models\CustomOrder::find($data['custom_order_id']);
+            $data['stock_no_display'] = $co ? 'CUSTOM #' . ($co->order_no ?? $co->id) : 'CUSTOM';
+        } elseif (!empty($data['repair_id'])) {
+            $rep = \App\Models\Repair::find($data['repair_id']);
+            $data['stock_no_display'] = $rep ? 'REPAIR #' . ($rep->repair_no ?? $rep->id) : 'REPAIR';
+        } else {
+            $data['stock_no_display'] = 'NON-TAG';
+        }
+        return $data;
+    })
                                     ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
                                         if (!empty($data['is_new_custom_order'])) {
                                             // 🚀 Decode the JSON string back into an array
@@ -446,38 +473,41 @@ class SaleResource extends Resource
                                                     $deposit = floatval($data['custom_deposit_amount'] ?? 0);
                                                     $method  = $data['deposit_method'] ?? 'CASH';
 
-                                                    $set('new_custom_data', json_encode($data));
-                                                    $set('sold_price', (float)$data['quoted_price']);
-                                                    $set('sale_price_override', (float)$data['quoted_price']);
-                                                    $set('is_tax_free', $data['is_tax_free'] ?? false);
-                                                    $set('custom_description', "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''));
+                                                        $deposit = floatval($data['custom_deposit_amount'] ?? 0);
+                                                        $method  = $data['deposit_method'] ?? 'CASH';
 
-                                                    // 🚀 Safely rebuild the splits array
-                                                    $splits = data_get($livewire->data, 'split_payments') ?? [];
-                                                    $cleanSplits = [];
-                                                    foreach ($splits as $k => $v) {
-                                                        // Keep valid existing payments EXCEPT the one we are editing
-                                                        if (floatval($v['amount'] ?? 0) > 0 && $k !== $draftId) {
-                                                            $cleanSplits[$k] = $v;
+                                                        $set('new_custom_data', json_encode($data));
+                                                        $set('sold_price', (float)$data['quoted_price']);
+                                                        $set('sale_price_override', (float)$data['quoted_price']);
+                                                        $set('is_tax_free', $data['is_tax_free'] ?? false);
+                                                        $set('custom_description', "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''));
+
+                                                        // 🚀 Safely rebuild the splits array
+                                                        $splits = data_get($livewire->data, 'split_payments') ?? [];
+                                                        $cleanSplits = [];
+                                                        foreach ($splits as $k => $v) {
+                                                            // Keep valid existing payments EXCEPT the one we are editing
+                                                            if (floatval($v['amount'] ?? 0) > 0 && $k !== $draftId) {
+                                                                $cleanSplits[$k] = $v;
+                                                            }
                                                         }
-                                                    }
 
-                                                    if ($deposit > 0) {
-                                                        data_set($livewire->data, 'is_split_payment', true);
-                                                        $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
-                                                    }
+                                                        if ($deposit > 0) {
+                                                            data_set($livewire->data, 'is_split_payment', true);
+                                                            $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
+                                                        }
 
-                                                    data_set($livewire->data, 'split_payments', $cleanSplits);
-                                                    
-                                                    if (empty($cleanSplits)) {
-                                                        data_set($livewire->data, 'is_split_payment', false);
-                                                        data_set($livewire->data, 'amount_paid', 0);
-                                                    }
+                                                        data_set($livewire->data, 'split_payments', $cleanSplits);
 
-                                                    self::updateTotals(fn($p) => data_get($livewire->data, $p), fn($p, $v) => data_set($livewire->data, $p, $v));
-                                                })
-                                        )
-                                        ->columnSpan(2),
+                                                        if (empty($cleanSplits)) {
+                                                            data_set($livewire->data, 'is_split_payment', false);
+                                                            data_set($livewire->data, 'amount_paid', 0);
+                                                        }
+
+                                                        self::updateTotals(fn($p) => data_get($livewire->data, $p), fn($p, $v) => data_set($livewire->data, $p, $v));
+                                                    })
+                                            )
+                                            ->columnSpan(2),
 
                                         Textarea::make('custom_description')
                                             ->label('Description')
@@ -494,8 +524,8 @@ class SaleResource extends Resource
                                             ->required()
                                             ->live(onBlur: true)
                                             ->columnSpan(1)
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
-                                            ->dehydrated()
+                                            ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 if ($pid = $get('product_item_id')) {
                                                     $productItem = ProductItem::find($pid);
@@ -517,8 +547,8 @@ class SaleResource extends Resource
                                             ->numeric()
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
-                                            ->dehydrated()
+                                            ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $qty     = intval($get('qty') ?? 1);
                                                 $percent = floatval($get('discount_percent') ?? 0);
@@ -533,8 +563,8 @@ class SaleResource extends Resource
                                             ->label('Sale Price')
                                             ->columnSpan(2)
                                             ->live(onBlur: true)
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
-                                            ->dehydrated()
+                                            ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $unitPrice    = floatval($get('sold_price') ?? 0);
                                                 $qty          = intval($get('qty') ?? 1);
@@ -558,8 +588,8 @@ class SaleResource extends Resource
                                             ->default(0)
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
-                                            ->dehydrated()
+                                            ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $price     = floatval($get('sold_price') ?? 0);
                                                 $qty       = intval($get('qty') ?? 1);
@@ -582,8 +612,8 @@ class SaleResource extends Resource
                                             ->prefix('$')
                                             ->live(onBlur: true)
                                             ->columnSpan(2)
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
-                                            ->dehydrated()
+                                            ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 $price          = floatval($get('sold_price') ?? 0);
                                                 $qty            = intval($get('qty') ?? 1);
@@ -613,7 +643,7 @@ class SaleResource extends Resource
                                     ->deletable(true)
                                     ->reorderable(false)
                                     ->default([])
-                                    ->live()
+                                    ->live(onBlur: true)
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set))
                             ]),
 
@@ -749,6 +779,21 @@ class SaleResource extends Resource
                                         ->label('Receipt Notes / Warranty')
                                         ->rows(3),
                                 ]),
+                       Placeholder::make('validation_alert')
+                                ->label('')
+                                ->content(function (Get $get) {
+                                    $missing = [];
+                                    if (empty($get('customer_id'))) $missing[] = 'Customer';
+                                    if (empty($get('items'))) $missing[] = 'Items in Cart';
+                                    if (empty($get('payment_method')) && empty($get('is_split_payment'))) $missing[] = 'Payment Method';
+
+                                    if (empty($missing)) {
+                                        return new HtmlString("<div style='padding: 12px; background-color: #ecfdf5; color: #047857; border: 2px solid #10b981; border-radius: 8px; text-align: center; font-weight: 900; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.1);'>✅ READY TO COMPLETE SALE</div>");
+                                    }
+
+                                    $text = implode(', ', $missing);
+                                    return new HtmlString("<div style='padding: 12px; background-color: #fef2f2; color: #dc2626; border: 2px dashed #ef4444; border-radius: 8px; text-align: center; font-size: 0.875rem; font-weight: 800; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1);'>⚠️ MISSING: {$text}</div>");
+                                }),
                         ]),
 
                     Group::make()->columnSpan(4)
@@ -1130,21 +1175,21 @@ class SaleResource extends Resource
                                         $remaining            = $total - $paidSum;
 
                                         // ── 4. RENDER BREAKDOWN HELPER ──
-                                       $renderBreakdown = function() use ($total, $actualCustomDeposit, $regularPaymentAmount) {
-            $html = "
+                                        $renderBreakdown = function () use ($total, $actualCustomDeposit, $regularPaymentAmount) {
+                                            $html = "
             <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
             </div>";
 
-            // 🚀 THE FIX: Always show the Custom Deposit line, even if it is $0
-            $html .= "
+                                            // 🚀 THE FIX: Always show the Custom Deposit line, even if it is $0
+                                            $html .= "
             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: " . ($actualCustomDeposit > 0 ? '#10b981' : '#9ca3af') . ";'>+$" . number_format($actualCustomDeposit, 2) . "</span>
             </div>";
 
-            if ($regularPaymentAmount > 0) {
+                                            if ($regularPaymentAmount > 0) {
                                                 $html .= "
                                             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                                                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
@@ -1230,6 +1275,8 @@ class SaleResource extends Resource
                                     ");
                                     })
                                     ->live(),
+                                   
+                          
                             ]),
                         ]),
                 ]),

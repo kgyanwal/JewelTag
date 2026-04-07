@@ -648,106 +648,113 @@ class FindStock extends Page implements HasForms, HasTable
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
-                    // 🚀 THE FIX: Use the raw array of selected IDs from Livewire
-                    ->action(function (\Filament\Tables\Contracts\HasTable $livewire) {
-                        $selectedIds = $livewire->selectedTableRecords;
-                        ProductItem::whereIn('id', $selectedIds)->update(['status' => 'on_hold']);
+                    // 🚀 THE FIX: Use standard collection processing
+                    ->action(function (EloquentCollection $records, BulkAction $action) {
+                        $records->each->update(['status' => 'on_hold']);
                         Notification::make()->title('Items placed on hold')->success()->send();
-                        $livewire->selectedTableRecords = []; // Clear checkboxes
+                        $action->deselectRecordsAfterCompletion();
                     }),
 
-                BulkAction::make('bulk_transfer')
-                    ->label('Batch Transfer')
-                    ->icon('heroicon-o-truck')
-                    ->color('info')
-                    ->form([
-                        Select::make('target_tenant_id')
-                            ->label('Destination Store')
-                            ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
-                            ->required(),
-                        \Filament\Forms\Components\Textarea::make('notes')
-                            ->label('Transfer Notes / Reason')
-                            ->rows(2),
-                    ])
-                    ->action(function (array $data, \Filament\Tables\Contracts\HasTable $livewire) {
-                        // 🚀 THE FIX: Get ALL selected IDs regardless of the search bar
-                        $selectedIds = $livewire->selectedTableRecords;
-                        $records = ProductItem::whereIn('id', $selectedIds)->get();
+               BulkAction::make('bulk_transfer')
+    ->label('Batch Transfer')
+    ->icon('heroicon-o-truck')
+    ->color('info')
+    ->form([
+        Select::make('target_tenant_id')
+            ->label('Destination Store')
+            ->options(Tenant::where('id', '!=', tenant('id'))->pluck('id', 'id'))
+            ->required(),
+        \Filament\Forms\Components\Textarea::make('notes')
+            ->label('Transfer Notes / Reason')
+            ->rows(2),
+    ])
+    ->action(function (EloquentCollection $records, array $data, BulkAction $action) {
 
-                        $sourceTenantId = tenant('id');
-                        $targetTenantId = $data['target_tenant_id'];
-                        $transferNumber = 'TRF-' . date('Ymd') . '-' . rand(100, 999);
-                        $staffName      = auth()->user()->name;
-                        $succeeded      = 0;
-                        $failed         = 0;
+        $sourceTenantId = tenant('id');
+        $targetTenantId = $data['target_tenant_id'];
+        $transferNumber = 'TRF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+        $staffName      = auth()->user()->name;
 
-                        foreach ($records as $record) {
-                            try {
-                                // Create transfer log in SOURCE
-                                $transfer = \App\Models\StockTransfer::create([
-                                    'transfer_number' => $transferNumber,
-                                    'from_store_id'   => $record->store_id ?? 1,
-                                    'to_store_id'     => 1,
-                                    'from_tenant'     => $sourceTenantId,
-                                    'to_tenant'       => $targetTenantId,
-                                    'status'          => 'pending',
-                                    'item_snapshot'   => [$record->toArray()],
-                                    'barcode'         => $record->barcode,
-                                    'transferred_by'  => $staffName,
-                                    'notes'           => $data['notes'] ?? null,
-                                    'transfer_date'   => now(),
-                                ]);
+        // Fresh models to avoid stale state
+        $processRecords = ProductItem::whereIn('id', $records->pluck('id'))->get();
 
-                                \App\Models\StockTransferItem::create([
-                                    'stock_transfer_id' => $transfer->id,
-                                    'product_item_id'   => $record->id,
-                                ]);
+        if ($processRecords->isEmpty()) {
+            Notification::make()->title('No items found')->danger()->send();
+            return;
+        }
 
-                                $record->update(['status' => 'on_hold']);
-                                $succeeded++;
-                            } catch (\Exception $e) {
-                                $failed++;
-                            }
-                        }
+        $snapshot = [];
 
-                        // Create ONE mirror record in destination for the whole batch
-                        $destTenant = Tenant::find($targetTenantId);
-                        if ($destTenant) {
-                            tenancy()->initialize($destTenant);
+        // ── 1. Build snapshot + mark on_hold in SOURCE ────────────────
+        foreach ($processRecords as $record) {
+            $itemArray = $record->toArray();
+            $itemArray['supplier_company_name'] = $record->supplier?->company_name;
+            $snapshot[] = $itemArray;
+            $record->update(['status' => 'on_hold']);
+        }
 
-                            \App\Models\StockTransfer::create([
-                                'transfer_number' => $transferNumber,
-                                'from_store_id'   => 1,
-                                'to_store_id'     => 1,
-                                'from_tenant'     => $sourceTenantId,
-                                'to_tenant'       => $targetTenantId,
-                                'status'          => 'pending',
-                                'item_snapshot'   => $records->map->toArray()->values()->toArray(),
-                                'transferred_by'  => $staffName,
-                                'notes'           => $data['notes'] ?? null,
-                                'transfer_date'   => now(),
-                            ]);
+        // ── 2. Create ONE transfer record in SOURCE ────────────────────
+        $transfer = \App\Models\StockTransfer::create([
+            'transfer_number' => $transferNumber,
+            'from_store_id'   => auth()->user()->store_id ?? 1,
+            'to_store_id'     => 1,
+            'from_tenant'     => $sourceTenantId,
+            'to_tenant'       => $targetTenantId,
+            'status'          => 'pending',
+            'item_snapshot'   => $snapshot,
+            'transferred_by'  => $staffName,
+            'notes'           => $data['notes'] ?? null,
+            'transfer_date'   => now(),
+        ]);
 
-                            $recipients = User::all();
-                            \Filament\Notifications\Notification::make()
-                                ->title('📦 Incoming Batch Transfer')
-                                ->body("{$succeeded} items being sent from store {$sourceTenantId}. Go to Stock Transfers to Accept or Deny.")
-                                ->warning()
-                                ->sendToDatabase($recipients);
+        // ── 3. Link each item to the transfer ─────────────────────────
+        foreach ($processRecords as $record) {
+            \App\Models\StockTransferItem::create([
+                'stock_transfer_id' => $transfer->id,
+                'product_item_id'   => $record->id,
+            ]);
+        }
 
-                            tenancy()->initialize(Tenant::find($sourceTenantId));
-                        }
+        // ── 4. Create ONE mirror record in DESTINATION (safe upsert) ──
+        $destTenant = Tenant::find($targetTenantId);
+        if ($destTenant) {
+            tenancy()->initialize($destTenant);
 
-                        Notification::make()
-                            ->title('Batch Transfer Sent')
-                            ->body("✅ {$succeeded} items pending · ❌ {$failed} failed")
-                            ->success()
-                            ->send();
+            \App\Models\StockTransfer::firstOrCreate(
+                ['transfer_number' => $transferNumber],
+                [
+                    'from_store_id'  => 1,
+                    'to_store_id'    => 1,
+                    'from_tenant'    => $sourceTenantId,
+                    'to_tenant'      => $targetTenantId,
+                    'status'         => 'pending',
+                    'item_snapshot'  => $snapshot,
+                    'transferred_by' => $staffName,
+                    'notes'          => $data['notes'] ?? null,
+                    'transfer_date'  => now(),
+                ]
+            );
 
-                        // 🚀 THE FIX: Clear checkboxes after successful transfer
-                        $livewire->selectedTableRecords = [];
-                    }),
+            $count = count($snapshot);
+            User::all()->each(fn($u) =>
+                \Filament\Notifications\Notification::make()
+                    ->title('📦 Incoming Batch Transfer')
+                    ->body("{$count} item(s) being sent from [{$sourceTenantId}]. Transfer #: {$transferNumber}. Go to Stock Transfers to Accept or Deny.")
+                    ->warning()
+                    ->sendToDatabase($u)
+            );
 
+            tenancy()->initialize(Tenant::find($sourceTenantId));
+        }
+
+        Notification::make()
+            ->title('✅ Batch Transfer Sent')
+            ->body(count($snapshot) . ' item(s) pending acceptance by [' . $targetTenantId . '].')
+            ->success()
+            ->send();
+
+        $action->deselectRecordsAfterCompletion();
+    }),
                 BulkAction::make('bulk_print_tags')
                     ->label('Print Selected Tags')
                     ->icon('heroicon-o-printer')
@@ -755,11 +762,7 @@ class FindStock extends Page implements HasForms, HasTable
                     ->requiresConfirmation()
                     ->modalHeading('Confirm Bulk Tags Print?')
                     ->modalDescription('Are you sure you want to send these items to the Zebra printer?')
-                    ->action(function (\Filament\Tables\Contracts\HasTable $livewire) {
-                        // 🚀 THE FIX: Use the raw array of selected IDs from Livewire
-                        $selectedIds = $livewire->selectedTableRecords;
-                        $records = ProductItem::whereIn('id', $selectedIds)->get();
-                        
+                    ->action(function (EloquentCollection $records, BulkAction $action) {
                         $service     = new ZebraPrinterService();
                         $combinedZpl = "";
                         
@@ -767,8 +770,8 @@ class FindStock extends Page implements HasForms, HasTable
                             $combinedZpl .= $service->getZplCode($record);
                         }
                         
-                        $livewire->dispatch('print-zpl-locally', zpl: $combinedZpl);
-                        $livewire->selectedTableRecords = []; // Clear checkboxes
+                        $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
+                        $action->deselectRecordsAfterCompletion();
                     }),
             ])
             ->defaultSort('created_at', 'desc')
