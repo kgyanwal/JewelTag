@@ -13,7 +13,7 @@ use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Enums\FiltersLayout;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Actions\Action;
@@ -240,8 +240,8 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
                 Filter::make('date_range')
                     ->form([
-                        DatePicker::make('from')->label('From')->default(now()->startOfMonth()),
-                        DatePicker::make('to')->label('To')->default(now()),
+                       CustomDatePicker::make('from')->label('From')->default(now()->startOfMonth()),
+                        CustomDatePicker::make('to')->label('To')->default(now()),
                     ])
                     ->query(fn(Builder $query, array $data) =>
                         $query

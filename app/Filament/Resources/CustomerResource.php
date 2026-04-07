@@ -99,23 +99,12 @@ class CustomerResource extends Resource
                                                 })
                                                 ->searchable()
                                                 ->preload(),
-TextInput::make('dob')
+CustomDatePicker::make('dob')
     ->label('Birth Date')
-    ->placeholder('MM / DD / YYYY')
-    ->mask('99/99/9999')
-    ->rule('before_or_equal:today')
-    ->rule('date_format:m/d/Y')
-    ->dehydrateStateUsing(fn($state) => $state 
-        ? \Carbon\Carbon::createFromFormat('m/d/Y', $state)->format('Y-m-d') 
-        : null
-    )
-    ->afterStateHydrated(function ($component, $state) {
-        if ($state) {
-            $component->state(
-                \Carbon\Carbon::parse($state)->format('m/d/Y')
-            );
-        }
-    }),
+    ->displayFormat('m/d/Y')
+    ->extraInputAttributes(['max' => now()->format('Y-m-d')])
+    ->rule('before_or_equal:today') 
+    ->rule('date_format:Y-m-d'),
 
                                             CustomDatePicker::make('wedding_anniversary')
                                                 ->label('Wedding Date'),

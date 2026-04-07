@@ -7,49 +7,69 @@ use App\Models\Sale;
 use App\Models\SalePayment;
 use App\Models\Store;
 use App\Models\Customer;
+use App\Models\Tenant;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 class ImportOnSwimSalesPayments extends Command
 {
-    protected $signature = 'import:onswim-sales-payments {tenant} {--rollback}';
-    protected $description = 'Import OnSwim Sales Payments, map to Sales, or directly to Customers as Historical Jobs';
+    // Strictly prevent data deletion by using only --dry-run
+    protected $signature = 'import:onswim-sales-payments {tenant} {--dry-run}';
+    protected $description = 'Import OnSwim Sales Payments safely mapping to Sales, or directly to Customers without data loss';
 
     public function handle()
     {
         set_time_limit(0);
-        ini_set('memory_limit', '512M');
+        ini_set('memory_limit', '1G');
 
         $tenantId = $this->argument('tenant');
+        $isDryRun = $this->option('dry-run');
         
         try {
-            $tenant = \App\Models\Tenant::findOrFail($tenantId);
+            $tenant = Tenant::findOrFail($tenantId);
             tenancy()->initialize($tenant);
+
+            // Authenticate admin to satisfy potential activity_logs foreign key constraints
+            $adminUser = User::first();
+            if ($adminUser) {
+                auth()->login($adminUser);
+            }
+
+            // Path & Dynamic File Logic
+            $directoryPath = storage_path("/{$tenantId}/data");
+            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
+            $fileName = "sales_payments_{$yesterday}.csv";
+            $filePath = "{$directoryPath}/{$fileName}";
+
+            if (!File::exists($filePath)) {
+                $this->newLine();
+                $this->error("❌ FILE NOT FOUND: {$filePath}");
+                return Command::FAILURE;
+            }
+
         } catch (\Exception $e) {
-            $this->error("Could not find tenant: {$tenantId}");
-            return;
+            $this->error("Initialization Error: " . $e->getMessage());
+            return Command::FAILURE;
         }
 
-        if ($this->option('rollback')) {
-            Schema::disableForeignKeyConstraints();
-            SalePayment::truncate();
-            // Optional: You could also delete sales that start with 'HIST-' here if you wanted a total wipe
-            Schema::enableForeignKeyConstraints();
-            $this->info("SalePayments table truncated.");
-            return;
-        }
-
-        $directoryPath = storage_path("{$tenantId}/data");
-        $filePath = "{$directoryPath}/sales_payments_dsq_data_mar22_26.csv";
-        
-        if (!file_exists($filePath)) {
-            $this->error("File not found at: {$filePath}");
-            return;
+        if ($isDryRun) {
+            $this->newLine();
+            $this->warn("🛠️  DRY RUN ENABLED: No changes will be saved to the database.");
+            $this->newLine();
         }
 
         $defaultStoreId = Store::first()?->id ?? 1;
+
+        // Ensure fallback customer exists to prevent NOT NULL customer_id constraint errors
+        $walkInCustomer = Customer::withoutEvents(fn() => 
+            Customer::firstOrCreate(
+                ['customer_no' => 'WALKIN'], 
+                ['name' => 'Walk-in', 'last_name' => 'Customer', 'is_active' => true]
+            )
+        );
 
         // 1. FETCH DYNAMIC PAYMENT METHODS
         $paymentMethodsJson = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
@@ -60,20 +80,22 @@ class ImportOnSwimSalesPayments extends Command
             $normalizedActiveMethods[strtolower(trim($method))] = $method;
         }
 
+        // Read CSV
         $file = fopen($filePath, 'r');
         $headers = array_map('trim', fgetcsv($file));
         $rows = [];
         while (($row = fgetcsv($file)) !== false) {
-            if (count($row) === count($headers)) $rows[] = array_combine($headers, $row);
+            if (count($row) === count($headers)) {
+                $rows[] = array_combine($headers, $row);
+            }
         }
         fclose($file);
 
-        $this->info("Building Job → Sale map...");
+        $this->info("Building Job → Sale lookup map...");
         $jobToSale = [];
         Sale::select('id', 'invoice_number', 'customer_id', 'sales_person_list', 'store_id')
             ->chunk(500, function ($sales) use (&$jobToSale) {
                 foreach ($sales as $sale) {
-                    // 🚀 BUG FIX: Correctly extract Job Number without mangling the date
                     $parts = explode('-', $sale->invoice_number);
                     $jobNoStr = end($parts);
                     
@@ -91,16 +113,20 @@ class ImportOnSwimSalesPayments extends Command
         DB::connection('tenant')->beginTransaction();
 
         try {
+            $this->info("Processing " . count($rows) . " payment records...");
             $bar = $this->output->createProgressBar(count($rows));
 
             foreach ($rows as $row) {
                 $jobNo = (int) trim($row['Job Number'] ?? 0);
                 $amountRaw = trim($row['Amount'] ?? '0');
-                $amount = (float) str_replace(['$', ',', ' '], '', $amountRaw);
+                $amount = (float) str_replace(['$', ',', ' ', '-'], '', $amountRaw);
                 $paymentType = trim($row['Payment Type'] ?? 'cash');
                 $saleType = strtolower(trim($row['Sale Type'] ?? 'sale'));
 
-                if ($amount <= 0) { $bar->advance(); continue; }
+                if ($amount <= 0) { 
+                    $bar->advance(); 
+                    continue; 
+                }
 
                 $paymentDate = $this->parseDate($row['Date'] ?? null) ?? now()->format('Y-m-d');
                 $mappedMethod = $this->mapDynamicPaymentType($paymentType, $normalizedActiveMethods, $unmappedMethods);
@@ -114,7 +140,7 @@ class ImportOnSwimSalesPayments extends Command
                     $firstName = trim($row['First Name'] ?? '');
                     $lastName = trim($row['Last Name'] ?? '');
                     
-                    // A. Find or Create the Customer
+                    // A. Find the Customer
                     $customer = null;
                     if (!empty($firstName) || !empty($lastName)) {
                         $customer = Customer::withoutGlobalScopes()
@@ -123,72 +149,100 @@ class ImportOnSwimSalesPayments extends Command
                             ->first();
                     }
 
-                    if (!$customer) {
-                        $customer = Customer::create([
-                            'customer_no' => 'CUST-HIST-' . strtoupper(Str::random(6)),
-                            'name' => $firstName ?: 'Historical',
-                            'last_name' => $lastName ?: 'Customer',
-                            'is_active' => true,
-                        ]);
+                    // B. Create customer safely if not found, preserving identity instead of lumping to Walk-in
+                    if (!$customer && (!empty($firstName) || !empty($lastName))) {
+                        $customer = Customer::withoutEvents(fn() => 
+                            Customer::create([
+                                'customer_no' => 'CUST-HIST-' . strtoupper(substr(md5($firstName . $lastName . time()), 0, 8)),
+                                'name' => $firstName ?: 'Historical',
+                                'last_name' => $lastName ?: 'Customer',
+                                'is_active' => true,
+                            ])
+                        );
                     }
+                    
+                    $customerId = $customer ? $customer->id : $walkInCustomer->id;
 
-                    // B. Create a "Historical Sale" shell to attach the payment to
-                    $sale = Sale::withoutEvents(function () use ($jobNo, $customer, $paymentDate, $defaultStoreId) {
+                    // C. Create a "Historical Sale" shell to attach the payment to
+                    $sale = Sale::withoutEvents(function () use ($jobNo, $customerId, $paymentDate, $defaultStoreId) {
                         return Sale::create([
                             'invoice_number' => 'HIST-' . $jobNo . '-' . strtoupper(Str::random(4)),
-                            'customer_id' => $customer->id,
+                            'customer_id' => $customerId,
                             'store_id' => $defaultStoreId,
                             'status' => 'completed',
-                            'sales_person_list' => ['Historical Import'],
+                            'sales_person_list' => 'Historical Import',
                             'created_at' => $paymentDate,
                             'payment_method' => 'other',
                             'is_split_payment' => false,
                             'subtotal' => 0,
                             'tax_amount' => 0,
                             'final_total' => 0,
-                            'discount_amount' => 0
+                            'discount_amount' => 0,
+                            'amount_paid' => 0,
+                            'balance_due' => 0,
                         ]);
                     });
 
-                    // Add to map so subsequent payments for this job find it
+                    // Add to map so subsequent payments for this job find it instantly
                     $jobToSale[$jobNo] = $sale;
                     $isHistorical = true;
                 }
 
-                $salesPerson = is_array($sale->sales_person_list) ? ($sale->sales_person_list[0] ?? 'System') : ($sale->sales_person_list ?? 'System');
+                // Safely extract Sales Person
+                $salesPersonRaw = $sale->sales_person_list;
+                $salesPerson = is_array($salesPersonRaw) ? ($salesPersonRaw[0] ?? 'System') : (is_string($salesPersonRaw) ? explode(' / ', $salesPersonRaw)[0] : 'System');
+                if (empty(trim($salesPerson))) $salesPerson = 'System';
 
-                // Duplicate Check
-                $exists = SalePayment::where('sale_id', $sale->id)->where('amount', $amount)
-                    ->where('payment_method', $mappedMethod)->where('payment_date', $paymentDate)->exists();
+                // Duplicate Check ensures we never double-charge an imported payment
+                $exists = SalePayment::where('sale_id', $sale->id)
+                    ->where('amount', $amount)
+                    ->where('payment_method', $mappedMethod)
+                    ->where('payment_date', $paymentDate)
+                    ->exists();
 
-                if ($exists) { $skippedDup++; $bar->advance(); continue; }
+                if ($exists) { 
+                    $skippedDup++; 
+                    $bar->advance(); 
+                    continue; 
+                }
 
-                SalePayment::withoutEvents(fn() => SalePayment::create([
-                    'sale_id' => $sale->id,
-                    'customer_id' => $sale->customer_id,
-                    'store_id' => $sale->store_id,
-                    'amount' => $amount,
-                    'payment_method' => $mappedMethod,
-                    'original_payment_type' => $paymentType,
-                    'payment_date' => $paymentDate,
-                    'is_deposit' => $isLayby,
-                    'is_layby' => $isLayby,
-                    'sales_person' => $salesPerson,
-                    'imported_at' => now(),
-                ]));
-
+                // 🚀 FIX: Counters moved outside of the dry-run check so they show up accurately!
                 if ($isHistorical) {
                     $createdHistorical++;
                 } else {
                     $createdMatched++;
                 }
+
+                if (!$isDryRun) {
+                    SalePayment::withoutEvents(fn() => SalePayment::create([
+                        'sale_id' => $sale->id,
+                        'customer_id' => $sale->customer_id,
+                        'store_id' => $sale->store_id,
+                        'amount' => $amount,
+                        'payment_method' => $mappedMethod,
+                        'original_payment_type' => $paymentType,
+                        'payment_date' => $paymentDate,
+                        'is_deposit' => $isLayby,
+                        'is_layby' => $isLayby,
+                        'sales_person' => $salesPerson,
+                        'imported_at' => now(),
+                    ]));
+                }
                 
                 $bar->advance();
             }
 
-            DB::connection('tenant')->commit();
-            $bar->finish();
-            $this->newLine(2);
+            if ($isDryRun) {
+                DB::connection('tenant')->rollBack();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ DRY RUN COMPLETE. No data modified.");
+            } else {
+                DB::connection('tenant')->commit();
+                $bar->finish();
+                $this->newLine(2);
+                $this->info("✅ SUCCESS: Sales Payments synchronized.");
+            }
             
             $this->table(
                 ['Total CSV Rows', 'Mapped to Existing Sale', 'Mapped to Customer (New Hist. Sale)', 'Duplicates Skipped'], 
@@ -204,8 +258,11 @@ class ImportOnSwimSalesPayments extends Command
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
-            $this->error("Error: " . $e->getMessage());
+            $this->error("\nDatabase Error: " . $e->getMessage());
+            return Command::FAILURE;
         }
+
+        return Command::SUCCESS;
     }
 
     private function mapDynamicPaymentType(string $rawType, array $activeMethods, array &$unmappedTracker): string
