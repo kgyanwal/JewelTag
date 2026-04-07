@@ -16,9 +16,9 @@ use Illuminate\Support\Str;
 
 class ImportOnSwimSalesPayments extends Command
 {
-    // Removed {--rollback} to strictly prevent data deletion
+    // Strictly prevent data deletion by using only --dry-run
     protected $signature = 'import:onswim-sales-payments {tenant} {--dry-run}';
-    protected $description = 'Import OnSwim Sales Payments, map safely to Sales, or directly to Customers without data loss';
+    protected $description = 'Import OnSwim Sales Payments safely mapping to Sales, or directly to Customers without data loss';
 
     public function handle()
     {
@@ -149,7 +149,7 @@ class ImportOnSwimSalesPayments extends Command
                             ->first();
                     }
 
-                    // B. Create customer safely if not found, to preserve identity instead of lumping to Walk-in
+                    // B. Create customer safely if not found, preserving identity instead of lumping to Walk-in
                     if (!$customer && (!empty($firstName) || !empty($lastName))) {
                         $customer = Customer::withoutEvents(fn() => 
                             Customer::create([
@@ -206,6 +206,13 @@ class ImportOnSwimSalesPayments extends Command
                     continue; 
                 }
 
+                // 🚀 FIX: Counters moved outside of the dry-run check so they show up accurately!
+                if ($isHistorical) {
+                    $createdHistorical++;
+                } else {
+                    $createdMatched++;
+                }
+
                 if (!$isDryRun) {
                     SalePayment::withoutEvents(fn() => SalePayment::create([
                         'sale_id' => $sale->id,
@@ -220,12 +227,6 @@ class ImportOnSwimSalesPayments extends Command
                         'sales_person' => $salesPerson,
                         'imported_at' => now(),
                     ]));
-
-                    if ($isHistorical) {
-                        $createdHistorical++;
-                    } else {
-                        $createdMatched++;
-                    }
                 }
                 
                 $bar->advance();
