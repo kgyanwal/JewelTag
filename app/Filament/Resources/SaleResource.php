@@ -581,6 +581,7 @@ class SaleResource extends Resource
                                             }),
 
                                         // 🚀 THE FIX: Disable Discount Percent for Custom Orders
+                                       // 🚀 THE FIX: Added $livewire to closure and global data_get/data_set
                                         TextInput::make('discount_percent')
                                             ->label('Disc %')
                                             ->numeric()
@@ -590,7 +591,7 @@ class SaleResource extends Resource
                                             ->columnSpan(2)
                                             ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->dehydrated(true)
-                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
                                                 $price     = floatval($get('sold_price') ?? 0);
                                                 $qty       = intval($get('qty') ?? 1);
                                                 $lineTotal = $price * $qty;
@@ -599,12 +600,18 @@ class SaleResource extends Resource
                                                 $discountAmount = $lineTotal * ($percent / 100);
                                                 $finalPrice     = $lineTotal - $discountAmount;
 
+                                                // 1. Update the local row's fields
                                                 $set('discount_amount', number_format($discountAmount, 2, '.', ''));
                                                 $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
-                                                self::updateTotals($get, $set);
+                                                
+                                                // 2. Force the global form to recalculate everything
+                                                self::updateTotals(
+                                                    fn($p) => data_get($livewire->data, $p), 
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                );
                                             }),
 
-                                        // 🚀 THE FIX: Disable Discount Amount for Custom Orders
+                                        // 🚀 THE FIX: Added $livewire to closure and global data_get/data_set
                                         TextInput::make('discount_amount')
                                             ->label('Disc $')
                                             ->numeric()
@@ -614,7 +621,7 @@ class SaleResource extends Resource
                                             ->columnSpan(2)
                                             ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->dehydrated(true)
-                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
                                                 $price          = floatval($get('sold_price') ?? 0);
                                                 $qty            = intval($get('qty') ?? 1);
                                                 $lineTotal      = $price * $qty;
@@ -624,10 +631,16 @@ class SaleResource extends Resource
                                                     $percent = ($discountAmount / $lineTotal) * 100;
                                                     $set('discount_percent', number_format($percent, 2, '.', ''));
                                                 }
+                                                
+                                                // 1. Update the local row's fields
                                                 $set('sale_price_override', number_format($lineTotal - $discountAmount, 2, '.', ''));
-                                                self::updateTotals($get, $set);
+                                                
+                                                // 2. Force the global form to recalculate everything
+                                                self::updateTotals(
+                                                    fn($p) => data_get($livewire->data, $p), 
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                );
                                             }),
-
                                         Checkbox::make('is_tax_free')
                                             ->label('No Tax')
                                             ->columnSpan(1)
