@@ -237,21 +237,31 @@ class ImportOnSwimDeposits extends Command
         $fullName = trim($data['Customer'] ?? '');
         if (empty($fullName)) return null;
 
+        // Split "Gloria Villas" into ["Gloria", "Villas"]
+        $parts = explode(' ', $fullName);
+        $firstName = trim($parts[0]);
+        $lastName  = trim(implode(' ', array_slice($parts, 1)));
+
+        // 🚀 THE "NO-DUPLICATE" SEARCH LOGIC
         $found = Customer::withoutGlobalScopes()
-            ->where(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%")
+            ->where(function($query) use ($firstName, $lastName, $fullName) {
+                $query->where(function($q) use ($firstName, $lastName) {
+                    $q->where('name', 'LIKE', $firstName)
+                    ->where('last_name', 'LIKE', $lastName);
+                })
+                // Also check if the full string matches the concatenated name in DB
+                ->orWhere(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%");
+            })
             ->first();
 
         if ($found) return $found;
 
-        $parts = explode(' ', $fullName);
-        $firstName = array_shift($parts);
-        $lastName  = implode(' ', $parts);
-
+        // Only create if we absolutely cannot find a match
         return Customer::withoutEvents(fn() => 
             Customer::create([
-                'customer_no' => 'DEP-CUST-' . strtoupper(substr(md5($fullName . time()), 0, 8)),
+                'customer_no' => 'DEP-CUST-' . strtoupper(Str::random(8)),
                 'name'        => $firstName,
-                'last_name'   => empty($lastName) ? '.' : $lastName,
+                'last_name'   => $lastName ?: '.',
                 'is_active'   => true,
             ])
         );
