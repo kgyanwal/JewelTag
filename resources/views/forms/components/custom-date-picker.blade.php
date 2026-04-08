@@ -8,12 +8,16 @@ $isDisabled = $isDisabled();
 $baseFormat = preg_replace(['/[mM]+/', '/[dD]+/', '/[yY]+/'], ['m', 'd', 'y'], $displayFormat);
 $defaultPlaceholder = strtr($baseFormat, ['m' => 'mm', 'd' => 'dd', 'y' => 'yyyy']);
 $placeholder = $getPlaceholder() ?? strtolower($defaultPlaceholder);
+
+// 🚀 Restored: Extract max date if provided in extraInputAttributes
+$maxDate = $getExtraInputAttributes()['max'] ?? null;
 @endphp
 
 <x-dynamic-component :component="$getFieldWrapperView()" :field="$field">
     <div x-data="customDatePicker({
             state: $wire.entangle('{{ $statePath }}').live,
             displayFormat: '{{ $displayFormat }}',
+            maxDate: '{{ $maxDate }}'
         })" class="relative">
 
         <div class="fi-input-wrp flex rounded-lg shadow-sm ring-1 transition duration-75
@@ -32,7 +36,7 @@ $placeholder = $getPlaceholder() ?? strtolower($defaultPlaceholder);
                        text-base text-gray-950 placeholder:text-gray-400
                        dark:text-white dark:placeholder:text-gray-500
                        sm:text-sm sm:leading-6 focus:outline-none focus:ring-0
-                       disabled:cursor-not-allowed " style="caret-color: rgb(var(--primary-600));" />
+                       disabled:cursor-not-allowed" style="caret-color: rgb(var(--primary-600));" />
 
             <button type="button" tabindex="-1" @click="toggleCalendar()" {{ $isDisabled ? 'disabled' : '' }}
                 class="flex items-center pe-3 ps-2 text-gray-400 hover:text-gray-600 transition-colors">
@@ -55,7 +59,6 @@ $placeholder = $getPlaceholder() ?? strtolower($defaultPlaceholder);
                 </button>
 
                 <div class="flex items-center gap-1 flex-1 justify-center">
-                    {{-- 🚀 FIXED: Added :selected binding to force correct initialization --}}
                     <select x-model.number="calendarMonth"
                         class="border-none bg-transparent py-0 ps-1 pe-6 text-sm font-bold text-gray-900 dark:text-white focus:ring-0 focus:outline-none focus:border-transparent focus:shadow-none cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 rounded">
                         <template x-for="(monthName, index) in monthNames" :key="index">
@@ -86,11 +89,14 @@ $placeholder = $getPlaceholder() ?? strtolower($defaultPlaceholder);
                     <div class="text-[10px] font-bold text-gray-400 uppercase" x-text="dayName"></div>
                 </template>
                 <template x-for="(day, i) in calendarDays" :key="i">
-                    <button type="button" @click="selectDay(day)" :disabled="!day.currentMonth" :class="{
-                            'bg-primary-600 text-white font-bold': day.selected,
-                            'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white': !day.selected && day.currentMonth,
-                            'text-gray-300 dark:text-gray-600': !day.currentMonth,
-                            'ring-1 ring-inset ring-primary-600': day.today && !day.selected
+                    {{-- 🚀 FIXED: Added opacity-50 to gray out non-current month dates natively --}}
+                    <button type="button" @click="selectDay(day)" :disabled="!day.currentMonth || day.disabledDate"
+                        :class="{
+                            'opacity-30 cursor-not-allowed': day.disabledDate,
+                            'bg-primary-600 text-white font-bold': day.selected && !day.disabledDate,
+                            'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white': !day.selected && day.currentMonth && !day.disabledDate,
+                            'text-gray-400 dark:text-gray-500 opacity-50 cursor-default': !day.currentMonth && !day.disabledDate,
+                            'ring-1 ring-inset ring-primary-600': day.today && !day.selected && !day.disabledDate
                         }" class="h-8 w-8 rounded-full text-xs flex items-center justify-center transition"
                         x-text="day.date"></button>
                 </template>
@@ -103,11 +109,14 @@ $placeholder = $getPlaceholder() ?? strtolower($defaultPlaceholder);
 document.addEventListener('alpine:init', () => {
     Alpine.data('customDatePicker', ({
         state,
-        displayFormat
+        displayFormat,
+        maxDate
     }) => ({
         state,
         displayFormat,
+        maxDate, // 🚀 Restored maxDate binding
         digits: '',
+        isFocused: false, // 🚀 Restored isFocused binding for text format switching
         showCalendar: false,
         calendarYear: new Date().getFullYear(),
         calendarMonth: new Date().getMonth(),
@@ -135,7 +144,6 @@ document.addEventListener('alpine:init', () => {
                     }
                 } else {
                     this.digits = '';
-                    // 🚀 FIXED: When state clears, reset calendar view back to today
                     const now = new Date();
                     this.calendarYear = now.getFullYear();
                     this.calendarMonth = now.getMonth();
@@ -153,7 +161,7 @@ document.addEventListener('alpine:init', () => {
         get yearRange() {
             const currentYear = new Date().getFullYear();
             const years = [];
-            for (let i = currentYear - 50; i <= currentYear + 50; i++) {
+            for (let i = currentYear - 100; i <= currentYear + 20; i++) {
                 years.push(i);
             }
             return years;
@@ -218,6 +226,25 @@ document.addEventListener('alpine:init', () => {
 
         get maskedValue() {
             if (this.digits.length === 0) return '';
+
+            // 🚀 Restored: Text mode (e.g. "Apr 06, 2026") when blurred
+            if (!this.isFocused && this.displayFormat.includes('M') && this.digits.length ===
+                8) {
+                const parts = this.parseDigitsToDateParts();
+                const dateObj = new Date(parseInt(parts.y), parseInt(parts.m) - 1, parseInt(
+                    parts.d));
+
+                if (!isNaN(dateObj)) {
+                    const shortMonth = dateObj.toLocaleString('en-US', {
+                        month: 'short'
+                    });
+                    return this.displayFormat
+                        .replace('M', shortMonth)
+                        .replace('d', parts.d)
+                        .replace('Y', parts.y)
+                        .replace('y', parts.y.slice(-2));
+                }
+            }
 
             let pattern = '';
             for (let char of this.baseFormat) {
@@ -287,9 +314,17 @@ document.addEventListener('alpine:init', () => {
             const parsedY = parseInt(parts.y);
 
             if (parsedM >= 1 && parsedM <= 12 && parsedD >= 1 && parsedD <= 31) {
-                this.state = `${parsedY}-${parts.m}-${parts.d}`;
-                this.calendarYear = parsedY;
-                this.calendarMonth = parsedM - 1;
+                const attemptedDate = `${parsedY}-${parts.m}-${parts.d}`;
+
+                // 🚀 Restored: Check if typed date is past the maxDate
+                if (this.maxDate && attemptedDate > this.maxDate) {
+                    this.state = this.maxDate; // Snap back to max allowed date
+                    this.updateDigitsFromState();
+                } else {
+                    this.state = attemptedDate;
+                    this.calendarYear = parsedY;
+                    this.calendarMonth = parsedM - 1;
+                }
             }
         },
 
@@ -336,11 +371,16 @@ document.addEventListener('alpine:init', () => {
             for (let i = 1; i <= last; i++) {
                 const dStr =
                     `${year}-${String(month + 1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+
+                // 🚀 Restored: Determine if this specific day exceeds maxDate
+                const isPastMax = this.maxDate ? dStr > this.maxDate : false;
+
                 days.push({
                     date: i,
                     currentMonth: true,
                     today: dStr === today,
-                    selected: this.state === dStr
+                    selected: this.state === dStr,
+                    disabledDate: isPastMax // Flag disabled dates
                 });
             }
             while (days.length < 42) days.push({
@@ -351,7 +391,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         selectDay(day) {
-            if (!day.currentMonth) return;
+            if (!day.currentMonth || day.disabledDate) return;
             const y = String(this.calendarYear);
             const m = String(parseInt(this.calendarMonth) + 1).padStart(2, '0');
             const d = String(day.date).padStart(2, '0');
