@@ -35,9 +35,19 @@ class ImportOnSwimCustomers extends Command
             // 🚀 WORKING PATH: storage/lxd/data/
             $directoryPath = storage_path("/{$tenantId}/data");
             
-            // 🚀 WORKING DATE PATTERN: customers_2026_03_30.csv
-            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
-            $fileName = "customers_{$yesterday}.csv";
+            // 🚀 IMPROVED DATE LOGIC
+            $dateSuffix = $this->option('date');
+
+            if ($dateSuffix) {
+                // If you pass --date=04_04, it looks for customers_2026_04_04.csv
+                // (Assuming the year is 2026 based on your file list)
+                $fileName = "customers_2026_{$dateSuffix}.csv";
+            } else {
+                // Fallback to yesterday if no date is provided
+                $yesterday = Carbon::yesterday()->format('Y_m_d');
+                $fileName = "customers_{$yesterday}.csv";
+            }
+
             $filePath = "{$directoryPath}/{$fileName}";
 
             if (!File::exists($filePath)) {
