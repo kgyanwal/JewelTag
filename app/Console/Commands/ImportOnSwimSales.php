@@ -53,7 +53,8 @@ class ImportOnSwimSales extends Command
                 $manualDate = $this->option('date');
                 $possible = [
                     "{$directoryPath}/sales_{$manualDate}.csv", 
-                    "{$directoryPath}/onswim_sales_{$manualDate}.csv"
+                    "{$directoryPath}/onswim_sales_{$manualDate}.csv",
+                    "{$directoryPath}/sales_dsqdata_{$manualDate}.csv"
                 ];
                 foreach ($possible as $path) {
                     if (File::exists($path)) {
@@ -188,6 +189,9 @@ class ImportOnSwimSales extends Command
                     }
                 }
 
+                // 🚀 Count it as a successful processing (for both Dry and Real runs)
+                $created++;
+
                 if (!$isDryRun) {
                     // ── 🚀 FIX 2: Added 0 defaults to satisfy DB NOT NULL constraints ──
                     $sale = Sale::withoutEvents(fn() => 
@@ -268,23 +272,31 @@ class ImportOnSwimSales extends Command
                             'payment_amount_1'     => $finalTotal,
                         ])
                     );
-                    $created++;
                 }
                 $bar->advance();
             }
 
+            // 🚀 UNIVERSAL SUMMARY OUTPUT
             if ($isDryRun) {
                 DB::connection('tenant')->rollBack();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ DRY RUN COMPLETE.");
+                $this->info("✅ DRY RUN COMPLETE: No data was written.");
             } else {
                 DB::connection('tenant')->commit();
                 $bar->finish();
                 $this->newLine(2);
                 $this->info("✅ SUCCESS: Sales synchronized.");
-                $this->table(['Created/Updated', 'Skipped (Duplicates)'], [[$created, $skipped]]);
             }
+
+            // Show table for both dry and real runs
+            $this->table(
+                ['Metric', 'Count'], 
+                [
+                    [$isDryRun ? 'Would Create/Update' : 'Created/Updated', $created],
+                    ['Skipped (Duplicates)', $skipped]
+                ]
+            );
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
