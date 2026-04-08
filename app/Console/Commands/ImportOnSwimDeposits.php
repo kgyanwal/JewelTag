@@ -92,14 +92,20 @@ class ImportOnSwimDeposits extends Command
             return Command::FAILURE;
         }
 
-        // Handle Rollback
+       // Handle Rollback
         if ($this->option('rollback')) {
-            $this->warn("Rolling back (deleting) ALL deposit sales for tenant: {$tenantId}...");
-            if ($this->confirm('Are you sure?', false)) {
+            $this->warn("⚠️  WARNING: You are about to delete ALL deposit sales for tenant: {$tenantId}");
+            
+            if ($this->confirm('Are you sure? This will empty the deposit_sales table completely.', false)) {
+                // 🚀 UNIVERSAL CLEANUP: No file required
                 Schema::disableForeignKeyConstraints();
+                
+                $count = DepositSale::count();
                 DepositSale::truncate();
+                
                 Schema::enableForeignKeyConstraints();
-                $this->info("Deposit sales table truncated.");
+                
+                $this->info("✅ SUCCESS: {$count} deposit records have been removed.");
             }
             return Command::SUCCESS;
         }
