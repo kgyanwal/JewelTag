@@ -47,11 +47,18 @@ class ImportOnSwimStock extends Command
         }
 
         // ── Define the strict dated files we want to process ──
+        // Check a 3-day window to make this 100% bulletproof across ALL global timezones
+        $today = Carbon::today()->format('Y_m_d');
         $yesterday = Carbon::yesterday()->format('Y_m_d'); 
+        $tomorrow = Carbon::tomorrow()->format('Y_m_d'); 
         
         $possibleFiles = [
+            "stock_{$today}.csv",
+            "stock_entered_{$today}.csv",
             "stock_{$yesterday}.csv",
-            "stock_entered_{$yesterday}.csv"
+            "stock_entered_{$yesterday}.csv",
+            "stock_{$tomorrow}.csv",
+            "stock_entered_{$tomorrow}.csv"
         ];
 
         // Filter down to only files that actually exist in the folder right now
