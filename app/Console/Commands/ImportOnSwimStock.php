@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\File;
 
 class ImportOnSwimStock extends Command
 {
-    protected $signature = 'import:onswim-customers {tenant} {--date= : Specific date suffix in MM_DD format} {--rollback} {--dry-run}';
+    protected $signature = 'import:onswim-stock {tenant} {--date= : Specific date suffix in MM_DD format} {--rollback} {--dry-run}';
     protected $description = 'Import stock from multiple OnSwim CSVs (stock & stock_entered) with zero data loss.';
 
     public function handle()
