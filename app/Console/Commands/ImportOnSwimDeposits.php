@@ -12,7 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\File;
-use App\Console\Commands\Str;
+use Illuminate\Support\Str;
 
 class ImportOnSwimDeposits extends Command
 {
