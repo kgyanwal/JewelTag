@@ -132,11 +132,6 @@ class ImportOnSwimNonStock extends Command
                 $soldPrice   = $this->cleanMoney($data['Sold Price'] ?? '0');
                 $discount    = $this->cleanMoney($data['Discount'] ?? '0');
 
-                if ($soldPrice == 0.00 && $salePrice == 0.00) {
-                    $this->skipped++;
-                    $bar->advance();
-                    continue;
-                }
 
                 // 🚀 AGGRESSIVE FUZZY MAPPING LOGIC
                 $cleanJobNo = preg_replace('/[^0-9]/', '', $jobNo);
