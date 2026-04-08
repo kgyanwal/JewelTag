@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\File;
 
 class ImportOnSwimStock extends Command
 {
-    // Ensure --rollback is NOT here, protecting against deletion
     protected $signature = 'import:onswim-stock {tenant} {--dry-run}';
     protected $description = 'Import stock from multiple OnSwim CSVs (stock & stock_entered) with zero data loss.';
 
@@ -46,8 +45,6 @@ class ImportOnSwimStock extends Command
             $this->newLine();
         }
 
-        // ── Define the strict dated files we want to process ──
-        // Check a 5-day window to make this 100% bulletproof across ALL global timezones
         // ── Find recent files dynamically (Look back up to 5 days to ignore timezones) ──
         $possibleFiles = [];
         for ($i = 0; $i <= 5; $i++) {
@@ -70,25 +67,13 @@ class ImportOnSwimStock extends Command
             $this->line("Please ensure your file is named correctly and uploaded.");
             return Command::SUCCESS; 
         }
-        // Filter down to only files that actually exist in the folder right now
-        $filesToProcess = [];
-        foreach ($possibleFiles as $fileName) {
-            if (File::exists("{$directoryPath}/{$fileName}")) {
-                $filesToProcess[] = $fileName;
-            }
-        }
-
-        if (empty($filesToProcess)) {
-            $this->error("❌ NO FILES FOUND in {$directoryPath}");
-            $this->line("Please upload 'stock_{$yesterday}.csv' or 'stock_entered_{$yesterday}.csv' and try again.");
-            return Command::SUCCESS; 
-        }
 
         $storeId = Store::first()?->id ?? 1;
         
         // Track totals across all files processed
         $totalRowsProcessed = 0;
-        $itemsCreatedOrUpdated = 0;
+        $itemsCreated = 0;
+        $itemsUpdated = 0;
 
         // Start a single transaction for all files
         DB::connection('tenant')->beginTransaction();
@@ -121,6 +106,16 @@ class ImportOnSwimStock extends Command
 
                     $totalRowsProcessed++;
                     $supplierName = $data['Supplier'] ?? 'Legacy Supplier';
+
+                    // 🚀 CHECK EXISTING DATA (Calculates for both Dry Run and Real Run)
+                    // We check if this barcode is already in the database
+                    $exists = ProductItem::where('barcode', $barcode)->exists();
+
+                    if ($exists) {
+                        $itemsUpdated++;
+                    } else {
+                        $itemsCreated++;
+                    }
 
                     if (!$isDryRun) {
                         $supplier = Supplier::withoutEvents(fn() => 
@@ -164,7 +159,6 @@ class ImportOnSwimStock extends Command
                                 ]
                             );
                         });
-                        $itemsCreatedOrUpdated++;
                     }
                     $bar->advance();
                 }
@@ -174,11 +168,18 @@ class ImportOnSwimStock extends Command
 
             if ($isDryRun) {
                 DB::connection('tenant')->rollBack(); 
-                $this->info("✅ DRY RUN COMPLETE: Processed {$totalRowsProcessed} valid rows across " . count($filesToProcess) . " file(s). No database entries were modified.");
+                $this->info("✅ DRY RUN COMPLETE: No database entries were modified.");
             } else {
                 DB::connection('tenant')->commit(); 
-                $this->info("✅ SUCCESS: Synchronized {$itemsCreatedOrUpdated} items across " . count($filesToProcess) . " file(s).");
+                $this->info("✅ SUCCESS: Stock synchronized successfully.");
             }
+
+            // 🚀 DISPLAY THE BEAUTIFUL SUMMARY TABLE
+            $this->newLine();
+            $this->table(
+                ['Files Processed', 'Total Rows', 'Brand New Items (Created)', 'Existing Items (Updated/Overwritten)'], 
+                [[count($filesToProcess), $totalRowsProcessed, $itemsCreated, $itemsUpdated]]
+            );
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();
