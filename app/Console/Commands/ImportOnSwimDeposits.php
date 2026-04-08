@@ -149,15 +149,25 @@ class ImportOnSwimDeposits extends Command
         try {
             foreach ($rows as $data) {
                 $jobNo = trim($data['Job No.']);
+                // 🚀 SMART LINKING LOGIC
                 $cleanJobNo = preg_replace('/[^0-9]/', '', $jobNo);
                 
-                // 🚀 AGGRESSIVE FUZZY MATCHING (Exactly like the logic we discussed)
+                // PLAN A: Link by Job Number (Existing Logic)
                 $sale = Sale::where('invoice_number', 'LIKE', "%{$cleanJobNo}%")->first();
 
+                // PLAN B: The "Financial Fingerprint" Match (The Fix for Gloria)
+                if (!$sale) {
+                    $sale = Sale::where('customer_id', $customerId)
+                        ->whereBetween('final_total', [$invoiceTotal - 0.05, $invoiceTotal + 0.05])
+                        ->latest()
+                        ->first();
+                }
+
                 if ($sale) {
-                    $customerId = $sale->customer_id;
+                    $customerId = $sale->customer_id; // Sync to the sale's customer
                     $this->matched++;
                 } else {
+                    // Plan C: Fallback to name search if no sale found at all
                     $customer = $this->findCustomer($data);
                     $customerId = $customer ? $customer->id : $walkInCustomer->id;
                     $this->skipped++;
