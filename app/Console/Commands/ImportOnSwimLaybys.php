@@ -47,9 +47,10 @@ class ImportOnSwimLaybys extends Command
             if ($this->option('date')) {
                 $manualDate = $this->option('date');
                 $possible = [
-                    "{$directoryPath}/layby_{$manualDate}.csv", 
-                    "{$directoryPath}/laybys_{$manualDate}.csv",
-                    "{$directoryPath}/laybuy_{$manualDate}.csv"
+                    "{$directoryPath}/layby_2026_{$manualDate}.csv",  // 🚀 Added 2026_
+                    "{$directoryPath}/laybys_2026_{$manualDate}.csv", // 🚀 Added 2026_
+                    "{$directoryPath}/laybuy_2026_{$manualDate}.csv", // 🚀 Added 2026_
+                    "{$directoryPath}/layby_{$manualDate}.csv"        // Keeping fallback just in case
                 ];
                 foreach ($possible as $path) {
                     if (File::exists($path)) {
