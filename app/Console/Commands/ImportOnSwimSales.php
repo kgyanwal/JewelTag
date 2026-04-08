@@ -20,10 +20,10 @@ use Illuminate\Support\Str;
 class ImportOnSwimSales extends Command
 {
     /**
-     * Signature restored with all functional flags
+     * Signature restored with all functional flags + new date flag
      */
-    protected $signature = 'import:onswim-sales {tenant} {--rollback} {--dry-run}';
-    protected $description = 'Import sales with pre-calculation, cross-format duplicate detection, and SQL constraint fixes';
+    protected $signature = 'import:onswim-sales {tenant} {--date= : The date of the CSV file} {--rollback} {--dry-run}';
+    protected $description = 'Import sales with pre-calculation, cross-format duplicate detection, and dynamic file locator';
 
     public function handle()
     {
@@ -43,16 +43,58 @@ class ImportOnSwimSales extends Command
                 auth()->login($adminUser);
             }
 
-            // 🚀 WORKING PATH & DATE PATTERN
+            // ── DYNAMIC FILE PATH LOGIC (LATEST UPLOADED FILE) ────────────────────
             $directoryPath = storage_path("/{$tenantId}/data");
-            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
-            $fileName = "sales_{$yesterday}.csv";
-            $filePath = "{$directoryPath}/{$fileName}";
+            $filePath = null;
+            $fileName = null;
 
-            if (!File::exists($filePath)) {
-                $this->error("❌ FILE NOT FOUND: {$filePath}");
+            if ($this->option('date')) {
+                // If you manually specify a date, only look for that one
+                $manualDate = $this->option('date');
+                $possible = [
+                    "{$directoryPath}/sales_{$manualDate}.csv", 
+                    "{$directoryPath}/onswim_sales_{$manualDate}.csv",
+                    "{$directoryPath}/sales_dsqdata_{$manualDate}.csv"
+                ];
+                foreach ($possible as $path) {
+                    if (File::exists($path)) {
+                        $filePath = $path;
+                        $fileName = basename($path);
+                        break;
+                    }
+                }
+            } else {
+                // Grab ANY file starting with "sales" or "onswim_sales" in that directory
+                $allFiles = File::glob("{$directoryPath}/*.csv");
+                $validFiles = [];
+                
+                foreach ($allFiles as $f) {
+                    $base = basename($f);
+                    // Match 'sales_...' or 'onswim_sales_...' but strictly IGNORE 'sales_payments_...'
+                    if ((str_starts_with($base, 'sales_') && !str_starts_with($base, 'sales_payments_')) || str_starts_with($base, 'onswim_sales_')) {
+                        $validFiles[] = $f;
+                    }
+                }
+                
+                if (!empty($validFiles)) {
+                    // Sort the files by their last modified timestamp (newest first)
+                    usort($validFiles, function($a, $b) {
+                        return File::lastModified($b) <=> File::lastModified($a);
+                    });
+                    
+                    // Grab the absolute newest file in the folder
+                    $filePath = $validFiles[0]; 
+                    $fileName = basename($filePath);
+                }
+            }
+
+            if (!$filePath) {
+                $this->error("❌ NO FILES FOUND in {$directoryPath}");
+                $this->line("The script searched for 'sales_*.csv' or 'onswim_sales_*.csv'.");
                 return Command::SUCCESS;
             }
+
+            $this->info("📥 Using file: {$fileName}");
 
         } catch (\Exception $e) {
             $this->error("Initialization Error: " . $e->getMessage());
@@ -122,7 +164,9 @@ class ImportOnSwimSales extends Command
 
                 // ── 🚀 INVOICE NUMBER GENERATION ──
                 $baseInvoiceNo = 'D' . $purchaseDate->format('mdy') . '-' . $jobNo;
-                $invoiceNo = $baseInvoiceNo;
+                
+                // If it starts with G or another letter from the original Job No, keep it clean
+                $invoiceNo = is_numeric($jobNo) ? $baseInvoiceNo : $jobNo;
 
                 // ── 🛡️ RESTORED: CROSS-FORMAT DUPLICATE CHECK ──
                 if ($customerId !== $walkInCustomer->id && $preCalcTotal > 0) {
@@ -144,6 +188,9 @@ class ImportOnSwimSales extends Command
                         continue;
                     }
                 }
+
+                // 🚀 Count it as a successful processing (for both Dry and Real runs)
+                $created++;
 
                 if (!$isDryRun) {
                     // ── 🚀 FIX 2: Added 0 defaults to satisfy DB NOT NULL constraints ──
@@ -225,23 +272,31 @@ class ImportOnSwimSales extends Command
                             'payment_amount_1'     => $finalTotal,
                         ])
                     );
-                    $created++;
                 }
                 $bar->advance();
             }
 
+            // 🚀 UNIVERSAL SUMMARY OUTPUT
             if ($isDryRun) {
                 DB::connection('tenant')->rollBack();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ DRY RUN COMPLETE.");
+                $this->info("✅ DRY RUN COMPLETE: No data was written.");
             } else {
                 DB::connection('tenant')->commit();
                 $bar->finish();
                 $this->newLine(2);
                 $this->info("✅ SUCCESS: Sales synchronized.");
-                $this->table(['Created/Updated', 'Skipped (Duplicates)'], [[$created, $skipped]]);
             }
+
+            // Show table for both dry and real runs
+            $this->table(
+                ['Metric', 'Count'], 
+                [
+                    [$isDryRun ? 'Would Create/Update' : 'Created/Updated', $created],
+                    ['Skipped (Duplicates)', $skipped]
+                ]
+            );
 
         } catch (\Exception $e) {
             DB::connection('tenant')->rollBack();

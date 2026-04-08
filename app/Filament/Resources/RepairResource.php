@@ -88,11 +88,45 @@ class RepairResource extends Resource
                                             ]);
                                     })
                                     ->preload()
-                                    ->hintAction(
+                                    // 🚀 THE FIX: Use hintActions (plural) to have both buttons!
+                                    ->hintActions([
+                                        FormAction::make('view_customer_details')
+                                            ->label('View Profile')
+                                            ->icon('heroicon-o-user-circle')
+                                            ->color('info')
+                                            ->visible(fn(Forms\Get $get) => $get('customer_id') !== null)
+                                            ->modalHeading('Customer Profile Details')
+                                            ->modalSubmitAction(false)
+                                            ->modalCancelActionLabel('Close')
+                                            ->slideOver()
+                                            ->form(function (Forms\Get $get) {
+                                                $customer = \App\Models\Customer::find($get('customer_id'));
+                                                if (!$customer) return [];
+                                                return [
+                                                    Grid::make(2)->schema([
+                                                        Placeholder::make('img')->label('')
+                                                            ->content(new HtmlString("
+                                                            <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                                <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                <div>
+                                                                    <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                    <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                    <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                        Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        "))->columnSpanFull(),
+                                                        TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
+                                                        TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
+                                                        TextInput::make('addr')->label('Full Address')->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))->readOnly()->columnSpanFull(),
+                                                    ]),
+                                                ];
+                                            }),
                                         FormAction::make('Help')
                                             ->icon('heroicon-o-information-circle')
                                             ->tooltip('Click + to add a new customer')
-                                    )
+                                    ])
                                     ->required()
                                     ->createOptionForm([
                                         Forms\Components\Tabs::make('New Customer')->tabs([
@@ -117,7 +151,7 @@ class RepairResource extends Resource
                                                         TextInput::make('email')->label('Email')->email(),
                                                     ]),
                                                     Grid::make(2)->schema([
-                                                       CustomDatePicker::make('dob')->maxDate(now())->rule('before_or_equal:today')->label('Birth Date'),
+                                                       CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
                                                         CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                     ]),
                                                     Section::make('Customer Address')

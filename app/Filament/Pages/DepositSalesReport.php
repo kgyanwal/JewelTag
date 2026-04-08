@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\DepositSale;
 use App\Models\Payment;
 use App\Models\User;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Pages\Page;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -24,12 +25,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 
-/**
- * DepositSalesReport
- *
- * Shows all deposit sales from the deposit_sales table.
- * Supports recording balance payments and linking to sales.
- */
 class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 {
     use Tables\Concerns\InteractsWithTable;
@@ -125,7 +120,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                 TextColumn::make('payment_history')
                     ->label('Payment History')
                     ->getStateUsing(function (DepositSale $record) {
-                        // Get payments from linked sale if exists
                         $payments = $record->sale_id
                             ? Payment::where('sale_id', $record->sale_id)->orderByDesc('paid_at')->get()
                             : collect();
@@ -231,6 +225,25 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
             // ── Filters ───────────────────────────────────────────────
             ->filters([
+                
+                Filter::make('customer_search')
+                    ->form([
+                        TextInput::make('search_customer')
+                            ->label('Customer Search')
+                            ->placeholder('Enter name or phone...'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query->when(
+                            $data['search_customer'],
+                            fn (Builder $query, $search) => $query->whereHas('customer', function ($q) use ($search) {
+                                $q->where('name', 'like', "%{$search}%")
+                                  ->orWhere('last_name', 'like', "%{$search}%")
+                                  ->orWhere('phone', 'like', "%{$search}%")
+                                  ->orWhere(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'like', "%{$search}%");
+                            })
+                        );
+                    }),
+
                 SelectFilter::make('status')
                     ->options([
                         'active'    => 'Active Deposits',
@@ -238,9 +251,10 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         'cancelled' => 'Cancelled',
                     ]),
 
+                // 🚀 USING CUSTOM DATE PICKER
                 Filter::make('date_range')
                     ->form([
-                       CustomDatePicker::make('from')->label('From')->default(now()->startOfMonth()),
+                        CustomDatePicker::make('from')->label('From')->default(now()->startOfMonth()),
                         CustomDatePicker::make('to')->label('To')->default(now()),
                     ])
                     ->query(fn(Builder $query, array $data) =>
@@ -310,7 +324,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
             // ── Row Actions ───────────────────────────────────────────
             ->actions([
-                // Record a balance payment
                 Action::make('add_payment')
                     ->label('Add Payment')
                     ->icon('heroicon-o-banknotes')
@@ -325,27 +338,33 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             ->default(fn(DepositSale $record) => $record->balance_due),
                         Select::make('method')
                             ->label('Payment Method')
-                            ->options([
-                                'CASH'                   => 'Cash',
-                                'DEBIT CARD'             => 'Debit Card',
-                                'VISA'                   => 'Visa',
-                                'MASTERCARD'             => 'Mastercard',
-                                'AMERICAN EXPRESS'       => 'American Express',
-                                'KAFENE'                 => 'Kafene',
-                                'ACIMA'                  => 'Acima',
-                                'PROGRESSIVE LEASING'    => 'Progressive Leasing',
-                                'AMERICAN FIRST FINANCE' => 'American First Finance',
-                                'WELLS FARGO'            => 'Wells Fargo',
-                                'COMENITY BANK'          => 'Comenity Bank',
-                                'KATAPULT'               => 'Katapult',
-                            ])
+                            ->options(function () {
+                                // Fetch the dynamic list from your site settings
+                                $methodsJson = DB::table('site_settings')
+                                    ->where('key', 'payment_methods')
+                                    ->value('value');
+                                
+                                // Fallback array just in case the setting is missing
+                                $activeMethods = $methodsJson ? json_decode($methodsJson, true) : [
+                                    'CASH', 'VISA', 'MASTERCARD', 'AMERICAN EXPRESS', 'DEBIT CARD'
+                                ];
+
+                                // Format it beautifully for the dropdown: ['CASH' => 'Cash']
+                                $options = [];
+                                if (is_array($activeMethods)) {
+                                    foreach ($activeMethods as $method) {
+                                        $options[strtoupper($method)] = ucwords(strtolower($method));
+                                    }
+                                }
+
+                                return $options;
+                            })
                             ->required(),
                     ])
                     ->action(function (DepositSale $record, array $data) {
                         DB::transaction(function () use ($record, $data) {
                             $amount = (float) $data['amount'];
 
-                            // Record payment against linked sale if exists
                             if ($record->sale_id) {
                                 Payment::create([
                                     'sale_id' => $record->sale_id,
@@ -366,7 +385,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                                 'last_paid_date' => now()->toDateString(),
                             ]);
 
-                            // If fully paid and has linked sale, mark sale completed
                             if ($newBalance <= 0 && $record->sale_id) {
                                 \App\Models\Sale::where('id', $record->sale_id)->update([
                                     'status'       => 'completed',
@@ -384,7 +402,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             ->send();
                     }),
 
-                // View linked sale
                 Action::make('view_sale')
                     ->label('View Sale')
                     ->icon('heroicon-o-eye')
@@ -394,7 +411,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id])
                     ),
             ])
-
             ->persistFiltersInSession()
             ->defaultSort('start_date', 'desc')
             ->striped()
