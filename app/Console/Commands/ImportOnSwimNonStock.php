@@ -14,16 +14,18 @@ class ImportOnSwimNonStock extends Command
 {
     // Added --date option to allow manual override if needed
     protected $signature = 'import:onswim-nonstock {tenant} {--date= : The date of the CSV file Y_m_d} {--dry-run} {--rollback}';
-    protected $description = 'Import Non-Stock items (Grills, Repairs, Custom Labor) from OnSwim based on a dynamic date file.';
+    protected $description = 'Import Non-Stock items (Grills, Repairs, Custom Labor) from OnSwim using aggressive matching.';
 
     private int   $imported     = 0;
     private int   $skipped      = 0;
     private int   $notFound     = 0;
     private array $notFoundList = [];
-    private array $skippedList  = [];
 
     public function handle(): int
     {
+        set_time_limit(0);
+        ini_set('memory_limit', '1G');
+
         $tenantId   = $this->argument('tenant');
         $isDryRun   = $this->option('dry-run');
         $isRollback = $this->option('rollback');
@@ -52,18 +54,38 @@ class ImportOnSwimNonStock extends Command
             return 0;
         }
 
-        // ── DYNAMIC FILE PATH LOGIC ──────────────────────────────────────────
-        // 🚀 Matches your structure: storage/tenantlxd/data/
+        // ── DYNAMIC FILE PATH LOGIC (5-DAY LOOKBACK) ──────────────────────────
         $directoryPath = storage_path("/{$tenantId}/data");
-        
-        // Dynamic Filename: non_stock_2026_03_31.csv
-        $dateSuffix = $this->option('date') ?? Carbon::yesterday()->format('Y_m_d'); 
-        $fileName   = "non_stock_{$dateSuffix}.csv";
-        $filePath   = "{$directoryPath}/{$fileName}";
+        $filesToProcess = [];
 
-        if (!File::exists($filePath)) {
-            $this->error("❌ FILE NOT FOUND: {$filePath}");
-            $this->line("Expected format: <comment>non_stock_YYYY_MM_DD.csv</comment>");
+        if ($this->option('date')) {
+            // If you manually specify a date, only look for that one
+            $manualDate = $this->option('date');
+            $filesToProcess[] = "non_stock_{$manualDate}.csv";
+            $filesToProcess[] = "non_stock_sales_{$manualDate}.csv"; 
+        } else {
+            // Otherwise, scan the last 5 days to ignore timezones and weekends
+            for ($i = 0; $i <= 5; $i++) {
+                $dateStr = Carbon::now()->subDays($i)->format('Y_m_d');
+                $filesToProcess[] = "non_stock_{$dateStr}.csv";
+                $filesToProcess[] = "non_stock_sales_{$dateStr}.csv";
+            }
+        }
+
+        // Find the first file in the array that actually exists
+        $filePath = null;
+        $fileName = null;
+        foreach ($filesToProcess as $file) {
+            if (File::exists("{$directoryPath}/{$file}")) {
+                $filePath = "{$directoryPath}/{$file}";
+                $fileName = $file;
+                break;
+            }
+        }
+
+        if (!$filePath) {
+            $this->error("❌ NO FILES FOUND in {$directoryPath}");
+            $this->line("The script searched for 'non_stock_YYYY_MM_DD.csv' over the last 5 days.");
             return 1;
         }
 
@@ -98,7 +120,7 @@ class ImportOnSwimNonStock extends Command
         $bar = $this->output->createProgressBar($total);
         $bar->start();
 
-        if (!$isDryRun) DB::beginTransaction();
+        if (!$isDryRun) DB::connection('tenant')->beginTransaction();
 
         try {
             foreach ($rows as $data) {
@@ -116,19 +138,24 @@ class ImportOnSwimNonStock extends Command
                     continue;
                 }
 
-                // Match Sale
-                $sale = Sale::where('invoice_number', $jobNo)->first()
-                    ?? Sale::where('invoice_number', 'D' . $jobNo)->first()
-                    ?? Sale::where('invoice_number', 'D' . ltrim($jobNo, '0'))->first();
+                // 🚀 AGGRESSIVE FUZZY MAPPING LOGIC
+                $cleanJobNo = preg_replace('/[^0-9]/', '', $jobNo);
+                
+                $sale = Sale::where('invoice_number', $cleanJobNo)
+                    ->orWhere('invoice_number', 'LIKE', "%-{$cleanJobNo}")
+                    ->orWhere('invoice_number', 'LIKE', "{$cleanJobNo}-%")
+                    ->orWhere('invoice_number', 'LIKE', "%_{$cleanJobNo}")
+                    ->orWhere('invoice_number', 'LIKE', "%{$cleanJobNo}%")
+                    ->first();
 
                 if (!$sale) {
-                    $this->notFoundList[] = "Job #{$jobNo} ({$description})";
+                    $this->notFoundList[] = $jobNo;
                     $this->notFound++;
                     $bar->advance();
                     continue;
                 }
 
-                // Idempotency
+                // Idempotency (Prevents duplicates)
                 $alreadyExists = SaleItem::where('sale_id', $sale->id)
                     ->where('import_source', 'onswim_nonstock')
                     ->where('custom_description', $description)
@@ -142,31 +169,37 @@ class ImportOnSwimNonStock extends Command
                 }
 
                 if (!$isDryRun) {
-                    SaleItem::create([
-                        'sale_id'             => $sale->id,
-                        'is_non_stock'        => true,
-                        'import_source'       => 'onswim_nonstock',
-                        'stock_no_display'    => strtoupper($itemType),
-                        'custom_description'  => $description,
-                        'qty'                 => 1,
-                        'cost_price'          => $costPrice,
-                        'sold_price'          => $soldPrice,
-                        'sale_price_override' => $soldPrice,
-                        'discount_amount'     => $discount,
-                        'is_tax_free'         => false,
-                        'is_manual'           => true,
-                        'store_id'            => $sale->store_id,
-                    ]);
+                    SaleItem::withoutEvents(fn() => 
+                        SaleItem::create([
+                            'sale_id'             => $sale->id,
+                            'is_non_stock'        => true,
+                            'import_source'       => 'onswim_nonstock',
+                            'stock_no_display'    => strtoupper($itemType),
+                            'custom_description'  => $description,
+                            'qty'                 => 1,
+                            'cost_price'          => $costPrice,
+                            'sold_price'          => $soldPrice,
+                            'sale_price_override' => $soldPrice,
+                            'discount_amount'     => $discount,
+                            'is_tax_free'         => false,
+                            'is_manual'           => true,
+                            'store_id'            => $sale->store_id,
+                        ])
+                    );
                 }
 
                 $this->imported++;
                 $bar->advance();
             }
 
-            if (!$isDryRun) DB::commit();
+            if (!$isDryRun) {
+                DB::connection('tenant')->commit();
+            } else {
+                DB::connection('tenant')->rollBack();
+            }
 
         } catch (\Exception $e) {
-            if (!$isDryRun) DB::rollBack();
+            DB::connection('tenant')->rollBack();
             $this->error("\nError: " . $e->getMessage());
             return 1;
         }
@@ -175,7 +208,7 @@ class ImportOnSwimNonStock extends Command
         $this->newLine(2);
 
         $this->table(['Metric', 'Count'], [
-            ['Total Rows', $total],
+            ['Total Rows Processed', $total],
             ['Matched & Imported', $this->imported],
             ['Skipped (Dupes/Zeros)', $this->skipped],
             ['Sale Not Found', $this->notFound],
@@ -183,7 +216,8 @@ class ImportOnSwimNonStock extends Command
 
         if (!empty($this->notFoundList)) {
             $this->newLine();
-            $this->warn("❌ No Sale found for Job Numbers: " . implode(', ', array_unique($this->notFoundList)));
+            $this->warn("⚠️ No Sale found for Job Numbers: " . implode(', ', array_unique($this->notFoundList)));
+            $this->line("Ensure you have run the Sales import for these dates first!");
         }
 
         return 0;
