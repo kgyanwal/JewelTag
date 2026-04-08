@@ -238,62 +238,65 @@ class StockTransferResource extends Resource
             ])
             ->actions([
                 // ── ACCEPT — only for INCOMING pending ───────────────────
+                // ── ACCEPT — only for INCOMING pending ───────────────────
                 Tables\Actions\Action::make('accept')
                     ->label('✅ Accept')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->button()
                     ->requiresConfirmation()
-                    ->modalHeading('Accept Incoming Stock?')
+                    ->modalHeading('Accept Incoming Stock')
                     ->modalDescription(fn(StockTransfer $record) =>
-                        "Add " . (is_array($record->item_snapshot) ? count($record->item_snapshot) : 1) .
-                        " item(s) to your inventory. Transfer #: {$record->transfer_number}"
+                        "Review the incoming items and map the vendors to your local database before adding them to inventory. Transfer #: {$record->transfer_number}"
                     )
-                    ->form(function (StockTransfer $record): array {
-                        // Check if any item in the snapshot has a vendor name
-                        $snapshot       = (array) ($record->item_snapshot ?? []);
-                        $hasVendorNames = collect($snapshot)->filter(
-                            fn($item) => !empty($item['supplier_company_name']) || !empty($item['supplier_name'])
-                        )->isNotEmpty();
+                    ->form(function (StockTransfer $record) {
+                        // 1. Find all unique vendor names coming from the snapshot
+                        $incomingVendors = collect($record->item_snapshot)
+                            ->pluck('supplier_company_name')
+                            ->filter()
+                            ->unique()
+                            ->values();
 
-                        return [
-                            \Filament\Forms\Components\Placeholder::make('vendor_info')
+                        $schema = [];
+
+                        // 2. Build a mapping dropdown for EVERY incoming vendor
+                        foreach ($incomingVendors as $index => $vendorName) {
+                            $schema[] = \Filament\Forms\Components\Fieldset::make("Vendor: {$vendorName}")
+                                ->schema([
+                                    \Filament\Forms\Components\Radio::make("vendor_action_{$index}")
+                                        ->label('How should we handle this vendor?')
+                                        ->options([
+                                            'match'  => 'Match to an existing local vendor',
+                                            'create' => "Create new vendor: '{$vendorName}'",
+                                        ])
+                                        ->default('match')
+                                        ->live(),
+
+                                    \Filament\Forms\Components\Select::make("mapped_vendor_id_{$index}")
+                                        ->label('Select Local Vendor')
+                                        ->options(\App\Models\Supplier::pluck('company_name', 'id'))
+                                        ->searchable()
+                                        ->required(fn(\Filament\Forms\Get $get) => $get("vendor_action_{$index}") === 'match')
+                                        ->visible(fn(\Filament\Forms\Get $get) => $get("vendor_action_{$index}") === 'match')
+                                        ->hint('Search your existing vendors to avoid duplicates.'),
+                                    
+                                    // Hidden field just to store the original name for the action loop
+                                    \Filament\Forms\Components\Hidden::make("original_vendor_name_{$index}")
+                                        ->default($vendorName)
+                                ]);
+                        }
+
+                        if (empty($schema)) {
+                            $schema[] = \Filament\Forms\Components\Placeholder::make('no_vendors')
                                 ->label('')
                                 ->content(new HtmlString(
-                                    $hasVendorNames
-                                        ? "<div class='p-3 bg-success-50 border border-success-200 rounded-lg text-success-700 text-sm font-medium'>
-                                            ✅ Vendor info found in transfer — will be auto-matched or created automatically.
-                                            You can optionally select a fallback below if needed.
-                                           </div>"
-                                        : "<div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-warning-700 text-sm font-medium'>
-                                            ⚠️ No vendor info found in transfer snapshot. Please select a fallback vendor below.
-                                           </div>"
-                                )),
+                                    "<div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-warning-700 text-sm font-medium'>
+                                        ⚠️ No vendor info found in transfer snapshot. Items will be imported without vendor links.
+                                    </div>"
+                                ));
+                        }
 
-                            Select::make('fallback_supplier_id')
-                                ->label('Fallback Vendor (optional)')
-                                ->options(fn() => Supplier::pluck('company_name', 'id'))
-                                ->searchable()
-                                ->nullable()
-                                ->placeholder('Select a vendor if auto-match fails...')
-                                ->helperText('Leave blank to auto-create vendor from source name. Required only if no vendor name is in the transfer.')
-                                ->createOptionForm([
-                                    TextInput::make('company_name')
-                                        ->label('Vendor Name')
-                                        ->required(),
-                                    TextInput::make('supplier_code')
-                                        ->label('Vendor Code')
-                                        ->default('SUP-' . strtoupper(Str::random(6)))
-                                        ->required(),
-                                ])
-                                ->createOptionUsing(function (array $data) {
-                                    return Supplier::create([
-                                        'company_name'  => $data['company_name'],
-                                        'supplier_code' => $data['supplier_code'],
-                                        'is_active'     => true,
-                                    ])->id;
-                                }),
-                        ];
+                        return $schema;
                     })
                     ->visible(function (StockTransfer $record): bool {
                         return $record->to_tenant === tenant('id')
@@ -304,8 +307,33 @@ class StockTransferResource extends Resource
                         $snapshot           = (array) ($record->item_snapshot ?? []);
                         $skipped            = [];
                         $created            = [];
-                        $fallbackSupplierId = $data['fallback_supplier_id'] ?? null;
 
+                        // 1. Build a lookup array of [OriginalName => LocalSupplierID]
+                        $vendorMap = [];
+                        $index = 0;
+                        while (isset($data["original_vendor_name_{$index}"])) {
+                            $origName = $data["original_vendor_name_{$index}"];
+                            $action   = $data["vendor_action_{$index}"];
+                            
+                            if ($action === 'match') {
+                                $vendorMap[$origName] = $data["mapped_vendor_id_{$index}"];
+                            } else {
+                                // Create the new vendor right now
+                                $newVendor = \App\Models\Supplier::withoutEvents(function () use ($origName) {
+                                    return \App\Models\Supplier::firstOrCreate(
+                                        ['company_name' => $origName],
+                                        [
+                                            'supplier_code' => 'SUP-' . strtoupper(Str::random(6)),
+                                            'is_active'     => true,
+                                        ]
+                                    );
+                                });
+                                $vendorMap[$origName] = $newVendor->id;
+                            }
+                            $index++;
+                        }
+
+                        // 2. Import the items
                         foreach ($snapshot as $itemData) {
                             if (empty($itemData['barcode'])) continue;
 
@@ -316,48 +344,13 @@ class StockTransferResource extends Resource
                                 : 'T' . $originalBarcode;
                             $itemData['barcode'] = $barcode;
 
-                            // ── Resolve supplier ───────────────────────────────────
-                            $supplierId         = $fallbackSupplierId;
-                            $sourceSupplierName = $itemData['supplier_company_name']
-                                ?? $itemData['supplier_name']
-                                ?? null;
+                            // Apply the mapped vendor ID!
+                            $origVendor = $itemData['supplier_company_name'] ?? null;
+                            $itemData['supplier_id'] = $origVendor && isset($vendorMap[$origVendor]) 
+                                ? $vendorMap[$origVendor] 
+                                : null;
 
-                            if ($sourceSupplierName) {
-                                // Auto-match or create vendor from source name
-                                try {
-                                    $supplier = Supplier::withoutEvents(function () use ($sourceSupplierName) {
-                                        return Supplier::firstOrCreate(
-                                            ['company_name' => $sourceSupplierName],
-                                            [
-                                                'supplier_code' => 'SUP-' . strtoupper(Str::random(6)),
-                                                'is_active'     => true,
-                                            ]
-                                        );
-                                    });
-                                    $supplierId = $supplier->id;
-                                } catch (\Exception $e) {
-                                    // Auto-create failed — fall through to fallback
-                                }
-                            }
-
-                            // ── If still null, use fallback or create generic vendor ─
-                            if (!$supplierId) {
-                                if ($fallbackSupplierId) {
-                                    $supplierId = $fallbackSupplierId;
-                                } else {
-                                    $generic = Supplier::withoutEvents(function () {
-                                        return Supplier::firstOrCreate(
-                                            ['company_name' => 'Unknown Vendor'],
-                                            [
-                                                'supplier_code' => 'SUP-UNKNOWN',
-                                                'is_active'     => true,
-                                            ]
-                                        );
-                                    });
-                                    $supplierId = $generic->id;
-                                }
-                            }
-
+                            // Clean up source database keys
                             unset(
                                 $itemData['id'],
                                 $itemData['created_at'],
@@ -369,7 +362,6 @@ class StockTransferResource extends Resource
 
                             $itemData['status']      = 'in_stock';
                             $itemData['store_id']    = 1;
-                            $itemData['supplier_id'] = $supplierId;
 
                             $existing = ProductItem::withTrashed()->where('barcode', $barcode)->first();
 
@@ -378,7 +370,7 @@ class StockTransferResource extends Resource
                                 $existing->update([
                                     'status'      => 'in_stock',
                                     'store_id'    => 1,
-                                    'supplier_id' => $supplierId,
+                                    'supplier_id' => $itemData['supplier_id'],
                                 ]);
                                 $skipped[] = $barcode;
                             } else {
@@ -399,6 +391,7 @@ class StockTransferResource extends Resource
                             'actioned_at' => now(),
                         ]);
 
+                        // 3. Inform the sending tenant
                         $fromTenantId = $record->from_tenant;
                         if ($fromTenantId && $fromTenantId !== $currentTenant) {
                             $srcTenant = Tenant::find($fromTenantId);
@@ -442,7 +435,7 @@ class StockTransferResource extends Resource
                         if (!empty($skipped)) $msg .= count($skipped) . ' already existed (updated). ';
 
                         Notification::make()
-                            ->title('✅ Transfer Accepted')
+                            ->title('✅ Transfer Accepted & Vendors Mapped')
                             ->body(trim($msg) ?: 'Items processed.')
                             ->success()
                             ->send();

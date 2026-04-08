@@ -133,12 +133,19 @@ class ExportTenantCsvAppend extends Command
         $fileExists = Storage::disk('s3')->exists($s3Path);
         $existingContent = $fileExists ? Storage::disk('s3')->get($s3Path) : '';
 
-        if (!$fileExists || empty($existingContent)) {
-            // New File: Initialize with Headers
-            $headerRow = $columns;
-            $headerRow[] = '_export_date';
-            $existingContent = $this->toCsvLine($headerRow) . "\n";
-        }
+       // Build the expected header line
+$headerRow     = $columns;
+$headerRow[]   = '_export_date';
+$expectedHeader = $this->toCsvLine($headerRow);
+
+if (!$fileExists || empty(trim($existingContent))) {
+    // New file or completely empty — initialize with headers
+    $existingContent = $expectedHeader . "\n";
+} elseif (!str_starts_with(trim($existingContent), $expectedHeader)) {
+    // File exists but is missing the header (corrupted/truncated) — prepend it
+    $existingContent = $expectedHeader . "\n" . ltrim($existingContent);
+    $this->warn("  ⚠ {$table}: Header was missing — prepended to existing content.");
+}
 
         // 5. Build CSV lines for NEW rows only
         $newCsvLines = [];

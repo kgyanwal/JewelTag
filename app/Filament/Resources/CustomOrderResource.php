@@ -266,18 +266,20 @@ class CustomOrderResource extends Resource
                                     ]),
 
                                     // ── ITEM PRICE — full width, prominent ───────────────────────
-                                    TextInput::make('quoted_price')
-                                        ->label('Item Price')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->required()
-                                        ->live(onBlur: true)
-                                        ->columnSpanFull()
-                                        ->helperText('Enter the agreed price for this item')
-                                        ->extraInputAttributes([
-                                            'class' => 'font-black text-2xl text-success-700',
-                                            'style' => 'font-size:1.5rem;height:3rem;border:2px solid #10b981;background:#f0fdf4;',
-                                        ]),
+                                  TextInput::make('quoted_price')
+    ->label('Item Price')
+    ->numeric()
+    ->prefix('$')
+    ->required()
+    ->live(onBlur: true)
+    ->columnSpanFull()
+    ->helperText('Enter the agreed price for this item')
+    ->extraInputAttributes([
+        'class' => 'font-black text-2xl text-success-700',
+        'style' => 'font-size:1.5rem;height:3rem;border:2px solid #10b981;background:#f0fdf4;',
+    ]),
+
+
 
                                     Textarea::make('design_notes')
                                         ->label('Design Notes / Instructions')
@@ -353,16 +355,49 @@ class CustomOrderResource extends Resource
                                 ->prefix('$'),
 
                             TextInput::make('quoted_price')
-                                ->label('Total Quoted Price')
-                                ->numeric()
-                                ->prefix('$')
-                                ->required()
-                                ->readOnly()
-                                ->live(onBlur: true)
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
+    ->label('Total Quoted Price (Before Discount)')
+    ->numeric()
+    ->prefix('$')
+    ->required()
+    ->readOnly()
+    ->live(onBlur: true)
+    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+    ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
 
-                            TextInput::make('amount_paid')
+Grid::make(2)->schema([
+    TextInput::make('discount_percent')
+        ->label('Discount %')
+        ->numeric()
+        ->suffix('%')
+        ->default(0)
+        ->minValue(0)
+        ->maxValue(100)
+        ->live(onBlur: true)
+        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+            $quoted  = floatval($get('quoted_price') ?? 0);
+            $pct     = min(100, max(0, floatval($state ?? 0)));
+            $discAmt = $quoted * $pct / 100;
+            $set('discount_amount', round($discAmt, 2));
+            self::calculateBalance($get, $set);
+        }),
+  TextInput::make('discount_amount')
+    ->label('Discount $')
+    ->numeric()
+    ->prefix('$')
+    ->default(0)
+    ->live(onBlur: true)
+    ->extraInputAttributes(['class' => 'font-bold text-danger-600'])
+    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+        $quoted  = floatval($get('quoted_price') ?? 0);
+        $discAmt = min($quoted, max(0, floatval($state ?? 0)));
+        $pct     = $quoted > 0 ? round(($discAmt / $quoted) * 100, 2) : 0;
+        $set('discount_amount', round($discAmt, 2));
+        $set('discount_percent', $pct);
+        self::calculateBalance($get, $set);
+    }),
+]),
+
+TextInput::make('amount_paid')
                                 ->label('Initial Deposit / Amount Paid')
                                 ->numeric()
                                 ->prefix('$')
@@ -469,45 +504,57 @@ class CustomOrderResource extends Resource
                                 ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
                             // Financial summary
-                            Placeholder::make('financial_summary')
-                                ->label('Order Summary')
-                                ->live()
-                                ->content(function (Get $get) {
-                                    $quoted    = floatval($get('quoted_price') ?? 0);
-                                    $paid      = floatval($get('amount_paid') ?? 0);
-                                    $isTaxFree = (bool)($get('is_tax_free') ?? false);
+                           Placeholder::make('financial_summary')
+    ->label('Order Summary')
+    ->live()
+    ->content(function (Get $get) {
+        $quoted    = floatval($get('quoted_price') ?? 0);
+        $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
+        $discAmt   = $quoted * $discPct / 100;
+        $afterDisc = $quoted - $discAmt;
+        $paid      = floatval($get('amount_paid') ?? 0);
+        $isTaxFree = (bool)($get('is_tax_free') ?? false);
 
-                                    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                    $tax     = $quoted * $taxRate;
-                                    $total   = $quoted + $tax;
-                                    $balance = max(0, $total - $paid);
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $tax     = $afterDisc * $taxRate;
+        $total   = $afterDisc + $tax;
+        $balance = max(0, $total - $paid);
 
-                                    return new HtmlString("
-                                        <div class='rounded-lg border border-gray-200 overflow-hidden text-sm'>
-                                            <div class='flex justify-between px-3 py-2 bg-gray-50'>
-                                                <span class='text-gray-500'>Quoted Price</span>
-                                                <span class='font-semibold'>\$" . number_format($quoted, 2) . "</span>
-                                            </div>
-                                            <div class='flex justify-between px-3 py-2'>
-                                                <span class='text-gray-500'>Tax (" . ($isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%') . ")</span>
-                                                <span class='font-semibold'>\$" . number_format($tax, 2) . "</span>
-                                            </div>
-                                            <div class='flex justify-between px-3 py-2 bg-gray-50 font-bold'>
-                                                <span>Total</span>
-                                                <span>\$" . number_format($total, 2) . "</span>
-                                            </div>
-                                            <div class='flex justify-between px-3 py-2'>
-                                                <span class='text-success-600'>Deposit Paid</span>
-                                                <span class='font-semibold text-success-600'>-\$" . number_format($paid, 2) . "</span>
-                                            </div>
-                                            <div class='flex justify-between px-3 py-2 bg-red-50 font-black text-red-600 text-base'>
-                                                <span>Balance Due</span>
-                                                <span>\$" . number_format($balance, 2) . "</span>
-                                            </div>
-                                        </div>
-                                    ");
-                                }),
+        return new HtmlString("
+            <div class='rounded-lg border border-gray-200 overflow-hidden text-sm'>
+                <div class='flex justify-between px-3 py-2 bg-gray-50'>
+                    <span class='text-gray-500'>Quoted Price</span>
+                    <span class='font-semibold'>\$" . number_format($quoted, 2) . "</span>
+                </div>
+                " . ($discAmt > 0 ? "
+                <div class='flex justify-between px-3 py-2 bg-orange-50'>
+                    <span class='text-orange-600'>Discount ({$discPct}%)</span>
+                    <span class='font-semibold text-orange-600'>-\$" . number_format($discAmt, 2) . "</span>
+                </div>
+                <div class='flex justify-between px-3 py-2'>
+                    <span class='text-gray-500'>After Discount</span>
+                    <span class='font-semibold'>\$" . number_format($afterDisc, 2) . "</span>
+                </div>" : "") . "
+                <div class='flex justify-between px-3 py-2'>
+                    <span class='text-gray-500'>Tax (" . ($isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%') . ")</span>
+                    <span class='font-semibold'>\$" . number_format($tax, 2) . "</span>
+                </div>
+                <div class='flex justify-between px-3 py-2 bg-gray-50 font-bold'>
+                    <span>Total</span>
+                    <span>\$" . number_format($total, 2) . "</span>
+                </div>
+                <div class='flex justify-between px-3 py-2'>
+                    <span class='text-success-600'>Deposit Paid</span>
+                    <span class='font-semibold text-success-600'>-\$" . number_format($paid, 2) . "</span>
+                </div>
+                <div class='flex justify-between px-3 py-2 bg-red-50 font-black text-red-600 text-base'>
+                    <span>Balance Due</span>
+                    <span>\$" . number_format($balance, 2) . "</span>
+                </div>
+            </div>
+        ");
+    }),
 
                             Select::make('status')
                                 ->options([
@@ -540,489 +587,531 @@ class CustomOrderResource extends Resource
         ]);
     }
 
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('order_no')
-                    ->label('ORDER #')
-                    ->searchable()
-                    ->sortable()
-                    ->weight('bold')
-                    ->grow(false),
+   public static function table(Table $table): Table
+{
+    return $table
+        ->columns([
+            Tables\Columns\TextColumn::make('order_no')
+                ->label('ORDER #')
+                ->searchable()
+                ->sortable()
+                ->weight('bold')
+                ->grow(false),
 
-                Tables\Columns\TextColumn::make('order_type')
-                    ->label('TYPE')
-                    ->badge()
-                    ->formatStateUsing(fn($state) => $state === 'stock_modify' ? 'Modify Stock' : 'Custom')
-                    ->color(fn($state) => $state === 'stock_modify' ? 'warning' : 'info')
-                    ->grow(false),
+            Tables\Columns\TextColumn::make('order_type')
+                ->label('TYPE')
+                ->badge()
+                ->formatStateUsing(fn($state) => $state === 'stock_modify' ? 'Modify Stock' : 'Custom')
+                ->color(fn($state) => $state === 'stock_modify' ? 'warning' : 'info')
+                ->grow(false),
 
-                Tables\Columns\TextColumn::make('customer.name')
-                    ->label('CUSTOMER')
-                    ->searchable()
-                    ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
+            Tables\Columns\TextColumn::make('customer.name')
+                ->label('CUSTOMER')
+                ->searchable()
+                ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
 
-                Tables\Columns\TextColumn::make('staff.name')
-                    ->label('SALES REP')
-                    ->toggleable(isToggledHiddenByDefault: true)
-                    ->color('gray'),
+            Tables\Columns\TextColumn::make('staff.name')
+                ->label('SALES REP')
+                ->toggleable(isToggledHiddenByDefault: true)
+                ->color('gray'),
 
-                Tables\Columns\TextColumn::make('due_date')
-                    ->date('M d, Y')
-                    ->label('DUE DATE')
-                    ->sortable()
-                    ->grow(false)
-                    ->color(fn($record) => $record->due_date && $record->due_date <= now() ? 'danger' : 'warning'),
+            Tables\Columns\TextColumn::make('due_date')
+                ->date('M d, Y')
+                ->label('DUE DATE')
+                ->sortable()
+                ->grow(false)
+                ->color(fn($record) => $record->due_date && $record->due_date <= now() ? 'danger' : 'warning'),
 
-                Tables\Columns\TextColumn::make('quoted_price')
-                    ->label('QUOTED')
-                    ->money('USD')
-                    ->color('success')
-                    ->grow(false),
+            Tables\Columns\TextColumn::make('quoted_price')
+                ->label('QUOTED')
+                ->money('USD')
+                ->color('success')
+                ->grow(false),
 
-                // ── 1. NEW PAID COLUMN ──
-                Tables\Columns\TextColumn::make('total_paid')
-                    ->label('PAID')
-                    ->getStateUsing(function (CustomOrder $record) {
-                        // Check for recorded payments first, fallback to the initial amount_paid column
-                        $paidFromPayments = $record->payments()->sum('amount');
-                        return $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
-                    })
-                    ->money('USD')
-                    ->color('info')
-                    ->grow(false),
+            Tables\Columns\TextColumn::make('total_paid')
+                ->label('PAID')
+                ->getStateUsing(function (CustomOrder $record) {
+                    $paidFromPayments = $record->payments()->sum('amount');
+                    return $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
+                })
+                ->money('USD')
+                ->color('info')
+                ->grow(false),
 
-                // ── 2. DYNAMIC BALANCE CALCULATION ──
-                Tables\Columns\TextColumn::make('computed_balance')
-                    ->label('BALANCE')
-                    ->getStateUsing(function (CustomOrder $record) {
-                        // Dynamically calculate the true grand total including tax
-                        $quoted    = floatval($record->quoted_price);
-                        $isTaxFree = (bool)($record->is_tax_free);
-                        $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $grandTotal = $quoted + ($quoted * $taxRate);
+            // ── DISCOUNT COLUMN ──
+            Tables\Columns\TextColumn::make('discount_display')
+                ->label('DISC')
+                ->getStateUsing(function (CustomOrder $record) {
+                    $discPct = floatval($record->discount_percent ?? 0);
+                    $discAmt = floatval($record->discount_amount ?? 0);
+                    if ($discPct <= 0 && $discAmt <= 0) return '—';
+                    return $discPct . '%' . '|' . number_format($discAmt, 2);
+                })
+                ->formatStateUsing(function ($state) {
+                    if ($state === '—') {
+                        return new \Illuminate\Support\HtmlString("<span style='color:#d1d5db;'>—</span>");
+                    }
+                    [$pct, $amt] = explode('|', $state);
+                    return new \Illuminate\Support\HtmlString("
+                        <div style='text-align:center;line-height:1.3;'>
+                            <div style='font-size:11px;font-weight:700;color:#f97316;'>{$pct}</div>
+                            <div style='font-size:10px;color:#ef4444;'>-\${$amt}</div>
+                        </div>
+                    ");
+                })
+                ->html()
+                ->grow(false),
 
-                        // Fetch the true total paid
-                        $paidFromPayments = $record->payments()->sum('amount');
-                        $totalPaid = $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
+            // ── TAX COLUMN ──
+            Tables\Columns\TextColumn::make('tax_display')
+                ->label('TAX')
+                ->getStateUsing(function (CustomOrder $record) {
+                    $isTaxFree = (bool)($record->is_tax_free ?? false);
+                    if ($isTaxFree) return 'exempt';
+                    $quoted    = floatval($record->quoted_price);
+                    $discAmt   = floatval($record->discount_amount ?? 0);
+                    $afterDisc = $quoted - $discAmt;
+                    $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                    $taxRate   = floatval($dbTax) / 100;
+                    $taxAmt    = $afterDisc * $taxRate;
+                    return number_format($dbTax, 2) . '%' . '|' . number_format($taxAmt, 2);
+                })
+                ->formatStateUsing(function ($state) {
+                    if ($state === 'exempt') {
+                        return new \Illuminate\Support\HtmlString("<span style='font-size:9px;color:#10b981;font-weight:600;'>EXEMPT</span>");
+                    }
+                    [$rate, $amt] = explode('|', $state);
+                    return new \Illuminate\Support\HtmlString("
+                        <div style='text-align:center;line-height:1.3;'>
+                            <div style='font-size:11px;font-weight:700;color:#6b7280;'>{$rate}</div>
+                            <div style='font-size:10px;color:#374151;'>\${$amt}</div>
+                        </div>
+                    ");
+                })
+                ->html()
+                ->grow(false),
 
-                        // Return the accurate remaining balance
-                        return max(0, $grandTotal - $totalPaid);
-                    })
-                    ->money('USD')
-                    ->sortable(false) // Dynamic columns cannot be natively sorted via DB
-                    ->grow(false)
-                    ->color(fn($state) => $state > 0 ? 'danger' : 'success')
-                    ->weight('bold'),
+            // ── BALANCE — now correctly accounts for discount ──
+            Tables\Columns\TextColumn::make('computed_balance')
+                ->label('BALANCE')
+                ->getStateUsing(function (CustomOrder $record) {
+                    $quoted    = floatval($record->quoted_price);
+                    $discAmt   = floatval($record->discount_amount ?? 0);
+                    $afterDisc = $quoted - $discAmt;
+                    $isTaxFree = (bool)($record->is_tax_free);
+                    $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                    $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                    $grandTotal = $afterDisc + ($afterDisc * $taxRate);
 
-                Tables\Columns\SelectColumn::make('status')
-                    ->label('STATUS')
-                    ->options([
-                        'draft'         => 'Draft',
-                        'quoted'        => 'Quoted',
-                        'approved'      => 'Approved',
-                        'in_production' => 'In Production',
-                        'received'      => 'Ready for Pickup',
-                        'completed'     => 'Completed',
-                    ])
-                    ->selectablePlaceholder(false)
-                    ->grow(false),
+                    $paidFromPayments = $record->payments()->sum('amount');
+                    $totalPaid = $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
 
-                Tables\Columns\TextColumn::make('notified_at')
-                    ->label('NOTIFIED')
-                    ->getStateUsing(
-                        fn($record) => $record->is_customer_notified && $record->notified_at
-                            ? $record->notified_at->format('M d, y')
-                            : 'No'
-                    )
-                    ->icon(fn($state) => $state !== 'No' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
-                    ->color(fn($state) => $state !== 'No' ? 'success' : 'gray')
-                    ->grow(false),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'draft'         => 'Draft',
-                        'quoted'        => 'Quoted',
-                        'approved'      => 'Approved',
-                        'in_production' => 'In Production',
-                        'received'      => 'Ready for Pickup',
-                        'completed'     => 'Completed',
-                    ]),
-                Tables\Filters\SelectFilter::make('order_type')
-                    ->options([
-                        'custom'       => 'Custom Made',
-                        'stock_modify' => 'Modify Stock',
-                    ]),
-            ])
-            ->actions([
-                // ── EDIT ──────────────────────────────────────────────
-                Tables\Actions\EditAction::make()->iconButton(),
+                    return max(0, $grandTotal - $totalPaid);
+                })
+                ->money('USD')
+                ->sortable(false)
+                ->grow(false)
+                ->color(fn($state) => $state > 0 ? 'danger' : 'success')
+                ->weight('bold'),
 
-                // ── ADD DEPOSIT / PAYMENT ─────────────────────────────
-                Tables\Actions\Action::make('recordPayment')
-                    ->label('Add Deposit')
-                    ->icon('heroicon-o-banknotes')
-                    ->color('success')
-                    ->button()
-                    ->size('sm')
-                    ->visible(function (CustomOrder $record) {
-                        if (in_array($record->status, ['completed', 'cancelled'])) return false;
+            Tables\Columns\SelectColumn::make('status')
+                ->label('STATUS')
+                ->options([
+                    'draft'         => 'Draft',
+                    'quoted'        => 'Quoted',
+                    'approved'      => 'Approved',
+                    'in_production' => 'In Production',
+                    'received'      => 'Ready for Pickup',
+                    'completed'     => 'Completed',
+                ])
+                ->selectablePlaceholder(false)
+                ->grow(false),
 
-                        // Use live calculation, not the stale DB column
-                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
-                        $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+            Tables\Columns\TextColumn::make('notified_at')
+                ->label('NOTIFIED')
+                ->getStateUsing(
+                    fn($record) => $record->is_customer_notified && $record->notified_at
+                        ? $record->notified_at->format('M d, y')
+                        : 'No'
+                )
+                ->icon(fn($state) => $state !== 'No' ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
+                ->color(fn($state) => $state !== 'No' ? 'success' : 'gray')
+                ->grow(false),
+        ])
+        ->filters([
+            Tables\Filters\SelectFilter::make('status')
+                ->options([
+                    'draft'         => 'Draft',
+                    'quoted'        => 'Quoted',
+                    'approved'      => 'Approved',
+                    'in_production' => 'In Production',
+                    'received'      => 'Ready for Pickup',
+                    'completed'     => 'Completed',
+                ]),
+            Tables\Filters\SelectFilter::make('order_type')
+                ->options([
+                    'custom'       => 'Custom Made',
+                    'stock_modify' => 'Modify Stock',
+                ]),
+        ])
+        ->actions([
+            Tables\Actions\EditAction::make()->iconButton(),
 
-                        return ($grandTotal - $paid) > 0.01;
-                    })
-                    ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
-                    ->modalSubmitActionLabel('✓ Record Payment')
-                    ->modalWidth('lg')
-                    ->form(function (CustomOrder $record) {
-                        $record = $record->fresh(['payments']);
-                        // ── Build payment history HTML ─────────────────
-                        $payments   = $record->payments()->orderBy('paid_at')->get();
-                        $totalPaid  = $payments->sum('amount');
-                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $grandTotal = floatval($record->quoted_price) + (floatval($record->quoted_price) * $taxRate);
-                        $balance    = max(0, $grandTotal - $totalPaid);
+            Tables\Actions\Action::make('recordPayment')
+                ->label('Add Deposit')
+                ->icon('heroicon-o-banknotes')
+                ->color('success')
+                ->button()
+                ->size('sm')
+                ->visible(function (CustomOrder $record) {
+                    if (in_array($record->status, ['completed', 'cancelled'])) return false;
+                    $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                    $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                    $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                    $discAmt    = floatval($record->discount_amount ?? 0);
+                    $afterDisc  = floatval($record->quoted_price) - $discAmt;
+                    $grandTotal = $afterDisc * (1 + $taxRate);
+                    $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+                    return ($grandTotal - $paid) > 0.01;
+                })
+                ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
+                ->modalSubmitActionLabel('✓ Record Payment')
+                ->modalWidth('lg')
+                ->form(function (CustomOrder $record) {
+                    $record     = $record->fresh(['payments']);
+                    $payments   = $record->payments()->orderBy('paid_at')->get();
+                    $totalPaid  = $payments->sum('amount');
+                    $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                    $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                    $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                    $discAmt    = floatval($record->discount_amount ?? 0);
+                    $afterDisc  = floatval($record->quoted_price) - $discAmt;
+                    $grandTotal = $afterDisc + ($afterDisc * $taxRate);
+                    $balance    = max(0, $grandTotal - $totalPaid);
 
-                        $rows = '';
-                        if ($payments->isEmpty()) {
-                            $rows = "<p style='font-size:11px;color:#9ca3af;font-style:italic;padding:8px 0;'>No payments recorded yet.</p>";
-                        } else {
-                            $running = 0;
-                            foreach ($payments as $p) {
-                                $running    += floatval($p->amount);
-                                $runningBal  = max(0, $grandTotal - $running);
-                                $rows .= "
-                                    <div style='display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:6px 0;border-bottom:1px dashed #e5e7eb;'>
-                                        <div>
-                                            <span style='color:#374151;font-weight:600;'>" . \Carbon\Carbon::parse($p->paid_at)->format('M d, Y') . "</span>
-                                            <span style='color:#9ca3af;margin-left:6px;'>" . \Carbon\Carbon::parse($p->paid_at)->format('h:i A') . "</span>
-                                            <span style='display:inline-block;margin-left:8px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700;'>" . strtoupper($p->method) . "</span>
-                                        </div>
-                                        <div style='text-align:right;'>
-                                            <span style='color:#10b981;font-weight:700;'>+\$" . number_format($p->amount, 2) . "</span>
-                                            <span style='color:#9ca3af;font-size:10px;margin-left:8px;'>bal: \$" . number_format($runningBal, 2) . "</span>
-                                        </div>
+                    $rows = '';
+                    if ($payments->isEmpty()) {
+                        $rows = "<p style='font-size:11px;color:#9ca3af;font-style:italic;padding:8px 0;'>No payments recorded yet.</p>";
+                    } else {
+                        $running = 0;
+                        foreach ($payments as $p) {
+                            $running    += floatval($p->amount);
+                            $runningBal  = max(0, $grandTotal - $running);
+                            $rows .= "
+                                <div style='display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:6px 0;border-bottom:1px dashed #e5e7eb;'>
+                                    <div>
+                                        <span style='color:#374151;font-weight:600;'>" . \Carbon\Carbon::parse($p->paid_at)->format('M d, Y') . "</span>
+                                        <span style='color:#9ca3af;margin-left:6px;'>" . \Carbon\Carbon::parse($p->paid_at)->format('h:i A') . "</span>
+                                        <span style='display:inline-block;margin-left:8px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700;'>" . strtoupper($p->method) . "</span>
                                     </div>
-                                ";
+                                    <div style='text-align:right;'>
+                                        <span style='color:#10b981;font-weight:700;'>+\$" . number_format($p->amount, 2) . "</span>
+                                        <span style='color:#9ca3af;font-size:10px;margin-left:8px;'>bal: \$" . number_format($runningBal, 2) . "</span>
+                                    </div>
+                                </div>
+                            ";
+                        }
+                    }
+
+                    $balColor    = $balance <= 0 ? '#10b981' : '#ef4444';
+                    $summaryHtml = "
+                        <div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:2px;'>
+                            <div style='font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>
+                                📋 Payment History
+                            </div>
+                            {$rows}
+                            <div style='margin-top:10px;padding-top:10px;border-top:2px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;'>
+                                <div>
+                                    <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Order Total</div>
+                                    <div style='font-size:14px;font-weight:700;color:#374151;'>\$" . number_format($grandTotal, 2) . "</div>
+                                </div>
+                                <div style='text-align:center;'>
+                                    <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Total Paid</div>
+                                    <div style='font-size:14px;font-weight:700;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
+                                </div>
+                                <div style='text-align:right;'>
+                                    <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Remaining</div>
+                                    <div style='font-size:20px;font-weight:900;color:{$balColor};'>\$" . number_format($balance, 2) . "</div>
+                                </div>
+                            </div>
+                        </div>
+                    ";
+
+                    return [
+                        Placeholder::make('payment_history')
+                            ->label('')
+                            ->content(new HtmlString($summaryHtml)),
+
+                        TextInput::make('amount')
+                            ->label('Amount to Collect Now')
+                            ->numeric()
+                            ->required()
+                            ->prefix('$')
+                            ->default(function () use ($record, $grandTotal) {
+                                $paid = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+                                return round(max(0, $grandTotal - $paid), 2);
+                            })
+                            ->extraInputAttributes([
+                                'style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;',
+                            ])
+                            ->helperText('Enter the amount the customer is paying today'),
+
+                        Toggle::make('is_split')
+                            ->label('Split Payment?')
+                            ->live()
+                            ->default(false),
+
+                        Select::make('payment_method')
+                            ->label('Payment Method')
+                            ->options(self::getPaymentOptions())
+                            ->default('CASH')
+                            ->required(fn(Get $get) => !$get('is_split'))
+                            ->visible(fn(Get $get) => !$get('is_split'))
+                            ->native(false),
+
+                        Repeater::make('split_payments')
+                            ->label('Split Payment Breakdown')
+                            ->visible(fn(Get $get) => $get('is_split'))
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    Select::make('method')
+                                        ->options(self::getPaymentOptions())
+                                        ->required()
+                                        ->label('Method')
+                                        ->native(false),
+                                    TextInput::make('amount')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->required()
+                                        ->label('Amount'),
+                                ]),
+                            ])
+                            ->defaultItems(2)
+                            ->maxItems(4)
+                            ->reorderable(false),
+                    ];
+                })
+                ->action(function (CustomOrder $record, array $data) {
+                    DB::transaction(function () use ($record, $data) {
+                        $amountPaid = round((float) $data['amount'], 2);
+
+                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
+                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                        $discAmt    = floatval($record->discount_amount ?? 0);
+                        $afterDisc  = floatval($record->quoted_price) - $discAmt;
+                        $grandTotal = $afterDisc * (1 + $taxRate);
+
+                        $alreadyPaid   = $record->payments()->sum('amount');
+                        $newTotalPaid  = round($alreadyPaid + $amountPaid, 2);
+                        $newBalanceDue = round(max(0, $grandTotal - $newTotalPaid), 2);
+
+                        $record->update([
+                            'amount_paid' => $newTotalPaid,
+                            'balance_due' => $newBalanceDue,
+                        ]);
+
+                        if ($data['is_split'] ?? false) {
+                            foreach ($data['split_payments'] ?? [] as $payment) {
+                                \App\Models\Payment::create([
+                                    'custom_order_id' => $record->id,
+                                    'sale_id'         => $record->sale_id ?? null,
+                                    'amount'          => round((float) $payment['amount'], 2),
+                                    'method'          => strtoupper(trim($payment['method'])),
+                                    'paid_at'         => now(),
+                                ]);
+                            }
+                        } else {
+                            \App\Models\Payment::create([
+                                'custom_order_id' => $record->id,
+                                'sale_id'         => $record->sale_id ?? null,
+                                'amount'          => $amountPaid,
+                                'method'          => strtoupper(trim($data['payment_method'])),
+                                'paid_at'         => now(),
+                            ]);
+                        }
+
+                        if ($record->sale_id) {
+                            $sale = \App\Models\Sale::find($record->sale_id);
+                            if ($sale) {
+                                $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                                $saleBal       = round(max(0, $sale->final_total - $saleTotalPaid), 2);
+                                $sale->update([
+                                    'amount_paid'  => $saleTotalPaid,
+                                    'balance_due'  => $saleBal,
+                                    'status'       => $saleBal <= 0 ? 'completed' : 'pending',
+                                    'completed_at' => $saleBal <= 0 ? now() : null,
+                                ]);
                             }
                         }
 
-                        $balColor    = $balance <= 0 ? '#10b981' : '#ef4444';
-                        $summaryHtml = "
-                            <div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:2px;'>
-                                <div style='font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>
-                                    📋 Payment History
-                                </div>
-                                {$rows}
-                                <div style='margin-top:10px;padding-top:10px;border-top:2px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;'>
-                                    <div>
-                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Order Total</div>
-                                        <div style='font-size:14px;font-weight:700;color:#374151;'>\$" . number_format($grandTotal, 2) . "</div>
-                                    </div>
-                                    <div style='text-align:center;'>
-                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Total Paid</div>
-                                        <div style='font-size:14px;font-weight:700;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
-                                    </div>
-                                    <div style='text-align:right;'>
-                                        <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Remaining</div>
-                                        <div style='font-size:20px;font-weight:900;color:{$balColor};'>\$" . number_format($balance, 2) . "</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ";
+                        if ($newBalanceDue <= 0 && $record->status !== 'completed') {
+                            $record->update(['status' => 'completed']);
+                        }
+                    });
 
-                        return [
-                            Placeholder::make('payment_history')
-                                ->label('')
-                                ->content(new HtmlString($summaryHtml)),
+                    Notification::make()
+                        ->title('✅ Payment Recorded')
+                        ->body('Balance updated successfully.')
+                        ->success()
+                        ->send();
+                }),
 
-                            TextInput::make('amount')
-                                ->label('Amount to Collect Now')
-                                ->numeric()
-                                ->required()
-                                ->prefix('$')
-                                ->default(function () use ($record) {
-                                    $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                                    $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                    $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                    $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
-                                    $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
-                                    return round(max(0, $grandTotal - $paid), 2);
-                                })
-                                ->extraInputAttributes([
-                                    'style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;',
-                                ])
-                                ->helperText('Enter the amount the customer is paying today'),
+            Tables\Actions\ActionGroup::make([
 
-                            Toggle::make('is_split')
-                                ->label('Split Payment?')
-                                ->live()
-                                ->default(false),
+                Tables\Actions\Action::make('viewItems')
+                    ->label('View Order Items')
+                    ->icon('heroicon-o-list-bullet')
+                    ->color('info')
+                    ->slideOver()
+                    ->modalHeading(fn(CustomOrder $record) => "Order {$record->order_no} — Items")
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->form(fn(CustomOrder $record): array => [
+                        Placeholder::make('items_detail')
+                            ->label('')
+                            ->content(function () use ($record) {
+                                $items = $record->items ?? [];
+                                if (empty($items)) {
+                                    $items = [[
+                                        'product_name'   => $record->product_name,
+                                        'metal_type'     => $record->metal_type,
+                                        'metal_weight'   => $record->metal_weight,
+                                        'diamond_weight' => $record->diamond_weight,
+                                        'size'           => $record->size,
+                                        'design_notes'   => $record->design_notes,
+                                        'quoted_price'   => $record->quoted_price,
+                                    ]];
+                                }
 
-                            Select::make('payment_method')
-                                ->label('Payment Method')
-                                ->options(self::getPaymentOptions())
-                                ->default('CASH')
-                                ->required(fn(Get $get) => !$get('is_split'))
-                                ->visible(fn(Get $get) => !$get('is_split'))
-                                ->native(false),
-
-                            Repeater::make('split_payments')
-                                ->label('Split Payment Breakdown')
-                                ->visible(fn(Get $get) => $get('is_split'))
-                                ->schema([
-                                    Grid::make(2)->schema([
-                                        Select::make('method')
-                                            ->options(self::getPaymentOptions())
-                                            ->required()
-                                            ->label('Method')
-                                            ->native(false),
-                                        TextInput::make('amount')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required()
-                                            ->label('Amount'),
-                                    ]),
-                                ])
-                                ->defaultItems(2)
-                                ->maxItems(4)
-                                ->reorderable(false),
-                        ];
-                    })
-                    ->action(function (CustomOrder $record, array $data) {
-    DB::transaction(function () use ($record, $data) {
-        $amountPaid = round((float) $data['amount'], 2);
-
-        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
-
-        $alreadyPaid   = $record->payments()->sum('amount');
-        $newTotalPaid  = round($alreadyPaid + $amountPaid, 2);
-        $newBalanceDue = round(max(0, $grandTotal - $newTotalPaid), 2);
-
-        $record->update([
-            'amount_paid' => $newTotalPaid,
-            'balance_due' => $newBalanceDue,
-        ]);
-
-        if ($data['is_split'] ?? false) {
-            foreach ($data['split_payments'] ?? [] as $payment) {
-                \App\Models\Payment::create([
-                    'custom_order_id' => $record->id,
-                    'sale_id'         => $record->sale_id ?? null,
-                    'amount'          => round((float) $payment['amount'], 2),
-                    'method'          => strtoupper(trim($payment['method'])),
-                    'paid_at'         => now(),
-                ]);
-            }
-        } else {
-            \App\Models\Payment::create([
-                'custom_order_id' => $record->id,
-                'sale_id'         => $record->sale_id ?? null,
-                'amount'          => $amountPaid,
-                'method'          => strtoupper(trim($data['payment_method'])),
-                'paid_at'         => now(),
-            ]);
-        }
-
-        // ── SYNC LINKED SALE ─────────────────────────────────
-        if ($record->sale_id) {
-            $sale = \App\Models\Sale::find($record->sale_id);
-            if ($sale) {
-                // All payments ever made for this sale (including custom order deposits)
-                $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
-                $saleBal       = round(max(0, $sale->final_total - $saleTotalPaid), 2);
-                $sale->update([
-                    'amount_paid'  => $saleTotalPaid,
-                    'balance_due'  => $saleBal,
-                    'status'       => $saleBal <= 0 ? 'completed' : 'pending',
-                    'completed_at' => $saleBal <= 0 ? now() : null,
-                ]);
-            }
-        }
-
-        if ($newBalanceDue <= 0 && $record->status !== 'completed') {
-            $record->update(['status' => 'completed']);
-        }
-    });
-
-    Notification::make()
-        ->title('✅ Payment Recorded')
-        ->body('Balance updated successfully.')
-        ->success()
-        ->send();
-}),
-
-                // ── GROUPED SECONDARY ACTIONS ─────────────────────────
-                Tables\Actions\ActionGroup::make([
-
-                    Tables\Actions\Action::make('viewItems')
-                        ->label('View Order Items')
-                        ->icon('heroicon-o-list-bullet')
-                        ->color('info')
-                        ->slideOver()
-                        ->modalHeading(fn(CustomOrder $record) => "Order {$record->order_no} — Items")
-                        ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Close')
-                        ->form(fn(CustomOrder $record): array => [
-                            Placeholder::make('items_detail')
-                                ->label('')
-                                ->content(function () use ($record) {
-                                    $items = $record->items ?? [];
-                                    if (empty($items)) {
-                                        $items = [[
-                                            'product_name'   => $record->product_name,
-                                            'metal_type'     => $record->metal_type,
-                                            'metal_weight'   => $record->metal_weight,
-                                            'diamond_weight' => $record->diamond_weight,
-                                            'size'           => $record->size,
-                                            'design_notes'   => $record->design_notes,
-                                            'quoted_price'   => $record->quoted_price,
-                                        ]];
-                                    }
-
-                                    $html = '<div class="space-y-4">';
-                                    foreach ($items as $i => $item) {
-                                        $name  = $item['product_name'] ?? 'Item ' . ($i + 1);
-                                        $price = '$' . number_format((float)($item['quoted_price'] ?? 0), 2);
-                                        $html .= "
-                                            <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
-                                                <div class='flex justify-between items-center mb-2'>
-                                                    <span class='font-bold text-gray-900'>{$name}</span>
-                                                    <span class='text-success-600 font-bold text-lg'>{$price}</span>
-                                                </div>
-                                                <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
-                                                    <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
-                                                    <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
-                                                    <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
-                                                </div>
-                                                " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
-                                            </div>";
-                                    }
-                                    $html .= '</div>';
-                                    return new HtmlString($html);
-                                }),
-                        ]),
-
-                    Tables\Actions\Action::make('printDepositReceipt')
-                        ->label('Print Receipt')
-                        ->icon('heroicon-o-printer')
-                        ->color('gray')
-                        ->url(
-                            fn(CustomOrder $record) => $record->sale_id
-                                ? route('sales.receipt', ['record' => $record->sale_id, 'type' => 'standard'])
-                                : route('custom-orders.deposit-receipt', ['customOrder' => $record->id])
-                        )
-                        ->openUrlInNewTab(),
-
-                    Tables\Actions\Action::make('notifyDelay')
-                        ->label('Notify: Delay')
-                        ->icon('heroicon-o-clock')
-                        ->color('danger')
-                        ->modalHeading('Notify Customer of Delay')
-                        ->form([
-                            Select::make('notify_method')
-                                ->label('Notification Method')
-                                ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)'])
-                                ->default('sms')
-                                ->required(),
-                            Textarea::make('message')
-                                ->label('Message Content')
-                                ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
-                                ->rows(3)
-                                ->required(),
-                        ])
-                        ->action(fn(CustomOrder $record, array $data) => self::handleNotification($record, $data['notify_method'], $data['message'])),
-
-                    Tables\Actions\Action::make('markReady')
-                        ->label('Mark Ready & Notify')
-                        ->icon('heroicon-o-check-circle')
-                        ->color('success')
-                        ->modalHeading('Mark Ready & Notify Customer')
-                        ->form([
-                            Select::make('notify_method')
-                                ->label('Notification Method')
-                                ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)', 'none' => 'Do not notify'])
-                                ->default('both')
-                                ->required(),
-                            Textarea::make('message')
-                                ->label('Message Content')
-                                ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
-                                ->rows(3)
-                                ->required(fn(Get $get) => $get('notify_method') !== 'none')
-                                ->visible(fn(Get $get) => $get('notify_method') !== 'none'),
-                        ])
-                        ->action(function (CustomOrder $record, array $data) {
-                            $record->update([
-                                'status'               => 'received',
-                                'is_customer_notified' => $data['notify_method'] !== 'none',
-                                'notified_at'          => $data['notify_method'] !== 'none' ? now() : null,
-                            ]);
-                            if ($data['notify_method'] !== 'none') {
-                                self::handleNotification($record, $data['notify_method'], $data['message']);
-                            } else {
-                                Notification::make()->title('Status updated. No notifications sent.')->success()->send();
-                            }
-                        }),
-
-                    Tables\Actions\Action::make('convertToSale')
-                        ->label('Convert to Sale')
-                        ->icon('heroicon-o-shopping-cart')
-                        ->color('info')
-                        ->visible(fn(CustomOrder $record) => $record->status === 'received')
-                        ->action(fn(CustomOrder $record) => redirect()->route('filament.admin.resources.sales.create', [
-                            'customer_id'     => $record->customer_id,
-                            'custom_order_id' => $record->id,
-                        ])),
-
-                    Tables\Actions\Action::make('viewMessageHistory')
-                        ->label('Message History')
-                        ->icon('heroicon-o-chat-bubble-left-ellipsis')
-                        ->color('gray')
-                        ->visible(fn(CustomOrder $record) => $record->is_customer_notified)
-                        ->modalHeading('Communication History')
-                        ->modalWidth('lg')
-                        ->slideOver()
-                        ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Close')
-                        ->form([
-                            Placeholder::make('history_log')
-                                ->label('')
-                                ->content(fn(CustomOrder $record) => new HtmlString("
-                                    <div class='space-y-4'>
-                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
+                                $html = '<div class="space-y-4">';
+                                foreach ($items as $i => $item) {
+                                    $name  = $item['product_name'] ?? 'Item ' . ($i + 1);
+                                    $price = '$' . number_format((float)($item['quoted_price'] ?? 0), 2);
+                                    $html .= "
+                                        <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
                                             <div class='flex justify-between items-center mb-2'>
-                                                <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification</span>
-                                                <span class='text-[10px] text-gray-400'>" . ($record->notified_at?->format('M d, Y h:i A') ?? 'N/A') . "</span>
+                                                <span class='font-bold text-gray-900'>{$name}</span>
+                                                <span class='text-success-600 font-bold text-lg'>{$price}</span>
                                             </div>
-                                            <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
-                                        </div>
-                                    </div>
-                                ")),
-                        ]),
+                                            <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
+                                                <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
+                                                <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
+                                                <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
+                                            </div>
+                                            " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
+                                        </div>";
+                                }
+                                $html .= '</div>';
+                                return new HtmlString($html);
+                            }),
+                    ]),
 
-                ])
-                    ->label('More')
-                    ->icon('heroicon-m-ellipsis-horizontal')
+                Tables\Actions\Action::make('printDepositReceipt')
+                    ->label('Print Receipt')
+                    ->icon('heroicon-o-printer')
                     ->color('gray')
-                    ->button()
-                    ->size('sm'),
+                    ->url(
+                        fn(CustomOrder $record) => $record->sale_id
+                            ? route('sales.receipt', ['record' => $record->sale_id, 'type' => 'standard'])
+                            : route('custom-orders.deposit-receipt', ['customOrder' => $record->id])
+                    )
+                    ->openUrlInNewTab(),
+
+                Tables\Actions\Action::make('notifyDelay')
+                    ->label('Notify: Delay')
+                    ->icon('heroicon-o-clock')
+                    ->color('danger')
+                    ->modalHeading('Notify Customer of Delay')
+                    ->form([
+                        Select::make('notify_method')
+                            ->label('Notification Method')
+                            ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)'])
+                            ->default('sms')
+                            ->required(),
+                        Textarea::make('message')
+                            ->label('Message Content')
+                            ->default(fn($record) => "Hi {$record->customer->name}, your custom order #{$record->order_no} is taking a little longer than expected. We apologize for the delay and will update you soon.")
+                            ->rows(3)
+                            ->required(),
+                    ])
+                    ->action(fn(CustomOrder $record, array $data) => self::handleNotification($record, $data['notify_method'], $data['message'])),
+
+                Tables\Actions\Action::make('markReady')
+                    ->label('Mark Ready & Notify')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->modalHeading('Mark Ready & Notify Customer')
+                    ->form([
+                        Select::make('notify_method')
+                            ->label('Notification Method')
+                            ->options(['sms' => 'SMS Only', 'email' => 'Email Only', 'both' => 'Both (SMS & Email)', 'none' => 'Do not notify'])
+                            ->default('both')
+                            ->required(),
+                        Textarea::make('message')
+                            ->label('Message Content')
+                            ->default(fn($record) => "Hi {$record->customer->name}, Great news! Your custom order #{$record->order_no} is READY for pickup at Diamond Square.")
+                            ->rows(3)
+                            ->required(fn(Get $get) => $get('notify_method') !== 'none')
+                            ->visible(fn(Get $get) => $get('notify_method') !== 'none'),
+                    ])
+                    ->action(function (CustomOrder $record, array $data) {
+                        $record->update([
+                            'status'               => 'received',
+                            'is_customer_notified' => $data['notify_method'] !== 'none',
+                            'notified_at'          => $data['notify_method'] !== 'none' ? now() : null,
+                        ]);
+                        if ($data['notify_method'] !== 'none') {
+                            self::handleNotification($record, $data['notify_method'], $data['message']);
+                        } else {
+                            Notification::make()->title('Status updated. No notifications sent.')->success()->send();
+                        }
+                    }),
+
+                Tables\Actions\Action::make('convertToSale')
+                    ->label('Convert to Sale')
+                    ->icon('heroicon-o-shopping-cart')
+                    ->color('info')
+                    ->visible(fn(CustomOrder $record) => $record->status === 'received')
+                    ->action(fn(CustomOrder $record) => redirect()->route('filament.admin.resources.sales.create', [
+                        'customer_id'     => $record->customer_id,
+                        'custom_order_id' => $record->id,
+                    ])),
+
+                Tables\Actions\Action::make('viewMessageHistory')
+                    ->label('Message History')
+                    ->icon('heroicon-o-chat-bubble-left-ellipsis')
+                    ->color('gray')
+                    ->visible(fn(CustomOrder $record) => $record->is_customer_notified)
+                    ->modalHeading('Communication History')
+                    ->modalWidth('lg')
+                    ->slideOver()
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->form([
+                        Placeholder::make('history_log')
+                            ->label('')
+                            ->content(fn(CustomOrder $record) => new HtmlString("
+                                <div class='space-y-4'>
+                                    <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm'>
+                                        <div class='flex justify-between items-center mb-2'>
+                                            <span class='text-xs font-bold text-primary-600 uppercase'>Last Notification</span>
+                                            <span class='text-[10px] text-gray-400'>" . ($record->notified_at?->format('M d, Y h:i A') ?? 'N/A') . "</span>
+                                        </div>
+                                        <p class='text-sm text-gray-700 italic leading-relaxed'>\"{$record->last_message}\"</p>
+                                    </div>
+                                </div>
+                            ")),
+                    ]),
             ])
-            ->defaultSort('created_at', 'desc');
-    }
+                ->label('More')
+                ->icon('heroicon-m-ellipsis-horizontal')
+                ->color('gray')
+                ->button()
+                ->size('sm'),
+        ])
+        ->defaultSort('created_at', 'desc');
+}
 
     public static function getPaymentOptions(): array
     {
@@ -1041,24 +1130,27 @@ class CustomOrderResource extends Resource
     }
 
     // FIX: calculateBalance now includes tax and respects is_tax_free toggle
-    public static function calculateBalance(Get $get, Set $set): void
-    {
-        $quoted    = floatval($get('quoted_price') ?? 0);
-        $isTaxFree = (bool)($get('is_tax_free') ?? false);
+   public static function calculateBalance(Get $get, Set $set): void
+{
+    $quoted    = floatval($get('quoted_price') ?? 0);
+    $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
+    $discAmt   = $quoted * $discPct / 100;
+    $afterDisc = $quoted - $discAmt;
+    $isTaxFree = (bool)($get('is_tax_free') ?? false);
 
-        // Account for split deposits vs regular deposits
-        $isSplit = (bool)($get('is_split_deposit') ?? false);
-        $paid = $isSplit
-            ? collect($get('split_deposit_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
-            : floatval($get('amount_paid') ?? 0);
+    $isSplit = (bool)($get('is_split_deposit') ?? false);
+    $paid = $isSplit
+        ? collect($get('split_deposit_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
+        : floatval($get('amount_paid') ?? 0);
 
-        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $tax     = $quoted * $taxRate;
-        $total   = $quoted + $tax;
+    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+    $tax     = $afterDisc * $taxRate;
+    $total   = $afterDisc + $tax;
 
-        $set('balance_due', round(max(0, $total - $paid), 2));
-    }
+    $set('discount_amount', round($discAmt, 2));
+    $set('balance_due', round(max(0, $total - $paid), 2));
+}
 
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
     {

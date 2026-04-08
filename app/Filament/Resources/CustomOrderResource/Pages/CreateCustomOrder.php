@@ -33,18 +33,21 @@ class CreateCustomOrder extends CreateRecord
         // Auto-calculate quoted_price and balance_due from items (with tax)
         $items = $data['items'] ?? [];
         if (!empty($items)) {
-            $subtotal = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
-            $deposit  = (float)($data['amount_paid'] ?? 0);
+$subtotal  = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
+$deposit   = (float)($data['amount_paid'] ?? 0);
+$discPct   = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
+$discAmt   = $subtotal * $discPct / 100;
+$afterDisc = $subtotal - $discAmt;
 
-            // FIX: Apply tax to get the real total (matches Order Summary in UI)
-            $isTaxFree = (bool)($data['is_tax_free'] ?? false);
-            $dbTax     = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-            $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
-            $tax       = $subtotal * $taxRate;
-            $total     = $subtotal + $tax;
+$isTaxFree = (bool)($data['is_tax_free'] ?? false);
+$dbTax     = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+$taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+$tax       = $afterDisc * $taxRate;
+$total     = $afterDisc + $tax;
 
-            $data['quoted_price'] = round($subtotal, 2);
-            $data['balance_due']  = round(max(0, $total - $deposit), 2);
+$data['quoted_price']    = round($subtotal, 2);
+$data['discount_amount'] = round($discAmt, 2);
+$data['balance_due']     = round(max(0, $total - $deposit), 2);
         }
 
         return $data;
