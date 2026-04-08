@@ -47,20 +47,29 @@ class ImportOnSwimStock extends Command
         }
 
         // ── Define the strict dated files we want to process ──
-        // Check a 3-day window to make this 100% bulletproof across ALL global timezones
-        $today = Carbon::today()->format('Y_m_d');
-        $yesterday = Carbon::yesterday()->format('Y_m_d'); 
-        $tomorrow = Carbon::tomorrow()->format('Y_m_d'); 
-        
-        $possibleFiles = [
-            "stock_{$today}.csv",
-            "stock_entered_{$today}.csv",
-            "stock_{$yesterday}.csv",
-            "stock_entered_{$yesterday}.csv",
-            "stock_{$tomorrow}.csv",
-            "stock_entered_{$tomorrow}.csv"
-        ];
+        // Check a 5-day window to make this 100% bulletproof across ALL global timezones
+        // ── Find recent files dynamically (Look back up to 5 days to ignore timezones) ──
+        $possibleFiles = [];
+        for ($i = 0; $i <= 5; $i++) {
+            $dateStr = Carbon::now()->subDays($i)->format('Y_m_d');
+            $possibleFiles[] = "stock_{$dateStr}.csv";
+            $possibleFiles[] = "stock_entered_{$dateStr}.csv";
+        }
 
+        // Filter down to only files that actually exist in the folder right now
+        $filesToProcess = [];
+        foreach ($possibleFiles as $fileName) {
+            if (File::exists("{$directoryPath}/{$fileName}")) {
+                $filesToProcess[] = $fileName;
+            }
+        }
+
+        if (empty($filesToProcess)) {
+            $this->error("❌ NO FILES FOUND in {$directoryPath}");
+            $this->line("The script searched for 'stock_YYYY_MM_DD.csv' and 'stock_entered_YYYY_MM_DD.csv' over the last 5 days.");
+            $this->line("Please ensure your file is named correctly and uploaded.");
+            return Command::SUCCESS; 
+        }
         // Filter down to only files that actually exist in the folder right now
         $filesToProcess = [];
         foreach ($possibleFiles as $fileName) {
