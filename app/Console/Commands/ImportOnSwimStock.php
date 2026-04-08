@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\File;
 
 class ImportOnSwimStock extends Command
 {
-    protected $signature = 'import:onswim-stock {tenant} {--dry-run}';
+    protected $signature = 'import:onswim-customers {tenant} {--date= : Specific date suffix in MM_DD format} {--rollback} {--dry-run}';
     protected $description = 'Import stock from multiple OnSwim CSVs (stock & stock_entered) with zero data loss.';
 
     public function handle()
@@ -53,8 +53,26 @@ class ImportOnSwimStock extends Command
             $possibleFiles[] = "stock_entered_{$dateStr}.csv";
         }
 
-        // Filter down to only files that actually exist in the folder right now
+        // ── IMPROVED FILE SEARCH ──
         $filesToProcess = [];
+        $dateSuffix = $this->option('date');
+
+        if ($dateSuffix) {
+            // If you pass --date=04_04, it looks for stock_2026_04_04.csv and stock_entered_2026_04_04.csv
+            $possibleFiles = [
+                "stock_2026_{$dateSuffix}.csv",
+                "stock_entered_2026_{$dateSuffix}.csv"
+            ];
+        } else {
+            // Fallback to the last 5 days if no date is provided
+            $possibleFiles = [];
+            for ($i = 0; $i <= 5; $i++) {
+                $dateStr = Carbon::now()->subDays($i)->format('Y_m_d');
+                $possibleFiles[] = "stock_{$dateStr}.csv";
+                $possibleFiles[] = "stock_entered_{$dateStr}.csv";
+            }
+        }
+
         foreach ($possibleFiles as $fileName) {
             if (File::exists("{$directoryPath}/{$fileName}")) {
                 $filesToProcess[] = $fileName;
