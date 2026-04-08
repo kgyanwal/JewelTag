@@ -17,7 +17,7 @@ class ImportOnSwimCustomers extends Command
     /**
      * Signature includes tenant, rollback option, and dry-run safety.
      */
-    protected $signature = 'import:onswim-customers {tenant} {--rollback} {--dry-run}';
+    protected $signature = 'import:onswim-customers {tenant} {--date= : Specific date suffix in MM_DD format} {--rollback} {--dry-run}';
     protected $description = 'Import customers from OnSwim CSV with dual-phone logic and conflict resolution';
 
     public function handle()
