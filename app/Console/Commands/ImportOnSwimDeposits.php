@@ -12,7 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
+use Illuminate\Support\Str; // 🚀 Kept the correct one, removed the bad App\Console one
 
 class ImportOnSwimDeposits extends Command
 {
@@ -40,14 +40,13 @@ class ImportOnSwimDeposits extends Command
             $adminUser = User::first();
             if ($adminUser) { auth()->login($adminUser); }
 
-            // ── DYNAMIC FILE PATH LOGIC (MATCHES YOUR OTHER SCRIPTS) ──────────
+            // ── DYNAMIC FILE PATH LOGIC ──────────
             $directoryPath = storage_path("/{$tenantId}/data");
             $filePath = null;
             $fileName = null;
 
             if ($this->option('date')) {
                 $manualDate = $this->option('date');
-                // Check common naming patterns for deposits
                 $possible = [
                     "{$directoryPath}/deposits_{$manualDate}.csv", 
                     "{$directoryPath}/deposit_sales_{$manualDate}.csv",
@@ -61,7 +60,6 @@ class ImportOnSwimDeposits extends Command
                     }
                 }
             } else {
-                // Smart search: Grab any file starting with 'deposit' or 'laybuys'
                 $allFiles = File::glob("{$directoryPath}/*.csv");
                 $validFiles = [];
                 foreach ($allFiles as $f) {
@@ -98,14 +96,10 @@ class ImportOnSwimDeposits extends Command
             $this->warn("⚠️  WARNING: You are about to delete ALL deposit sales for tenant: {$tenantId}");
             
             if ($this->confirm('Are you sure? This will empty the deposit_sales table completely.', false)) {
-                // 🚀 UNIVERSAL CLEANUP: No file required
                 Schema::disableForeignKeyConstraints();
-                
                 $count = DepositSale::count();
                 DepositSale::truncate();
-                
                 Schema::enableForeignKeyConstraints();
-                
                 $this->info("✅ SUCCESS: {$count} deposit records have been removed.");
             }
             return Command::SUCCESS;
@@ -144,19 +138,26 @@ class ImportOnSwimDeposits extends Command
         $this->info("Processing {$total} rows...");
         $bar = $this->output->createProgressBar($total);
 
-        // Start transaction
         DB::connection('tenant')->beginTransaction();
 
         try {
             foreach ($rows as $data) {
                 $jobNo = trim($data['Job No.']);
-                // 🚀 SMART LINKING LOGIC
                 $cleanJobNo = preg_replace('/[^0-9]/', '', $jobNo);
                 
-                // PLAN A: Link by Job Number (Existing Logic)
+                // 🚀 MOVED UP: Extract math variables FIRST so we can use them to search
+                $invoiceTotal = $this->cleanMoney($data['Invoice Total']);
+                $amountPaid   = $this->cleanMoney($data['Payment Total']);
+                $balance      = $this->cleanMoney($data['Balance']);
+
+                // 🚀 MOVED UP: Find customer FIRST so Plan B has a Customer ID
+                $customer = $this->findCustomer($data);
+                $customerId = $customer ? $customer->id : $walkInCustomer->id;
+
+                // PLAN A: Link by Job Number
                 $sale = Sale::where('invoice_number', 'LIKE', "%{$cleanJobNo}%")->first();
 
-                // PLAN B: The "Financial Fingerprint" Match (The Fix for Gloria)
+                // PLAN B: The "Financial Fingerprint" Match
                 if (!$sale) {
                     $sale = Sale::where('customer_id', $customerId)
                         ->whereBetween('final_total', [$invoiceTotal - 0.05, $invoiceTotal + 0.05])
@@ -164,21 +165,15 @@ class ImportOnSwimDeposits extends Command
                         ->first();
                 }
 
+                // Tally the matches
                 if ($sale) {
-                    $customerId = $sale->customer_id; // Sync to the sale's customer
+                    $customerId = $sale->customer_id; // Sync to the sale's exact customer
                     $this->matched++;
                 } else {
-                    // Plan C: Fallback to name search if no sale found at all
-                    $customer = $this->findCustomer($data);
-                    $customerId = $customer ? $customer->id : $walkInCustomer->id;
                     $this->skipped++;
                 }
 
-                $invoiceTotal = $this->cleanMoney($data['Invoice Total']);
-                $amountPaid   = $this->cleanMoney($data['Payment Total']);
-                $balance      = $this->cleanMoney($data['Balance']);
                 $status       = $balance <= 0.50 ? 'completed' : 'active';
-
                 $staffRaw     = trim($data['Staff'] ?? 'System');
                 $staffList    = array_values(array_filter(preg_split('/[\/,]+/', $staffRaw)));
                 $salesPerson  = !empty($staffList) ? $staffList[0] : 'System';
@@ -241,7 +236,7 @@ class ImportOnSwimDeposits extends Command
         $this->table(['Metric', 'Count'], [
             ['Total Rows', $total], 
             ['Matched to Sales', $this->matched], 
-            ['Unlinked', $this->skipped],
+            ['Unlinked (Plan C)', $this->skipped],
             ['Created', $this->created], 
             ['Updated', $this->updated]
         ]);
@@ -254,26 +249,22 @@ class ImportOnSwimDeposits extends Command
         $fullName = trim($data['Customer'] ?? '');
         if (empty($fullName)) return null;
 
-        // Split "Gloria Villas" into ["Gloria", "Villas"]
         $parts = explode(' ', $fullName);
         $firstName = trim($parts[0]);
         $lastName  = trim(implode(' ', array_slice($parts, 1)));
 
-        // 🚀 THE "NO-DUPLICATE" SEARCH LOGIC
         $found = Customer::withoutGlobalScopes()
             ->where(function($query) use ($firstName, $lastName, $fullName) {
                 $query->where(function($q) use ($firstName, $lastName) {
                     $q->where('name', 'LIKE', $firstName)
                     ->where('last_name', 'LIKE', $lastName);
                 })
-                // Also check if the full string matches the concatenated name in DB
                 ->orWhere(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%");
             })
             ->first();
 
         if ($found) return $found;
 
-        // Only create if we absolutely cannot find a match
         return Customer::withoutEvents(fn() => 
             Customer::create([
                 'customer_no' => 'DEP-CUST-' . strtoupper(Str::random(8)),
