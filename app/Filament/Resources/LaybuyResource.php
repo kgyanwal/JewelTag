@@ -161,7 +161,6 @@ class LaybuyResource extends Resource
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set)),
                             ]),
 
-                        // 2. PAYMENT LEDGER (YOUR ORIGINAL CODE)
                         // 2. PAYMENT LEDGER
                         Section::make('Installment History & Ledger')
                             ->description('Full transparency of all payments received.')
@@ -169,76 +168,59 @@ class LaybuyResource extends Resource
                             ->collapsible()
                             ->schema([
                               Placeholder::make('payment_history')
-                                    ->label('')
-                                    ->content(function ($record) {
-                                        if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+    ->label('')
+    ->content(function ($record) {
+        if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
 
-                                        // 1. Get Laybuy Payments
-                                        $laybuyPayments = $record->payments->map(fn($p) => (object)[
-                                            'id' => $p->id, 'source' => 'laybuy', 'amount' => $p->amount, 
-                                            'method' => $p->payment_method, 'date' => $p->created_at
-                                        ]);
+        // 🚀 THE FIX: We ignore the 'sale' relationship and go straight to 'payments'
+        // This ensures historical data stays visible even if the sale_id changes for EOD.
+        $allPayments = $record->payments->sortByDesc('created_at');
 
-                                        // 2. Get Sale Payments
-                                        $salePayments = $record->sale ? $record->sale->payments->map(fn($p) => (object)[
-                                            'id' => $p->id, 'source' => 'payment', 'amount' => $p->amount, 
-                                            'method' => $p->method, 'date' => $p->paid_at ?? $p->created_at
-                                        ]) : collect();
+        if ($allPayments->isEmpty()) {
+            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+        }
 
-                                        // 3. 🚀 THE FIX: Filter out SalePayments that are duplicates of LaybuyPayments
-                                        $filteredSalePayments = $salePayments->filter(function($sp) use ($laybuyPayments) {
-                                            foreach ($laybuyPayments as $lp) {
-                                                if ($sp->amount == $lp->amount && abs(\Carbon\Carbon::parse($sp->date)->diffInSeconds(\Carbon\Carbon::parse($lp->date))) < 60) {
-                                                    return false; // Skip duplicate
-                                                }
-                                            }
-                                            return true; // Keep unique
-                                        });
+        $rows = $allPayments->map(function ($p) use ($record) {
+            $date = \Carbon\Carbon::parse($p->created_at)->format('M d, Y');            
+            $method = $p->payment_method ?? 'N/A';
+            
+            // source is now consistently 'laybuy' for all entries in this ledger
+            $printUrl = route('laybuy.print', [
+                'laybuy' => $record->id, 
+                'payment_id' => $p->id, 
+                'source' => 'laybuy'
+            ]);
 
-                                        $allPayments = collect()
-                                            ->concat($laybuyPayments)
-                                            ->concat($filteredSalePayments)
-                                            ->sortByDesc('date');
+            return "
+                <tr class='border-b border-gray-100 hover:bg-gray-50'>
+                    <td class='py-3 text-sm font-medium'>{$date}</td>
+                    <td class='py-3 text-sm uppercase text-gray-500'>
+                        <span class='bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold tracking-wider'>{$method}</span>
+                    </td>
+                    <td class='py-3 text-right text-sm font-black text-green-600'>$" . number_format($p->amount, 2) . "</td>
+                    <td class='py-3 text-right'>
+                        <a href='{$printUrl}' target='_blank' style='background-color: #0ea5e9; color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s;' onmouseover=\"this.style.backgroundColor='#0284c7'\" onmouseout=\"this.style.backgroundColor='#0ea5e9'\">
+                            <svg style='width:14px; height:14px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z'></path></svg>
+                            Receipt
+                        </a>
+                    </td>
+                </tr>";
+        })->implode('');
 
-                                        if ($allPayments->isEmpty()) {
-                                            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
-                                        }
-
-                                        $rows = $allPayments->map(function ($p) use ($record) {
-                                            $date = \Carbon\Carbon::parse($p->date)->format('M d, Y');            
-                                            $method = $p->method ?? 'N/A';
-                                            $printUrl = route('laybuy.print', ['laybuy' => $record->id, 'payment_id' => $p->id, 'source' => $p->source]);
-
-                                            return "
-                                                <tr class='border-b border-gray-100 hover:bg-gray-50'>
-                                                    <td class='py-3 text-sm font-medium'>{$date}</td>
-                                                    <td class='py-3 text-sm uppercase text-gray-500'>
-                                                        <span class='bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold tracking-wider'>{$method}</span>
-                                                    </td>
-                                                    <td class='py-3 text-right text-sm font-black text-green-600'>$" . number_format($p->amount, 2) . "</td>
-                                                    <td class='py-3 text-right'>
-                                                        <a href='{$printUrl}' target='_blank' style='background-color: #0ea5e9; color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s;' onmouseover=\"this.style.backgroundColor='#0284c7'\" onmouseout=\"this.style.backgroundColor='#0ea5e9'\">
-                                                            <svg style='width:14px; height:14px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z'></path></svg>
-                                                            Receipt
-                                                        </a>
-                                                    </td>
-                                                </tr>";
-                                        })->implode('');
-
-                                        return new HtmlString("
-                                            <table class='w-full'>
-                                                <thead>
-                                                    <tr class='text-left border-b border-gray-200'>
-                                                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
-                                                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
-                                                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
-                                                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>{$rows}</tbody>
-                                            </table>
-                                        ");
-                                    })
+        return new HtmlString("
+            <table class='w-full'>
+                <thead>
+                    <tr class='text-left border-b border-gray-200'>
+                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
+                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
+                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
+                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Action</th>
+                    </tr>
+                </thead>
+                <tbody>{$rows}</tbody>
+            </table>
+        ");
+    })
                                    
                             ]),
                     ]),
