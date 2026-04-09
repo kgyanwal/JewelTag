@@ -125,6 +125,12 @@ class EditLaybuy extends EditRecord
     {
         $laybuy = $this->getRecord();
 
+        // ✅ ADD THESE THREE LINES — populate financial fields from DB
+        $data['total_amount'] = $laybuy->total_amount;
+        $data['amount_paid']  = $laybuy->amount_paid;
+        $data['balance_due']  = $laybuy->balance_due;
+
+        // Your existing items logic — unchanged
         if ($laybuy->sale && $laybuy->sale->items->isNotEmpty()) {
             $data['layby_items'] = $laybuy->sale->items->map(function ($item) {
                 return [
