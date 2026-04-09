@@ -168,40 +168,64 @@ class LaybuyResource extends Resource
                             ->collapsible()
                             ->schema([
                                 Placeholder::make('payment_history')
-                                    ->label('')
-                                    ->content(function ($record) {
-                                        if (!$record || ($record->payments->isEmpty() && (!$record->sale || $record->sale->payments->isEmpty()))) {
-                                            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
-                                        }
+    ->label('')
+    ->content(function ($record) {
+        // 1. Initial check: if no record exists yet, show empty
+        if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
 
-                                        // 💡 NOTE: This part is important because it merges your 
-                                        // OnSwim imported payments with any new payments you take!
-                                        $laybuyPayments = $record->payments;
-                                        $salePayments = $record->sale ? $record->sale->payments : collect();
+        // 2. GET RECENT PAYMENTS (from new laybuy system)
+        $laybuyPayments = $record->payments;
 
-                                        $allPayments = $laybuyPayments->concat($salePayments)->sortByDesc('created_at');
+        // 3. GET FINALIZED PAYMENTS (from the standard payments table)
+        $finalPayments = $record->sale ? $record->sale->payments : collect();
 
-                                        $rows = $allPayments->map(fn($p) => "
-                        <tr class='border-b border-gray-100'>
-                            <td class='py-3 text-sm font-medium'>{$p->created_at->format('M d, Y')}</td>
-                            <td class='py-3 text-sm uppercase text-gray-500'>" . ($p->payment_method ?? $p->method ?? 'N/A') . "</td>
-                            <td class='py-3 text-right text-sm font-bold text-green-600'>$" . number_format($p->amount, 2) . "</td>
-                        </tr>
-                    ")->implode('');
+        // 4. GET HISTORICAL PAYMENTS (The missing link from sale_payments table)
+        // This looks for all transactions attached to this job in the holding table
+        $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)->get();
 
-                                        return new HtmlString("
-                        <table class='w-full'>
-                            <thead>
-                                <tr class='text-left border-b border-gray-200'>
-                                    <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
-                                    <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
-                                    <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>{$rows}</tbody>
-                        </table>
-                    ");
-                                    })
+        // 5. MERGE ALL SOURCES
+        // We use concat() to combine them into one list
+        $allPayments = collect()
+            ->concat($laybuyPayments)
+            ->concat($finalPayments)
+            ->concat($historicalPayments)
+            ->sortByDesc(function ($p) {
+                // Sort by created_at or payment_date
+                return $p->created_at ?? $p->payment_date;
+            });
+
+        if ($allPayments->isEmpty()) {
+            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+        }
+
+        $rows = $allPayments->map(function ($p) {
+            // Normalize dates (historical use payment_date, others use created_at)
+            $date = $p->created_at ? $p->created_at->format('M d, Y') : ($p->payment_date ? date('M d, Y', strtotime($p->payment_date)) : 'N/A');
+            
+            // Normalize method names (sale_payments uses 'payment_method', others use 'method')
+            $method = $p->payment_method ?? $p->method ?? 'N/A';
+            
+            return "
+                <tr class='border-b border-gray-100'>
+                    <td class='py-3 text-sm font-medium'>{$date}</td>
+                    <td class='py-3 text-sm uppercase text-gray-500'>{$method}</td>
+                    <td class='py-3 text-right text-sm font-bold text-green-600'>$" . number_format($p->amount, 2) . "</td>
+                </tr>";
+        })->implode('');
+
+        return new HtmlString("
+            <table class='w-full'>
+                <thead>
+                    <tr class='text-left border-b border-gray-200'>
+                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
+                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
+                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>{$rows}</tbody>
+            </table>
+        ");
+    })
                             ]),
                     ]),
 
@@ -245,7 +269,7 @@ class LaybuyResource extends Resource
                                     ->prefix('$')
                                     ->readOnly() // Keep it read-only to prevent math errors
                                     ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
-                                    
+
                                 TextInput::make('balance_due')
                                     ->label('Remaining Balance')
                                     ->prefix('$')->readOnly()
