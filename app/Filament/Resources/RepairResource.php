@@ -151,7 +151,7 @@ class RepairResource extends Resource
                                                         TextInput::make('email')->label('Email')->email(),
                                                     ]),
                                                     Grid::make(2)->schema([
-                                                       CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                       CustomDatePicker::make('dob')->extraInputAttributes(['max' => now()->format('Y-m-d')])->rule('before_or_equal:today')->label('Birth Date'),
                                                         CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                     ]),
                                                     Section::make('Customer Address')
