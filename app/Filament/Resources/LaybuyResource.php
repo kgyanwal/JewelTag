@@ -244,14 +244,8 @@ class LaybuyResource extends Resource
                                     ->label('Amount Collected')
                                     ->prefix('$')
                                     ->readOnly() // Keep it read-only to prevent math errors
-                                    ->formatStateUsing(function ($record, $state) {
-                                        if (!$record) return $state;
-                                        // This summates both imported payments and new ones
-                                        $salePayments = $record->sale ? $record->sale->payments->sum('amount') : 0;
-                                        $laybuyPayments = $record->payments->sum('amount');
-                                        return $salePayments + $laybuyPayments;
-                                    })
                                     ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
+                                    
                                 TextInput::make('balance_due')
                                     ->label('Remaining Balance')
                                     ->prefix('$')->readOnly()
@@ -334,11 +328,10 @@ class LaybuyResource extends Resource
                     $total = floatval($record->total_amount);
                     if ($total <= 0) return new HtmlString('<span class="text-gray-400">—</span>');
 
-                    $salePayments   = $record->sale ? $record->sale->payments->sum('amount') : 0;
-                    $laybuyPayments = $record->payments->sum('amount');
-                    $paid           = $salePayments + $laybuyPayments;
-                    $perc           = min(100, round(($paid / $total) * 100));
-                    $color          = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
+                    // 🚀 FIX: Just use the database column directly instead of summing both tables
+                    $paid  = floatval($record->amount_paid); 
+                    $perc  = min(100, round(($paid / $total) * 100));
+                    $color = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
 
                     return new HtmlString("
                         <div style='min-width:140px;'>
@@ -417,6 +410,14 @@ class LaybuyResource extends Resource
                     DB::transaction(function () use ($record, $data) {
                         $amountPaid = (float) $data['amount'];
 
+                        // 1. Record for Laybuy History Ledger
+                        \App\Models\LaybuyPayment::create([
+                            'laybuy_id'      => $record->id,
+                            'amount'         => $amountPaid,
+                            'payment_method' => $data['payment_method'],
+                        ]);
+
+                        // 2. Record for Main Sales Ledger (End of day reporting)
                         if ($record->sale_id) {
                             \App\Models\Payment::create([
                                 'sale_id' => $record->sale_id,
@@ -426,6 +427,7 @@ class LaybuyResource extends Resource
                             ]);
                         }
 
+                        // 3. Update the Laybuy balances
                         $newAmountPaid = $record->amount_paid + $amountPaid;
                         $newBalance    = max(0, $record->total_amount - $newAmountPaid);
                         $newStatus     = $newBalance <= 0 ? 'completed' : 'in_progress';
@@ -436,6 +438,7 @@ class LaybuyResource extends Resource
                             'status'      => $newStatus,
                         ]);
 
+                        // 4. Mark sale as completed if fully paid off
                         if ($newBalance <= 0 && $record->sale_id) {
                             \App\Models\Sale::where('id', $record->sale_id)->update([
                                 'status'       => 'completed',
