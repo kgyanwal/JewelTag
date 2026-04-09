@@ -170,57 +170,47 @@ class LaybuyResource extends Resource
                               Placeholder::make('payment_history')
     ->label('')
     ->content(function ($record) {
-        if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+    if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
 
-        // 🚀 THE FIX: We ignore the 'sale' relationship and go straight to 'payments'
-        // This ensures historical data stays visible even if the sale_id changes for EOD.
-        $allPayments = $record->payments->sortByDesc('created_at');
+    // 🚀 THE TRUTH: Pull ONLY from the direct Laybuy relationship.
+    // This ignores the Sale ID and shows the permanent ledger.
+    $allPayments = $record->payments()->orderBy('created_at', 'desc')->get();
 
-        if ($allPayments->isEmpty()) {
-            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
-        }
+    if ($allPayments->isEmpty()) {
+        return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+    }
 
-        $rows = $allPayments->map(function ($p) use ($record) {
-            $date = \Carbon\Carbon::parse($p->created_at)->format('M d, Y');            
-            $method = $p->payment_method ?? 'N/A';
-            
-            // source is now consistently 'laybuy' for all entries in this ledger
-            $printUrl = route('laybuy.print', [
-                'laybuy' => $record->id, 
-                'payment_id' => $p->id, 
-                'source' => 'laybuy'
-            ]);
+    $rows = $allPayments->map(function ($p) use ($record) {
+        $date = \Carbon\Carbon::parse($p->created_at)->format('M d, Y');            
+        $method = $p->payment_method ?? 'N/A';
+        $printUrl = route('laybuy.print', ['laybuy' => $record->id, 'payment_id' => $p->id, 'source' => 'laybuy']);
 
-            return "
-                <tr class='border-b border-gray-100 hover:bg-gray-50'>
-                    <td class='py-3 text-sm font-medium'>{$date}</td>
-                    <td class='py-3 text-sm uppercase text-gray-500'>
-                        <span class='bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold tracking-wider'>{$method}</span>
-                    </td>
-                    <td class='py-3 text-right text-sm font-black text-green-600'>$" . number_format($p->amount, 2) . "</td>
-                    <td class='py-3 text-right'>
-                        <a href='{$printUrl}' target='_blank' style='background-color: #0ea5e9; color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s;' onmouseover=\"this.style.backgroundColor='#0284c7'\" onmouseout=\"this.style.backgroundColor='#0ea5e9'\">
-                            <svg style='width:14px; height:14px;' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z'></path></svg>
-                            Receipt
-                        </a>
-                    </td>
-                </tr>";
-        })->implode('');
+        return "
+            <tr class='border-b border-gray-100 hover:bg-gray-50'>
+                <td class='py-3 text-sm font-medium'>{$date}</td>
+                <td class='py-3 text-sm uppercase'>
+                    <span class='bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold'>{$method}</span>
+                </td>
+                <td class='py-3 text-right text-sm font-black text-green-600'>$" . number_format($p->amount, 2) . "</td>
+                <td class='py-3 text-right'>
+                    <a href='{$printUrl}' target='_blank' class='text-sky-600 hover:underline text-xs font-bold'>Receipt</a>
+                </td>
+            </tr>";
+    })->implode('');
 
-        return new HtmlString("
-            <table class='w-full'>
-                <thead>
-                    <tr class='text-left border-b border-gray-200'>
-                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
-                        <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
-                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
-                        <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Action</th>
-                    </tr>
-                </thead>
-                <tbody>{$rows}</tbody>
-            </table>
-        ");
-    })
+    return new HtmlString("
+        <table class='w-full'>
+            <thead>
+                <tr class='text-left border-b border-gray-200'>
+                    <th class='pb-2 text-[10px] uppercase text-gray-400 font-black'>Date</th>
+                    <th class='pb-2 text-[10px] uppercase text-gray-400 font-black'>Method</th>
+                    <th class='pb-2 text-right text-[10px] uppercase text-gray-400 font-black'>Amount</th>
+                    <th class='pb-2 text-right text-[10px] uppercase text-gray-400 font-black'>Action</th>
+                </tr>
+            </thead>
+            <tbody>{$rows}</tbody>
+        </table>");
+})
                                    
                             ]),
                     ]),
