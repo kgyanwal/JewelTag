@@ -67,6 +67,19 @@ protected $fillable = [
     
 ];
 
+protected $casts = [
+    'date_in' => 'datetime',
+    'inactivated_at' => 'datetime',
+    'is_trade_in' => 'boolean',
+    'is_memo' => 'boolean',
+    'is_lab_grown' => 'boolean',
+    'web_item' => 'boolean',
+    'markup' => 'decimal:2',
+    'cost_price' => 'decimal:2',
+    'retail_price' => 'decimal:2',
+    'web_price' => 'decimal:2',
+];
+
     // 🔹 ADVANCED: Automatically determine status based on Qty
     // public function getStatusAttribute($value)
     // {
