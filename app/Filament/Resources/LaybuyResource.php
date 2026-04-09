@@ -179,12 +179,12 @@ class LaybuyResource extends Resource
         // 3. GET FINALIZED PAYMENTS (from the standard payments table)
         $finalPayments = $record->sale ? $record->sale->payments : collect();
 
-        // 4. GET HISTORICAL PAYMENTS (The missing link from sale_payments table)
-        // This looks for all transactions attached to this job in the holding table
-        $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)->get();
-
-        // 5. MERGE ALL SOURCES
-        // We use concat() to combine them into one list
+        // 4. GET HISTORICAL PAYMENTS (Filtered for Laybuy only)
+        $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)
+            ->where('is_layby', 1) // 👈 This ensures we don't pull direct sale payments
+            ->get();
+            // 5. MERGE ALL SOURCES
+            // We use concat() to combine them into one list
         $allPayments = collect()
             ->concat($laybuyPayments)
             ->concat($finalPayments)
