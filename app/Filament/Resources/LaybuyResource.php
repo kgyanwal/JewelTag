@@ -181,12 +181,13 @@ class LaybuyResource extends Resource
 
         // 4. GET HISTORICAL PAYMENTS (Filtered for Laybuy only)
        // 4. GET HISTORICAL PAYMENTS (Flexible filter)
+    // 4. GET HISTORICAL PAYMENTS (The "Hybrid" Filter)
     $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)
         ->where(function ($query) {
-            $query->where('is_layby', 1)
-                ->orWhere('is_deposit', 1)
-                ->orWhere('original_payment_type', 'LIKE', '%Layby%')
-                ->orWhere('notes', 'LIKE', '%Historical Import%');
+            $query->where('is_layby', 1) // Keep the working logic for others
+                ->orWhereHas('sale', function ($s) {
+                    $s->where('invoice_number', 'LIKE', 'HIST-%'); // Catch the "dirty" migrated data
+                });
         })
         ->get();
             // 5. MERGE ALL SOURCES
