@@ -89,16 +89,15 @@ $maxDate = $getExtraInputAttributes()['max'] ?? null;
                     <div class="text-[10px] font-bold text-gray-400 uppercase" x-text="dayName"></div>
                 </template>
                 <template x-for="(day, i) in calendarDays" :key="i">
-                    {{-- 🚀 FIXED: Added opacity-50 to gray out non-current month dates natively --}}
                     <button type="button" @click="selectDay(day)" :disabled="!day.currentMonth || day.disabledDate"
                         :class="{
-                            'opacity-30 cursor-not-allowed': day.disabledDate,
-                            'bg-primary-600 text-white font-bold': day.selected && !day.disabledDate,
-                            'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white': !day.selected && day.currentMonth && !day.disabledDate,
-                            'text-gray-400 dark:text-gray-500 opacity-50 cursor-default': !day.currentMonth && !day.disabledDate,
-                            'ring-1 ring-inset ring-primary-600': day.today && !day.selected && !day.disabledDate
-                        }" class="h-8 w-8 rounded-full text-xs flex items-center justify-center transition"
-                        x-text="day.date"></button>
+            'bg-primary-600 text-white font-bold': day.selected && !day.disabledDate,
+            'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white': !day.selected && day.currentMonth && !day.disabledDate,
+            
+            'text-gray-400 dark:text-gray-500 opacity-40 cursor-not-allowed': !day.currentMonth || day.disabledDate,
+            
+            'ring-1 ring-inset ring-primary-600': day.today && !day.selected && !day.disabledDate
+        }" class="h-8 w-8 rounded-full text-xs flex items-center justify-center transition" x-text="day.date"></button>
                 </template>
             </div>
         </div>

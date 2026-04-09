@@ -240,8 +240,8 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
                 Filter::make('date_range')
                     ->form([
-                       CustomDatePicker::make('from')->label('From')->default(now()->startOfMonth()),
-                        CustomDatePicker::make('to')->label('To')->default(now()),
+                       CustomDatePicker::make('from')->label('From'),
+                        CustomDatePicker::make('to')->label('To')->default(now()->format('Y-m-d')),
                     ])
                     ->query(fn(Builder $query, array $data) =>
                         $query

@@ -15,7 +15,7 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\DatePicker;
+use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Notifications\Notification;
 use Illuminate\Support\HtmlString;
@@ -80,15 +80,15 @@ class SubscriptionResource extends Resource
                             ->icon('heroicon-o-calendar-days')
                             ->columns(2)
                             ->schema([
-                                DatePicker::make('current_period_start')
+                                CustomDatePicker::make('current_period_start')
                                     ->label('Cycle Start Date')
                                     ->required(),
-                                DatePicker::make('current_period_end')
+                                CustomDatePicker::make('current_period_end')
                                     ->label('Next Renewal / Due Date')
                                     ->required(),
-                                DatePicker::make('trial_ends_at')
+                                CustomDatePicker::make('trial_ends_at')
                                     ->label('Trial Ends At (Optional)'),
-                                DatePicker::make('canceled_at')
+                                CustomDatePicker::make('canceled_at')
                                     ->label('Canceled At (Read Only)')
                                     ->disabled(),
                             ]),
@@ -110,7 +110,7 @@ class SubscriptionResource extends Resource
                                     ->disabled()
                                     ->helperText('Logged automatically during onboarding.'),
 
-                                DatePicker::make('msa_agreed_at')
+                                CustomDatePicker::make('msa_agreed_at')
                                     ->label('Date Signed')
                                     ->default(now())
                                     ->required(),
