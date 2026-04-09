@@ -174,7 +174,7 @@ class LaybuyResource extends Resource
 
         // 🚀 THE FIX: We pull directly from the 'payments' relationship.
         // This bypasses the Sale ID issues and shows the permanent ledger history.
-        $allPayments = $record->payments()->orderBy('created_at', 'desc')->get();
+        $allPayments = $record->laybuyPayments;
 
         if ($allPayments->isEmpty()) {
             return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
@@ -307,7 +307,7 @@ class LaybuyResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn($query) => $query->with(['customer', 'sale.payments', 'payments']))
+            ->modifyQueryUsing(fn($query) => $query->with(['customer', 'sale.payments', 'laybuyPayments']))
             ->columns([
                 TextColumn::make('laybuy_no')
                     ->label('ID')
