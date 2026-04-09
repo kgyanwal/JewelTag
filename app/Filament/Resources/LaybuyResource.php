@@ -180,9 +180,15 @@ class LaybuyResource extends Resource
         $finalPayments = $record->sale ? $record->sale->payments : collect();
 
         // 4. GET HISTORICAL PAYMENTS (Filtered for Laybuy only)
-        $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)
-            ->where('is_layby', 1) // 👈 This ensures we don't pull direct sale payments
-            ->get();
+       // 4. GET HISTORICAL PAYMENTS (Flexible filter)
+    $historicalPayments = \App\Models\SalePayment::where('sale_id', $record->sale_id)
+        ->where(function ($query) {
+            $query->where('is_layby', 1)
+                ->orWhere('is_deposit', 1)
+                ->orWhere('original_payment_type', 'LIKE', '%Layby%')
+                ->orWhere('notes', 'LIKE', '%Historical Import%');
+        })
+        ->get();
             // 5. MERGE ALL SOURCES
             // We use concat() to combine them into one list
         $allPayments = collect()
