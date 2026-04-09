@@ -59,28 +59,27 @@ class EditLaybuy extends EditRecord
                         ->default(now())
                         ->required(),
                 ])
-                ->action(function (array $data, $record) {
+               ->action(function (array $data, $record) {
                     DB::transaction(function () use ($data, $record) {
                         $amount = (float) $data['amount'];
+                        $method = strtoupper(trim($data['payment_method']));
 
                         // 1. Create the Layby Payment Record (Updates the Layby Ledger)
                         LaybuyPayment::create([
                             'laybuy_id'      => $record->id,
                             'amount'         => $amount,
-                            'payment_method' => $data['payment_method'],
-                            'payment_date'   => $data['payment_date'],
+                            'payment_method' => $method,
+                            'created_at'     => $data['payment_date'],
+                            'updated_at'     => $data['payment_date'],
                         ]);
 
-                        // 2. Create the Sale Payment Record (Syncs with the main Store Revenue)
+                        // 2. Create the Main Payment Record (Syncs with End of Day)
                         if ($record->sale_id) {
-                            SalePayment::create([
-                                'sale_id'        => $record->sale_id,
-                                'customer_id'    => $record->customer_id,
-                                'store_id'       => $record->store_id ?? 1,
-                                'amount'         => $amount,
-                                'payment_method' => $data['payment_method'],
-                                'payment_date'   => $data['payment_date'],
-                                'is_layby'       => true,
+                            \App\Models\Payment::create([
+                                'sale_id' => $record->sale_id,
+                                'amount'  => $amount,
+                                'method'  => $method,
+                                'paid_at' => $data['payment_date'],
                             ]);
                         }
 

@@ -101,7 +101,19 @@ class UserResource extends Resource
     {
         return $table->columns([
             Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
-            Tables\Columns\TextColumn::make('pin_code')->label('PIN')->badge()->color('warning'),
+            Tables\Columns\TextColumn::make('pin_code')
+    ->label('PIN')
+    ->badge()
+    ->color('warning')
+    ->getStateUsing(fn($record) => $record->pin_code)
+    ->formatStateUsing(fn($state) => '••••')
+    ->action(
+        Tables\Actions\Action::make('reveal_pin')
+            ->modalHeading('PIN Code')
+            ->modalDescription(fn($record) => "PIN for {$record->name}: {$record->pin_code}")
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close')
+    ),
             Tables\Columns\TextColumn::make('roles.name')->badge()->label('Role Name'),
             Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
         ])->actions([

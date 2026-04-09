@@ -102,7 +102,6 @@ class SaleResource extends Resource
     // ── FORM SCHEMA ───────────────────────────────────────────────────────────
     public static function form(Form $form): Form
     {
-        // Define UI lock closure
         $isLocked = function (?Sale $record) {
             if (!$record) return false;
             return !self::canEdit($record);
@@ -155,16 +154,16 @@ class SaleResource extends Resource
                                                 $qty          = $get('current_qty') ?? 1;
 
                                                 $currentItems[] = [
-                                                    'product_item_id'    => $item->id,
-                                                    'repair_id'          => null,
-                                                    'stock_no_display'   => $item->barcode,
-                                                    'custom_description' => $item->custom_description ?? $item->barcode,
-                                                    'qty'                => $qty,
-                                                    'sold_price'         => $item->retail_price,
+                                                    'product_item_id'     => $item->id,
+                                                    'repair_id'           => null,
+                                                    'stock_no_display'    => $item->barcode,
+                                                    'custom_description'  => $item->custom_description ?? $item->barcode,
+                                                    'qty'                 => $qty,
+                                                    'sold_price'          => $item->retail_price,
                                                     'sale_price_override' => $item->retail_price * $qty,
-                                                    'discount_percent'   => 0,
-                                                    'discount_amount'    => 0,
-                                                    'is_tax_free'        => false,
+                                                    'discount_percent'    => 0,
+                                                    'discount_amount'     => 0,
+                                                    'is_tax_free'         => false,
                                                 ];
 
                                                 $set('items', $currentItems);
@@ -213,131 +212,205 @@ class SaleResource extends Resource
                                                 ]),
                                             ])
                                             ->action(function (array $data, Get $get, Set $set) {
-                                                $price   = floatval($data['price'] ?? 0);
-                                                $qty     = intval($data['qty'] ?? 1);
-                                                $discPct = floatval($data['discount_percent'] ?? 0);
-                                                $lineTotal = $price * $qty;
-                                                $discAmt   = $lineTotal * ($discPct / 100);
+                                                $price      = floatval($data['price'] ?? 0);
+                                                $qty        = intval($data['qty'] ?? 1);
+                                                $discPct    = floatval($data['discount_percent'] ?? 0);
+                                                $lineTotal  = $price * $qty;
+                                                $discAmt    = $lineTotal * ($discPct / 100);
                                                 $finalPrice = $lineTotal - $discAmt;
 
                                                 $currentItems   = $get('items') ?? [];
                                                 $currentItems[] = [
-                                                    'product_item_id'    => null,
-                                                    'repair_id'          => null,
-                                                    'custom_order_id'    => null,
-                                                    'is_non_stock'       => true,
-                                                    'stock_no_display'   => 'NON-TAG',
-                                                    'custom_description' => $data['description'],
-                                                    'qty'                => $qty,
-                                                    'sold_price'         => $price,
+                                                    'product_item_id'     => null,
+                                                    'repair_id'           => null,
+                                                    'custom_order_id'     => null,
+                                                    'is_non_stock'        => true,
+                                                    'stock_no_display'    => 'NON-TAG',
+                                                    'custom_description'  => $data['description'],
+                                                    'qty'                 => $qty,
+                                                    'sold_price'          => $price,
                                                     'sale_price_override' => $finalPrice,
-                                                    'discount_percent'   => $discPct,
-                                                    'discount_amount'    => $discAmt,
-                                                    'is_tax_free'        => $data['is_tax_free'] ?? false,
+                                                    'discount_percent'    => $discPct,
+                                                    'discount_amount'     => $discAmt,
+                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
                                                 ];
 
                                                 $set('items', $currentItems);
                                                 self::updateTotals($get, $set);
                                             }),
 
+                                        // ── NEW CUSTOM ORDER ──────────────────────────────────────────
                                         FormAction::make('create_new_custom_order')
-                                        ->label('+ New Custom Order')
-                                        ->color('success')
-                                        ->outlined()
-                                        ->icon('heroicon-o-paint-brush')
-                                        ->modalHeading('Design New Custom Piece')
-                                        ->modalWidth('3xl')
-                                        ->modalSubmitActionLabel('Add to Bill')
-                                       ->form([
-    Grid::make(2)->schema([
-        Select::make('product_name')->label('What are we making?')->options(fn() => \App\Models\CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())->searchable()->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])->createOptionUsing(fn($data) => $data['new_product_name'])->required(),
-        Select::make('metal_type')->label('Metal Type')->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'platinum' => 'Platinum', 'silver' => 'Silver', 'other' => 'Other'])->default('14k')->required(),
-    ]),
-    Grid::make(3)->schema([
-        TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
-        Placeholder::make('total_with_tax')->label('Total (w/ Tax)')->content(function (Get $get) {
-            $quoted  = (float)($get('quoted_price') ?? 0);
-            $discPct = (float)($get('discount_percent') ?? 0);
-            $discounted = $quoted - ($quoted * $discPct / 100);
-            $taxRate = $get('is_tax_free') ? 0 : ((float)\Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63) / 100;
-            return new HtmlString("<div class='text-2xl font-black text-gray-900 mt-1'>$" . number_format($discounted * (1 + $taxRate), 2) . "</div>");
-        }),
-        TextInput::make('custom_deposit_amount')->label('Deposit Amount')->numeric()->prefix('$')->default(0),
-    ]),
-    // ── DISCOUNT ROW ──────────────────────────────────────────────
-    Grid::make(3)->schema([
-        TextInput::make('discount_percent')
-    ->label('Discount %')
-    ->numeric()
-    ->suffix('%')
-    ->default(0)
-    ->minValue(0)
-    ->maxValue(100)
-    ->live(onBlur: true),
-        Placeholder::make('discount_display')
-            ->label('After Discount')
-            ->content(function (Get $get) {
-                $quoted  = (float)($get('quoted_price') ?? 0);
-                $pct     = (float)($get('discount_percent') ?? 0);
-                $discAmt = $quoted * $pct / 100;
-                $final   = $quoted - $discAmt;
-                return new HtmlString("
-                    <div class='text-sm mt-1'>
-                        <span class='text-danger-600 font-bold'>-\$" . number_format($discAmt, 2) . "</span>
-                        <span class='text-gray-400 mx-1'>→</span>
-                        <span class='text-success-700 font-black'>\$" . number_format($final, 2) . "</span>
-                    </div>
-                ");
-            }),
-        Placeholder::make('spacer_disc')->label('')->content(''),
-    ]),
-    Grid::make(3)->schema([
-        Select::make('deposit_method')->label('Deposit Payment Method')->options(self::getPaymentOptions())->default('VISA')->required(),
-        Placeholder::make('spacer')->label('')->content(''),
-        Toggle::make('is_tax_free')->label('Tax Free Order?')->default(false)->inline(false)->live(),
-    ]),
-    CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
-    Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
-])
-->action(function (array $data, Get $get, Set $set) {
-    $price   = floatval($data['quoted_price']);
-   $discPct    = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
-$discAmt    = $price * $discPct / 100;
-$finalPrice = max(0, $price - $discAmt);
-    $deposit = floatval($data['custom_deposit_amount'] ?? 0);
-    $method  = $data['deposit_method'] ?? 'CASH';
+                                            ->label('+ New Custom Order')
+                                            ->color('success')
+                                            ->outlined()
+                                            ->icon('heroicon-o-paint-brush')
+                                            ->modalHeading('Design New Custom Piece')
+                                            ->modalWidth('3xl')
+                                            ->modalSubmitActionLabel('Add to Bill')
+                                            ->form([
+                                                // ── ROW 1: What & Metal ──────────────────────────────
+                                                Grid::make(2)->schema([
+                                                    Select::make('product_name')
+                                                        ->label('What are we making?')
+                                                        ->options(fn() => \App\Models\CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())
+                                                        ->searchable()
+                                                        ->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])
+                                                        ->createOptionUsing(fn($data) => $data['new_product_name'])
+                                                        ->required(),
+                                                    Select::make('metal_type')
+                                                        ->label('Metal Type')
+                                                        ->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'platinum' => 'Platinum', 'silver' => 'Silver', 'other' => 'Other'])
+                                                        ->default('14k')
+                                                        ->required(),
+                                                ]),
 
-    $draftId = (string) Str::uuid();
-    $data['draft_id'] = $draftId;
+                                                // ── ROW 2: Price + Tax Preview + Deposit ─────────────
+                                                Grid::make(3)->schema([
+                                                    TextInput::make('quoted_price')
+                                                        ->label('Total Item Price')
+                                                        ->numeric()
+                                                        ->prefix('$')
+                                                        ->required()
+                                                        ->live(onBlur: true)
+                                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                            $price   = floatval($state ?? 0);
+                                                            $discAmt = floatval($get('discount_amount') ?? 0);
+                                                            $discAmt = min($price, $discAmt);
+                                                            $pct     = $price > 0 ? round(($discAmt / $price) * 100, 2) : 0;
+                                                            $final   = $price - $discAmt;
+                                                            $set('discount_amount', round($discAmt, 2));
+                                                            $set('discount_percent', $pct);
+                                                            $set('sale_price_display', round($final, 2));
+                                                        }),
 
-    $currentItems = $get('items') ?? [];
-    $currentItems[$draftId] = [
-        'product_item_id'     => null,
-        'repair_id'           => null,
-        'custom_order_id'     => null,
-        'is_non_stock'        => false,
-        'is_new_custom_order' => true,
-        'new_custom_data'     => json_encode($data),
-        'stock_no_display'    => 'NEW CUSTOM',
-        'custom_description'  => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
-        'qty'                 => 1,
-        'sold_price'          => $price,
-        'sale_price_override' => $finalPrice,
-        'discount_percent'    => $discPct,
-        'discount_amount'     => $discAmt,
-        'is_tax_free'         => $data['is_tax_free'] ?? false,
-    ];
+                                                    Placeholder::make('total_with_tax')
+                                                        ->label('Total (w/ Tax)')
+                                                        ->content(function (Get $get) {
+                                                            $quoted  = (float)($get('quoted_price') ?? 0);
+                                                            $discAmt = min($quoted, max(0, (float)($get('discount_amount') ?? 0)));
+                                                            $discounted = $quoted - $discAmt;
+                                                            $taxRate = $get('is_tax_free') ? 0 : ((float)\Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63) / 100;
+                                                            return new HtmlString("<div class='text-2xl font-black text-gray-900 mt-1'>$" . number_format($discounted * (1 + $taxRate), 2) . "</div>");
+                                                        }),
+
+                                                    TextInput::make('custom_deposit_amount')
+                                                        ->label('Deposit Amount')
+                                                        ->numeric()
+                                                        ->prefix('$')
+                                                        ->default(0),
+                                                ]),
+
+                                                // ── ROW 3: Disc % + Disc $ + Sale Price ─────────────
+                                                Grid::make(3)->schema([
+                                                    TextInput::make('discount_percent')
+                                                        ->label('Disc %')
+                                                        ->numeric()
+                                                        ->suffix('%')
+                                                        ->default(0)
+                                                        ->minValue(0)
+                                                        ->maxValue(100)
+                                                        ->live(onBlur: true)
+                                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                            $price   = floatval($get('quoted_price') ?? 0);
+                                                            $pct     = min(100, max(0, floatval($state ?? 0)));
+                                                            $discAmt = $price * $pct / 100;
+                                                            $final   = $price - $discAmt;
+                                                            $set('discount_amount', round($discAmt, 2));
+                                                            $set('sale_price_display', round($final, 2));
+                                                        }),
+
+                                                    TextInput::make('discount_amount')
+                                                        ->label('Disc $')
+                                                        ->numeric()
+                                                        ->prefix('$')
+                                                        ->default(0)
+                                                        ->live(onBlur: true)
+                                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                            $price   = floatval($get('quoted_price') ?? 0);
+                                                            $discAmt = min($price, max(0, floatval($state ?? 0)));
+                                                            $pct     = $price > 0 ? round(($discAmt / $price) * 100, 2) : 0;
+                                                            $final   = $price - $discAmt;
+                                                            $set('discount_amount', round($discAmt, 2));
+                                                            $set('discount_percent', $pct);
+                                                            $set('sale_price_display', round($final, 2));
+                                                        }),
+
+                                                    TextInput::make('sale_price_display')
+                                                        ->label('Sale Price')
+                                                        ->numeric()
+                                                        ->prefix('$')
+                                                        ->default(0)
+                                                        ->dehydrated(false)
+                                                        ->live(onBlur: true)
+                                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                            $price     = floatval($get('quoted_price') ?? 0);
+                                                            $salePrice = min($price, max(0, floatval($state ?? 0)));
+                                                            $discAmt   = $price - $salePrice;
+                                                            $pct       = $price > 0 ? round(($discAmt / $price) * 100, 2) : 0;
+                                                            $set('discount_amount', round($discAmt, 2));
+                                                            $set('discount_percent', $pct);
+                                                        }),
+                                                ]),
+
+                                                // ── ROW 4: Payment + Spacer + Tax Free ──────────────
+                                                Grid::make(3)->schema([
+                                                    Select::make('deposit_method')
+                                                        ->label('Deposit Payment Method')
+                                                        ->options(self::getPaymentOptions())
+                                                        ->default('VISA')
+                                                        ->required(),
+                                                    Placeholder::make('spacer')->label('')->content(''),
+                                                    Toggle::make('is_tax_free')
+                                                        ->label('Tax Free Order?')
+                                                        ->default(false)
+                                                        ->inline(false)
+                                                        ->live(),
+                                                ]),
+
+                                                CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
+                                                Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
+                                            ])
+                                            ->action(function (array $data, Get $get, Set $set) {
+                                                $price   = floatval($data['quoted_price']);
+                                                $discPct = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
+                                                $discAmt = min($price, max(0, floatval($data['discount_amount'] ?? ($price * $discPct / 100))));
+                                                $discPct = $price > 0 ? round(($discAmt / $price) * 100, 2) : $discPct;
+                                                $finalPrice = max(0, $price - $discAmt);
+                                                $deposit = floatval($data['custom_deposit_amount'] ?? 0);
+                                                $method  = $data['deposit_method'] ?? 'CASH';
+
+                                                $draftId = (string) Str::uuid();
+                                                $data['draft_id']         = $draftId;
+                                                $data['discount_percent'] = $discPct;
+                                                $data['discount_amount']  = $discAmt;
+
+                                                $currentItems = $get('items') ?? [];
+                                                $currentItems[$draftId] = [
+                                                    'product_item_id'     => null,
+                                                    'repair_id'           => null,
+                                                    'custom_order_id'     => null,
+                                                    'is_non_stock'        => false,
+                                                    'is_new_custom_order' => true,
+                                                    'new_custom_data'     => json_encode($data),
+                                                    'stock_no_display'    => 'NEW CUSTOM',
+                                                    'custom_description'  => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
+                                                    'qty'                 => 1,
+                                                    'sold_price'          => $price,
+                                                    'sale_price_override' => $finalPrice,
+                                                    'discount_percent'    => $discPct,
+                                                    'discount_amount'     => $discAmt,
+                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
+                                                ];
                                                 $set('items', $currentItems);
 
                                                 if ($deposit > 0) {
                                                     $set('is_split_payment', true);
-                                                    $splits = $get('split_payments') ?? [];
+                                                    $splits      = $get('split_payments') ?? [];
                                                     $cleanSplits = [];
-                                                    // Destroy empty default rows
                                                     foreach ($splits as $k => $v) {
                                                         if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
                                                     }
-                                                    // Link this deposit strictly to the draft ID
                                                     $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
                                                     $set('split_payments', $cleanSplits);
                                                 }
@@ -351,81 +424,34 @@ $finalPrice = max(0, $price - $discAmt);
                                 Repeater::make('items')
                                     ->relationship('items')
                                     ->mutateRelationshipDataBeforeFillUsing(function (array $data): array {
-        if (!empty($data['product_item_id'])) {
-            $item = \App\Models\ProductItem::find($data['product_item_id']);
-            $data['stock_no_display'] = $item ? $item->barcode : 'UNKNOWN STOCK';
-        } elseif (!empty($data['custom_order_id'])) {
-            $co = \App\Models\CustomOrder::find($data['custom_order_id']);
-            $data['stock_no_display'] = $co ? 'CUSTOM #' . ($co->order_no ?? $co->id) : 'CUSTOM';
-        } elseif (!empty($data['repair_id'])) {
-            $rep = \App\Models\Repair::find($data['repair_id']);
-            $data['stock_no_display'] = $rep ? 'REPAIR #' . ($rep->repair_no ?? $rep->id) : 'REPAIR';
-        } else {
-            $data['stock_no_display'] = 'NON-TAG';
-        }
-        return $data;
-    })
-                                    ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
-                                        if (!empty($data['is_new_custom_order'])) {
-                                            // 🚀 Decode the JSON string back into an array
-                                            $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
-
-                                            // ── CALCULATE TRUE GRAND TOTAL INCLUDING TAX ──
-                                            $quotedPrice = floatval($data['sale_price_override'] ?? 0);
-                                            $isTaxFree = !empty($data['is_tax_free']);
-                                            $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                            $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                            $grandTotal = $quotedPrice + ($quotedPrice * $taxRate);
-                                            $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
-$discountPct = min(100, max(0, floatval($customData['discount_percent'] ?? 0)));
-$discountAmt = $quotedPrice * $discountPct / 100;
-$quotedAfterDiscount = $quotedPrice - $discountAmt;
-
-$customOrder = \App\Models\CustomOrder::create([
-    'customer_id'      => $livewire->data['customer_id'] ?? null,
-    'staff_id'         => auth()->id(),
-    'order_type'       => 'custom',
-    'product_name'     => $customData['product_name'] ?? 'Custom',
-    'metal_type'       => $customData['metal_type'] ?? '14k',
-    'quoted_price'     => $quotedAfterDiscount,
-    'discount_percent' => $discountPct,
-    'discount_amount'  => $discountAmt,
-                                                'due_date'     => $customData['due_date'] ?? null,
-                                                'design_notes' => $customData['design_notes'] ?? null,
-                                                'status'       => 'in_production',
-                                                'is_tax_free'  => $isTaxFree,
-                                                'amount_paid'  => $depositAmt,
-                                                'balance_due'  => max(0, $grandTotal - $depositAmt),
-
-                                                // 🚀 THE FIX: Insert the piece into the JSON items array so the CustomOrderResource Repeater can read it
-                                                'items'        => [
-                                                    [
-                                                        'product_name' => $customData['product_name'] ?? 'Custom',
-                                                        'metal_type'   => $customData['metal_type'] ?? '14k',
-                                                        'quoted_price' => $quotedPrice,
-                                                        'design_notes' => $customData['design_notes'] ?? null,
-                                                        'is_tax_free'  => $isTaxFree,
-                                                    ]
-                                                ],
-                                            ]);
-                                            $data['custom_order_id'] = $customOrder->id;
+                                        if (!empty($data['product_item_id'])) {
+                                            $item = \App\Models\ProductItem::find($data['product_item_id']);
+                                            $data['stock_no_display'] = $item ? $item->barcode : 'UNKNOWN STOCK';
+                                        } elseif (!empty($data['custom_order_id'])) {
+                                            $co = \App\Models\CustomOrder::find($data['custom_order_id']);
+                                            $data['stock_no_display'] = $co ? 'CUSTOM #' . ($co->order_no ?? $co->id) : 'CUSTOM';
+                                        } elseif (!empty($data['repair_id'])) {
+                                            $rep = \App\Models\Repair::find($data['repair_id']);
+                                            $data['stock_no_display'] = $rep ? 'REPAIR #' . ($rep->repair_no ?? $rep->id) : 'REPAIR';
+                                        } else {
+                                            $data['stock_no_display'] = 'NON-TAG';
                                         }
-                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
                                         return $data;
                                     })
-                                   ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
+                                   ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
     if (!empty($data['is_new_custom_order'])) {
         $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
 
-        $quotedPrice = floatval($data['sale_price_override'] ?? 0);
-        $isTaxFree = !empty($data['is_tax_free']);
+        // 🚀 THE FIX: Extensive fallbacks. If the JSON corrupts, it safely pulls from the livewire repeater row's raw values!
+        $quotedPrice = floatval($customData['quoted_price'] ?? $data['sold_price'] ?? $data['sale_price_override'] ?? 0);
+        
+       $isTaxFree = !empty($customData['is_tax_free']) || !empty($data['is_tax_free']);
         $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
 
-        // ── FIX: define discount vars before using them ───────────
-        $discountPct         = floatval($customData['discount_percent'] ?? 0);
-        $discountAmt         = $quotedPrice * $discountPct / 100;
-        $quotedAfterDiscount = $quotedPrice - $discountAmt;
+        $discountPct         = min(100, max(0, floatval($customData['discount_percent'] ?? 0)));
+        $discountAmt         = floatval($customData['discount_amount'] ?? ($quotedPrice * $discountPct / 100));
+        $quotedAfterDiscount = max(0, $quotedPrice - $discountAmt);
         $grandTotal          = $quotedAfterDiscount + ($quotedAfterDiscount * $taxRate);
 
         $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
@@ -436,26 +462,67 @@ $customOrder = \App\Models\CustomOrder::create([
             'order_type'       => 'custom',
             'product_name'     => $customData['product_name'] ?? 'Custom',
             'metal_type'       => $customData['metal_type'] ?? '14k',
-            'quoted_price'     => $quotedAfterDiscount,
+            'quoted_price'     => $quotedPrice, // 🚀 Will now properly save the actual price
             'discount_percent' => $discountPct,
             'discount_amount'  => $discountAmt,
-                                                'due_date'     => $customData['due_date'] ?? null,
-                                                'design_notes' => $customData['design_notes'] ?? null,
-                                                'status'       => 'in_production',
-                                                'is_tax_free'  => $isTaxFree,
-                                                'amount_paid'  => $depositAmt,
-                                                'balance_due'  => max(0, $grandTotal - $depositAmt),
+            'due_date'         => $customData['due_date'] ?? null,
+            'design_notes'     => $customData['design_notes'] ?? null,
+            'status'           => 'in_production',
+            'is_tax_free'      => $isTaxFree,
+            'amount_paid'      => $depositAmt,
+            'balance_due'      => max(0, $grandTotal - $depositAmt),
 
-                                                // 🚀 THE FIX: Insert the piece into the JSON items array so the CustomOrderResource Repeater can read it
-                                                'items'        => [
-                                                    [
-                                                        'product_name' => $customData['product_name'] ?? 'Custom',
-                                                        'metal_type'   => $customData['metal_type'] ?? '14k',
-                                                        'quoted_price' => $quotedPrice,
-                                                        'design_notes' => $customData['design_notes'] ?? null,
-                                                        'is_tax_free'  => $isTaxFree,
-                                                    ]
-                                                ],
+            'items'            => [
+                [
+                    'product_name' => $customData['product_name'] ?? 'Custom',
+                    'metal_type'   => $customData['metal_type'] ?? '14k',
+                    'quoted_price' => $quotedPrice,
+                    'design_notes' => $customData['design_notes'] ?? null,
+                    'is_tax_free'  => $isTaxFree,
+                ]
+            ],
+        ]);
+        $data['custom_order_id'] = $customOrder->id;
+    }
+    unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+    return $data;
+})
+                                    ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
+                                        if (!empty($data['is_new_custom_order'])) {
+                                            $customData  = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
+                                            $quotedPrice = floatval($data['sale_price_override'] ?? 0);
+                                            $isTaxFree   = !empty($data['is_tax_free']);
+                                            $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                            $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                            $depositAmt  = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
+
+                                            $discountPct         = min(100, max(0, floatval($customData['discount_percent'] ?? 0)));
+                                            $discountAmt         = floatval($customData['discount_amount'] ?? ($quotedPrice * $discountPct / 100));
+                                            $quotedAfterDiscount = $quotedPrice - $discountAmt;
+                                            $grandTotal          = $quotedAfterDiscount + ($quotedAfterDiscount * $taxRate);
+
+                                            $customOrder = \App\Models\CustomOrder::create([
+                                                'customer_id'      => $livewire->data['customer_id'] ?? null,
+                                                'staff_id'         => auth()->id(),
+                                                'order_type'       => 'custom',
+                                                'product_name'     => $customData['product_name'] ?? 'Custom',
+                                                'metal_type'       => $customData['metal_type'] ?? '14k',
+                                                'quoted_price'     => $quotedAfterDiscount,
+                                                'discount_percent' => $discountPct,
+                                                'discount_amount'  => $discountAmt,
+                                                'due_date'         => $customData['due_date'] ?? null,
+                                                'design_notes'     => $customData['design_notes'] ?? null,
+                                                'status'           => 'in_production',
+                                                'is_tax_free'      => $isTaxFree,
+                                                'amount_paid'      => $depositAmt,
+                                                'balance_due'      => max(0, $grandTotal - $depositAmt),
+                                                'items'            => [[
+                                                    'product_name' => $customData['product_name'] ?? 'Custom',
+                                                    'metal_type'   => $customData['metal_type'] ?? '14k',
+                                                    'quoted_price' => $quotedAfterDiscount,
+                                                    'design_notes' => $customData['design_notes'] ?? null,
+                                                    'is_tax_free'  => $isTaxFree,
+                                                ]],
                                             ]);
                                             $data['custom_order_id'] = $customOrder->id;
                                         }
@@ -471,60 +538,93 @@ $customOrder = \App\Models\CustomOrder::create([
                                         Hidden::make('new_custom_data')->dehydrated(),
 
                                         TextInput::make('stock_no_display')
-                                        ->label('Item')
-                                        ->readOnly()
-                                        ->dehydrated(false)
-                                        ->extraInputAttributes(fn($state) => ['class' => str_contains($state ?? '', 'CUSTOM') ? 'text-blue-600 font-bold bg-blue-50' : ''])
-                                        ->hintAction(
-                                            FormAction::make('edit_draft_custom_order')
-                                                ->label('Edit Specs')->icon('heroicon-o-pencil-square')->color('warning')
-                                                ->visible(fn(Get $get) => $get('is_new_custom_order') === true)
-                                                ->modalHeading('Edit Custom Piece')->modalWidth('3xl')
-                                                ->fillForm(fn(Get $get) => is_string($d = $get('new_custom_data')) ? json_decode($d, true) : ($d ?? []))
-                                                ->form([
-                                                    Grid::make(2)->schema([
-                                                        Select::make('product_name')->label('What are we making?')->options(fn() => \App\Models\CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())->searchable()->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])->createOptionUsing(fn($data) => $data['new_product_name'])->required(),
-                                                        Select::make('metal_type')->label('Metal Type')->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'platinum' => 'Platinum', 'silver' => 'Silver', 'other' => 'Other'])->required(),
-                                                    ]),
-                                                    Grid::make(3)->schema([
-                                                        TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
-                                                        Placeholder::make('total_with_tax')->label('Total (w/ Tax)')->content(function (Get $get) {
-                                                            $quoted = (float)($get('quoted_price') ?? 0);
-                                                            $taxRate = $get('is_tax_free') ? 0 : ((float)\Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63) / 100;
-                                                            return new HtmlString("<div class='text-2xl font-black text-gray-900 mt-1'>$" . number_format($quoted * (1 + $taxRate), 2) . "</div>");
-                                                        }),
-                                                        TextInput::make('custom_deposit_amount')->label('Deposit Amount')->numeric()->prefix('$')->default(0),
-                                                    ]),
-                                                    Grid::make(3)->schema([
-                                                        Select::make('deposit_method')->label('Deposit Payment Method')->options(self::getPaymentOptions())->default('VISA')->required(),
-                                                        Placeholder::make('spacer')->label('')->content(''), 
-                                                        Toggle::make('is_tax_free')->label('Tax Free Order?')->inline(false)->live(),
-                                                    ]),
-                                                    CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
-                                                    Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
-                                                ])
-                                                ->action(function (array $data, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
-                                                    $oldData = is_string($get('new_custom_data')) ? json_decode($get('new_custom_data'), true) : [];
-                                                    $draftId = $oldData['draft_id'] ?? (string) Str::uuid();
-                                                    $data['draft_id'] = $draftId;
-                                                    
-                                                    $deposit = floatval($data['custom_deposit_amount'] ?? 0);
-                                                    $method  = $data['deposit_method'] ?? 'CASH';
+                                            ->label('Item')
+                                            ->readOnly()
+                                            ->dehydrated(false)
+                                            ->extraInputAttributes(fn($state) => ['class' => str_contains($state ?? '', 'CUSTOM') ? 'text-blue-600 font-bold bg-blue-50' : ''])
+                                            ->hintAction(
+                                                FormAction::make('edit_draft_custom_order')
+                                                    ->label('Edit Specs')
+                                                    ->icon('heroicon-o-pencil-square')
+                                                    ->color('warning')
+                                                    ->visible(fn(Get $get) => $get('is_new_custom_order') === true)
+                                                    ->modalHeading('Edit Custom Piece')
+                                                    ->modalWidth('3xl')
+                                                    ->fillForm(fn(Get $get) => is_string($d = $get('new_custom_data')) ? json_decode($d, true) : ($d ?? []))
+                                                    ->form([
+                                                        Grid::make(2)->schema([
+                                                            Select::make('product_name')->label('What are we making?')->options(fn() => \App\Models\CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())->searchable()->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])->createOptionUsing(fn($data) => $data['new_product_name'])->required(),
+                                                            Select::make('metal_type')->label('Metal Type')->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'platinum' => 'Platinum', 'silver' => 'Silver', 'other' => 'Other'])->required(),
+                                                        ]),
+                                                        Grid::make(3)->schema([
+                                                            TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
+                                                            Placeholder::make('total_with_tax')->label('Total (w/ Tax)')->content(function (Get $get) {
+                                                                $quoted  = (float)($get('quoted_price') ?? 0);
+                                                                $discAmt = min($quoted, max(0, (float)($get('discount_amount') ?? 0)));
+                                                                $discounted = $quoted - $discAmt;
+                                                                $taxRate = $get('is_tax_free') ? 0 : ((float)\Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63) / 100;
+                                                                return new HtmlString("<div class='text-2xl font-black text-gray-900 mt-1'>$" . number_format($discounted * (1 + $taxRate), 2) . "</div>");
+                                                            }),
+                                                            TextInput::make('custom_deposit_amount')->label('Deposit Amount')->numeric()->prefix('$')->default(0),
+                                                        ]),
+                                                        Grid::make(3)->schema([
+                                                            TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->default(0)->minValue(0)->maxValue(100)->live(onBlur: true)
+                                                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                                    $price   = floatval($get('quoted_price') ?? 0);
+                                                                    $pct     = min(100, max(0, floatval($state ?? 0)));
+                                                                    $discAmt = $price * $pct / 100;
+                                                                    $set('discount_amount', round($discAmt, 2));
+                                                                    $set('sale_price_display', round($price - $discAmt, 2));
+                                                                }),
+                                                            TextInput::make('discount_amount')->label('Disc $')->numeric()->prefix('$')->default(0)->live(onBlur: true)
+                                                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                                    $price   = floatval($get('quoted_price') ?? 0);
+                                                                    $discAmt = min($price, max(0, floatval($state ?? 0)));
+                                                                    $pct     = $price > 0 ? round(($discAmt / $price) * 100, 2) : 0;
+                                                                    $set('discount_percent', $pct);
+                                                                    $set('sale_price_display', round($price - $discAmt, 2));
+                                                                }),
+                                                            TextInput::make('sale_price_display')->label('Sale Price')->numeric()->prefix('$')->default(0)->dehydrated(false)->live(onBlur: true)
+                                                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                                    $price     = floatval($get('quoted_price') ?? 0);
+                                                                    $salePrice = min($price, max(0, floatval($state ?? 0)));
+                                                                    $discAmt   = $price - $salePrice;
+                                                                    $pct       = $price > 0 ? round(($discAmt / $price) * 100, 2) : 0;
+                                                                    $set('discount_amount', round($discAmt, 2));
+                                                                    $set('discount_percent', $pct);
+                                                                }),
+                                                        ]),
+                                                        Grid::make(3)->schema([
+                                                            Select::make('deposit_method')->label('Deposit Payment Method')->options(self::getPaymentOptions())->default('VISA')->required(),
+                                                            Placeholder::make('spacer')->label('')->content(''),
+                                                            Toggle::make('is_tax_free')->label('Tax Free Order?')->inline(false)->live(),
+                                                        ]),
+                                                        CustomDatePicker::make('due_date')->label('Promised By Date')->required(),
+                                                        Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
+                                                    ])
+                                                    ->action(function (array $data, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                        $oldData = is_string($get('new_custom_data')) ? json_decode($get('new_custom_data'), true) : [];
+                                                        $draftId = $oldData['draft_id'] ?? (string) Str::uuid();
+                                                        $data['draft_id'] = $draftId;
 
-                                                        $deposit = floatval($data['custom_deposit_amount'] ?? 0);
-                                                        $method  = $data['deposit_method'] ?? 'CASH';
+                                                        $price     = floatval($data['quoted_price'] ?? 0);
+                                                        $discAmt   = floatval($data['discount_amount'] ?? 0);
+                                                        $discPct   = floatval($data['discount_percent'] ?? 0);
+                                                        $deposit   = floatval($data['custom_deposit_amount'] ?? 0);
+                                                        $method    = $data['deposit_method'] ?? 'CASH';
+                                                        $finalPrice = max(0, $price - $discAmt);
 
                                                         $set('new_custom_data', json_encode($data));
-                                                        $set('sold_price', (float)$data['quoted_price']);
-                                                        $set('sale_price_override', (float)$data['quoted_price']);
+                                                        $set('sold_price', $price);
+                                                        $set('sale_price_override', $finalPrice);
+                                                        $set('discount_percent', $discPct);
+                                                        $set('discount_amount', $discAmt);
                                                         $set('is_tax_free', $data['is_tax_free'] ?? false);
                                                         $set('custom_description', "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''));
 
-                                                        // 🚀 Safely rebuild the splits array
-                                                        $splits = data_get($livewire->data, 'split_payments') ?? [];
+                                                        $splits      = data_get($livewire->data, 'split_payments') ?? [];
                                                         $cleanSplits = [];
                                                         foreach ($splits as $k => $v) {
-                                                            // Keep valid existing payments EXCEPT the one we are editing
                                                             if (floatval($v['amount'] ?? 0) > 0 && $k !== $draftId) {
                                                                 $cleanSplits[$k] = $v;
                                                             }
@@ -555,7 +655,6 @@ $customOrder = \App\Models\CustomOrder::create([
                                             ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
                                             ->columnSpan(3),
 
-                                        // 🚀 THE FIX: Disable Quantity for Custom Orders
                                         TextInput::make('qty')
                                             ->numeric()
                                             ->default(1)
@@ -572,14 +671,13 @@ $customOrder = \App\Models\CustomOrder::create([
                                                         $state = $productItem->qty;
                                                     }
                                                 }
-                                                $price   = floatval($get('sold_price'));
-                                                $percent = floatval($get('discount_percent'));
+                                                $price     = floatval($get('sold_price'));
+                                                $percent   = floatval($get('discount_percent'));
                                                 $lineTotal = $price * $state;
                                                 $set('discount_amount', number_format($lineTotal * ($percent / 100), 2, '.', ''));
                                                 self::updateTotals($get, $set);
                                             }),
 
-                                        // 🚀 THE FIX: Disable Unit Price for Custom Orders
                                         TextInput::make('sold_price')
                                             ->label('Price')
                                             ->numeric()
@@ -588,15 +686,14 @@ $customOrder = \App\Models\CustomOrder::create([
                                             ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                                $qty     = intval($get('qty') ?? 1);
-                                                $percent = floatval($get('discount_percent') ?? 0);
+                                                $qty      = intval($get('qty') ?? 1);
+                                                $percent  = floatval($get('discount_percent') ?? 0);
                                                 $lineTotalBeforeDiscount = floatval($state) * $qty;
                                                 $newDiscountAmount       = $lineTotalBeforeDiscount * ($percent / 100);
                                                 $set('discount_amount', number_format($newDiscountAmount, 2, '.', ''));
                                                 self::updateTotals($get, $set);
                                             }),
 
-                                        // 🚀 THE FIX: Disable Sale Price Override for Custom Orders
                                         TextInput::make('sale_price_override')
                                             ->label('Sale Price')
                                             ->columnSpan(2)
@@ -604,8 +701,8 @@ $customOrder = \App\Models\CustomOrder::create([
                                             ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->dehydrated(true)
                                             ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                                $unitPrice    = floatval($get('sold_price') ?? 0);
-                                                $qty          = intval($get('qty') ?? 1);
+                                                $unitPrice     = floatval($get('sold_price') ?? 0);
+                                                $qty           = intval($get('qty') ?? 1);
                                                 $totalOriginal = $unitPrice * $qty;
                                                 $newFinalTotal = floatval($state ?? 0);
 
@@ -618,8 +715,6 @@ $customOrder = \App\Models\CustomOrder::create([
                                                 self::updateTotals($get, $set);
                                             }),
 
-                                        // 🚀 THE FIX: Disable Discount Percent for Custom Orders
-                                       // 🚀 THE FIX: Added $livewire to closure and global data_get/data_set
                                         TextInput::make('discount_percent')
                                             ->label('Disc %')
                                             ->numeric()
@@ -638,18 +733,15 @@ $customOrder = \App\Models\CustomOrder::create([
                                                 $discountAmount = $lineTotal * ($percent / 100);
                                                 $finalPrice     = $lineTotal - $discountAmount;
 
-                                                // 1. Update the local row's fields
                                                 $set('discount_amount', number_format($discountAmount, 2, '.', ''));
                                                 $set('sale_price_override', number_format($finalPrice, 2, '.', ''));
-                                                
-                                                // 2. Force the global form to recalculate everything
+
                                                 self::updateTotals(
-                                                    fn($p) => data_get($livewire->data, $p), 
+                                                    fn($p) => data_get($livewire->data, $p),
                                                     fn($p, $v) => data_set($livewire->data, $p, $v)
                                                 );
                                             }),
 
-                                        // 🚀 THE FIX: Added $livewire to closure and global data_get/data_set
                                         TextInput::make('discount_amount')
                                             ->label('Disc $')
                                             ->numeric()
@@ -669,23 +761,21 @@ $customOrder = \App\Models\CustomOrder::create([
                                                     $percent = ($discountAmount / $lineTotal) * 100;
                                                     $set('discount_percent', number_format($percent, 2, '.', ''));
                                                 }
-                                                
-                                                // 1. Update the local row's fields
+
                                                 $set('sale_price_override', number_format($lineTotal - $discountAmount, 2, '.', ''));
-                                                
-                                                // 2. Force the global form to recalculate everything
+
                                                 self::updateTotals(
-                                                    fn($p) => data_get($livewire->data, $p), 
+                                                    fn($p) => data_get($livewire->data, $p),
                                                     fn($p, $v) => data_set($livewire->data, $p, $v)
                                                 );
                                             }),
+
                                         Checkbox::make('is_tax_free')
                                             ->label('No Tax')
                                             ->columnSpan(1)
                                             ->default(false)
                                             ->dehydrated(true)
                                             ->live()
-                                            // 🚀 THE FIX: Disable Tax Free toggle for Custom Orders (it has its own in the modal)
                                             ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                     ])
@@ -723,7 +813,7 @@ $customOrder = \App\Models\CustomOrder::create([
                                                         'Silver'   => 'Sterling Silver',
                                                     ])
                                                     ->placeholder('Select Metal'),
-                                               CustomDatePicker::make('date_required')
+                                                CustomDatePicker::make('date_required')
                                                     ->label('Completion Date')
                                                     ->displayFormat('M d, Y'),
                                             ]),
@@ -807,9 +897,10 @@ $customOrder = \App\Models\CustomOrder::create([
                                         CustomDatePicker::make('follow_up_date')
                                             ->label('Follow Up (2 Weeks)')
                                             ->default(now()->addWeeks(2)->format('Y-m-d'))
-                                            ->displayFormat('m/d/Y')
+                                            ->displayFormat('m/d/Y'),
                                     ]),
                                 ]),
+
                             Section::make('Shipping & Handling')
                                 ->icon('heroicon-o-truck')
                                 ->collapsible()
@@ -824,13 +915,15 @@ $customOrder = \App\Models\CustomOrder::create([
                                         TextInput::make('tracking_number')->label('Tracking #')->nullable(),
                                     ]),
                                 ]),
+
                             Section::make('Receipt Customization')
                                 ->schema([
                                     Textarea::make('notes')
                                         ->label('Receipt Notes / Warranty')
                                         ->rows(3),
                                 ]),
-                       Placeholder::make('validation_alert')
+
+                            Placeholder::make('validation_alert')
                                 ->label('')
                                 ->content(function (Get $get) {
                                     $missing = [];
@@ -932,18 +1025,15 @@ $customOrder = \App\Models\CustomOrder::create([
                                                                         ->placeholder('(555) 555-5555')
                                                                         ->stripCharacters(['(', ')', '-', ' '])
                                                                         ->rule('regex:/^[0-9]{10}$/')
-                                                                        // 🚀 THE FIX: Checks the DB before saving and shows a nice UI error
                                                                         ->unique('customers', 'phone')
                                                                         ->afterStateHydrated(function ($component, $state) {
                                                                             if ($state && preg_match('/^[0-9]{10}$/', $state)) {
                                                                                 $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
                                                                             }
                                                                         }),
-
                                                                     Forms\Components\TextInput::make('email')
                                                                         ->label('Email')
                                                                         ->email()
-                                                                        // 🚀 THE FIX: Prevents duplicate emails from crashing the page too
                                                                         ->unique('customers', 'email'),
                                                                 ]),
                                                                 Forms\Components\Grid::make(2)->schema([
@@ -998,7 +1088,7 @@ $customOrder = \App\Models\CustomOrder::create([
                                             || request()->has('custom_order_id');
                                     })
                                     ->content(function (Get $get) {
-                                        $items = $get('items') ?? [];
+                                        $items         = $get('items') ?? [];
                                         $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
                                             ?? request()->get('custom_order_id');
 
@@ -1014,7 +1104,7 @@ $customOrder = \App\Models\CustomOrder::create([
 
                                         $rows = "";
                                         foreach ($payments as $payment) {
-                                            $date = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
+                                            $date   = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
                                             $method = strtoupper($payment->method);
                                             $amount = number_format($payment->amount, 2);
 
@@ -1032,13 +1122,13 @@ $customOrder = \App\Models\CustomOrder::create([
 
                                         return new HtmlString("
                                     <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
-                                        <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; display:flex; align-items:center; gap:5px;'>
+                                        <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;'>
                                             Custom Order Payment Trail
                                         </div>
                                         <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
                                             {$rows}
                                         </div>
-                                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; pt-2; border-top: 1px solid #bae6fd; padding-top:8px;'>
+                                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; border-top: 1px solid #bae6fd; padding-top:8px;'>
                                             <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
                                             <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
                                         </div>
@@ -1052,12 +1142,10 @@ $customOrder = \App\Models\CustomOrder::create([
                                     ->live()
                                     ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                         if ($state) {
-                                            // ── OFF -> ON: Migrate standard payment into the split list ──
                                             $existingAmount = floatval($get('amount_paid') ?? 0);
                                             $existingMethod = $get('payment_method') ?? 'VISA';
                                             $currentSplits  = $get('split_payments') ?? [];
 
-                                            // If they already paid something, push it into the first repeater row
                                             if ($existingAmount > 0 && empty($currentSplits)) {
                                                 $set('split_payments', [
                                                     (string) \Illuminate\Support\Str::uuid() => [
@@ -1067,18 +1155,14 @@ $customOrder = \App\Models\CustomOrder::create([
                                                 ]);
                                             }
                                         } else {
-                                            // ── ON -> OFF: Combine splits back into a standard payment ──
                                             $currentSplits = $get('split_payments') ?? [];
                                             if (!empty($currentSplits)) {
                                                 $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                                 $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
-
                                                 $set('amount_paid', number_format($totalSplit, 2, '.', ''));
                                                 $set('payment_method', $firstMethod);
                                             }
                                         }
-
-                                        // Recalculate totals immediately so the UI updates
                                         self::updateTotals($get, $set);
                                     })
                                     ->columnSpanFull(),
@@ -1157,9 +1241,9 @@ $customOrder = \App\Models\CustomOrder::create([
                                 Placeholder::make('split_calc')
                                     ->label('Remaining Balance')
                                     ->content(function (Get $get) {
-                                        $total    = (float) $get('final_total');
-                                        $payments = $get('split_payments') ?? [];
-                                        $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                        $total     = (float) $get('final_total');
+                                        $payments  = $get('split_payments') ?? [];
+                                        $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
                                         $remaining = $total - $sum;
 
                                         if ($remaining < 0) {
@@ -1192,21 +1276,16 @@ $customOrder = \App\Models\CustomOrder::create([
                                         $total  = floatval($get('final_total') ?? 0);
                                         $method = $get('payment_method') ?? '';
 
-                                        // ── 1. CALCULATE CUSTOM DEPOSIT VS REGULAR PAYMENT ──
-                                        // ── 1. CALCULATE CUSTOM DEPOSIT VS REGULAR PAYMENT ──
-                                        $items = $get('items') ?? [];
+                                        $items                 = $get('items') ?? [];
                                         $intendedCustomDeposit = 0;
 
                                         foreach ($items as $item) {
                                             if (!empty($item['is_new_custom_order'])) {
-                                                // 🚀 THE FIX: Decode the JSON string to successfully read the deposit amount
                                                 $customData = is_string($item['new_custom_data'])
                                                     ? json_decode($item['new_custom_data'], true)
                                                     : ($item['new_custom_data'] ?? []);
-
                                                 $intendedCustomDeposit += floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
                                             } elseif (!empty($item['custom_order_id'])) {
-                                                // 🛑 FIX: For existing sales, look up the original deposit from the database
                                                 $co = \App\Models\CustomOrder::find($item['custom_order_id']);
                                                 if ($co) {
                                                     $intendedCustomDeposit += floatval($co->amount_paid);
@@ -1214,32 +1293,26 @@ $customOrder = \App\Models\CustomOrder::create([
                                             }
                                         }
 
-                                        // ── 2. CALCULATE TOTAL PAID ──
                                         $isSplit = $get('is_split_payment');
                                         $paidSum = $isSplit
                                             ? collect($get('split_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
                                             : floatval($get('amount_paid') ?? 0);
 
-                                        // ── 3. SEPARATE AMOUNTS ──
                                         $actualCustomDeposit  = min($intendedCustomDeposit, $paidSum);
                                         $regularPaymentAmount = $paidSum - $actualCustomDeposit;
                                         $remaining            = $total - $paidSum;
 
-                                        // ── 4. RENDER BREAKDOWN HELPER ──
                                         $renderBreakdown = function () use ($total, $actualCustomDeposit, $regularPaymentAmount) {
                                             $html = "
             <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
             </div>";
-
-                                            // 🚀 THE FIX: Always show the Custom Deposit line, even if it is $0
                                             $html .= "
             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: " . ($actualCustomDeposit > 0 ? '#10b981' : '#9ca3af') . ";'>+$" . number_format($actualCustomDeposit, 2) . "</span>
             </div>";
-
                                             if ($regularPaymentAmount > 0) {
                                                 $html .= "
                                             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
@@ -1250,84 +1323,32 @@ $customOrder = \App\Models\CustomOrder::create([
                                             return $html;
                                         };
 
-                                        // ── WHEN USING STANDARD PAYMENT ──
                                         if (!$isSplit) {
                                             $tendered = floatval($get('amount_paid') ?? 0);
 
                                             if (round($total, 2) <= 0 || ($tendered > 0 && round($tendered, 2) >= round($total, 2))) {
-                                                return new HtmlString("
-                                            " . $renderBreakdown() . "
-                                            <div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px; text-align:right;'>
-                                                <span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span>
-                                                <div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div>
-                                            </div>
-                                            ");
+                                                return new HtmlString($renderBreakdown() . "<div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px; text-align:right;'><span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span><div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div></div>");
                                             }
 
                                             if ($tendered > 0 && $tendered < $total) {
-                                                return new HtmlString("
-                                            " . $renderBreakdown() . "
-                                            <div style='text-align:right;'>
-                                                <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
-                                                <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div>
-                                            </div>
-                                            ");
+                                                return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div></div>");
                                             }
 
                                             if (!empty($method)) {
-                                                return new HtmlString("
-                                                " . $renderBreakdown() . "
-                                                <div style='text-align:right;'>
-                                                    <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
-                                                    <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Enter Amount Received above</div>
-                                                </div>
-                                            ");
+                                                return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Enter Amount Received above</div></div>");
                                             }
 
-                                            if (round($total, 2) <= 0) {
-                                                return new HtmlString("
-                                            " . $renderBreakdown() . "
-                                            <div style='text-align:right;'>
-                                                <span style='color:#16a34a; font-weight:700; font-size:1.875rem;'>\$0.00</span>
-                                                <div style='color:#16a34a; font-size:0.75rem; margin-top:4px;'>✅ Fully Covered by Prior Deposits</div>
-                                            </div>
-                                            ");
-                                            }
-
-                                            return new HtmlString("
-                                        " . $renderBreakdown() . "
-                                        <div style='text-align:right;'>
-                                            <span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span>
-                                            <div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div>
-                                        </div>
-                                        ");
+                                            return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div></div>");
                                         }
 
-                                        // ── WHEN USING SPLIT PAYMENT / CUSTOM DEPOSITS ──
                                         if (round($remaining, 2) <= 0) {
                                             $overpaid = abs($remaining);
-                                            return new HtmlString("
-                                            " . $renderBreakdown() . "
-                                            <div style='text-align: right;'>
-                                                <span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span>
-                                                <div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>
-                                                " . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "
-                                            </div>
-                                        ");
+                                            return new HtmlString($renderBreakdown() . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
                                         }
 
-                                        // Display clear breakdown if balance remains
-                                        return new HtmlString("
-                                        " . $renderBreakdown() . "
-                                        <div style='text-align: right;'>
-                                            <span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
-                                            <div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div>
-                                        </div>
-                                    ");
+                                        return new HtmlString($renderBreakdown() . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
                                     })
                                     ->live(),
-                                   
-                          
                             ]),
                         ]),
                 ]),
@@ -1348,10 +1369,10 @@ $customOrder = \App\Models\CustomOrder::create([
     public function recordNewPayment(Sale $sale, $amount, $method)
     {
         \App\Models\Payment::create([
-            'sale_id' => $sale->id,
-            'amount'  => $amount,
-            'method'  => $method,
-            'paid_at' => now(),
+            'sale_id'  => $sale->id,
+            'amount'   => $amount,
+            'method'   => $method,
+            'paid_at'  => now(),
             'store_id' => $sale->store_id,
         ]);
     }
@@ -1385,9 +1406,7 @@ $customOrder = \App\Models\CustomOrder::create([
                     ->label('Customer')
                     ->getStateUsing(fn($record) => $record->customer ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? '')) : '—')
                     ->searchable(query: function (Builder $query, string $search): Builder {
-                        return $query->whereHas(
-                            'customer',
-                            fn($q) =>
+                        return $query->whereHas('customer', fn($q) =>
                             $q->where('name', 'like', "%{$search}%")
                                 ->orWhere('last_name', 'like', "%{$search}%")
                                 ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
@@ -1429,25 +1448,20 @@ $customOrder = \App\Models\CustomOrder::create([
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
-                        $isCustomDeposit = $record->has_trade_in && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
-                        $total = floatval($record->final_total);
-                        if ($isCustomDeposit) $total += floatval($record->trade_in_value);
-
-                        $paid = floatval($record->payments->sum('amount'));
+                        $total   = floatval($record->final_total);
+                        $paid    = floatval($record->payments->sum('amount'));
                         if ($paid == 0 && floatval($record->amount_paid) > 0) $paid = floatval($record->amount_paid);
-
                         $balance = max(0, $total - $paid);
-                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
-
+                        $html    = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html   .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
                         if ($balance > 0.01) {
                             $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
                         } else {
                             $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
                         }
-
                         return new HtmlString($html);
                     }),
+
                 TextColumn::make('created_at')->label('Date')->dateTime('M d, y')->timezone(fn() => config('app.timezone'))->sortable()->grow(false),
             ])
             ->filters([
@@ -1603,9 +1617,9 @@ $customOrder = \App\Models\CustomOrder::create([
                             $formattedPhone = '+1' . $digits;
                             $store          = $record->store;
                             $baseUrl        = $store && !empty($store->domain_url) ? rtrim($store->domain_url, '/') : config('app.url');
-                            $link      = $baseUrl . '/receipt/' . $record->id;
-                            $storeName = $store->name ?? 'Diamond Square';
-                            $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
+                            $link           = $baseUrl . '/receipt/' . $record->id;
+                            $storeName      = $store->name ?? 'Diamond Square';
+                            $message        = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
                             try {
                                 $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
                                 $sns      = new \Aws\Sns\SnsClient([
@@ -1651,8 +1665,8 @@ $customOrder = \App\Models\CustomOrder::create([
     public static function getServiceTypeOptions(): array
     {
         $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
-        $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
-        $types = $json ? json_decode($json, true) : $defaultTypes;
+        $json         = DB::table('site_settings')->where('key', 'service_types')->value('value');
+        $types        = $json ? json_decode($json, true) : $defaultTypes;
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
 
@@ -1691,7 +1705,6 @@ $customOrder = \App\Models\CustomOrder::create([
         $totalTax       = $taxableBasis * $taxRate;
         $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
 
-        // FIX: The deposit does NOT lower the Grand Total of the invoice. It is a payment.
         $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
 
         $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
@@ -1727,7 +1740,7 @@ $customOrder = \App\Models\CustomOrder::create([
             $paidSum   = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
             $fullyPaid = round($paidSum, 2) >= round($total, 2);
         } else {
-            $tendered  = floatval($get('amount_paid') ?? 0);
+            $tendered = floatval($get('amount_paid') ?? 0);
             if (round($total, 2) <= 0) {
                 $fullyPaid = true;
             } else {

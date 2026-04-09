@@ -415,16 +415,31 @@ class FindStock extends Page implements HasForms, HasTable
                     })
                     ->html()
                     ->toggleable(isToggledHiddenByDefault: true),
+TextColumn::make('date_added')
+    ->label('DATE IN')
+    ->getStateUsing(function (ProductItem $record) {
+        $date = $record->date_in ?? $record->created_at;
+        return $date?->format('M d, Y');
+    })
+    ->description(function (ProductItem $record) {
+        $date = $record->date_in ?? $record->created_at;
+        return $date?->format('h:i A');
+    })
+    ->size('xs')
+    ->color('gray')
+    ->grow(false),
 
-                TextColumn::make('date_in')
-                    ->label('DATE IN')
-                    ->date('M d, Y')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+TextColumn::make('created_at')
+    ->label('CREATED')
+    ->date('M d, Y')
+    ->description(fn($record) => $record->created_at?->format('h:i A'))
+    ->sortable()
+    ->size('xs')
+    ->color('gray')
+    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->actions([
-                TableActionGroup::make([
-                    ViewAction::make()
+                 ViewAction::make()
                         ->modalHeading('Stock Item Details')
                         ->modalWidth('5xl')
                         ->infolist(fn(Infolist $infolist, $record) => $infolist->schema([
@@ -542,6 +557,8 @@ class FindStock extends Page implements HasForms, HasTable
                                         ->html(),
                                 ]),
                         ])),
+                TableActionGroup::make([
+                   
 
                     EditAction::make()
                         ->url(fn($record) => ProductItemResource::getUrl('edit', ['record' => $record])),

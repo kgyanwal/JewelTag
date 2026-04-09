@@ -76,16 +76,16 @@ class CreateSale extends CreateRecord
                 foreach ($repairItems as $index => $rItem) {
                     $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
                     $cartItems[] = [
-                        'product_item_id'    => null,
-                        'repair_id'          => $repair->id,
-                        'stock_no_display'   => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
-                        'custom_description' => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
-                        'qty'                => 1,
-                        'sold_price'         => $cost,
+                        'product_item_id'     => null,
+                        'repair_id'           => $repair->id,
+                        'stock_no_display'    => 'REPAIR #' . $repair->repair_no . '-' . ($index + 1),
+                        'custom_description'  => ($rItem['item_description'] ?? 'Repair') . ' — ' . ($rItem['reported_issue'] ?? ''),
+                        'qty'                 => 1,
+                        'sold_price'          => $cost,
                         'sale_price_override' => $cost,
-                        'discount_percent'   => 0,
-                        'discount_amount'    => 0,
-                        'is_tax_free'        => false,
+                        'discount_percent'    => 0,
+                        'discount_amount'     => 0,
+                        'is_tax_free'         => false,
                     ];
                 }
 
@@ -99,7 +99,6 @@ class CreateSale extends CreateRecord
             if ($customOrder) {
                 $this->data['customer_id'] = $customOrder->customer_id;
 
-                // 1. Map Custom Order to a Sale Item
                 $this->data['items'] = [[
                     'custom_order_id'     => $customOrder->id,
                     'stock_no_display'    => 'CUSTOM #' . $customOrder->order_no,
@@ -107,29 +106,26 @@ class CreateSale extends CreateRecord
                     'qty'                 => 1,
                     'sold_price'          => $customOrder->quoted_price,
                     'sale_price_override' => $customOrder->quoted_price,
-                    'is_tax_free'         => true, // Usually tax is handled at Custom Order level
+                    'is_tax_free'         => true,
                 ]];
 
-                // 2. Map existing Trade-In if any
                 if ($customOrder->has_trade_in) {
-                    $this->data['has_trade_in']    = 1;
-                    $this->data['trade_in_value']  = $customOrder->trade_in_value;
+                    $this->data['has_trade_in']         = 1;
+                    $this->data['trade_in_value']       = $customOrder->trade_in_value;
                     $this->data['trade_in_description'] = $customOrder->trade_in_description;
                 }
 
-                // 3. Map Prior Deposits to Split Payments
-                $priorPayments = \App\Models\Payment::where('custom_order_id', $customOrder->id)->get();
+                $priorPayments  = \App\Models\Payment::where('custom_order_id', $customOrder->id)->get();
                 $totalPriorPaid = $priorPayments->sum('amount');
 
                 $this->data['is_split_payment'] = true;
-                $this->data['split_payments'] = $priorPayments->map(fn($p) => [
-                    'method' => $p->method,
-                    'amount' => $p->amount,
-                    'is_prior_deposit' => true, // Helper flag for UI
+                $this->data['split_payments']   = $priorPayments->map(fn($p) => [
+                    'method'           => $p->method,
+                    'amount'           => $p->amount,
+                    'is_prior_deposit' => true,
                 ])->toArray();
 
-                // 4. Calculate what is actually owed TODAY
-                $netBill = floatval($customOrder->quoted_price) - floatval($customOrder->trade_in_value ?? 0);
+                $netBill  = floatval($customOrder->quoted_price) - floatval($customOrder->trade_in_value ?? 0);
                 $dueToday = max(0, $netBill - $totalPriorPaid);
 
                 if ($dueToday > 0) {
@@ -188,7 +184,6 @@ class CreateSale extends CreateRecord
                     $hasCustomer = !empty($this->data['customer_id']);
                     $hasItems    = !empty($this->data['items']);
                     $hasPayment  = !empty($this->data['payment_method']) || !empty($this->data['is_split_payment']);
-                    
                     return !$hasCustomer || !$hasItems || !$hasPayment;
                 })
                 ->extraAttributes([
@@ -221,7 +216,8 @@ class CreateSale extends CreateRecord
                         Notification::make()->title('Invalid PIN')->danger()->send();
                         return;
                     }
-                    $existingStaff = $formState['sales_person_list'] ?? [];
+
+                    $existingStaff   = $formState['sales_person_list'] ?? [];
                     $terminalDefault = Session::get('active_staff_name') ?? auth()->user()->name;
 
                     $existingStaff = array_values(array_filter(
@@ -329,7 +325,6 @@ class CreateSale extends CreateRecord
                     $amount = round((float) $payment['amount'], 2);
                     $method = strtoupper(trim($payment['method']));
 
-                    // 🚀 Check if this part of the split was a prior deposit
                     $existingDeposit = \App\Models\Payment::whereNull('sale_id')
                         ->where('amount', $amount)
                         ->where('method', $method)
@@ -337,10 +332,8 @@ class CreateSale extends CreateRecord
                         ->first();
 
                     if ($existingDeposit) {
-                        // Link existing money (Does NOT hit today's EoD because paid_at is old)
                         $existingDeposit->update(['sale_id' => $sale->id]);
                     } else {
-                        // Create new record for fresh money collected today (Hits EoD)
                         \App\Models\Payment::create([
                             'sale_id' => $sale->id,
                             'amount'  => $amount,
@@ -353,25 +346,20 @@ class CreateSale extends CreateRecord
 
                 $sale->update(['amount_paid' => round($totalSplitPaid, 2)]);
             } else {
-                // ── NON-SPLIT LOGIC ──────────────────────────────────────────
                 $actualPaid = floatval($sale->amount_paid);
 
-                // 🚀 THE FIX: Only create a payment record if they ACTUALLY paid something!
                 if ($actualPaid > 0) {
-                    // Check if this single payment was actually a prior deposit
                     $existingFullDeposit = \App\Models\Payment::whereNull('sale_id')
                         ->where('amount', $actualPaid)
                         ->whereIn('custom_order_id', $sale->items->pluck('custom_order_id')->filter())
                         ->first();
 
                     if ($existingFullDeposit) {
-                        // Just link the existing record
                         $existingFullDeposit->update([
                             'sale_id' => $sale->id,
                             'method'  => strtoupper(trim($sale->payment_method))
                         ]);
                     } else {
-                        // It is fresh money handed over today
                         \App\Models\Payment::create([
                             'sale_id' => $sale->id,
                             'amount'  => $actualPaid,
@@ -381,7 +369,6 @@ class CreateSale extends CreateRecord
                     }
                 }
 
-                // Keep the database accurate to what was actually paid ($0 or otherwise)
                 $sale->update(['amount_paid' => $actualPaid]);
             }
 
@@ -390,34 +377,28 @@ class CreateSale extends CreateRecord
                 if ($saleItem->custom_order_id) {
                     $customOrder = \App\Models\CustomOrder::find($saleItem->custom_order_id);
                     if ($customOrder) {
-                        // Link all prior deposit payments to this sale
                         \App\Models\Payment::where('custom_order_id', $customOrder->id)
                             ->whereNull('sale_id')
                             ->update(['sale_id' => $sale->id]);
 
-                        // Determine if it's a completely NEW order created during this sale
                         $isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
                         if ($isBrandNew) {
-                            // 🚀 THE FIX: If it is a new order, just update status and link sale. 
-                            // Do NOT overwrite the balance_due or amount_paid, keep the deposit math!
                             $customOrder->update([
                                 'status'  => 'in_production',
                                 'sale_id' => $sale->id,
                             ]);
                         } else {
-                            // 🚀 THE FIX: Calculate the TRUE grand total including tax to ensure the balance zeros out properly
                             $quotedPrice = floatval($customOrder->quoted_price);
                             $isTaxFree   = (bool)($customOrder->is_tax_free);
                             $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                             $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
                             $grandTotal  = $quotedPrice + ($quotedPrice * $taxRate);
 
-                            // If we are checking out an OLD order, mark it fully paid at the correct post-tax amount
                             $customOrder->update([
                                 'status'      => 'completed',
                                 'sale_id'     => $sale->id,
                                 'balance_due' => 0,
-                                'amount_paid' => $grandTotal, // 🚀 Now uses grandTotal instead of pre-tax quoted_price
+                                'amount_paid' => $grandTotal,
                             ]);
                         }
                     }

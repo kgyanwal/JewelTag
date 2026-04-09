@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use App\Helpers\Staff; // 🚀 ADDED: To check roles
 
 class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 {
@@ -33,6 +34,13 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
     protected static ?string $navigationLabel = 'Deposit Sales Report';
     protected static ?int    $navigationSort  = 3;
     protected static string  $view            = 'filament.pages.deposit-sales-report';
+
+    // 🚀 THE FIX: Restrict access to the entire page
+    public static function canAccess(): bool
+    {
+        $user = Staff::user();
+        return $user && $user->hasAnyRole(['Superadmin', 'Administration']);
+    }
 
     public function table(Table $table): Table
     {

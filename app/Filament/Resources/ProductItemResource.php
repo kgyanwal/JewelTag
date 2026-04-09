@@ -565,6 +565,19 @@ Hidden::make('web_item')->default(false),
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('date_added')
+    ->label('DATE IN')
+    ->getStateUsing(function (ProductItem $record) {
+        $date = $record->date_in ?? $record->created_at;
+        return $date?->format('M d, Y');
+    })
+    ->description(function (ProductItem $record) {
+        $date = $record->date_in ?? $record->created_at;
+        return $date?->format('h:i A');
+    })
+    ->size('xs')
+    ->color('gray')
+    ->grow(false),
                 Tables\Columns\TextColumn::make('barcode')->label('STOCK NO.')->searchable()->weight('bold'),
                 Tables\Columns\TextColumn::make('short_id')->label('TAG ID')->getStateUsing(fn($record) => self::generateShortCode($record->rfid_code))->fontFamily('mono')->color('info'),
                 Tables\Columns\IconColumn::make('is_trade_in')->label('SOURCE')->boolean()->trueIcon('heroicon-o-user-group')->falseIcon('heroicon-o-building-office'),
