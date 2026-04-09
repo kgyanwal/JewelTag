@@ -200,8 +200,7 @@ class LaybuyResource extends Resource
 
         $rows = $allPayments->map(function ($p) {
             // Normalize dates (historical use payment_date, others use created_at)
-            $date = $p->created_at ? $p->created_at->format('M d, Y') : ($p->payment_date ? date('M d, Y', strtotime($p->payment_date)) : 'N/A');
-            
+        $date = $p->payment_date ? date('M d, Y', strtotime($p->payment_date)) : ($p->created_at ? $p->created_at->format('M d, Y') : 'N/A');            
             // Normalize method names (sale_payments uses 'payment_method', others use 'method')
             $method = $p->payment_method ?? $p->method ?? 'N/A';
             
