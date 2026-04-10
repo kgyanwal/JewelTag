@@ -483,8 +483,12 @@ class LaybuyResource extends Resource
                             ->send();
                     }),
 
-                Tables\Actions\EditAction::make(),
-            ])
+                Tables\Actions\EditAction::make()
+    // tooltips show when you hover over the button
+    ->tooltip("Click manage ledger to edit today's amount")
+    // If you want a specific icon for the edit button
+    ->icon('heroicon-m-pencil-square'),
+                        ])
             ->defaultSort('created_at', 'desc');
     }
 
