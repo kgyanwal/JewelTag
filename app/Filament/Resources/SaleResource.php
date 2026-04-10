@@ -970,39 +970,190 @@ class SaleResource extends Resource
                                             ->required()
                                             ->live()
                                             ->columnSpanFull()
-                                            ->hintAction(
+                                        ->hintAction(
                                                 FormAction::make('view_customer_details')
                                                     ->label('View Profile')
                                                     ->icon('heroicon-o-user-circle')
                                                     ->color('info')
                                                     ->visible(fn(Get $get) => $get('customer_id'))
                                                     ->modalHeading('Customer Profile Details')
-                                                    ->modalSubmitAction(false)
+                                                    // We handle saving manually inside the action
+                                                    ->modalSubmitActionLabel('Save Changes')
                                                     ->modalCancelActionLabel('Close')
                                                     ->slideOver()
                                                     ->form(function (Get $get) {
-                                                        $customer = Customer::find($get('customer_id'));
+                                                        $customer = \App\Models\Customer::find($get('customer_id'));
                                                         if (!$customer) return [];
+
                                                         return [
-                                                            Grid::make(2)->schema([
-                                                                Placeholder::make('img')->label('')
-                                                                    ->content(new HtmlString("
-                                                                    <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
-                                                                        <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
-                                                                        <div>
-                                                                            <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
-                                                                            <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
-                                                                            <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
-                                                                                Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                "))->columnSpanFull(),
-                                                                TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
-                                                                TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
-                                                                TextInput::make('addr')->label('Full Address')->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))->readOnly()->columnSpanFull(),
-                                                            ]),
+                                                            \Filament\Forms\Components\Tabs::make('CustomerDetailsTabs')
+                                                                ->tabs([
+                                                                    // ── TAB 1: VIEW & HISTORY ──
+                                                                    \Filament\Forms\Components\Tabs\Tab::make('Profile & History')
+                                                                        ->icon('heroicon-o-document-text')
+                                                                        ->schema([
+                                                                            Grid::make(2)->schema([
+                                                                                Placeholder::make('img')->label('')
+                                                                                    ->content(new HtmlString("
+                                                                                        <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                                                            <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                                            <div>
+                                                                                                <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                                                <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                                                <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                                                    Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    "))->columnSpanFull(),
+                                                                                TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
+                                                                                TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
+                                                                                TextInput::make('view_addr')
+                                                                                    ->label('Full Address')
+                                                                                    ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                                    ->readOnly()
+                                                                                    ->columnSpanFull(),
+                                                                            ]),
+
+                                                                            Placeholder::make('purchase_history')
+                                                                                ->label('Purchase History')
+                                                                                ->content(function () use ($customer) {
+                                                                                    $sales = $customer->sales()
+                                                                                        ->with(['items.productItem', 'payments'])
+                                                                                        ->whereNotIn('status', ['void', 'cancelled'])
+                                                                                        ->latest()
+                                                                                        ->limit(5)
+                                                                                        ->get();
+
+                                                                                    if ($sales->isEmpty()) {
+                                                                                        return new HtmlString("<p class='text-sm text-gray-400 italic'>No prior purchase history.</p>");
+                                                                                    }
+
+                                                                                    $rowsHtml = '';
+                                                                                    foreach ($sales as $sale) {
+                                                                                        $total      = floatval($sale->final_total);
+                                                                                        $paid       = floatval($sale->payments->sum('amount'));
+                                                                                        if ($paid == 0 && floatval($sale->amount_paid) > 0) {
+                                                                                            $paid = floatval($sale->amount_paid);
+                                                                                        }
+                                                                                        $balance    = max(0, $total - $paid);
+                                                                                        $isOwing    = $balance > 0.01;
+
+                                                                                        $statusColor = match ($sale->status) {
+                                                                                            'completed'          => 'bg-success-100 text-success-700',
+                                                                                            'refunded'           => 'bg-danger-100 text-danger-700',
+                                                                                            'partially_refunded' => 'bg-warning-100 text-warning-700',
+                                                                                            default              => 'bg-gray-100 text-gray-700',
+                                                                                        };
+                                                                                        $statusLabel = ucfirst(str_replace('_', ' ', $sale->status));
+
+                                                                                        $itemPills = '';
+                                                                                        foreach ($sale->items->take(2) as $item) {
+                                                                                            $label = \Illuminate\Support\Str::limit($item->custom_description ?? 'Item', 20);
+                                                                                            $itemPills .= "<span class='inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mt-1 border border-gray-200'>{$label}</span>";
+                                                                                        }
+
+                                                                                        $balanceHtml = $isOwing
+                                                                                            ? "<p class='text-[10px] text-danger-600 font-bold mt-1 m-0'>Balance: \$" . number_format($balance, 2) . "</p>"
+                                                                                            : '';
+
+                                                                                        // We link to view or edit the sale, opening in new tab
+                                                                                        $editUrl = SaleResource::getUrl('edit', ['record' => $sale->id]);
+
+                                                                                        $rowsHtml .= "
+                                                                                            <div class='border " . ($isOwing ? 'border-warning-300' : 'border-gray-200') . " rounded-lg p-3 mb-2 bg-white shadow-sm'>
+                                                                                                <div class='flex justify-between items-start'>
+                                                                                                    <div>
+                                                                                                        <a href='{$editUrl}' target='_blank' class='font-mono font-bold text-primary-600 text-xs hover:underline'>#{$sale->invoice_number}</a>
+                                                                                                        <span class='ml-2 text-[10px] text-gray-400'>{$sale->created_at->format('M d, Y')}</span>
+                                                                                                        <div class='mt-1'>{$itemPills}</div>
+                                                                                                    </div>
+                                                                                                    <div class='text-right'>
+                                                                                                        <p class='text-sm font-bold " . ($isOwing ? 'text-warning-600' : 'text-gray-900') . " m-0'>\$" . number_format($total, 2) . "</p>
+                                                                                                        <span class='text-[9px] px-2 py-0.5 rounded-full uppercase font-bold mt-1 inline-block {$statusColor}'>{$statusLabel}</span>
+                                                                                                        {$balanceHtml}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ";
+                                                                                    }
+
+                                                                                    return new HtmlString("<div class='mt-2 max-h-[300px] overflow-y-auto pr-2'>{$rowsHtml}</div>");
+                                                                                }),
+                                                                        ]),
+
+                                                                    // ── TAB 2: EDIT CUSTOMER ──
+                                                                  // ── TAB 2: EDIT CUSTOMER ──
+                                                                    \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
+                                                                        ->icon('heroicon-o-pencil-square')
+                                                                        ->schema([
+                                                                            Grid::make(2)->schema([
+                                                                                TextInput::make('edit_name')
+                                                                                    ->label('First Name')
+                                                                                    ->default($customer->name)
+                                                                                    ->required(),
+                                                                                TextInput::make('edit_last_name')
+                                                                                    ->label('Last Name')
+                                                                                    ->default($customer->last_name),
+                                                                                TextInput::make('edit_phone')
+                                                                                    ->label('Phone')
+                                                                                    ->tel()
+                                                                                    ->prefix('+1')
+                                                                                    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+                                                                                    ->mask('(999) 999-9999')
+                                                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                                                    ->required(),
+                                                                                TextInput::make('edit_email')
+                                                                                    ->label('Email')
+                                                                                    ->email()
+                                                                                    ->default($customer->email),
+                                                                                    
+                                                                                // 🚀 THE FIX: Replaced manual fields with Google Autocomplete
+                                                                                \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
+                                                                                    ->label('Search Address')
+                                                                                    ->autocompletePlaceholder('Start typing address...')
+                                                                                    ->countries(['US'])
+                                                                                    ->columnSpanFull()
+                                                                                    ->withFields([
+                                                                                        TextInput::make('edit_street')
+                                                                                            ->label('Street Address')
+                                                                                            ->default($customer->street)
+                                                                                            ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
+                                                                                            ->columnSpanFull(),
+                                                                                        TextInput::make('edit_city')
+                                                                                            ->label('City')
+                                                                                            ->default($customer->city)
+                                                                                            ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                                                        TextInput::make('edit_state')
+                                                                                            ->label('State')
+                                                                                            ->default($customer->state)
+                                                                                            ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                                        TextInput::make('edit_postcode')
+                                                                                            ->label('Zip Code')
+                                                                                            ->default($customer->postcode)
+                                                                                            ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                                    ]),
+                                                                            ])
+                                                                        ]),
+                                                                ]),
                                                         ];
+                                                    })
+                                                    ->action(function (array $data, Get $get) {
+                                                        // When they click "Save Changes", we update the customer if they made edits
+                                                        $customer = \App\Models\Customer::find($get('customer_id'));
+                                                        if ($customer && isset($data['edit_name'])) {
+                                                            $customer->update([
+                                                                'name'      => $data['edit_name'],
+                                                                'last_name' => $data['edit_last_name'] ?? null,
+                                                                'phone'     => $data['edit_phone'],
+                                                                'email'     => $data['edit_email'] ?? null,
+                                                                'street'    => $data['edit_street'] ?? null,
+                                                                'city'      => $data['edit_city'] ?? null,
+                                                                'state'     => $data['edit_state'] ?? null,
+                                                                'postcode'  => $data['edit_postcode'] ?? null,
+                                                            ]);
+                                                            Notification::make()->title('Customer Updated Successfully')->success()->send();
+                                                        }
                                                     })
                                             )
                                             ->createOptionModalHeading('Quick Add New Customer')
