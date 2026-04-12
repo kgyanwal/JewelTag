@@ -208,82 +208,82 @@ class EditSale extends EditRecord
         return $data;
     }
 
-    protected function afterSave(): void
+   protected function afterSave(): void
     {
         $sale = $this->record->fresh();
 
         DB::transaction(function () use ($sale) {
             $sale->load('items');
 
-            if ($sale->is_split_payment) {
-                $splits = is_string($sale->split_payments)
-                    ? json_decode($sale->split_payments, true)
-                    : $sale->split_payments;
+            // 1. Find all payments attached to this sale that are NOT prior custom order deposits.
+            // 🚀 THE FIX: Removed whereNull('laybuy_id') because that column doesn't exist on the payments table.
+            $pointOfSalePayments = $sale->payments()
+                ->whereNull('custom_order_id')
+                ->get();
 
-                if (!is_array($splits) || empty($splits)) return;
+            // 2. Wipe the old POS payments clean to prevent double-counting or messy deltas.
+            foreach ($pointOfSalePayments as $payment) {
+                $payment->delete();
+            }
 
-                $intendedByMethod = collect($splits)
-                    ->groupBy(fn($s) => strtoupper(trim($s['method'])))
-                    ->map(fn($g) => round($g->sum(fn($s) => (float) $s['amount']), 2));
+            // 3. Determine how much money the user says they collected RIGHT NOW in the edit form.
+            $data = $this->form->getState();
+            $newPosTotalPaid = 0;
 
-                $paidByMethod = $sale->payments()->get()
-                    ->groupBy(fn($p) => strtoupper(trim($p->method)))
-                    ->map(fn($g) => round($g->sum('amount'), 2));
-
-                $anyChange = false;
-
-                foreach ($intendedByMethod as $method => $intendedAmount) {
-                    $alreadyPaid = $paidByMethod[$method] ?? 0;
-                    $methodDelta = round($intendedAmount - $alreadyPaid, 2);
-
-                    if ($methodDelta > 0) {
-                        Payment::create(['sale_id' => $sale->id, 'amount' => $methodDelta, 'method' => $method, 'paid_at' => now()]);
-                        $anyChange = true;
-                    } elseif ($methodDelta < 0) {
-                        $latest = $sale->payments()->whereRaw('UPPER(TRIM(method)) = ?', [$method])->latest()->first();
-                        if ($latest) {
-                            $corrected = round($latest->amount + $methodDelta, 2);
-                            $corrected <= 0 ? $latest->delete() : $latest->update(['amount' => $corrected]);
-                            $anyChange = true;
+            if (!empty($data['is_split_payment'])) {
+                $splits = $data['split_payments'] ?? [];
+                if (is_array($splits)) {
+                    foreach ($splits as $split) {
+                        $amt = floatval($split['amount'] ?? 0);
+                        if ($amt > 0) {
+                            Payment::create([
+                                'sale_id'  => $sale->id,
+                                'amount'   => $amt,
+                                'method'   => strtoupper(trim($split['method'])),
+                                'paid_at'  => $sale->created_at, // Keep original sale time
+                                'store_id' => $sale->store_id,
+                            ]);
+                            $newPosTotalPaid += $amt;
                         }
                     }
                 }
-
-                $totalIntended = round($intendedByMethod->sum(), 2);
-                $sale->update(['amount_paid' => $totalIntended]);
-                Notification::make()->title($anyChange ? 'Payments Updated' : 'Sale Updated')
-                    ->body($anyChange ? 'Split synced: $' . number_format($totalIntended, 2) : 'No payment changes.')
-                    ->success()->send();
-
             } else {
-                $alreadyPaidTotal = $sale->payments()->sum('amount');
-                $amountPaid       = floatval($sale->amount_paid ?? 0);
-                $newIntendedTotal = min($amountPaid > 0 ? $amountPaid : (float)$sale->final_total, (float)$sale->final_total);
-                $delta            = round($newIntendedTotal - $alreadyPaidTotal, 2);
-                $currentMethod    = strtoupper(trim($sale->payment_method ?? 'CASH'));
-
-                if ($delta > 0) {
-                    Payment::create(['sale_id' => $sale->id, 'amount' => $delta, 'method' => $currentMethod, 'paid_at' => now()]);
-                    $sale->update(['amount_paid' => round($alreadyPaidTotal + $delta, 2)]);
-                    Notification::make()->title('New Payment Recorded')->body('$' . number_format($delta, 2) . ' added.')->success()->send();
-                } elseif ($delta < 0) {
-                    $latest = $sale->payments()->latest()->first();
-                    if ($latest) {
-                        $corrected = round($latest->amount + $delta, 2);
-                        $corrected <= 0 ? $latest->delete() : $latest->update(['amount' => $corrected]);
-                        $sale->update(['amount_paid' => round($newIntendedTotal, 2)]);
-                        Notification::make()->title('Payment Adjusted')->body('Corrected by $' . number_format(abs($delta), 2))->warning()->send();
-                    }
-                } else {
-                    $latest = $sale->payments()->latest()->first();
-                    if ($latest && strtoupper(trim($latest->method)) !== $currentMethod) {
-                        $latest->update(['method' => $currentMethod]);
-                        Notification::make()->title('Payment Method Updated')->info()->send();
-                    } else {
-                        Notification::make()->title('Sale Updated')->body('No payment changes.')->info()->send();
-                    }
+                $amt = floatval($data['amount_paid'] ?? 0);
+                if ($amt > 0) {
+                    Payment::create([
+                        'sale_id'  => $sale->id,
+                        'amount'   => $amt,
+                        'method'   => strtoupper(trim($data['payment_method'] ?? 'CASH')),
+                        'paid_at'  => $sale->created_at, // Keep original sale time
+                        'store_id' => $sale->store_id,
+                    ]);
+                    $newPosTotalPaid += $amt;
                 }
             }
+
+            // 4. Calculate the TRUE total paid for this sale (New POS money + Any old deposits)
+            // 🚀 THE FIX: Removed the laybuy_id check here as well.
+            $totalPriorDeposits = $sale->payments()
+                ->whereNotNull('custom_order_id')
+                ->sum('amount');
+
+            $trueTotalPaid = round($totalPriorDeposits + $newPosTotalPaid, 2);
+            $finalTotal    = round(floatval($sale->final_total), 2);
+            $balanceDue    = max(0, $finalTotal - $trueTotalPaid);
+
+            // 5. Update the Sale record with the perfect math
+            $sale->update([
+                'amount_paid'  => $trueTotalPaid,
+                'balance_due'  => $balanceDue,
+                'status'       => $balanceDue <= 0 ? 'completed' : 'pending',
+                'completed_at' => $balanceDue <= 0 ? ($sale->completed_at ?? now()) : null,
+            ]);
+
+            Notification::make()
+                ->title('Sale Payments Updated')
+                ->body('Ledger has been synced successfully.')
+                ->success()
+                ->send();
         });
     }
 
