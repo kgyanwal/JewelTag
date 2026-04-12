@@ -34,7 +34,7 @@ class EditSale extends EditRecord
     {
         $user = Staff::user();
 
-        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
+        if ($user?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])) return true;
 
         $sale = $this->record;
 
@@ -84,7 +84,7 @@ class EditSale extends EditRecord
                 ->icon('heroicon-o-check')
                 ->visible(fn() =>
                     $this->record->status !== 'completed' &&
-                    Staff::user()?->hasAnyRole(['Superadmin', 'Administration'])
+                    Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                 )
                 ->requiresConfirmation()
                 ->action(function () {

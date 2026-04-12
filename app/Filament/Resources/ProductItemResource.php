@@ -177,20 +177,20 @@ class ProductItemResource extends Resource
                     ->label('Select Stock:')
                     ->placeholder('SEARCH FILTERED ITEMS...')
                     // 🚀 THE LOGIC: This dropdown now changes based on the filters above
-                    ->options(function (Get $get) {
-                        $query = ProductItem::query();
+                   ->options(function (Get $get) {
+    $query = ProductItem::withTrashed(); // include soft-deleted/archived
 
-                        if ($get('filter_vendor')) $query->where('supplier_id', $get('filter_vendor'));
-                        if ($get('filter_dept')) $query->where('department', $get('filter_dept'));
-                        if ($get('filter_category')) $query->where('category', $get('filter_category'));
+    if ($get('filter_vendor')) $query->where('supplier_id', $get('filter_vendor'));
+    if ($get('filter_dept')) $query->where('department', $get('filter_dept'));
+    if ($get('filter_category')) $query->where('category', $get('filter_category'));
 
-                        return $query->latest()
-                            ->limit(50)
-                            ->get()
-                            ->mapWithKeys(fn($i) => [
-                                $i->id => "{$i->barcode} - " . Str::limit($i->custom_description, 30)
-                            ]);
-                    })
+    return $query->latest()
+        ->limit(200)
+        ->get()
+        ->mapWithKeys(fn($i) => [
+            $i->id => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
+        ]);
+})
                     ->searchable()
                     ->live()
                     ->required(fn(Get $get) => $get('entry_type') === 'copy')
