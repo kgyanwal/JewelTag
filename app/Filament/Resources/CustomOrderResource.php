@@ -6,7 +6,6 @@ use App\Filament\Resources\CustomOrderResource\Pages;
 use App\Models\CustomOrder;
 use App\Models\ProductItem;
 use App\Models\User;
-use App\Models\Sale;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -23,6 +22,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\Session;
 
 class CustomOrderResource extends Resource
 {
@@ -75,37 +75,177 @@ class CustomOrderResource extends Resource
                                             ->color('info')
                                             ->visible(fn(Get $get) => $get('customer_id'))
                                             ->modalHeading('Customer Profile Details')
-                                            ->modalSubmitAction(false)
+                                            ->modalSubmitActionLabel('Save Changes')
                                             ->modalCancelActionLabel('Close')
                                             ->slideOver()
                                             ->form(function (Get $get) {
                                                 $customer = \App\Models\Customer::find($get('customer_id'));
                                                 if (!$customer) return [];
                                                 return [
-                                                    Grid::make(2)->schema([
-                                                        Placeholder::make('img')
-                                                            ->label('')
-                                                            ->content(new HtmlString("
-                                <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
-                                    <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
-                                    <div>
-                                        <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
-                                        <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
-                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
-                                            Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
-                                        </span>
-                                    </div>
-                                </div>
-                            "))->columnSpanFull(),
-                                                        TextInput::make('p')->label('Phone')->default($customer->phone)->readOnly(),
-                                                        TextInput::make('e')->label('Email')->default($customer->email)->readOnly(),
-                                                        TextInput::make('addr')
-                                                            ->label('Full Address')
-                                                            ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
-                                                            ->readOnly()
-                                                            ->columnSpanFull(),
-                                                    ]),
+                                                    \Filament\Forms\Components\Tabs::make('CustomerDetailsTabs')
+                                                        ->tabs([
+                                                            // ── TAB 1: VIEW & HISTORY ──
+                                                            \Filament\Forms\Components\Tabs\Tab::make('Profile & History')
+                                                                ->icon('heroicon-o-document-text')
+                                                                ->schema([
+                                                                    Grid::make(2)->schema([
+                                                                        Placeholder::make('img')
+                                                                            ->label('')
+                                                                            ->content(new HtmlString("
+                                                                                <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                                                    <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                                    <div>
+                                                                                        <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                                        <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                                            Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            "))->columnSpanFull(),
+                                                                        TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
+                                                                        TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
+                                                                        TextInput::make('view_addr')
+                                                                            ->label('Full Address')
+                                                                            ->default(trim("{$customer->street} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                            ->readOnly()
+                                                                            ->columnSpanFull(),
+                                                                    ]),
+
+                                                                    Placeholder::make('purchase_history')
+                                                                        ->label('Purchase History')
+                                                                        ->content(function () use ($customer) {
+                                                                            $sales = $customer->sales()
+                                                                                ->with(['items.productItem', 'payments'])
+                                                                                ->whereNotIn('status', ['void', 'cancelled'])
+                                                                                ->latest()
+                                                                                ->limit(5)
+                                                                                ->get();
+
+                                                                            if ($sales->isEmpty()) {
+                                                                                return new HtmlString("<p class='text-sm text-gray-400 italic'>No prior purchase history.</p>");
+                                                                            }
+
+                                                                            $rowsHtml = '';
+                                                                            foreach ($sales as $sale) {
+                                                                                $total      = floatval($sale->final_total);
+                                                                                $paid       = floatval($sale->payments->sum('amount'));
+                                                                                if ($paid == 0 && floatval($sale->amount_paid) > 0) {
+                                                                                    $paid = floatval($sale->amount_paid);
+                                                                                }
+                                                                                $balance    = max(0, $total - $paid);
+                                                                                $isOwing    = $balance > 0.01;
+
+                                                                                $statusColor = match ($sale->status) {
+                                                                                    'completed'          => 'bg-success-100 text-success-700',
+                                                                                    'refunded'           => 'bg-danger-100 text-danger-700',
+                                                                                    'partially_refunded' => 'bg-warning-100 text-warning-700',
+                                                                                    default              => 'bg-gray-100 text-gray-700',
+                                                                                };
+                                                                                $statusLabel = ucfirst(str_replace('_', ' ', $sale->status));
+
+                                                                                $itemPills = '';
+                                                                                foreach ($sale->items->take(2) as $item) {
+                                                                                    $label = \Illuminate\Support\Str::limit($item->custom_description ?? 'Item', 20);
+                                                                                    $itemPills .= "<span class='inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mt-1 border border-gray-200'>{$label}</span>";
+                                                                                }
+
+                                                                                $balanceHtml = $isOwing
+                                                                                    ? "<p class='text-[10px] text-danger-600 font-bold mt-1 m-0'>Balance: \$" . number_format($balance, 2) . "</p>"
+                                                                                    : '';
+
+                                                                                $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
+
+                                                                                $rowsHtml .= "
+                                                                                    <div class='border " . ($isOwing ? 'border-warning-300' : 'border-gray-200') . " rounded-lg p-3 mb-2 bg-white shadow-sm'>
+                                                                                        <div class='flex justify-between items-start'>
+                                                                                            <div>
+                                                                                                <a href='{$editUrl}' target='_blank' class='font-mono font-bold text-primary-600 text-xs hover:underline'>#{$sale->invoice_number}</a>
+                                                                                                <span class='ml-2 text-[10px] text-gray-400'>{$sale->created_at->format('M d, Y')}</span>
+                                                                                                <div class='mt-1'>{$itemPills}</div>
+                                                                                            </div>
+                                                                                            <div class='text-right'>
+                                                                                                <p class='text-sm font-bold " . ($isOwing ? 'text-warning-600' : 'text-gray-900') . " m-0'>\$" . number_format($total, 2) . "</p>
+                                                                                                <span class='text-[9px] px-2 py-0.5 rounded-full uppercase font-bold mt-1 inline-block {$statusColor}'>{$statusLabel}</span>
+                                                                                                {$balanceHtml}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ";
+                                                                            }
+                                                                            return new HtmlString("<div class='mt-2 max-h-[300px] overflow-y-auto pr-2'>{$rowsHtml}</div>");
+                                                                        }),
+                                                                ]),
+
+                                                            // ── TAB 2: EDIT CUSTOMER ──
+                                                            \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
+                                                                ->icon('heroicon-o-pencil-square')
+                                                                ->schema([
+                                                                    Grid::make(2)->schema([
+                                                                        TextInput::make('edit_name')
+                                                                            ->label('First Name')
+                                                                            ->default($customer->name)
+                                                                            ->required(),
+                                                                        TextInput::make('edit_last_name')
+                                                                            ->label('Last Name')
+                                                                            ->default($customer->last_name),
+                                                                        TextInput::make('edit_phone')
+                                                                            ->label('Phone')
+                                                                            ->tel()
+                                                                            ->prefix('+1')
+                                                                            ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+                                                                            ->mask('(999) 999-9999')
+                                                                            ->stripCharacters(['(', ')', '-', ' '])
+                                                                            ->required(),
+                                                                        TextInput::make('edit_email')
+                                                                            ->label('Email')
+                                                                            ->email()
+                                                                            ->default($customer->email),
+                                                                        
+                                                                        \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
+                                                                            ->label('Search Address')
+                                                                            ->autocompletePlaceholder('Start typing address...')
+                                                                            ->countries(['US'])
+                                                                            ->columnSpanFull()
+                                                                            ->withFields([
+                                                                                TextInput::make('edit_street')
+                                                                                    ->label('Street Address')
+                                                                                    ->default($customer->street)
+                                                                                    ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
+                                                                                    ->columnSpanFull(),
+                                                                                TextInput::make('edit_city')
+                                                                                    ->label('City')
+                                                                                    ->default($customer->city)
+                                                                                    ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                                                TextInput::make('edit_state')
+                                                                                    ->label('State')
+                                                                                    ->default($customer->state)
+                                                                                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                                TextInput::make('edit_postcode')
+                                                                                    ->label('Zip Code')
+                                                                                    ->default($customer->postcode)
+                                                                                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                            ]),
+                                                                    ])
+                                                                ]),
+                                                        ]),
                                                 ];
+                                            })
+                                            ->action(function (array $data, Get $get) {
+                                                $customer = \App\Models\Customer::find($get('customer_id'));
+                                                if ($customer && isset($data['edit_name'])) {
+                                                    $customer->update([
+                                                        'name'      => $data['edit_name'],
+                                                        'last_name' => $data['edit_last_name'] ?? null,
+                                                        'phone'     => $data['edit_phone'],
+                                                        'email'     => $data['edit_email'] ?? null,
+                                                        'street'    => $data['edit_street'] ?? null,
+                                                        'city'      => $data['edit_city'] ?? null,
+                                                        'state'     => $data['edit_state'] ?? null,
+                                                        'postcode'  => $data['edit_postcode'] ?? null,
+                                                    ]);
+                                                    Notification::make()->title('Customer Updated Successfully')->success()->send();
+                                                }
                                             })
                                     )
                                     ->createOptionModalHeading('Quick Add New Customer')
@@ -127,8 +267,18 @@ class CustomOrderResource extends Resource
                                                                 ->mask('(999) 999-9999')
                                                                 ->placeholder('(555) 555-5555')
                                                                 ->stripCharacters(['(', ')', '-', ' '])
-                                                                ->rule('regex:/^[0-9]{10}$/'),
-                                                            Forms\Components\TextInput::make('email')->label('Email')->email(),
+                                                                ->rule('regex:/^[0-9]{10}$/')
+                                                                ->unique('customers', 'phone')
+                                                                ->afterStateHydrated(function ($component, $state) {
+                                                                    if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                                        $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                                    }
+                                                                }),
+                                                            Forms\Components\TextInput::make('email')->label('Email')->email()->unique('customers', 'email'),
+                                                        ]),
+                                                        Forms\Components\Grid::make(2)->schema([
+                                                            CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                            CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                         ]),
                                                         Forms\Components\Section::make('Customer Address')
                                                             ->description('Search for an address to automatically fill the fields below.')
@@ -145,6 +295,7 @@ class CustomOrderResource extends Resource
                                                                         TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
                                                                         TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code']),
                                                                     ]),
+                                                                Forms\Components\Select::make('country')->label('Country')->default('United States')->searchable(),
                                                             ]),
                                                     ]),
                                             ]),
@@ -162,7 +313,7 @@ class CustomOrderResource extends Resource
                                     ->prefixIcon('heroicon-o-identification')
                                     ->required(),
                             ]),
-                        ]),
+                    ]),
 
                     Section::make('Order Type')
                         ->icon('heroicon-o-tag')
@@ -373,25 +524,93 @@ class CustomOrderResource extends Resource
                                     }),
                             ]),
 
-                           TextInput::make('amount_paid')
-    ->label('Initial Deposit / Amount Paid')
-    ->numeric()
-    ->prefix('$')
-    ->default(0)
-    ->live(onBlur: true)
-    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-    ->readOnly(
-        fn(string $operation) =>
-        $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
-    )
-    ->dehydrated(true) // 🚀 THE FIX: Prevent non-admins from accidentally zeroing out deposits!
-    ->helperText(
-        fn(string $operation) =>
-        $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
-            ? '⚠️ Admin: editing this will recalculate balance'
-            : null
-    )
-    ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
+                            // ── TRADE IN DETAILS ─────────────────────────────
+                            Section::make('Trade-In Details')
+                                ->schema([
+                                    Select::make('has_trade_in')
+                                        ->label('Is there a Trade-In?')
+                                        ->options([1 => 'Yes', 0 => 'No'])
+                                        ->default(0)
+                                        ->required()
+                                        ->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                    Grid::make(2)
+                                        ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                        ->schema([
+                                            TextInput::make('trade_in_value')
+                                                ->label('Trade-In Value (Deduction)')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                ->live(onBlur: true)
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                            TextInput::make('trade_in_receipt_no')
+                                                ->label('Trade-In Tracking #')
+                                                ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                                ->readOnly(),
+                                            Textarea::make('trade_in_description')
+                                                ->label('Item Description')
+                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                ->columnSpanFull()
+                                                ->rows(2),
+                                        ]),
+                                ]),
+
+                            // ── WARRANTY SECTION ─────────────────────────────
+                            Section::make('Warranty')
+                                ->icon('heroicon-o-shield-check')
+                                ->collapsible()
+                                ->schema([
+                                    Grid::make(2)->schema([
+                                        Select::make('has_warranty')
+                                            ->label('Include Warranty?')
+                                            ->options([0 => 'No', 1 => 'Yes'])
+                                            ->default(0)
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                        Select::make('warranty_period')
+                                            ->label('Warranty Duration')
+                                            ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                            ->required(fn(Get $get) => $get('has_warranty') == 1)
+                                            ->options(function () {
+                                                $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                                $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                                                return array_combine($options, $options);
+                                            }),
+                                        TextInput::make('warranty_charge')
+                                            ->label('Warranty Charge ($)')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->default(0)
+                                            ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                        CustomDatePicker::make('follow_up_date')
+                                            ->label('Follow Up (2 Weeks)')
+                                            ->default(now()->addWeeks(2)->format('Y-m-d'))
+                                            ->displayFormat('m/d/Y'),
+                                    ]),
+                                ]),
+
+                            TextInput::make('amount_paid')
+                                ->label('Initial Deposit / Amount Paid')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(0)
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                ->readOnly(
+                                    fn(string $operation) =>
+                                    $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                )
+                                ->dehydrated(true)
+                                ->helperText(
+                                    fn(string $operation) =>
+                                    $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                        ? '⚠️ Admin: editing this will recalculate balance'
+                                        : null
+                                )
+                                ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
 
                             Toggle::make('is_split_deposit')
                                 ->label('Split Deposit Payment?')
@@ -453,17 +672,17 @@ class CustomOrderResource extends Resource
                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
                                 ->dehydrated(true),
 
-                        TextInput::make('balance_due')
-    ->label('Remaining Balance')
-    ->numeric()
-    ->prefix('$')
-    ->default(0)
-    ->readOnly()
-    ->dehydrated(true) // 🚀 THE FIX: Forces saving the balance
-    ->afterStateHydrated(function (Get $get, Set $set) {
-        self::calculateBalance($get, $set);
-    })
-    ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
+                            TextInput::make('balance_due')
+                                ->label('Remaining Balance')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(0)
+                                ->readOnly()
+                                ->dehydrated(true)
+                                ->afterStateHydrated(function (Get $get, Set $set) {
+                                    self::calculateBalance($get, $set);
+                                })
+                                ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
                             // ── FINANCIAL SUMMARY ─────────────────────────────
                             Placeholder::make('financial_summary')
@@ -476,11 +695,16 @@ class CustomOrderResource extends Resource
                                     $afterDisc = $quoted - $discAmt;
                                     $paid      = floatval($get('amount_paid') ?? 0);
                                     $isTaxFree = (bool)($get('is_tax_free') ?? false);
+                                    
+                                    // Warranty math
+                                    $hasWarranty = $get('has_warranty') == 1;
+                                    $warrantyCharge = $hasWarranty ? floatval($get('warranty_charge') ?? 0) : 0;
+                                    $warrantyPeriod = $hasWarranty ? $get('warranty_period') : '';
 
                                     $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                                     $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                    $tax     = $afterDisc * $taxRate;
-                                    $total   = $afterDisc + $tax;
+                                    $tax     = ($afterDisc + $warrantyCharge) * $taxRate;
+                                    $total   = $afterDisc + $warrantyCharge + $tax;
                                     $balance = max(0, $total - $paid);
 
                                     return new HtmlString("
@@ -497,6 +721,11 @@ class CustomOrderResource extends Resource
                                             <div class='flex justify-between px-3 py-2'>
                                                 <span class='text-gray-500'>After Discount</span>
                                                 <span class='font-semibold'>\$" . number_format($afterDisc, 2) . "</span>
+                                            </div>" : "") . "
+                                            " . ($hasWarranty ? "
+                                            <div class='flex justify-between px-3 py-2 bg-blue-50'>
+                                                <span class='text-blue-600'>Warranty ({$warrantyPeriod})</span>
+                                                <span class='font-semibold text-blue-600'>+\$" . number_format($warrantyCharge, 2) . "</span>
                                             </div>" : "") . "
                                             <div class='flex justify-between px-3 py-2'>
                                                 <span class='text-gray-500'>Tax (" . ($isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%') . ")</span>
@@ -653,17 +882,20 @@ class CustomOrderResource extends Resource
                     ->html()
                     ->grow(false),
 
-                // ── BALANCE — correctly accounts for discount ──
+                // ── BALANCE — correctly accounts for discount + warranty ──
                 Tables\Columns\TextColumn::make('computed_balance')
                     ->label('BALANCE')
                     ->getStateUsing(function (CustomOrder $record) {
                         $quoted    = floatval($record->quoted_price);
                         $discAmt   = floatval($record->discount_amount ?? 0);
                         $afterDisc = $quoted - $discAmt;
+                        $warranty  = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
+                        
                         $isTaxFree = (bool)($record->is_tax_free);
                         $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                         $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $grandTotal = $afterDisc + ($afterDisc * $taxRate);
+                        
+                        $grandTotal = ($afterDisc + $warranty) + (($afterDisc + $warranty) * $taxRate);
 
                         $paidFromPayments = $record->payments()->sum('amount');
                         $totalPaid        = $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
@@ -727,13 +959,17 @@ class CustomOrderResource extends Resource
                     ->size('sm')
                     ->visible(function (CustomOrder $record) {
                         if (in_array($record->status, ['completed', 'cancelled'])) return false;
+                        
                         $isTaxFree  = (bool)($record->is_tax_free ?? false);
                         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                         $discAmt    = floatval($record->discount_amount ?? 0);
                         $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                        $grandTotal = $afterDisc * (1 + $taxRate);
+                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
+                        
+                        $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate); 
                         $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
+                        
                         return ($grandTotal - $paid) > 0.01;
                     })
                     ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
@@ -743,12 +979,15 @@ class CustomOrderResource extends Resource
                         $record     = $record->fresh(['payments']);
                         $payments   = $record->payments()->orderBy('paid_at')->get();
                         $totalPaid  = $payments->sum('amount');
+                        
                         $isTaxFree  = (bool)($record->is_tax_free ?? false);
                         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                         $discAmt    = floatval($record->discount_amount ?? 0);
                         $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                        $grandTotal = $afterDisc + ($afterDisc * $taxRate);
+                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
+                        
+                        $grandTotal = ($afterDisc + $warranty) + (($afterDisc + $warranty) * $taxRate);
                         $balance    = max(0, $grandTotal - $totalPaid);
 
                         $rows = '';
@@ -837,7 +1076,7 @@ class CustomOrderResource extends Resource
                                 ->schema([
                                     Grid::make(2)->schema([
                                         Select::make('method')->options(self::getPaymentOptions())->required()->label('Method')->native(false),
-                                        TextInput::make('amount')->numeric()->prefix('$')->required()->label('Amount'),
+                                        TextInput::make('amount')->numeric()->prefix('$')->required()->label('Amount')->live(onBlur: true),
                                     ]),
                                 ])
                                 ->defaultItems(2)
@@ -853,7 +1092,8 @@ class CustomOrderResource extends Resource
                             $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                             $discAmt    = floatval($record->discount_amount ?? 0);
                             $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                            $grandTotal = $afterDisc * (1 + $taxRate);
+                            $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
+                            $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
 
                             $alreadyPaid   = $record->payments()->sum('amount');
                             $newTotalPaid  = round($alreadyPaid + $amountPaid, 2);
@@ -1089,6 +1329,8 @@ class CustomOrderResource extends Resource
         $discAmt   = min($quoted, max(0, $discAmt));
         $afterDisc = $quoted - $discAmt;
         $isTaxFree = (bool)($get('is_tax_free') ?? false);
+        
+        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
 
         $isSplit = (bool)($get('is_split_deposit') ?? false);
         $paid    = $isSplit
@@ -1097,8 +1339,9 @@ class CustomOrderResource extends Resource
 
         $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $tax     = $afterDisc * $taxRate;
-        $total   = $afterDisc + $tax;
+        
+        $tax     = ($afterDisc + $warrantyCharge) * $taxRate;
+        $total   = $afterDisc + $warrantyCharge + $tax;
 
         $set('discount_amount', round($discAmt, 2));
         $set('balance_due', round(max(0, $total - $paid), 2));

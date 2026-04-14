@@ -82,12 +82,20 @@ class EditCustomOrder extends EditRecord
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
-        // ── CALCULATE GRAND TOTAL ────────
-      $quoted     = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0); 
-        $isTaxFree  = (bool)($data['is_tax_free'] ?? false);
-        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $grandTotal = $quoted * (1 + $taxRate);
+     // ── CALCULATE GRAND TOTAL ────────
+        $quoted         = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0); 
+        $discountAmount = floatval($data['discount_amount'] ?? $this->record->discount_amount ?? 0);
+        $afterDiscount  = max(0, $quoted - $discountAmount);
+        
+        $hasWarranty    = ($data['has_warranty'] ?? $this->record->has_warranty ?? 0) == 1;
+        $warrantyCharge = $hasWarranty ? floatval($data['warranty_charge'] ?? $this->record->warranty_charge ?? 0) : 0;
+        
+        $isTaxFree      = (bool)($data['is_tax_free'] ?? $this->record->is_tax_free ?? false);
+        $dbTax          = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate        = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        
+        $tax            = ($afterDiscount + $warrantyCharge) * $taxRate;
+        $grandTotal     = $afterDiscount + $warrantyCharge + $tax;
         // 🚀 THE FIX: If an admin explicitly edited the amount_paid field, TRUST THE FORM DATA.
         // Otherwise, fall back to what is currently in the DB.
         $formAmountPaid = floatval($data['amount_paid'] ?? 0);

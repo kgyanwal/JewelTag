@@ -16,17 +16,23 @@ class CreateCustomOrder extends CreateRecord
     public bool    $isSplitDeposit       = false;
     public array   $splitDepositPayments = [];
 
-    protected function mutateFormDataBeforeCreate(array $data): array
+   protected function mutateFormDataBeforeCreate(array $data): array
     {
         // Capture dehydrated(false) fields from Livewire state before they're stripped
         $this->depositMethod        = $this->data['initial_payment_method'] ?? 'CASH';
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
+        // 🚀 THE FIX: We MUST unset any field that exists in the Form but NOT in the Database!
+        // This prevents the "Unknown Column" SQL crash.
         unset(
             $data['initial_payment_method'],
             $data['is_split_deposit'],
-            $data['split_deposit_payments']
+            $data['split_deposit_payments'],
+            $data['has_trade_in'],
+            $data['trade_in_value'],
+            $data['trade_in_description'],
+            $data['trade_in_receipt_no']
         );
 
         // Auto-calculate quoted_price and balance_due from items (with discount + tax)
@@ -34,16 +40,24 @@ class CreateCustomOrder extends CreateRecord
         if (!empty($items)) {
             $subtotal  = collect($items)->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
             $deposit   = (float)($data['amount_paid'] ?? 0);
+            
+            // Re-grab the trade in value from the raw data before we unset it
+            $tradeInDeduction = ($this->data['has_trade_in'] ?? 0) == 1 ? floatval($this->data['trade_in_value'] ?? 0) : 0;
+            
             $discPct   = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
             $discAmt   = floatval($data['discount_amount'] ?? ($subtotal * $discPct / 100));
             $discAmt   = min($subtotal, max(0, $discAmt));
-            $afterDisc = $subtotal - $discAmt;
+            
+            // The price after standard discounts, minus any trade-in value
+            $afterDisc = max(0, $subtotal - $discAmt - $tradeInDeduction);
+            
+            $warrantyCharge = ($data['has_warranty'] ?? 0) == 1 ? floatval($data['warranty_charge'] ?? 0) : 0;
 
             $isTaxFree = (bool)($data['is_tax_free'] ?? false);
             $dbTax     = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
             $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
-            $tax       = $afterDisc * $taxRate;
-            $total     = $afterDisc + $tax;
+            $tax       = ($afterDisc + $warrantyCharge) * $taxRate;
+            $total     = $afterDisc + $warrantyCharge + $tax;
 
             $data['quoted_price']    = round($subtotal, 2);
             $data['discount_amount'] = round($discAmt, 2);
