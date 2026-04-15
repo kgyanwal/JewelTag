@@ -84,7 +84,7 @@ class ProductItemResource extends Resource
 
         return $prefix . $nextNumber;
     }
-    public static function getPrefixForSubDepartment(?string $subDept): string
+   public static function getPrefixForSubDepartment(?string $subDept): string
     {
         // 1. Get the Default Prefix (Fallback)
         $defaultPrefix = \Illuminate\Support\Facades\DB::table('site_settings')
@@ -93,23 +93,25 @@ class ProductItemResource extends Resource
 
         if (!$subDept) return $defaultPrefix;
 
-        // 2. Check Settings Database (Client's custom mapping)
+        // 2. Check Settings Database safely
         $prefixesJson = \Illuminate\Support\Facades\DB::table('site_settings')
             ->where('key', 'sub_department_prefixes')
             ->value('value');
 
         if ($prefixesJson) {
-            $prefixes = json_decode($prefixesJson, true);
+            $prefixes = json_decode($prefixesJson, true) ?: [];
             foreach ($prefixes as $mapping) {
-                $settingDept = trim($mapping['sub_department'] ?? '');
-                // Fuzzy match (e.g. "Rings" contains "Ring")
-                if ($settingDept && stripos($subDept, $settingDept) !== false) {
-                    return strtoupper(trim($mapping['prefix']));
+                // 🚀 THE FIX: Ensure $mapping is an array before checking sub_department
+                if (is_array($mapping) && isset($mapping['sub_department'])) {
+                    $settingDept = trim($mapping['sub_department']);
+                    if ($settingDept && stripos($subDept, $settingDept) !== false) {
+                        return strtoupper(trim($mapping['prefix'] ?? $defaultPrefix));
+                    }
                 }
             }
         }
 
-        // 3. SMART FALLBACK (Works instantly even if Settings are empty)
+        // 3. SMART FALLBACK
         $lowerSub = strtolower(trim($subDept));
         if (str_contains($lowerSub, 'ring')) return 'R';
         if (str_contains($lowerSub, 'necklace')) return 'N';
@@ -732,17 +734,30 @@ Hidden::make('web_item')->default(false),
             ->defaultSort('created_at', 'desc');
     }
 
-    public static function runSmartPricing(Get $get, Forms\Set $set): void
+   public static function runSmartPricing(Get $get, Forms\Set $set): void
     {
         $cost = floatval($get('cost_price'));
         $dept = $get('department');
         if ($cost <= 0 || !$dept) return;
-        $data = collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->firstWhere('name', $dept);
+        
+        $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
+        $data = null;
+        
+        // 🚀 THE FIX: Safely loop through the array to prevent string offset crashes
+        foreach ($depts as $item) {
+            if (is_array($item) && isset($item['name']) && $item['name'] === $dept) {
+                $data = $item;
+                break;
+            }
+        }
+
         if ($data && isset($data['multiplier'])) {
             $calc = $cost * floatval($data['multiplier']);
             $set('retail_price', number_format($calc, 2, '.', ''));
             $set('web_price', number_format($calc, 2, '.', ''));
-            if (blank($get('custom_description'))) $set('custom_description', "{$dept} - " . ($get('metal_type') ?? 'Jewelry'));
+            if (blank($get('custom_description'))) {
+                $set('custom_description', "{$dept} - " . ($get('metal_type') ?? 'Jewelry'));
+            }
         }
     }
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder

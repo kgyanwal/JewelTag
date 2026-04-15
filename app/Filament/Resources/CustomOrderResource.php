@@ -819,17 +819,14 @@ class CustomOrderResource extends Resource
                     ->color('success')
                     ->grow(false),
 
-                Tables\Columns\TextColumn::make('total_paid')
+               Tables\Columns\TextColumn::make('amount_paid')
                     ->label('PAID')
-                    ->getStateUsing(function (CustomOrder $record) {
-                        $paidFromPayments = $record->payments()->sum('amount');
-                        return $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
-                    })
                     ->money('USD')
                     ->color('info')
+                    ->sortable()
                     ->grow(false),
 
-                // ── DISCOUNT COLUMN ──
+               // ── DISCOUNT COLUMN ──
                 Tables\Columns\TextColumn::make('discount_display')
                     ->label('DISC')
                     ->getStateUsing(function (CustomOrder $record) {
@@ -882,32 +879,14 @@ class CustomOrderResource extends Resource
                     ->html()
                     ->grow(false),
 
-                // ── BALANCE — correctly accounts for discount + warranty ──
-                Tables\Columns\TextColumn::make('computed_balance')
+                // ── BALANCE ── (Now pulling directly from the DB)
+                Tables\Columns\TextColumn::make('balance_due')
                     ->label('BALANCE')
-                    ->getStateUsing(function (CustomOrder $record) {
-                        $quoted    = floatval($record->quoted_price);
-                        $discAmt   = floatval($record->discount_amount ?? 0);
-                        $afterDisc = $quoted - $discAmt;
-                        $warranty  = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
-                        
-                        $isTaxFree = (bool)($record->is_tax_free);
-                        $dbTax     = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        
-                        $grandTotal = ($afterDisc + $warranty) + (($afterDisc + $warranty) * $taxRate);
-
-                        $paidFromPayments = $record->payments()->sum('amount');
-                        $totalPaid        = $paidFromPayments > 0 ? $paidFromPayments : floatval($record->amount_paid);
-
-                        return max(0, $grandTotal - $totalPaid);
-                    })
                     ->money('USD')
-                    ->sortable(false)
+                    ->sortable()
                     ->grow(false)
                     ->color(fn($state) => $state > 0 ? 'danger' : 'success')
                     ->weight('bold'),
-
                 Tables\Columns\SelectColumn::make('status')
                     ->label('STATUS')
                     ->options([
