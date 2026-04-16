@@ -411,7 +411,7 @@ class SaleResource extends Resource
                                                     foreach ($splits as $k => $v) {
                                                         if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
                                                     }
-                                                    $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
+                                                   $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit, 'payment_target' => 'custom'];
                                                     $set('split_payments', $cleanSplits);
                                                 }
 
@@ -632,7 +632,7 @@ class SaleResource extends Resource
 
                                                         if ($deposit > 0) {
                                                             data_set($livewire->data, 'is_split_payment', true);
-                                                            $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit];
+                                                            $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit, 'payment_target' => 'custom'];
                                                         }
 
                                                         data_set($livewire->data, 'split_payments', $cleanSplits);
@@ -1318,15 +1318,36 @@ class SaleResource extends Resource
                                     })
                                     ->columnSpanFull(),
 
-                                Select::make('payment_method')
-                                    ->label('Payment Method')
-                                    ->options(self::getPaymentOptions())
-                                    ->placeholder('Select Payment Method')
-                                    ->required(fn(Get $get) => !$get('is_split_payment'))
-                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                              Select::make('payment_method')
+    ->label('Payment Method')
+    ->options(self::getPaymentOptions())
+    ->placeholder('Select Payment Method')
+    ->required(fn(Get $get) => !$get('is_split_payment'))
+    ->visible(fn(Get $get) => !$get('is_split_payment'))
+    ->live()
+    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
+Select::make('payment_target')
+    ->label('Apply To')
+    ->options([
+        'regular' => 'Regular Sales',
+        'custom'  => 'Custom Deposit',
+    ])
+    ->default('regular')
+    ->required(function (Get $get) {
+        if ($get('is_split_payment')) return false;
+        $items = $get('items') ?? [];
+        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+            || request()->has('custom_order_id');
+    })
+    ->visible(function (Get $get) {
+        if ($get('is_split_payment')) return false;
+        $items = $get('items') ?? [];
+        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+            || request()->has('custom_order_id');
+    })
+    ->live()
+    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 TextInput::make('display_total_due')
                                     ->label('Total Amount to Collect')
                                     ->prefix('$')
@@ -1371,23 +1392,47 @@ class SaleResource extends Resource
                                     ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
 
                                 Repeater::make('split_payments')
-                                    ->label('Payment Breakdown')
-                                    ->schema([
-                                        Grid::make(2)->schema([
-                                            Select::make('method')->options(self::getPaymentOptions())->required()->label('Method'),
-                                            TextInput::make('amount')->numeric()->prefix('$')->required()->label('Amount')->live(onBlur: true),
-                                        ]),
-                                    ])
-                                    ->visible(fn(Get $get) => $get('is_split_payment'))
-                                    ->defaultItems(2)
-                                    ->maxItems(6)
-                                    ->addActionLabel('Add Another Payment Method')
-                                    ->reorderable(false)
-                                    ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
-                                        self::updateTotals($get, $set);
-                                        self::syncStatus($get, $set);
-                                    }),
+    ->label('Payment Breakdown')
+    ->schema([
+        Grid::make(3)->schema([ // Changed to 3 columns to fit the new dropdown
+            Select::make('method')
+                ->options(self::getPaymentOptions())
+                ->required()
+                ->label('Method'),
+            
+            TextInput::make('amount')
+                ->numeric()
+                ->prefix('$')
+                ->required()
+                ->label('Amount')
+                ->live(onBlur: true),
+                
+            Select::make('payment_target')
+                ->label('Apply To')
+                ->options([
+                    'regular' => 'Regular Sales',
+                    'custom' => 'Custom Deposit',
+                ])
+                ->default('regular')
+                ->visible(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                        || request()->has('custom_order_id');
+                })
+                ->live()
+                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+        ]),
+    ])
+    ->visible(fn(Get $get) => $get('is_split_payment'))
+    ->defaultItems(2)
+    ->maxItems(6)
+    ->addActionLabel('Add Another Payment Method')
+    ->reorderable(false)
+    ->live()
+    ->afterStateUpdated(function (Get $get, Set $set) {
+        self::updateTotals($get, $set);
+        self::syncStatus($get, $set);
+    }),
 
                                 Placeholder::make('split_calc')
                                     ->label('Remaining Balance')
@@ -1421,85 +1466,67 @@ class SaleResource extends Resource
                                 self::totalRow('TAX TOTAL', 'tax_amount'),
                                 self::totalRow('SUBTOTAL', 'subtotal'),
 
-                                Placeholder::make('balance_due_display')
-                                    ->label('INVOICE TOTALS')
-                                    ->content(function (Get $get) {
-                                        $total  = floatval($get('final_total') ?? 0);
-                                        $method = $get('payment_method') ?? '';
+                               Placeholder::make('balance_due_display')
+    ->label('INVOICE TOTALS')
+    ->content(function (Get $get) {
+        $total  = floatval($get('final_total') ?? 0);
+        
+        $isSplit = $get('is_split_payment');
+        $customPaid = 0;
+        $regularPaid = 0;
+        
+        if ($isSplit) {
+            $payments = $get('split_payments') ?? [];
+            foreach ($payments as $p) {
+                $amt = (float)($p['amount'] ?? 0);
+                if (($p['payment_target'] ?? 'regular') === 'custom') {
+                    $customPaid += $amt;
+                } else {
+                    $regularPaid += $amt;
+                }
+            }
+        } else {
+            $amt = floatval($get('amount_paid') ?? 0);
+            if (($get('payment_target') ?? 'regular') === 'custom') {
+                $customPaid += $amt;
+            } else {
+                $regularPaid += $amt;
+            }
+        }
+        
+        $totalPaid = $customPaid + $regularPaid;
+        $remaining = $total - $totalPaid;
 
-                                        $items                 = $get('items') ?? [];
-                                        $intendedCustomDeposit = 0;
-
-                                        foreach ($items as $item) {
-                                            if (!empty($item['is_new_custom_order'])) {
-                                                $customData = is_string($item['new_custom_data'])
-                                                    ? json_decode($item['new_custom_data'], true)
-                                                    : ($item['new_custom_data'] ?? []);
-                                                $intendedCustomDeposit += floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
-                                            } elseif (!empty($item['custom_order_id'])) {
-                                                $co = \App\Models\CustomOrder::find($item['custom_order_id']);
-                                                if ($co) {
-                                                    $intendedCustomDeposit += floatval($co->amount_paid);
-                                                }
-                                            }
-                                        }
-
-                                        $isSplit = $get('is_split_payment');
-                                        $paidSum = $isSplit
-                                            ? collect($get('split_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
-                                            : floatval($get('amount_paid') ?? 0);
-
-                                        $actualCustomDeposit  = min($intendedCustomDeposit, $paidSum);
-                                        $regularPaymentAmount = $paidSum - $actualCustomDeposit;
-                                        $remaining            = $total - $paidSum;
-
-                                        $renderBreakdown = function () use ($total, $actualCustomDeposit, $regularPaymentAmount) {
-                                            $html = "
-            <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
-                <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
-                <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
-            </div>";
-                                            $html .= "
+        $html = "
+        <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
+            <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
+            <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
+        </div>";
+        
+        if ($customPaid > 0) {
+            $html .= "
             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
-                <span style='font-size: 0.875rem; font-weight: bold; color: " . ($actualCustomDeposit > 0 ? '#10b981' : '#9ca3af') . ";'>+$" . number_format($actualCustomDeposit, 2) . "</span>
+                <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($customPaid, 2) . "</span>
             </div>";
-                                            if ($regularPaymentAmount > 0) {
-                                                $html .= "
-                                            <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
-                                                <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
-                                                <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($regularPaymentAmount, 2) . "</span>
-                                            </div>";
-                                            }
-                                            return $html;
-                                        };
+        }
+        
+        if ($regularPaid > 0) {
+            $html .= "
+            <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
+                <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
+                <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($regularPaid, 2) . "</span>
+            </div>";
+        }
 
-                                        if (!$isSplit) {
-                                            $tendered = floatval($get('amount_paid') ?? 0);
+        if (round($remaining, 2) <= 0) {
+            $overpaid = abs($remaining);
+            return new HtmlString($html . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
+        }
 
-                                            if (round($total, 2) <= 0 || ($tendered > 0 && round($tendered, 2) >= round($total, 2))) {
-                                                return new HtmlString($renderBreakdown() . "<div style='background:#ecfdf5; border:1px solid #10b981; padding:10px; border-radius:8px; text-align:right;'><span style='color:#10b981; font-weight:900; font-size:1.875rem;'>$0.00</span><div style='color:#047857; font-size:0.75rem; font-weight:700; margin-top:4px;'>✅ FULLY PAID</div></div>");
-                                            }
-
-                                            if ($tendered > 0 && $tendered < $total) {
-                                                return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>⚠️ Still owed — collect before completing</div></div>");
-                                            }
-
-                                            if (!empty($method)) {
-                                                return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Enter Amount Received above</div></div>");
-                                            }
-
-                                            return new HtmlString($renderBreakdown() . "<div style='text-align:right;'><span style='color:#dc2626; font-weight:700; font-size:1.875rem;'>\$" . number_format($total, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; margin-top:4px;'>Select a payment method</div></div>");
-                                        }
-
-                                        if (round($remaining, 2) <= 0) {
-                                            $overpaid = abs($remaining);
-                                            return new HtmlString($renderBreakdown() . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
-                                        }
-
-                                        return new HtmlString($renderBreakdown() . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
-                                    })
-                                    ->live(),
+        return new HtmlString($html . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
+    })
+    ->live(),
                             ]),
                         ]),
                 ]),
@@ -1821,86 +1848,88 @@ class SaleResource extends Resource
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
 
-    public static function updateTotals(callable|Get $get, callable|Set $set): void
-    {
-        $items           = $get('items') ?? [];
-        $shipping        = floatval($get('shipping_charges') ?? 0);
-        $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
-        $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+  public static function updateTotals(callable|Get $get, callable|Set $set): void
+{
+    $items           = $get('items') ?? [];
+    $shipping        = floatval($get('shipping_charges') ?? 0);
+    $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
+    $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
-        $itemsSubtotal = 0;
-        $taxableBasis  = 0;
+    $itemsSubtotal = 0;
+    $taxableBasis  = 0;
 
-        foreach ($items as $item) {
-            $qty = intval($item['qty'] ?? 1);
-            if (!empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0) {
-                $rowTotal = floatval($item['sale_price_override']);
-            } else {
-                $price    = floatval($item['sold_price'] ?? 0);
-                $discount = floatval($item['discount_amount'] ?? 0);
-                $rowTotal = ($price * $qty) - $discount;
-            }
-
-            $itemsSubtotal += $rowTotal;
-
-            if (!($item['is_tax_free'] ?? false)) {
-                $taxableBasis += $rowTotal;
-            }
-        }
-
-        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = floatval($dbTax) / 100;
-
-        if ($isShippingTaxed) $taxableBasis += $shipping;
-
-        $totalTax       = $taxableBasis * $taxRate;
-        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
-
-        $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
-
-        $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
-        $set('tax_amount',  number_format($totalTax,      2, '.', ''));
-        $set('final_total', number_format($grandTotal,    2, '.', ''));
-
-        $isSplit = $get('is_split_payment');
-
-        if ($isSplit) {
-            $payments   = $get('split_payments') ?? [];
-            $amountPaid = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+    foreach ($items as $item) {
+        $qty = intval($item['qty'] ?? 1);
+        if (!empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0) {
+            $rowTotal = floatval($item['sale_price_override']);
         } else {
-            $amountPaid = floatval($get('amount_paid') ?? 0);
+            $price    = floatval($item['sold_price'] ?? 0);
+            $discount = floatval($item['discount_amount'] ?? 0);
+            $rowTotal = ($price * $qty) - $discount;
         }
 
-        $changeGiven = max(0, $amountPaid - $grandTotal);
-        $balanceDue  = max(0, $grandTotal - $amountPaid);
+        $itemsSubtotal += $rowTotal;
 
-        $set('change_given',      number_format($changeGiven, 2, '.', ''));
-        $set('balance_due',       number_format($balanceDue,  2, '.', ''));
-        $set('display_total_due', number_format($grandTotal,  2, '.', ''));
-
-        self::syncStatus($get, $set);
+        if (!($item['is_tax_free'] ?? false)) {
+            $taxableBasis += $rowTotal;
+        }
     }
 
-    public static function syncStatus(callable|Get $get, callable|Set $set): void
-    {
-        $total   = floatval($get('final_total') ?? 0);
-        $isSplit = $get('is_split_payment');
+    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = floatval($dbTax) / 100;
 
-        if ($isSplit) {
-            $payments  = $get('split_payments') ?? [];
-            $paidSum   = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-            $fullyPaid = round($paidSum, 2) >= round($total, 2);
-        } else {
-            $tendered = floatval($get('amount_paid') ?? 0);
-            if (round($total, 2) <= 0) {
-                $fullyPaid = true;
-            } else {
-                $fullyPaid = $tendered > 0 && round($tendered, 2) >= round($total, 2);
-            }
-        }
+    if ($isShippingTaxed) $taxableBasis += $shipping;
 
-        $set('status', $fullyPaid ? 'completed' : 'pending');
+    $totalTax       = $taxableBasis * $taxRate;
+    $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+
+    $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
+
+    $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
+    $set('tax_amount',  number_format($totalTax,      2, '.', ''));
+    $set('final_total', number_format($grandTotal,    2, '.', ''));
+
+    // Tally all payments directly from the main block
+    $isSplit = $get('is_split_payment');
+    if ($isSplit) {
+        $payments   = $get('split_payments') ?? [];
+        $totalCollected = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+    } else {
+        $totalCollected = floatval($get('amount_paid') ?? 0);
     }
+
+    $changeGiven = max(0, $totalCollected - $grandTotal);
+    $balanceDue  = max(0, $grandTotal - $totalCollected);
+
+    $set('change_given',      number_format($changeGiven, 2, '.', ''));
+    $set('balance_due',       number_format($balanceDue,  2, '.', ''));
+    $set('display_total_due', number_format($grandTotal,  2, '.', ''));
+
+    self::syncStatus($get, $set, $totalCollected);
+}
+
+public static function syncStatus(callable|Get $get, callable|Set $set, $totalCollected = null): void
+{
+    $total = floatval($get('final_total') ?? 0);
+
+    if ($totalCollected === null) {
+        $isSplit = $get('is_split_payment');
+        if ($isSplit) {
+            $payments = $get('split_payments') ?? [];
+            $totalCollected = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        } else {
+            $totalCollected = floatval($get('amount_paid') ?? 0);
+        }
+    }
+
+    if (round($total, 2) <= 0) {
+        $fullyPaid = true;
+    } else {
+        $fullyPaid = $totalCollected > 0 && round($totalCollected, 2) >= round($total, 2);
+    }
+
+    $set('status', $fullyPaid ? 'completed' : 'pending');
+}
 
     public static function getPaymentOptions(): array
     {

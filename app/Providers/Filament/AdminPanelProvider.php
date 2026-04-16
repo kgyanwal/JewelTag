@@ -349,6 +349,8 @@ HTML
                 \App\Filament\Pages\SoldStockReport::class,
                  \App\Filament\Pages\DepositSalesReport::class,
                  \App\Filament\Pages\NonStockReport::class,
+                 \App\Filament\Pages\StockListingReport::class,
+                  \App\Filament\Pages\ManageApiKeys::class,
                  
             ])
             ->widgets([

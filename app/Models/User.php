@@ -10,10 +10,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements FilamentUser
 {
-    use HasFactory, Notifiable, SoftDeletes, HasRoles, TwoFactorAuthenticatable {
+    use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens,TwoFactorAuthenticatable {
         hasPermissionTo as protected traitHasPermissionTo;
     }
 

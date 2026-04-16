@@ -18,14 +18,11 @@
         $storeAddr = trim(($store?->street ?? '') . ', ' . ($store?->state ?? '') . ' ' . ($store?->postcode ?? ''));
 
         // ── ORDER NUMBER fallback ──────────────────────────────────────
-        // order_no may be null on older records — fallback to ID
         $orderNo = $order->order_no ?? ('CO-' . str_pad($order->id, 5, '0', STR_PAD_LEFT));
 
         // ── PAYMENT DATA ───────────────────────────────────────────────
-        // Merge payments table rows + amount_paid fallback
         $paymentRows = $order->payments->sortBy('paid_at');
 
-        // If no payment records in payments table, synthesize one from amount_paid
         if ($paymentRows->isEmpty() && floatval($order->amount_paid) > 0) {
             $paymentRows = collect([[
                 'amount'     => floatval($order->amount_paid),
@@ -38,16 +35,21 @@
         $totalPaid = $paymentRows->sum('amount');
 
         // ── TOTALS ─────────────────────────────────────────────────────
-        $isTaxFree  = (bool)($order->is_tax_free ?? false);
-        $dbTax      = floatval($settings['tax_rate'] ?? 7.63);
-        $taxRate    = $isTaxFree ? 0 : $dbTax / 100;
-      $discountPct  = floatval($order->discount_percent ?? 0);
-$discountAmt  = floatval($order->discount_amount ?? ($order->quoted_price * $discountPct / 100));
-$afterDiscount = floatval($order->quoted_price) - $discountAmt;
-$tax          = $afterDiscount * $taxRate;
-$grandTotal   = $afterDiscount + $tax;
-        $balance    = max(0, $grandTotal - $totalPaid);
-        $isFullyPaid= $balance <= 0.01;
+        $isTaxFree      = (bool)($order->is_tax_free ?? false);
+        $dbTax          = floatval($settings['tax_rate'] ?? 7.63);
+        $taxRate        = $isTaxFree ? 0 : $dbTax / 100;
+        $discountPct    = floatval($order->discount_percent ?? 0);
+        $discountAmt    = floatval($order->discount_amount ?? ($order->quoted_price * $discountPct / 100));
+        $afterDiscount  = floatval($order->quoted_price) - $discountAmt;
+        
+        $hasWarranty    = (bool)($order->has_warranty ?? false);
+        $warrantyCharge = $hasWarranty ? floatval($order->warranty_charge ?? 0) : 0;
+        
+        $tax            = ($afterDiscount + $warrantyCharge) * $taxRate;
+        $grandTotal     = $afterDiscount + $warrantyCharge + $tax;
+        
+        $balance        = max(0, $grandTotal - $totalPaid);
+        $isFullyPaid    = $balance <= 0.01;
 
         // ── ASSOCIATE ──────────────────────────────────────────────────
         $associateName = $order->staff?->name ?? 'Staff';
@@ -70,7 +72,6 @@ $grandTotal   = $afterDiscount + $tax;
 </head>
 <body>
 
-{{-- PRINT BUTTON --}}
 @if(!isset($is_pdf))
 <div class="no-print" style="max-width:850px;margin:0 auto 15px;text-align:right;">
     <button onclick="window.print()" style="background:{{ $color }};color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
@@ -81,12 +82,10 @@ $grandTotal   = $afterDiscount + $tax;
 
 <div class="card" style="max-width:850px;margin:0 auto;padding:30px;background:#fff;border-radius:10px;box-shadow:0 5px 20px rgba(0,0,0,.1);border-top:6px solid {{ $color }};">
 
-    {{-- TYPE BADGE --}}
     <div style="margin:0 0 15px;padding:8px;border-radius:4px;font-weight:700;text-transform:uppercase;text-align:center;letter-spacing:1px;background:{{ $bgLight }};color:{{ $color }};border:1px solid {{ $color }};font-size:11px;">
         <i class="fas fa-palette"></i> CUSTOM ORDER — DEPOSIT RECEIPT
     </div>
 
-    {{-- STATUS BANNER --}}
     @if($isFullyPaid)
     <div style="margin-bottom:15px;padding:10px 15px;border-radius:6px;background:#ecfdf5;border:1px solid #10b981;border-left:4px solid #10b981;display:flex;align-items:center;gap:10px;">
         <i class="fas fa-check-circle" style="color:#10b981;font-size:16px;"></i>
@@ -114,7 +113,6 @@ $grandTotal   = $afterDiscount + $tax;
     </div>
     @endif
 
-    {{-- HEADER --}}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:25px;border-bottom:2px solid #e0e7ee;padding-bottom:20px;">
         <tr>
             <td width="60%" valign="top">
@@ -145,10 +143,8 @@ $grandTotal   = $afterDiscount + $tax;
         </tr>
     </table>
 
-    {{-- CUSTOMER + PAYMENT SUMMARY --}}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
         <tr>
-            {{-- Customer Info --}}
             <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $color }};">
                 <div style="font-size:9px;color:{{ $color }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">
                     <i class="fas fa-user-circle"></i> Customer Information
@@ -171,13 +167,11 @@ $grandTotal   = $afterDiscount + $tax;
 
             <td width="4%"></td>
 
-            {{-- Payment Summary --}}
             <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $color }};">
                 <div style="font-size:9px;color:{{ $color }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">
                     <i class="fas fa-credit-card"></i> Payment Summary
                 </div>
                 <table width="100%" cellpadding="0" cellspacing="0" style="font-size:10px;line-height:1.7;">
-                    {{-- Payment breakdown by method --}}
                     @foreach($paymentRows->groupBy('method') as $method => $methodPayments)
                     <tr>
                         <td style="color:#546e7a;">{{ strtoupper($method) }}:</td>
@@ -209,7 +203,6 @@ $grandTotal   = $afterDiscount + $tax;
         </tr>
     </table>
 
-    {{-- ORDER ITEMS --}}
     <div style="font-size:13px;font-weight:700;color:{{ $color }};margin-bottom:10px;">
         <i class="fas fa-palette"></i> Custom Order Items
     </div>
@@ -263,7 +256,6 @@ $grandTotal   = $afterDiscount + $tax;
                 </tr>
                 @endforeach
             @else
-            {{-- Fallback to legacy single-item fields --}}
             <tr>
                 <td style="padding:10px 8px;border-bottom:1px solid #f0e8f8;vertical-align:top;">
                     <span style="background:#f0e8f8;color:{{ $color }};padding:3px 6px;border-radius:3px;font-family:monospace;font-size:9px;border:1px dashed #d4b3e6;font-weight:700;display:inline-block;">
@@ -290,8 +282,6 @@ $grandTotal   = $afterDiscount + $tax;
         </tbody>
     </table>
 
-    {{-- PAYMENT HISTORY LOG ─────────────────────────────────────────── --}}
-    {{-- Shows every payment with date, method, amount, running balance --}}
     @if($paymentRows->count() > 0)
     <div style="font-size:13px;font-weight:700;color:{{ $color }};margin-bottom:10px;">
         <i class="fas fa-history"></i> Payment History
@@ -344,7 +334,6 @@ $grandTotal   = $afterDiscount + $tax;
                 </td>
             </tr>
             @endforeach
-            {{-- SUMMARY ROW --}}
             <tr style="background:#f9f5fc;">
                 <td colspan="3" style="padding:8px;font-weight:700;font-size:10px;color:{{ $color }};text-transform:uppercase;letter-spacing:.5px;">
                     Total Payments Made
@@ -360,12 +349,9 @@ $grandTotal   = $afterDiscount + $tax;
     </table>
     @endif
 
-    {{-- TOTALS + TERMS --}}
     <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td width="52%" valign="top" style="padding-right:20px;">
-
-                {{-- Delivery info --}}
                 @if($order->due_date || $order->expected_delivery_date)
                 <div style="margin-bottom:15px;background:#fffbeb;border:1px solid #fef3c7;border-radius:6px;padding:12px;border-left:5px solid #f59e0b;">
                     <div style="color:#92400e;font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:6px;">
@@ -384,7 +370,6 @@ $grandTotal   = $afterDiscount + $tax;
                 </div>
                 @endif
 
-                {{-- Terms --}}
                 <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #e0e7ee;margin-bottom:15px;">
                     <div style="color:{{ $color }};font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:5px;letter-spacing:.5px;">
                         <i class="fas fa-file-contract"></i> TERMS & CONDITIONS
@@ -394,7 +379,6 @@ $grandTotal   = $afterDiscount + $tax;
                     </p>
                 </div>
 
-                {{-- Signature line --}}
                 <div style="margin-top:30px;">
                     <div style="border-top:1px solid #2c3e50;width:200px;padding-top:5px;font-size:8px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">
                         Customer Signature
@@ -406,40 +390,48 @@ $grandTotal   = $afterDiscount + $tax;
             </td>
 
             <td width="48%" valign="top">
-                {{-- TOTALS BOX --}}
                 <div style="background:{{ $color }};border-radius:6px;padding:15px;color:white;">
                     <table width="100%" cellpadding="0" cellspacing="0" style="color:white;font-size:11px;">
-                      <tr>
-    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">Quoted Price</td>
-    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($order->quoted_price, 2) }}</td>
-</tr>
-@if($discountAmt > 0)
-<tr>
-    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
-        Discount ({{ number_format($discountPct, 2) }}%)
-    </td>
-    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
-        -${{ number_format($discountAmt, 2) }}
-    </td>
-</tr>
-<tr>
-    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">After Discount</td>
-    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($afterDiscount, 2) }}</td>
-</tr>
-@endif
-<tr>
-    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">
-        Tax ({{ $isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%' }})
-    </td>
-    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($tax, 2) }}</td>
-</tr>
+                        <tr>
+                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">Quoted Price</td>
+                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($order->quoted_price, 2) }}</td>
+                        </tr>
+                        @if($discountAmt > 0)
+                        <tr>
+                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
+                                Discount ({{ number_format($discountPct, 2) }}%)
+                            </td>
+                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
+                                -${{ number_format($discountAmt, 2) }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">After Discount</td>
+                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($afterDiscount, 2) }}</td>
+                        </tr>
+                        @endif
+                        @if($hasWarranty && $warrantyCharge > 0)
+                        <tr>
+                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#93c5fd;">
+                                Warranty ({{ $order->warranty_period }})
+                            </td>
+                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#93c5fd;">
+                                ${{ number_format($warrantyCharge, 2) }}
+                            </td>
+                        </tr>
+                        @endif
+                        <tr>
+                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">
+                                Tax ({{ $isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%' }})
+                            </td>
+                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($tax, 2) }}</td>
+                        </tr>
                         <tr>
                             <td style="padding:10px 0 5px;font-size:15px;font-weight:700;border-bottom:1px dashed rgba(255,255,255,.2);">TOTAL</td>
                             <td align="right" style="padding:10px 0 5px;font-size:15px;font-weight:700;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($grandTotal, 2) }}</td>
                         </tr>
                     </table>
 
-                    {{-- Deposit summary --}}
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background:rgba(0,0,0,.2);border-radius:4px;">
                         <tr>
                             <td style="padding:8px;font-weight:600;font-size:11px;">DEPOSIT PAID</td>
@@ -459,7 +451,7 @@ $grandTotal   = $afterDiscount + $tax;
         </tr>
     </table>
 
-</div>{{-- end .card --}}
+</div>
 
 @if(!isset($is_pdf))
 <script>

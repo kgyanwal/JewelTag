@@ -20,13 +20,15 @@
     }
     $isSpecialJob = !empty($specialJobs);
 
-    foreach($sale->items as $item) {
-    if($item->discount_percent > 0) {
-    $originalPrice = $item->sold_price > 0 ? $item->sold_price / (1 - ($item->discount_percent / 100)) : 0;
-    $totalSavings += ($originalPrice - $item->sold_price) * $item->qty;
-    }
-    if($item->repair_id || $item->repair) $hasRepair = true;
-    if($item->custom_order_id || $item->customOrder) $hasCustom = true;
+ foreach($sale->items as $item) {
+        // 🚀 THE FIX: Simply add the pre-calculated discount amount from the database.
+        // This ensures both % discounts and flat $ discounts are perfectly synchronized.
+        if($item->discount_amount > 0) {
+            $totalSavings += floatval($item->discount_amount);
+        }
+        
+        if($item->repair_id || $item->repair) $hasRepair = true;
+        if($item->custom_order_id || $item->customOrder) $hasCustom = true;
     }
 
     if ($hasRepair) {

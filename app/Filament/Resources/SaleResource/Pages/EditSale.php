@@ -34,7 +34,7 @@ class EditSale extends EditRecord
     {
         $user = Staff::user();
 
-        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
+        if ($user?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])) return true;
 
         $sale = $this->record;
 
@@ -84,7 +84,7 @@ class EditSale extends EditRecord
                 ->icon('heroicon-o-check')
                 ->visible(fn() =>
                     $this->record->status !== 'completed' &&
-                    Staff::user()?->hasAnyRole(['Superadmin', 'Administration'])
+                    Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                 )
                 ->requiresConfirmation()
                 ->action(function () {
@@ -109,53 +109,77 @@ class EditSale extends EditRecord
         ];
     }
 
-   protected function mutateFormDataBeforeFill(array $data): array
-{
-    $record    = $this->record;
-    $totalPaid = $record->payments->sum('amount');
-
-    if ($record->is_split_payment) {
-        $data['amount_paid'] = $totalPaid > 0 ? $totalPaid : $record->final_total;
-    } else {
-        if (floatval($record->amount_paid) > 0) {
-            $data['amount_paid'] = $record->amount_paid;
-        } elseif ($totalPaid > 0) {
-            $data['amount_paid'] = $totalPaid;
+protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $record = $this->record;
+        
+        // Grab POS payments (those created exactly with the sale, ignoring prior custom order deposits)
+        $posPayments = $record->payments()->where('paid_at', '>=', $record->created_at)->get();
+        
+        // ── Hydrate the "payment_target" dropdowns for the UI ────────────
+        if ($record->is_split_payment || $posPayments->count() > 1) {
+            $data['is_split_payment'] = true;
+            $data['split_payments'] = $posPayments->map(function ($p) {
+                return [
+                    'method'         => $p->method,
+                    'amount'         => $p->amount,
+                    'payment_target' => $p->custom_order_id ? 'custom' : 'regular',
+                ];
+            })->toArray();
         } else {
-            $data['amount_paid'] = $record->final_total;
+            $data['is_split_payment'] = false;
+            $first = $posPayments->first();
+            $data['amount_paid']    = $first?->amount ?? floatval($record->amount_paid);
+            $data['payment_method'] = $first?->method ?? ($record->payment_method ?: 'CASH');
+            $data['payment_target'] = ($first && $first->custom_order_id) ? 'custom' : 'regular';
         }
-    }
 
-    // ── FIX: Hydrate custom order data into repeater items ────────────
-    $record->loadMissing('items.customOrder');
+        // ── FIX: Hydrate ALL items data into repeater items ────────────
+        $record->loadMissing(['items.customOrder', 'items.productItem', 'items.repair']);
 
-    if (isset($data['items']) && is_array($data['items'])) {
-        foreach ($data['items'] as $key => $item) {
-            $customOrderId = $item['custom_order_id'] ?? null;
-
-            if ($customOrderId) {
-                $customOrder = \App\Models\CustomOrder::find($customOrderId);
-                if ($customOrder) {
-                    // Rebuild the new_custom_data JSON so the repeater
-                    // knows this is a custom order item and shows it correctly
-                    $data['items'][$key]['is_new_custom_order']  = false; // it's existing, not new
-                    $data['items'][$key]['stock_no_display']     = 'CUSTOM #' . $customOrder->order_no;
-                    $data['items'][$key]['custom_description']   = $item['custom_description']
-                        ?? "CUSTOM Order: {$customOrder->product_name}\nMetal: {$customOrder->metal_type}";
-                    $data['items'][$key]['sold_price']           = $customOrder->quoted_price;
-                    $data['items'][$key]['sale_price_override']  = $customOrder->quoted_price;
-                    $data['items'][$key]['qty']                  = 1;
-                    $data['items'][$key]['is_tax_free']          = (bool) $customOrder->is_tax_free;
-                    $data['items'][$key]['discount_percent']     = 0;
-                    $data['items'][$key]['discount_amount']      = 0;
+        if (isset($data['items']) && is_array($data['items'])) {
+            foreach ($data['items'] as $key => $item) {
+                
+                // 1. Handle Custom Orders
+                if (!empty($item['custom_order_id'])) {
+                    $customOrder = \App\Models\CustomOrder::find($item['custom_order_id']);
+                    if ($customOrder) {
+                        $data['items'][$key]['is_new_custom_order']  = false; 
+                        $data['items'][$key]['stock_no_display']     = 'CUSTOM #' . $customOrder->order_no;
+                        $data['items'][$key]['custom_description']   = $item['custom_description'] ?? "CUSTOM Order: {$customOrder->product_name}\nMetal: {$customOrder->metal_type}";
+                        $data['items'][$key]['sold_price']           = $customOrder->quoted_price;
+                        $data['items'][$key]['sale_price_override']  = $item['sale_price_override'] ?? $customOrder->quoted_price;
+                        $data['items'][$key]['qty']                  = 1;
+                        $data['items'][$key]['is_tax_free']          = (bool) $customOrder->is_tax_free;
+                    }
+                } 
+                // 2. Handle Normal Inventory Items
+                elseif (!empty($item['product_item_id'])) {
+                    $productItem = \App\Models\ProductItem::find($item['product_item_id']);
+                    if ($productItem) {
+                        $data['items'][$key]['stock_no_display']    = $productItem->barcode;
+                        $data['items'][$key]['custom_description']  = $item['custom_description'] ?? $productItem->custom_description ?? $productItem->barcode;
+                        $data['items'][$key]['sold_price']          = $item['sold_price'] ?? $productItem->retail_price;
+                        $data['items'][$key]['sale_price_override'] = $item['sale_price_override'] ?? ($productItem->retail_price * ($item['qty'] ?? 1));
+                    }
+                }
+                // 3. Handle Repair Items
+                elseif (!empty($item['repair_id'])) {
+                    $repair = \App\Models\Repair::find($item['repair_id']);
+                    if ($repair) {
+                        $data['items'][$key]['stock_no_display']    = 'REPAIR #' . $repair->repair_no;
+                        $data['items'][$key]['custom_description']  = $item['custom_description'] ?? 'Repair Service';
+                    }
+                }
+                // 4. Handle Non-Tag Items
+                else {
+                     $data['items'][$key]['stock_no_display'] = 'NON-TAG';
                 }
             }
         }
+
+        return $data;
     }
-
-    return $data;
-}
-
     protected function mutateFormDataBeforeSave(array $data): array
     {
         if (!$this->canEditFreely()) {
@@ -163,17 +187,18 @@ class EditSale extends EditRecord
             $this->halt();
         }
 
-        $record      = $this->record;
-        $alreadyPaid = $record->payments()->sum('amount');
+        $record = $this->record;
 
-        if ($record->is_split_payment) {
-            $splits      = $data['split_payments'] ?? [];
-            $newIntended = collect($splits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        if (!empty($data['is_split_payment'])) {
+            $newIntended = collect($data['split_payments'] ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0));
         } else {
             $newIntended = floatval($data['amount_paid'] ?? 0);
         }
 
-        $totalPaid  = max($alreadyPaid, $newIntended);
+        // Add any deposits made BEFORE the sale was created
+        $priorDeposits = $record->payments()->where('paid_at', '<', $record->created_at)->sum('amount');
+        $totalPaid     = round($priorDeposits + $newIntended, 2);
+        
         $finalTotal = floatval($record->final_total);
         $balance    = round($finalTotal - $totalPaid, 2);
 
@@ -183,26 +208,8 @@ class EditSale extends EditRecord
             if (!$record->completed_at) $data['completed_at'] = now();
         } else {
             $data['status']       = 'pending';
-            $data['balance_due']  = $balance;
+            $data['balance_due']  = max(0, $balance);
             $data['completed_at'] = null;
-        }
-
-        if ($record->status === 'completed') {
-            \App\Models\ActivityLog::create([
-                'user_id'    => auth()->id(),
-                'action'     => 'Updated',
-                'module'     => 'Sale',
-                'identifier' => $record->invoice_number,
-                'changes'    => json_encode([
-                    'note'        => 'Completed sale was edited',
-                    'edited_by'   => auth()->user()->name,
-                    'ip'          => request()->ip(),
-                    'final_total' => $record->final_total,
-                    'status'      => $record->status,
-                ]),
-                'url'        => '/' . request()->path(),
-                'ip_address' => request()->ip(),
-            ]);
         }
 
         return $data;
@@ -214,76 +221,61 @@ class EditSale extends EditRecord
 
         DB::transaction(function () use ($sale) {
             $sale->load('items');
+            $data = $this->form->getState();
 
-            if ($sale->is_split_payment) {
-                $splits = is_string($sale->split_payments)
-                    ? json_decode($sale->split_payments, true)
-                    : $sale->split_payments;
+            // Find linked custom order
+            $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
+            $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
-                if (!is_array($splits) || empty($splits)) return;
+            // 1. Wipe current POS payments only (keep prior deposits safe)
+            $sale->payments()->where('paid_at', '>=', $sale->created_at)->delete();
 
-                $intendedByMethod = collect($splits)
-                    ->groupBy(fn($s) => strtoupper(trim($s['method'])))
-                    ->map(fn($g) => round($g->sum(fn($s) => (float) $s['amount']), 2));
+            // 2. Re-create payments with correct targets
+            $newPosTotalPaid = 0;
+            $payments = !empty($data['is_split_payment']) 
+                ? ($data['split_payments'] ?? []) 
+                : [['amount' => $data['amount_paid'], 'method' => $data['payment_method'], 'payment_target' => $data['payment_target'] ?? 'regular']];
 
-                $paidByMethod = $sale->payments()->get()
-                    ->groupBy(fn($p) => strtoupper(trim($p->method)))
-                    ->map(fn($g) => round($g->sum('amount'), 2));
+            foreach ($payments as $p) {
+                $amt = floatval($p['amount'] ?? 0);
+                if ($amt <= 0) continue;
 
-                $anyChange = false;
+                $target = $p['payment_target'] ?? 'regular';
+                $isCustom = ($target === 'custom' && $customOrder);
 
-                foreach ($intendedByMethod as $method => $intendedAmount) {
-                    $alreadyPaid = $paidByMethod[$method] ?? 0;
-                    $methodDelta = round($intendedAmount - $alreadyPaid, 2);
-
-                    if ($methodDelta > 0) {
-                        Payment::create(['sale_id' => $sale->id, 'amount' => $methodDelta, 'method' => $method, 'paid_at' => now()]);
-                        $anyChange = true;
-                    } elseif ($methodDelta < 0) {
-                        $latest = $sale->payments()->whereRaw('UPPER(TRIM(method)) = ?', [$method])->latest()->first();
-                        if ($latest) {
-                            $corrected = round($latest->amount + $methodDelta, 2);
-                            $corrected <= 0 ? $latest->delete() : $latest->update(['amount' => $corrected]);
-                            $anyChange = true;
-                        }
-                    }
-                }
-
-                $totalIntended = round($intendedByMethod->sum(), 2);
-                $sale->update(['amount_paid' => $totalIntended]);
-                Notification::make()->title($anyChange ? 'Payments Updated' : 'Sale Updated')
-                    ->body($anyChange ? 'Split synced: $' . number_format($totalIntended, 2) : 'No payment changes.')
-                    ->success()->send();
-
-            } else {
-                $alreadyPaidTotal = $sale->payments()->sum('amount');
-                $amountPaid       = floatval($sale->amount_paid ?? 0);
-                $newIntendedTotal = min($amountPaid > 0 ? $amountPaid : (float)$sale->final_total, (float)$sale->final_total);
-                $delta            = round($newIntendedTotal - $alreadyPaidTotal, 2);
-                $currentMethod    = strtoupper(trim($sale->payment_method ?? 'CASH'));
-
-                if ($delta > 0) {
-                    Payment::create(['sale_id' => $sale->id, 'amount' => $delta, 'method' => $currentMethod, 'paid_at' => now()]);
-                    $sale->update(['amount_paid' => round($alreadyPaidTotal + $delta, 2)]);
-                    Notification::make()->title('New Payment Recorded')->body('$' . number_format($delta, 2) . ' added.')->success()->send();
-                } elseif ($delta < 0) {
-                    $latest = $sale->payments()->latest()->first();
-                    if ($latest) {
-                        $corrected = round($latest->amount + $delta, 2);
-                        $corrected <= 0 ? $latest->delete() : $latest->update(['amount' => $corrected]);
-                        $sale->update(['amount_paid' => round($newIntendedTotal, 2)]);
-                        Notification::make()->title('Payment Adjusted')->body('Corrected by $' . number_format(abs($delta), 2))->warning()->send();
-                    }
-                } else {
-                    $latest = $sale->payments()->latest()->first();
-                    if ($latest && strtoupper(trim($latest->method)) !== $currentMethod) {
-                        $latest->update(['method' => $currentMethod]);
-                        Notification::make()->title('Payment Method Updated')->info()->send();
-                    } else {
-                        Notification::make()->title('Sale Updated')->body('No payment changes.')->info()->send();
-                    }
-                }
+                Payment::create([
+                    'sale_id'         => $sale->id,
+                    'custom_order_id' => $isCustom ? $customOrder->id : null,
+                    'amount'          => $amt,
+                    'method'          => strtoupper(trim($p['method'] ?? 'CASH')),
+                    'paid_at'         => $sale->created_at,
+                    'store_id'        => $sale->store_id,
+                ]);
+                $newPosTotalPaid += $amt;
             }
+
+            // 3. Recalculate Custom Order totals if applicable
+            if ($customOrder) {
+                $allCustomPaid = Payment::where('custom_order_id', $customOrder->id)->sum('amount');
+                $dbTax         = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                $taxRate       = $customOrder->is_tax_free ? 0 : floatval($dbTax) / 100;
+                $orderTotal    = floatval($customOrder->quoted_price) * (1 + $taxRate);
+
+                $customOrder->update([
+                    'amount_paid' => round($allCustomPaid, 2),
+                    'balance_due' => round(max(0, $orderTotal - $allCustomPaid), 2),
+                ]);
+            }
+
+            // 4. Update the umbrella Sale record
+            $finalTotalPaid = $sale->payments()->sum('amount');
+            $sale->update(['amount_paid' => $finalTotalPaid]);
+
+            Notification::make()
+                ->title('Sale Payments Updated')
+                ->body('Ledger has been synced successfully.')
+                ->success()
+                ->send();
         });
     }
 

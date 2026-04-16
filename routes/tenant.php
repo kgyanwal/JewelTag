@@ -74,4 +74,8 @@ Route::get('/laybuys/{laybuy}/print', [ReceiptController::class, 'printLaybuy'])
 
     Route::post('/inventory/complete/{id}', [InventoryAuditController::class, 'completeAudit'])
          ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]);
+
+           Route::middleware('auth:sanctum')->prefix('api/v1/crm')->group(function () {
+        Route::get('/daily-export', [\App\Http\Controllers\Api\CrmExportController::class, 'export']);
+    });
 });

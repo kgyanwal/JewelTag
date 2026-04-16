@@ -64,21 +64,49 @@ class CreateProductItem extends CreateRecord
     {
         return [
             Action::make('scanInvoice')
-                ->label('Scan Physical Invoice')->icon('heroicon-o-camera')->color('info')
-                ->form([FileUpload::make('invoice_image')->image()->disk('public')->directory('invoice-scans')->required()])
-                ->action(function (array $data, InvoiceOcrService $ocrService) {
+                ->label('Scan Physical Invoice')
+                ->icon('heroicon-o-camera')
+                ->color('info')
+                ->form([
+                    FileUpload::make('invoice_image')
+                        ->image()
+                        ->disk('public')
+                        ->directory('invoice-scans')
+                        ->required()
+                ])
+                // 🚀 THE FIX: We must pass \Filament\Forms\Contracts\HasForms $livewire
+                ->action(function (array $data, InvoiceOcrService $ocrService, \Filament\Forms\Contracts\HasForms $livewire) {
                     $path = storage_path('app/public/' . $data['invoice_image']);
+                    
                     try {
+                        // 1. Get the data
                         $extracted = $ocrService->extractDataFromImage($path);
-                        $this->form->fill([
-                            'supplier_code' => $extracted['supplier_code'] ?? null, 
-                            'cost_price' => $extracted['cost_price'] ?? 0, 
-                            'custom_description' => $extracted['custom_description'] ?? '', 
-                            'qty' => 1
+                        
+                        // 2. Safely merge the new data with the existing form data
+                        // This prevents the action from wiping out data the user already typed!
+                        $currentState = $livewire->form->getRawState();
+                        
+                        // 🚀 THE FIX: Use $livewire->form->fill()
+                        $livewire->form->fill([
+                            ...$currentState,
+                            'supplier_code'      => $extracted['supplier_code'] ?? $currentState['supplier_code'] ?? null, 
+                            'cost_price'         => $extracted['cost_price'] ?? $currentState['cost_price'] ?? 0, 
+                            'custom_description' => $extracted['custom_description'] ?? $currentState['custom_description'] ?? '', 
+                            'qty'                => $currentState['qty'] ?? 1
                         ]);
-                        Notification::make()->title('Invoice Data Retrieved!')->success()->send();
+                        
+                        Notification::make()
+                            ->title('Invoice Data Retrieved!')
+                            ->body('The Cost Price and Description fields have been updated.')
+                            ->success()
+                            ->send();
+                            
                     } catch (\Exception $e) {
-                        Notification::make()->title('OCR Error')->body($e->getMessage())->danger()->send();
+                        Notification::make()
+                            ->title('OCR Error')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
                     }
                 }),
         ];

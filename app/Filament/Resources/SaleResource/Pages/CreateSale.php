@@ -315,95 +315,82 @@ class CreateSale extends CreateRecord
     {
         DB::transaction(function () {
             $sale     = $this->record;
+            
+            // 🚀 CRITICAL FIX: Reload the relationship immediately so Filament can see the Custom Order it just saved!
+            $sale->load('items'); 
+            
             $isLaybuy = $sale->payment_method === 'laybuy';
 
-            // ── PAYMENTS ──────────────────────────────────────────────────────
-            if ($sale->is_split_payment) {
-                $totalSplitPaid = 0;
+            // Find the custom order if one exists in this cart
+            $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
+            $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
-                foreach ($sale->split_payments as $payment) {
-                    $amount = round((float) $payment['amount'], 2);
-                    $method = strtoupper(trim($payment['method']));
-
-                    $existingDeposit = \App\Models\Payment::whereNull('sale_id')
-                        ->where('amount', $amount)
-                        ->where('method', $method)
-                        ->whereIn('custom_order_id', $sale->items->pluck('custom_order_id')->filter())
-                        ->first();
-
-                    if ($existingDeposit) {
-                        $existingDeposit->update(['sale_id' => $sale->id]);
-                    } else {
-                        \App\Models\Payment::create([
-                            'sale_id' => $sale->id,
-                            'amount'  => $amount,
-                            'method'  => $method,
-                            'paid_at' => now(),
-                        ]);
-                    }
-                    $totalSplitPaid += $amount;
+            // 1. Gather payments safely directly from $this->data to read the "Apply To" target
+            $paymentsToProcess = [];
+            
+            if ($this->data['is_split_payment'] ?? false) {
+                foreach ($this->data['split_payments'] ?? [] as $p) {
+                    $paymentsToProcess[] = [
+                        'amount' => round((float) ($p['amount'] ?? 0), 2),
+                        'method' => strtoupper(trim($p['method'] ?? 'CASH')),
+                        'target' => $p['payment_target'] ?? 'regular'
+                    ];
                 }
-
-                $sale->update(['amount_paid' => round($totalSplitPaid, 2)]);
             } else {
-                $actualPaid = floatval($sale->amount_paid);
-
-                if ($actualPaid > 0) {
-                    $existingFullDeposit = \App\Models\Payment::whereNull('sale_id')
-                        ->where('amount', $actualPaid)
-                        ->whereIn('custom_order_id', $sale->items->pluck('custom_order_id')->filter())
-                        ->first();
-
-                    if ($existingFullDeposit) {
-                        $existingFullDeposit->update([
-                            'sale_id' => $sale->id,
-                            'method'  => strtoupper(trim($sale->payment_method))
-                        ]);
-                    } else {
-                        \App\Models\Payment::create([
-                            'sale_id' => $sale->id,
-                            'amount'  => $actualPaid,
-                            'method'  => strtoupper(trim($sale->payment_method)),
-                            'paid_at' => now(),
-                        ]);
-                    }
-                }
-
-                $sale->update(['amount_paid' => $actualPaid]);
+                $paymentsToProcess[] = [
+                    'amount' => round((float) ($this->data['amount_paid'] ?? 0), 2),
+                    'method' => strtoupper(trim($this->data['payment_method'] ?? 'CASH')),
+                    'target' => $this->data['payment_target'] ?? 'regular'
+                ];
             }
 
-            // ── ITEMS ──────────────────────────────────────────────────────────
-            foreach ($sale->items as $saleItem) {
-                if ($saleItem->custom_order_id) {
-                    $customOrder = \App\Models\CustomOrder::find($saleItem->custom_order_id);
-                    if ($customOrder) {
-                        \App\Models\Payment::where('custom_order_id', $customOrder->id)
-                            ->whereNull('sale_id')
-                            ->update(['sale_id' => $sale->id]);
+            $totalSalePaid = 0;
+            $totalCustomPaid = 0;
 
-                        $isBrandNew = $customOrder->created_at->diffInSeconds(now()) < 5;
-                        if ($isBrandNew) {
-                            $customOrder->update([
-                                'status'  => 'in_production',
-                                'sale_id' => $sale->id,
-                            ]);
-                        } else {
-                            $quotedPrice = floatval($customOrder->quoted_price);
-                            $isTaxFree   = (bool)($customOrder->is_tax_free);
-                            $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                            $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                            $grandTotal  = $quotedPrice + ($quotedPrice * $taxRate);
+            // 2. Loop and route money to the correct table based on the dropdown
+            foreach ($paymentsToProcess as $p) {
+                if ($p['amount'] <= 0) continue;
 
-                            $customOrder->update([
-                                'status'      => 'completed',
-                                'sale_id'     => $sale->id,
-                                'balance_due' => 0,
-                                'amount_paid' => $grandTotal,
-                            ]);
-                        }
-                    }
+                $isCustom = ($p['target'] === 'custom' && $customOrder);
+                
+                \App\Models\Payment::create([
+                    'sale_id'         => $sale->id,
+                    'custom_order_id' => $isCustom ? $customOrder->id : null,
+                    'amount'          => $p['amount'],
+                    'method'          => $p['method'],
+                    'paid_at'         => now(),
+                    'store_id'        => $sale->store_id ?? 1,
+                ]);
+
+                if ($isCustom) {
+                    $totalCustomPaid += $p['amount'];
+                } else {
+                    $totalSalePaid += $p['amount'];
                 }
+            }
 
+            // 3. Update the umbrella Sale (This ensures the main receipt shows the sum of ALL money collected)
+            $sale->update([
+                'amount_paid' => round($totalSalePaid + $totalCustomPaid, 2)
+            ]);
+
+            // 4. Update the nested Custom Order parameters instantly
+            if ($customOrder) {
+                $isTaxFree   = (bool)($customOrder->is_tax_free);
+                $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                $grandTotal  = floatval($customOrder->quoted_price) * (1 + $taxRate);
+
+                $customOrder->update([
+                    'amount_paid' => round($totalCustomPaid, 2),
+                    'balance_due' => round(max(0, $grandTotal - $totalCustomPaid), 2),
+                    'sale_id'     => $sale->id,
+                    'status'      => 'in_production',
+                ]);
+            }
+
+            // 5. Update Inventory (Items block)
+            foreach ($sale->items as $saleItem) {
                 if (!$saleItem->product_item_id) continue;
 
                 $productItem = \App\Models\ProductItem::lockForUpdate()->find($saleItem->product_item_id);
@@ -420,7 +407,7 @@ class CreateSale extends CreateRecord
                 ]);
             }
 
-            // ── LAYBUY ────────────────────────────────────────────────────────
+            // 6. Handle Laybuy logic
             if ($isLaybuy) {
                 $salesPersonString = is_array($sale->sales_person_list)
                     ? implode(', ', $sale->sales_person_list)
