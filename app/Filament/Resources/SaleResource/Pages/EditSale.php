@@ -109,25 +109,52 @@ class EditSale extends EditRecord
         ];
     }
 
-    protected function mutateFormDataBeforeFill(array $data): array
-    {
-        $record    = $this->record;
-        $totalPaid = $record->payments->sum('amount');
+   protected function mutateFormDataBeforeFill(array $data): array
+{
+    $record    = $this->record;
+    $totalPaid = $record->payments->sum('amount');
 
-        if ($record->is_split_payment) {
-            $data['amount_paid'] = $totalPaid > 0 ? $totalPaid : $record->final_total;
+    if ($record->is_split_payment) {
+        $data['amount_paid'] = $totalPaid > 0 ? $totalPaid : $record->final_total;
+    } else {
+        if (floatval($record->amount_paid) > 0) {
+            $data['amount_paid'] = $record->amount_paid;
+        } elseif ($totalPaid > 0) {
+            $data['amount_paid'] = $totalPaid;
         } else {
-            if (floatval($record->amount_paid) > 0) {
-                $data['amount_paid'] = $record->amount_paid;
-            } elseif ($totalPaid > 0) {
-                $data['amount_paid'] = $totalPaid;
-            } else {
-                $data['amount_paid'] = $record->final_total;
+            $data['amount_paid'] = $record->final_total;
+        }
+    }
+
+    // ── FIX: Hydrate custom order data into repeater items ────────────
+    $record->loadMissing('items.customOrder');
+
+    if (isset($data['items']) && is_array($data['items'])) {
+        foreach ($data['items'] as $key => $item) {
+            $customOrderId = $item['custom_order_id'] ?? null;
+
+            if ($customOrderId) {
+                $customOrder = \App\Models\CustomOrder::find($customOrderId);
+                if ($customOrder) {
+                    // Rebuild the new_custom_data JSON so the repeater
+                    // knows this is a custom order item and shows it correctly
+                    $data['items'][$key]['is_new_custom_order']  = false; // it's existing, not new
+                    $data['items'][$key]['stock_no_display']     = 'CUSTOM #' . $customOrder->order_no;
+                    $data['items'][$key]['custom_description']   = $item['custom_description']
+                        ?? "CUSTOM Order: {$customOrder->product_name}\nMetal: {$customOrder->metal_type}";
+                    $data['items'][$key]['sold_price']           = $customOrder->quoted_price;
+                    $data['items'][$key]['sale_price_override']  = $customOrder->quoted_price;
+                    $data['items'][$key]['qty']                  = 1;
+                    $data['items'][$key]['is_tax_free']          = (bool) $customOrder->is_tax_free;
+                    $data['items'][$key]['discount_percent']     = 0;
+                    $data['items'][$key]['discount_amount']      = 0;
+                }
             }
         }
-
-        return $data;
     }
+
+    return $data;
+}
 
     protected function mutateFormDataBeforeSave(array $data): array
     {

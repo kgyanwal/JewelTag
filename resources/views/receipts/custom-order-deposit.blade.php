@@ -41,8 +41,11 @@
         $isTaxFree  = (bool)($order->is_tax_free ?? false);
         $dbTax      = floatval($settings['tax_rate'] ?? 7.63);
         $taxRate    = $isTaxFree ? 0 : $dbTax / 100;
-        $tax        = floatval($order->quoted_price) * $taxRate;
-        $grandTotal = floatval($order->quoted_price) + $tax;
+      $discountPct  = floatval($order->discount_percent ?? 0);
+$discountAmt  = floatval($order->discount_amount ?? ($order->quoted_price * $discountPct / 100));
+$afterDiscount = floatval($order->quoted_price) - $discountAmt;
+$tax          = $afterDiscount * $taxRate;
+$grandTotal   = $afterDiscount + $tax;
         $balance    = max(0, $grandTotal - $totalPaid);
         $isFullyPaid= $balance <= 0.01;
 
@@ -406,16 +409,30 @@
                 {{-- TOTALS BOX --}}
                 <div style="background:{{ $color }};border-radius:6px;padding:15px;color:white;">
                     <table width="100%" cellpadding="0" cellspacing="0" style="color:white;font-size:11px;">
-                        <tr>
-                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">Quoted Price</td>
-                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($order->quoted_price, 2) }}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">
-                                Tax ({{ $isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%' }})
-                            </td>
-                            <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($tax, 2) }}</td>
-                        </tr>
+                      <tr>
+    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">Quoted Price</td>
+    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($order->quoted_price, 2) }}</td>
+</tr>
+@if($discountAmt > 0)
+<tr>
+    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
+        Discount ({{ number_format($discountPct, 2) }}%)
+    </td>
+    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;">
+        -${{ number_format($discountAmt, 2) }}
+    </td>
+</tr>
+<tr>
+    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">After Discount</td>
+    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($afterDiscount, 2) }}</td>
+</tr>
+@endif
+<tr>
+    <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">
+        Tax ({{ $isTaxFree ? 'Exempt' : number_format($dbTax, 2) . '%' }})
+    </td>
+    <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($tax, 2) }}</td>
+</tr>
                         <tr>
                             <td style="padding:10px 0 5px;font-size:15px;font-weight:700;border-bottom:1px dashed rgba(255,255,255,.2);">TOTAL</td>
                             <td align="right" style="padding:10px 0 5px;font-size:15px;font-weight:700;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($grandTotal, 2) }}</td>

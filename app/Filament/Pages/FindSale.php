@@ -23,7 +23,7 @@ use Filament\Tables\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
-
+use Illuminate\Support\Facades\DB;
 class FindSale extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
@@ -49,7 +49,13 @@ class FindSale extends Page implements HasForms, HasTable
             $this->resetTable();
         }
     }
-
+public static function getServiceTypeOptions(): array
+    {
+        $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
+        $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
+        $types = $json ? json_decode($json, true) : $defaultTypes;
+        return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
+    }
     public function form(Form $form): Form
     {
         return $form
@@ -98,15 +104,9 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->afterStateUpdated(fn() => $this->resetTable()),
                             // date pickers are fine too
 
-                            Select::make('job_type')
+                           Select::make('job_type')
                                 ->label('Job Type')
-                                ->options([
-                                    'Resize'        => 'Resize',
-                                    'Solder'        => 'Solder / Weld',
-                                    'Bail Change'   => 'Bail Change',
-                                    'Shorten'       => 'Shortening',
-                                    'Stone Setting' => 'Stone Setting',
-                                ])
+                                ->options(fn() => self::getServiceTypeOptions())
                                 ->placeholder('All Service Types')
                                 ->live(),
                         ]),

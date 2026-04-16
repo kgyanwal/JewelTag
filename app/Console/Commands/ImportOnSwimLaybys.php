@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Sale;
-use App\Models\DepositSale;
+use App\Models\Laybuy;
 use App\Models\Customer;
 use App\Models\Tenant;
 use App\Models\User;
@@ -12,26 +12,25 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str; // 🚀 Kept the correct one, removed the bad App\Console one
+use Illuminate\Support\Str;
 
-class ImportOnSwimDeposits extends Command
+class ImportOnSwimLaybys extends Command
 {
-    // 🚀 Added --date flag to the signature
-    protected $signature = 'import:onswim-deposits {tenant} {--date= : The date of the CSV file} {--rollback} {--dry-run}';
-    protected $description = 'Import OnSwim Deposit Sales with robust matching and dynamic file locator.';
+    protected $signature = 'import:onswim-laybys {tenant} {--date= : The date of the CSV file} {--rollback} {--dry-run}';
+    protected $description = 'Import OnSwim Laybys from Python-extracted CSV.';
 
-    private int   $matched  = 0;
-    private int   $skipped  = 0;
-    private int   $created  = 0;
-    private int   $updated  = 0;
+    private int $matched = 0;
+    private int $skipped = 0;
+    private int $created = 0;
+    private int $updated = 0;
 
     public function handle()
     {
         set_time_limit(0);
         ini_set('memory_limit', '1G');
 
-        $tenantId   = $this->argument('tenant');
-        $isDryRun   = $this->option('dry-run');
+        $tenantId = $this->argument('tenant');
+        $isDryRun = $this->option('dry-run');
 
         try {
             $tenant = Tenant::findOrFail($tenantId);
@@ -48,9 +47,10 @@ class ImportOnSwimDeposits extends Command
             if ($this->option('date')) {
                 $manualDate = $this->option('date');
                 $possible = [
-                    "{$directoryPath}/deposits_{$manualDate}.csv", 
-                    "{$directoryPath}/deposit_sales_{$manualDate}.csv",
-                    "{$directoryPath}/deposit_sales_dsq_{$manualDate}.csv"
+                    "{$directoryPath}/layby_2026_{$manualDate}.csv",  // 🚀 Added 2026_
+                    "{$directoryPath}/laybys_2026_{$manualDate}.csv", // 🚀 Added 2026_
+                    "{$directoryPath}/laybuy_2026_{$manualDate}.csv", // 🚀 Added 2026_
+                    "{$directoryPath}/layby_{$manualDate}.csv"        // Keeping fallback just in case
                 ];
                 foreach ($possible as $path) {
                     if (File::exists($path)) {
@@ -64,7 +64,7 @@ class ImportOnSwimDeposits extends Command
                 $validFiles = [];
                 foreach ($allFiles as $f) {
                     $base = strtolower(basename($f));
-                    if (str_starts_with($base, 'deposit') || str_starts_with($base, 'laybuy')) {
+                    if (str_starts_with($base, 'layby') || str_starts_with($base, 'laybuy')) {
                         $validFiles[] = $f;
                     }
                 }
@@ -80,7 +80,7 @@ class ImportOnSwimDeposits extends Command
 
             if (!$filePath) {
                 $this->error("❌ NO FILES FOUND in {$directoryPath}");
-                $this->line("Search patterns: 'deposits_*.csv' or 'deposit_sales_*.csv'");
+                $this->line("Search patterns: 'layby_*.csv' or 'laybys_*.csv'");
                 return Command::FAILURE;
             }
 
@@ -93,14 +93,13 @@ class ImportOnSwimDeposits extends Command
 
        // Handle Rollback
         if ($this->option('rollback')) {
-            $this->warn("⚠️  WARNING: You are about to delete ALL deposit sales for tenant: {$tenantId}");
-            
-            if ($this->confirm('Are you sure? This will empty the deposit_sales table completely.', false)) {
+            $this->warn("⚠️  WARNING: You are about to delete ALL Laybys for tenant: {$tenantId}");
+            if ($this->confirm('Are you sure? This will empty the laybuys table completely.', false)) {
                 Schema::disableForeignKeyConstraints();
-                $count = DepositSale::count();
-                DepositSale::truncate();
+                $count = Laybuy::count();
+                Laybuy::truncate();
                 Schema::enableForeignKeyConstraints();
-                $this->info("✅ SUCCESS: {$count} deposit records have been removed.");
+                $this->info("✅ SUCCESS: {$count} Layby records have been removed.");
             }
             return Command::SUCCESS;
         }
@@ -113,11 +112,11 @@ class ImportOnSwimDeposits extends Command
             $this->warn("🛠️  DRY RUN ENABLED: No changes will be saved.");
         }
 
-        // ── Read CSV ──────────────────────────────────────────────
+        // ── Read CSV (Matches Python Headers) ─────────────────────
         $file   = fopen($filePath, 'r');
         $header = array_map('trim', fgetcsv($file));
 
-        $required = ['Job No.', 'Invoice Total', 'Payment Total', 'Balance', 'Date Sold'];
+        $required = ['Date Sold', 'Job No.', 'Invoice Total', 'Payment Total', 'Balance', 'Customer', 'Phone'];
         $missing  = array_diff($required, $header);
         if (!empty($missing)) {
             $this->error("CSV missing columns: " . implode(', ', $missing));
@@ -135,7 +134,7 @@ class ImportOnSwimDeposits extends Command
         fclose($file);
 
         $total = count($rows);
-        $this->info("Processing {$total} rows...");
+        $this->info("Processing {$total} Layby records...");
         $bar = $this->output->createProgressBar($total);
 
         DB::connection('tenant')->beginTransaction();
@@ -145,12 +144,11 @@ class ImportOnSwimDeposits extends Command
                 $jobNo = trim($data['Job No.']);
                 $cleanJobNo = preg_replace('/[^0-9]/', '', $jobNo);
                 
-                // 🚀 MOVED UP: Extract math variables FIRST so we can use them to search
                 $invoiceTotal = $this->cleanMoney($data['Invoice Total']);
                 $amountPaid   = $this->cleanMoney($data['Payment Total']);
                 $balance      = $this->cleanMoney($data['Balance']);
 
-                // 🚀 MOVED UP: Find customer FIRST so Plan B has a Customer ID
+                // Find Customer (Now supercharged with the phone number!)
                 $customer = $this->findCustomer($data);
                 $customerId = $customer ? $customer->id : $walkInCustomer->id;
 
@@ -165,7 +163,6 @@ class ImportOnSwimDeposits extends Command
                         ->first();
                 }
 
-                // Tally the matches
                 if ($sale) {
                     $customerId = $sale->customer_id; // Sync to the sale's exact customer
                     $this->matched++;
@@ -173,10 +170,8 @@ class ImportOnSwimDeposits extends Command
                     $this->skipped++;
                 }
 
-                $status       = $balance <= 0.50 ? 'completed' : 'active';
-                $staffRaw     = trim($data['Staff'] ?? 'System');
-                $staffList    = array_values(array_filter(preg_split('/[\/,]+/', $staffRaw)));
-                $salesPerson  = !empty($staffList) ? $staffList[0] : 'System';
+                // Filament specifically expects 'completed' or 'in_progress'
+                $status = $balance <= 0.50 ? 'completed' : 'in_progress';
 
                 $payload = [
                     'customer_id'    => $customerId,
@@ -185,20 +180,17 @@ class ImportOnSwimDeposits extends Command
                     'amount_paid'    => $amountPaid,
                     'balance_due'    => max(0, $balance),
                     'status'         => $status,
-                    'sales_person'   => $salesPerson,
-                    'staff_list'     => $staffList,
-                    'start_date'     => $this->parseDate($data['Date Sold']),
-                    'last_paid_date' => $this->parseDate($data['Last Date Paid'] ?? null),
-                    'due_date'       => $this->parseDate($data['Date Required'] ?? null),
-                    'notes'          => "Imported from Onswim. Job #{$jobNo}.",
+                    'sales_person'   => 'System', // Often not on the PDF, default to System
+                    'created_at'     => $this->parseDate($data['Date Sold']),
+                    'notes'          => "Imported Lay-by from OnSwim PDF. Job #{$jobNo}.",
                 ];
 
                 if (!$isDryRun) {
-                    $depositNo = 'DEP-' . $jobNo;
-                    $exists = DepositSale::where('deposit_no', $depositNo)->exists();
+                    $laybuyNo = 'LB-' . $jobNo;
+                    $exists = Laybuy::where('laybuy_no', $laybuyNo)->exists();
                     
-                    DepositSale::withoutEvents(function() use ($depositNo, $payload) {
-                        DepositSale::updateOrCreate(['deposit_no' => $depositNo], $payload);
+                    Laybuy::withoutEvents(function() use ($laybuyNo, $payload) {
+                        Laybuy::updateOrCreate(['laybuy_no' => $laybuyNo], $payload);
                     });
                     
                     if ($sale) {
@@ -224,7 +216,7 @@ class ImportOnSwimDeposits extends Command
                 DB::connection('tenant')->commit();
                 $bar->finish();
                 $this->newLine(2);
-                $this->info("✅ SUCCESS: Deposits synchronized.");
+                $this->info("✅ SUCCESS: Laybys synchronized.");
             }
 
         } catch (\Exception $e) {
@@ -236,7 +228,7 @@ class ImportOnSwimDeposits extends Command
         $this->table(['Metric', 'Count'], [
             ['Total Rows', $total], 
             ['Matched to Sales', $this->matched], 
-            ['Unlinked (Plan C)', $this->skipped],
+            ['Unlinked to Sale', $this->skipped],
             ['Created', $this->created], 
             ['Updated', $this->updated]
         ]);
@@ -247,32 +239,46 @@ class ImportOnSwimDeposits extends Command
     private function findCustomer($data)
     {
         $fullName = trim($data['Customer'] ?? '');
-        if (empty($fullName)) return null;
+        $rawPhone = trim($data['Phone'] ?? '');
+        
+        // 1. Try mapping by Phone Number first (Highest Accuracy)
+        $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
+        if (strlen($cleanPhone) >= 7) {
+            $found = Customer::withoutGlobalScopes()->where('phone', 'like', "%{$cleanPhone}%")->first();
+            if ($found) return $found;
+        }
 
-        $parts = explode(' ', $fullName);
-        $firstName = trim($parts[0]);
-        $lastName  = trim(implode(' ', array_slice($parts, 1)));
+        // 2. Try mapping by Name (Fallback)
+        if (!empty($fullName)) {
+            $parts = explode(' ', $fullName);
+            $firstName = trim($parts[0]);
+            $lastName  = trim(implode(' ', array_slice($parts, 1)));
 
-        $found = Customer::withoutGlobalScopes()
-            ->where(function($query) use ($firstName, $lastName, $fullName) {
-                $query->where(function($q) use ($firstName, $lastName) {
-                    $q->where('name', 'LIKE', $firstName)
-                    ->where('last_name', 'LIKE', $lastName);
+            $found = Customer::withoutGlobalScopes()
+                ->where(function($query) use ($firstName, $lastName, $fullName) {
+                    $query->where(function($q) use ($firstName, $lastName) {
+                        $q->where('name', 'LIKE', $firstName)
+                        ->where('last_name', 'LIKE', $lastName);
+                    })
+                    ->orWhere(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%");
                 })
-                ->orWhere(DB::raw("CONCAT(name, ' ', COALESCE(last_name, ''))"), 'LIKE', "%{$fullName}%");
-            })
-            ->first();
+                ->first();
 
-        if ($found) return $found;
+            if ($found) return $found;
 
-        return Customer::withoutEvents(fn() => 
-            Customer::create([
-                'customer_no' => 'DEP-CUST-' . strtoupper(Str::random(8)),
-                'name'        => $firstName,
-                'last_name'   => $lastName ?: '.',
-                'is_active'   => true,
-            ])
-        );
+            // Only create if we absolutely cannot find a match
+            return Customer::withoutEvents(fn() => 
+                Customer::create([
+                    'customer_no' => 'LAY-CUST-' . strtoupper(Str::random(8)),
+                    'name'        => $firstName,
+                    'last_name'   => $lastName ?: '.',
+                    'phone'       => !empty($cleanPhone) ? '+1' . substr($cleanPhone, -10) : null,
+                    'is_active'   => true,
+                ])
+            );
+        }
+        
+        return null;
     }
 
     private function cleanMoney($value): float {

@@ -33,10 +33,10 @@ class Laybuy extends Model
     public function sale(): BelongsTo { 
         return $this->belongsTo(Sale::class)->with('items.productItem', 'payments'); 
     }
-
-    public function payments(): HasMany { 
-        return $this->hasMany(LaybuyPayment::class)->orderBy('created_at', 'desc'); 
-    }
+    
+    public function laybuyPayments(): HasMany { 
+    return $this->hasMany(LaybuyPayment::class)->orderBy('created_at', 'desc'); 
+}
 
     public function store(): BelongsTo { return $this->belongsTo(Store::class); }
 }

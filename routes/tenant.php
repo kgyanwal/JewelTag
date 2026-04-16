@@ -52,7 +52,9 @@ Route::get('/repairs/{repair}/print', [ReceiptController::class, 'printRepair'])
     ->middleware(['auth']);
 Route::get('/custom-order-receipt/{customOrder}', [ReceiptController::class, 'customOrderReceipt'])
     ->name('custom-orders.deposit-receipt');
-
+Route::get('/laybuys/{laybuy}/print', [ReceiptController::class, 'printLaybuy'])
+    ->name('laybuy.print')
+    ->middleware(['auth']);
     
     // Label Layouts
     Route::prefix('label-layout')->group(function () {

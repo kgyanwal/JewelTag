@@ -83,12 +83,11 @@ class EditCustomOrder extends EditRecord
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
         // ── CALCULATE GRAND TOTAL ────────
-        $quoted     = floatval($data['quoted_price'] ?? 0);
+      $quoted     = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0); 
         $isTaxFree  = (bool)($data['is_tax_free'] ?? false);
         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
         $grandTotal = $quoted * (1 + $taxRate);
-
         // 🚀 THE FIX: If an admin explicitly edited the amount_paid field, TRUST THE FORM DATA.
         // Otherwise, fall back to what is currently in the DB.
         $formAmountPaid = floatval($data['amount_paid'] ?? 0);

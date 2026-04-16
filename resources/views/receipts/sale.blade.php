@@ -6,19 +6,19 @@
     $totalSavings = 0;
     $hasRepair = false;
     $hasCustom = false;
-   // Build special jobs array from new JSON field, fallback to legacy single fields
-$specialJobs = $sale->special_jobs ?? [];
-if (empty($specialJobs) && !empty($sale->job_type)) {
+    // Build special jobs array from new JSON field, fallback to legacy single fields
+    $specialJobs = $sale->special_jobs ?? [];
+    if (empty($specialJobs) && !empty($sale->job_type)) {
     $specialJobs = [[
-        'job_type'         => $sale->job_type,
-        'metal_type'       => $sale->metal_type,
-        'date_required'    => $sale->date_required,
-        'current_size'     => $sale->current_size,
-        'target_size'      => $sale->target_size,
-        'job_instructions' => $sale->job_instructions,
+    'job_type' => $sale->job_type,
+    'metal_type' => $sale->metal_type,
+    'date_required' => $sale->date_required,
+    'current_size' => $sale->current_size,
+    'target_size' => $sale->target_size,
+    'job_instructions' => $sale->job_instructions,
     ]];
-}
-$isSpecialJob = !empty($specialJobs);
+    }
+    $isSpecialJob = !empty($specialJobs);
 
     foreach($sale->items as $item) {
     if($item->discount_percent > 0) {
@@ -32,10 +32,10 @@ $isSpecialJob = !empty($specialJobs);
     if ($hasRepair) {
     $receiptType = 'repair';
     $receiptTitle = 'REPAIR RECEIPT';
-    $receiptColor = '#249E94';
-    $receiptDarkColor = '#1a7a72';
-    $receiptAccent = '#4fc1b7';
-    $receiptBgLight = '#f0f9f8';
+    $receiptColor = '#b45309';
+    $receiptDarkColor = '#92400e';
+    $receiptAccent = '#f59e0b';
+    $receiptBgLight = '#fffbeb';
     } elseif ($hasCustom) {
     $receiptType = 'custom';
     $receiptTitle = 'CUSTOM ORDER RECEIPT';
@@ -345,15 +345,15 @@ $isSpecialJob = !empty($specialJobs);
                                 </span>
                             </td>
                         </tr>
-{{-- PASTE THE NEW CODE HERE --}}
+                        {{-- PASTE THE NEW CODE HERE --}}
                         {{-- ── CUSTOM ORDER DEPOSIT HISTORY ── --}}
                         @php
-                            $customOrderItem = $sale->items->first(fn($i) => $i->custom_order_id);
-                            $customOrder = $customOrderItem?->customOrder;
-                            $depositPayments = $customOrder 
-                                ? \App\Models\Payment::where('custom_order_id', $customOrder->id)
-                                    ->orderBy('paid_at')->get()
-                                : collect();
+                        $customOrderItem = $sale->items->first(fn($i) => $i->custom_order_id);
+                        $customOrder = $customOrderItem?->customOrder;
+                        $depositPayments = $customOrder
+                        ? \App\Models\Payment::where('custom_order_id', $customOrder->id)
+                        ->orderBy('paid_at')->get()
+                        : collect();
                         @endphp
 
                         @if($depositPayments->count() > 0)
@@ -414,89 +414,89 @@ $isSpecialJob = !empty($specialJobs);
                     <th style="background:{{ $receiptColor }};color:white;padding:10px 8px;text-align:right;width:20%;font-size:9px;text-transform:uppercase;border:1px solid #e0e7ee;">Price</th>
                 </tr>
             </thead>
-           <tbody>
-@php $processedRepairIds = []; @endphp
-@foreach($sale->items as $item)
-    @if($item->repair_id && $item->repair && !empty($item->repair->items))
-        @if(!in_array($item->repair_id, $processedRepairIds))
-            @php $processedRepairIds[] = $item->repair_id; @endphp
-            {{-- Expand each sub-item from the repair's JSON items array --}}
-            @foreach($item->repair->items as $index => $repairSubItem)
-            <tr>
-                <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                    <span style="background:#f0f7fa;color:{{ $receiptColor }};padding:3px 6px;border-radius:3px;font-family:monospace;font-size:9px;border:1px dashed #c2e0ee;font-weight:700;">
-                        REPAIR #{{ $item->repair->repair_no }}-{{ $index + 1 }}
-                    </span>
-                </td>
-                <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                    <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:white;background:{{ $receiptColor }};">Service/Repair</div>
-                    <div style="font-weight:700;color:#2c3e50;font-size:12px;">{{ $repairSubItem['item_description'] ?? $item->custom_description }}</div>
-                    @if(!empty($repairSubItem['reported_issue']))
-                    <div style="color:#546e7a;font-size:10px;margin-top:2px;">{{ $repairSubItem['reported_issue'] }}</div>
-                    @endif
-                </td>
-                <td style="text-align:center;font-weight:700;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">1</td>
-                <td style="text-align:center;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                    <span style="color:#546e7a;">-</span>
-                </td>
-                <td style="text-align:right;font-weight:700;color:{{ $receiptColor }};padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-                    ${{ number_format(floatval($repairSubItem['final_cost'] ?? $repairSubItem['estimated_cost'] ?? 0), 2) }}
-                </td>
-            </tr>
-            @endforeach
-        @endif
-    @else
-        {{-- Normal sale item (non-repair) --}}
-        <tr>
-           <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-    <span style="background:#f0f7fa;color:{{ $receiptColor }};padding:3px 6px;border-radius:3px;font-family:monospace;font-size:9px;border:1px dashed #c2e0ee;font-weight:700;">
-        @if($item->productItem)
-            {{ $item->productItem->barcode }}
-        @elseif($item->customOrder)
-            CUSTOM #{{ $item->customOrder->order_no }}
-        @elseif($item->stock_no_display && $item->stock_no_display !== 'NON-TAG')
-            {{ $item->stock_no_display }}
-        @else
-            <span style="background:#f1f5f9;color:#94a3b8;padding:2px 5px;border-radius:3px;font-size:8px;font-weight:600;border:1px solid #e2e8f0;">NON-TAG</span>
-        @endif
-    </span>
-</td>
-           <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-    @if($item->custom_order_id || $item->customOrder)
-        <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:white;background:{{ $receiptColor }};">Custom Design</div>
-    @elseif(!$item->product_item_id && !$item->repair_id && !$item->custom_order_id)
-        <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;">Service / Non-Tag Item</div>
-    @endif
-    <div style="font-weight:700;color:#2c3e50;font-size:12px;">{{ $item->custom_description }}</div>
-</td>
-            <td style="text-align:center;font-weight:700;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">{{ $item->qty }}</td>
- 
-            <td style="text-align:right;font-weight:700;color:{{ $receiptColor }};padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
-    @php
-        $lineTotal = $item->sale_price_override > 0
-            ? floatval($item->sale_price_override)
-            : (floatval($item->sold_price) * intval($item->qty)) - floatval($item->discount_amount ?? 0);
-    @endphp
+            <tbody>
+                @php $processedRepairIds = []; @endphp
+                @foreach($sale->items as $item)
+                @if($item->repair_id && $item->repair && !empty($item->repair->items))
+                @if(!in_array($item->repair_id, $processedRepairIds))
+                @php $processedRepairIds[] = $item->repair_id; @endphp
+                {{-- Expand each sub-item from the repair's JSON items array --}}
+                @foreach($item->repair->items as $index => $repairSubItem)
+                <tr>
+                    <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        <span style="background:#f0f7fa;color:{{ $receiptColor }};padding:3px 6px;border-radius:3px;font-family:monospace;font-size:9px;border:1px dashed #c2e0ee;font-weight:700;">
+                            REPAIR #{{ $item->repair->repair_no }}-{{ $index + 1 }}
+                        </span>
+                    </td>
+                    <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:white;background:{{ $receiptColor }};">Service/Repair</div>
+                        <div style="font-weight:700;color:#2c3e50;font-size:12px;">{{ $repairSubItem['item_description'] ?? $item->custom_description }}</div>
+                        @if(!empty($repairSubItem['reported_issue']))
+                        <div style="color:#546e7a;font-size:10px;margin-top:2px;">{{ $repairSubItem['reported_issue'] }}</div>
+                        @endif
+                    </td>
+                    <td style="text-align:center;font-weight:700;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">1</td>
+                    <td style="text-align:center;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        <span style="color:#546e7a;">-</span>
+                    </td>
+                    <td style="text-align:right;font-weight:700;color:{{ $receiptColor }};padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        ${{ number_format(floatval($repairSubItem['final_cost'] ?? $repairSubItem['estimated_cost'] ?? 0), 2) }}
+                    </td>
+                </tr>
+                @endforeach
+                @endif
+                @else
+                {{-- Normal sale item (non-repair) --}}
+                <tr>
+                    <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        <span style="background:#f0f7fa;color:{{ $receiptColor }};padding:3px 6px;border-radius:3px;font-family:monospace;font-size:9px;border:1px dashed #c2e0ee;font-weight:700;">
+                            @if($item->productItem)
+                            {{ $item->productItem->barcode }}
+                            @elseif($item->customOrder)
+                            CUSTOM #{{ $item->customOrder->order_no }}
+                            @elseif($item->stock_no_display && $item->stock_no_display !== 'NON-TAG')
+                            {{ $item->stock_no_display }}
+                            @else
+                            <span style="background:#f1f5f9;color:#94a3b8;padding:2px 5px;border-radius:3px;font-size:8px;font-weight:600;border:1px solid #e2e8f0;">NON-TAG</span>
+                            @endif
+                        </span>
+                    </td>
+                    <td style="padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        @if($item->custom_order_id || $item->customOrder)
+                        <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:white;background:{{ $receiptColor }};">Custom Design</div>
+                        @elseif(!$item->product_item_id && !$item->repair_id && !$item->custom_order_id)
+                        <div style="font-size:8px;text-transform:uppercase;padding:2px 4px;border-radius:2px;margin-bottom:3px;display:inline-block;font-weight:600;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;">Service / Non-Tag Item</div>
+                        @endif
+                        <div style="font-weight:700;color:#2c3e50;font-size:12px;">{{ $item->custom_description }}</div>
+                    </td>
+                    <td style="text-align:center;font-weight:700;padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">{{ $item->qty }}</td>
 
-    @if($item->discount_percent > 0)
-        {{-- Show original crossed out, then discounted price --}}
-        <div style="font-size:9px;color:#94a3b8;text-decoration:line-through;font-weight:400;">
-            ${{ number_format(floatval($item->sold_price) * intval($item->qty), 2) }}
-        </div>
-        <div style="color:{{ $receiptColor }};font-weight:700;">
-            ${{ number_format($lineTotal, 2) }}
-        </div>
-        <div style="font-size:8px;color:#10b981;font-weight:600;">
-            {{ number_format($item->discount_percent, 0) }}% off
-        </div>
-    @else
-        ${{ number_format($lineTotal, 2) }}
-    @endif
-</td>
-        </tr>
-    @endif
-@endforeach
-</tbody>
+                    <td style="text-align:right;font-weight:700;color:{{ $receiptColor }};padding:10px 8px;border-bottom:1px solid #eee;background:#fff;">
+                        @php
+                        $lineTotal = $item->sale_price_override > 0
+                        ? floatval($item->sale_price_override)
+                        : (floatval($item->sold_price) * intval($item->qty)) - floatval($item->discount_amount ?? 0);
+                        @endphp
+
+                        @if($item->discount_percent > 0)
+                        {{-- Show original crossed out, then discounted price --}}
+                        <div style="font-size:9px;color:#94a3b8;text-decoration:line-through;font-weight:400;">
+                            ${{ number_format(floatval($item->sold_price) * intval($item->qty), 2) }}
+                        </div>
+                        <div style="color:{{ $receiptColor }};font-weight:700;">
+                            ${{ number_format($lineTotal, 2) }}
+                        </div>
+                        <div style="font-size:8px;color:#10b981;font-weight:600;">
+                            {{ number_format($item->discount_percent, 0) }}% off
+                        </div>
+                        @else
+                        ${{ number_format($lineTotal, 2) }}
+                        @endif
+                    </td>
+                </tr>
+                @endif
+                @endforeach
+            </tbody>
         </table>
 
         {{-- ── BOTTOM: NOTES + TOTALS ── --}}
@@ -513,48 +513,48 @@ $isSpecialJob = !empty($specialJobs);
                     </div>
                     @endif
 
-                   @if($isSpecialJob)
-<div style="margin-bottom:15px;background:#fffbeb;border:1px solid #fef3c7;border-radius:6px;padding:12px;border-left:5px solid #f59e0b;">
-    <div style="color:#92400e;font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:6px;">
-        <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
-    </div>
-    @foreach($specialJobs as $jobIndex => $job)
-    <div style="{{ $jobIndex > 0 ? 'margin-top:10px;padding-top:10px;border-top:1px dashed #fef3c7;' : '' }}">
-        <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;color:#78350f;margin-bottom:4px;">
-            <tr>
-                <td width="50%">
-                    <strong>{{ count($specialJobs) > 1 ? 'Job ' . ($jobIndex + 1) . ':' : 'Service:' }}</strong>
-                    {{ $job['job_type'] ?? 'General Service' }}
-                </td>
-                <td width="50%">
-                    <strong>Metal:</strong>
-                    {{ $job['metal_type'] ?? 'N/A' }}
-                </td>
-            </tr>
-            @if(($job['job_type'] ?? '') === 'Resize')
-            <tr>
-                <td><strong>From:</strong> {{ $job['current_size'] ?? '—' }}</td>
-                <td><strong>To:</strong> {{ $job['target_size'] ?? '—' }}</td>
-            </tr>
-            @endif
-            @if(!empty($job['date_required']))
-            <tr>
-                <td colspan="2">
-                    <strong>Completion:</strong>
-                    {{ \Carbon\Carbon::parse($job['date_required'])->format('M d, Y') }}
-                </td>
-            </tr>
-            @endif
-        </table>
-        @if(!empty($job['job_instructions']))
-        <div style="font-size:11px;color:#78350f;line-height:1.6;border-top:1px dashed #fef3c7;padding-top:5px;">
-            <strong>Instructions:</strong> {{ $job['job_instructions'] }}
-        </div>
-        @endif
-    </div>
-    @endforeach
-</div>
-@endif
+                    @if($isSpecialJob)
+                    <div style="margin-bottom:15px;background:#fffbeb;border:1px solid #fef3c7;border-radius:6px;padding:12px;border-left:5px solid #f59e0b;">
+                        <div style="color:#92400e;font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:6px;">
+                            <i class="fas fa-wrench"></i> WORKSHOP SERVICE DETAILS
+                        </div>
+                        @foreach($specialJobs as $jobIndex => $job)
+                        <div style="{{ $jobIndex > 0 ? 'margin-top:10px;padding-top:10px;border-top:1px dashed #fef3c7;' : '' }}">
+                            <table width="100%" cellpadding="0" cellspacing="0" style="font-size:11px;color:#78350f;margin-bottom:4px;">
+                                <tr>
+                                    <td width="50%">
+                                        <strong>{{ count($specialJobs) > 1 ? 'Job ' . ($jobIndex + 1) . ':' : 'Service:' }}</strong>
+                                        {{ $job['job_type'] ?? 'General Service' }}
+                                    </td>
+                                    <td width="50%">
+                                        <strong>Metal:</strong>
+                                        {{ $job['metal_type'] ?? 'N/A' }}
+                                    </td>
+                                </tr>
+                                @if(($job['job_type'] ?? '') === 'Resize')
+                                <tr>
+                                    <td><strong>From:</strong> {{ $job['current_size'] ?? '—' }}</td>
+                                    <td><strong>To:</strong> {{ $job['target_size'] ?? '—' }}</td>
+                                </tr>
+                                @endif
+                                @if(!empty($job['date_required']))
+                                <tr>
+                                    <td colspan="2">
+                                        <strong>Completion:</strong>
+                                        {{ \Carbon\Carbon::parse($job['date_required'])->format('M d, Y') }}
+                                    </td>
+                                </tr>
+                                @endif
+                            </table>
+                            @if(!empty($job['job_instructions']))
+                            <div style="font-size:11px;color:#78350f;line-height:1.6;border-top:1px dashed #fef3c7;padding-top:5px;">
+                                <strong>Instructions:</strong> {{ $job['job_instructions'] }}
+                            </div>
+                            @endif
+                        </div>
+                        @endforeach
+                    </div>
+                    @endif
 
                     <div style="background:#f8fafc;padding:12px;border-radius:6px;border:1px solid #e0e7ee;margin-bottom:15px;">
                         <div style="color:{{ $receiptColor }};font-size:9px;text-transform:uppercase;font-weight:700;margin-bottom:5px;letter-spacing:.5px;">

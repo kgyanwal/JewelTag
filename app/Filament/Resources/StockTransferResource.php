@@ -48,7 +48,7 @@ class StockTransferResource extends Resource
         return $form->schema([
             Section::make('Transfer Details')->schema([
                 TextInput::make('transfer_number')
-                    ->default('TRF-' . date('Ymd') . '-' . rand(100, 999))
+                    ->default('TRF-' . date('Ymd') . '-' . strtoupper(Str::random(6)))
                     ->required()
                     ->readOnly(),
 
@@ -238,68 +238,119 @@ class StockTransferResource extends Resource
             ])
             ->actions([
                 // ── ACCEPT — only for INCOMING pending ───────────────────
+                // ── ACCEPT — only for INCOMING pending ───────────────────
                 Tables\Actions\Action::make('accept')
                     ->label('✅ Accept')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->button()
                     ->requiresConfirmation()
-                    ->modalHeading('Accept Incoming Stock?')
+                    ->modalHeading('Accept Incoming Stock')
                     ->modalDescription(fn(StockTransfer $record) =>
-                        "Add " . (is_array($record->item_snapshot) ? count($record->item_snapshot) : 1) .
-                        " item(s) to your inventory. Transfer #: {$record->transfer_number}"
+                        "Review the incoming items and map the vendors to your local database before adding them to inventory. Transfer #: {$record->transfer_number}"
                     )
-                    // 🚀 ADDED VENDOR FORM PROMPT
-                    ->form([
-                        Select::make('fallback_supplier_id')
-                            ->label('Receiving Vendor (Fallback)')
-                            ->options(fn() => Supplier::pluck('company_name', 'id'))
-                            ->required()
-                            ->searchable()
-                            ->helperText('Please select a vendor to assign to these items in case the original vendor is missing.'),
-                    ])
+                    ->form(function (StockTransfer $record) {
+                        // 1. Find all unique vendor names coming from the snapshot
+                        $incomingVendors = collect($record->item_snapshot)
+                            ->pluck('supplier_company_name')
+                            ->filter()
+                            ->unique()
+                            ->values();
+
+                        $schema = [];
+
+                        // 2. Build a mapping dropdown for EVERY incoming vendor
+                        foreach ($incomingVendors as $index => $vendorName) {
+                            $schema[] = \Filament\Forms\Components\Fieldset::make("Vendor: {$vendorName}")
+                                ->schema([
+                                    \Filament\Forms\Components\Radio::make("vendor_action_{$index}")
+                                        ->label('How should we handle this vendor?')
+                                        ->options([
+                                            'match'  => 'Match to an existing local vendor',
+                                            'create' => "Create new vendor: '{$vendorName}'",
+                                        ])
+                                        ->default('match')
+                                        ->live(),
+
+                                    \Filament\Forms\Components\Select::make("mapped_vendor_id_{$index}")
+                                        ->label('Select Local Vendor')
+                                        ->options(\App\Models\Supplier::pluck('company_name', 'id'))
+                                        ->searchable()
+                                        ->required(fn(\Filament\Forms\Get $get) => $get("vendor_action_{$index}") === 'match')
+                                        ->visible(fn(\Filament\Forms\Get $get) => $get("vendor_action_{$index}") === 'match')
+                                        ->hint('Search your existing vendors to avoid duplicates.'),
+                                    
+                                    // Hidden field just to store the original name for the action loop
+                                    \Filament\Forms\Components\Hidden::make("original_vendor_name_{$index}")
+                                        ->default($vendorName)
+                                ]);
+                        }
+
+                        if (empty($schema)) {
+                            $schema[] = \Filament\Forms\Components\Placeholder::make('no_vendors')
+                                ->label('')
+                                ->content(new HtmlString(
+                                    "<div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-warning-700 text-sm font-medium'>
+                                        ⚠️ No vendor info found in transfer snapshot. Items will be imported without vendor links.
+                                    </div>"
+                                ));
+                        }
+
+                        return $schema;
+                    })
                     ->visible(function (StockTransfer $record): bool {
                         return $record->to_tenant === tenant('id')
                             && in_array($record->status, ['pending', 'in_transit']);
                     })
                     ->action(function (StockTransfer $record, array $data): void {
-                        $currentTenant = tenant('id');
-                        $snapshot      = (array) ($record->item_snapshot ?? []);
-                        $skipped       = [];
-                        $created       = [];
-                        
-                        $fallbackSupplierId = $data['fallback_supplier_id']; // Captured from the modal
+                        $currentTenant      = tenant('id');
+                        $snapshot           = (array) ($record->item_snapshot ?? []);
+                        $skipped            = [];
+                        $created            = [];
 
+                        // 1. Build a lookup array of [OriginalName => LocalSupplierID]
+                        $vendorMap = [];
+                        $index = 0;
+                        while (isset($data["original_vendor_name_{$index}"])) {
+                            $origName = $data["original_vendor_name_{$index}"];
+                            $action   = $data["vendor_action_{$index}"];
+                            
+                            if ($action === 'match') {
+                                $vendorMap[$origName] = $data["mapped_vendor_id_{$index}"];
+                            } else {
+                                // Create the new vendor right now
+                                $newVendor = \App\Models\Supplier::withoutEvents(function () use ($origName) {
+                                    return \App\Models\Supplier::firstOrCreate(
+                                        ['company_name' => $origName],
+                                        [
+                                            'supplier_code' => 'SUP-' . strtoupper(Str::random(6)),
+                                            'is_active'     => true,
+                                        ]
+                                    );
+                                });
+                                $vendorMap[$origName] = $newVendor->id;
+                            }
+                            $index++;
+                        }
+
+                        // 2. Import the items
                         foreach ($snapshot as $itemData) {
                             if (empty($itemData['barcode'])) continue;
 
-                            // 🚀 INJECT 'T' PREFIX LOGIC FOR RECEIVER
-                            $originalBarcode = $itemData['barcode'];
-                            
-                            // Check if it already starts with 'T' to prevent 'TTR1001'
-                            $barcode = Str::startsWith($originalBarcode, 'T') 
-                                ? $originalBarcode 
+                            // ── Prefix barcode with T for destination tenant ────────
+                            $originalBarcode    = $itemData['barcode'];
+                            $barcode            = Str::startsWith($originalBarcode, 'T')
+                                ? $originalBarcode
                                 : 'T' . $originalBarcode;
-                                
                             $itemData['barcode'] = $barcode;
 
-                            $supplierId         = $fallbackSupplierId; // Default to fallback
-                            $sourceSupplierName = $itemData['supplier_company_name'] ?? $itemData['supplier_name'] ?? null;
+                            // Apply the mapped vendor ID!
+                            $origVendor = $itemData['supplier_company_name'] ?? null;
+                            $itemData['supplier_id'] = $origVendor && isset($vendorMap[$origVendor]) 
+                                ? $vendorMap[$origVendor] 
+                                : null;
 
-                            if ($sourceSupplierName) {
-                                try {
-                                    $supplier = Supplier::withoutEvents(function() use ($sourceSupplierName) {
-                                        return Supplier::firstOrCreate(
-                                            ['company_name' => $sourceSupplierName],
-                                            ['supplier_code' => 'SUP-' . strtoupper(Str::random(6))]
-                                        );
-                                    });
-                                    $supplierId = $supplier->id;
-                                } catch (\Exception $e) {
-                                    // Let it safely revert to $fallbackSupplierId
-                                }
-                            }
-
+                            // Clean up source database keys
                             unset(
                                 $itemData['id'],
                                 $itemData['created_at'],
@@ -311,20 +362,24 @@ class StockTransferResource extends Resource
 
                             $itemData['status']      = 'in_stock';
                             $itemData['store_id']    = 1;
-                            $itemData['supplier_id'] = $supplierId; // 🚀 GUARANTEED NO NULL ERRORS
 
                             $existing = ProductItem::withTrashed()->where('barcode', $barcode)->first();
 
                             if ($existing) {
                                 if ($existing->trashed()) $existing->restore();
-                                $existing->update(['status' => 'in_stock', 'store_id' => 1, 'supplier_id' => $supplierId]);
+                                $existing->update([
+                                    'status'      => 'in_stock',
+                                    'store_id'    => 1,
+                                    'supplier_id' => $itemData['supplier_id'],
+                                ]);
                                 $skipped[] = $barcode;
                             } else {
                                 try {
                                     ProductItem::withoutEvents(fn() => ProductItem::create($itemData));
                                     $created[] = $barcode;
                                 } catch (\Exception $e) {
-                                    ProductItem::where('barcode', $barcode)->update(['status' => 'in_stock', 'store_id' => 1]);
+                                    ProductItem::where('barcode', $barcode)
+                                        ->update(['status' => 'in_stock', 'store_id' => 1]);
                                     $skipped[] = $barcode;
                                 }
                             }
@@ -336,6 +391,7 @@ class StockTransferResource extends Resource
                             'actioned_at' => now(),
                         ]);
 
+                        // 3. Inform the sending tenant
                         $fromTenantId = $record->from_tenant;
                         if ($fromTenantId && $fromTenantId !== $currentTenant) {
                             $srcTenant = Tenant::find($fromTenantId);
@@ -343,15 +399,18 @@ class StockTransferResource extends Resource
                                 tenancy()->initialize($srcTenant);
 
                                 StockTransfer::where('transfer_number', $record->transfer_number)
-                                    ->update(['status' => 'accepted', 'actioned_by' => auth()->user()->name, 'actioned_at' => now()]);
+                                    ->update([
+                                        'status'      => 'accepted',
+                                        'actioned_by' => auth()->user()->name,
+                                        'actioned_at' => now(),
+                                    ]);
 
                                 foreach ($snapshot as $snap) {
                                     if (empty($snap['barcode'])) continue;
-                                    
-                                    // 🚀 Ensure we delete from source without triggering foreign key LogsActivity errors
                                     ProductItem::withoutEvents(function () use ($snap) {
-                                        // The snapshot contains the ORIGINAL barcode without the T, which is perfect for deleting the source
-                                        ProductItem::where('barcode', $snap['barcode'])->where('status', 'on_hold')->delete();
+                                        ProductItem::where('barcode', $snap['barcode'])
+                                            ->where('status', 'on_hold')
+                                            ->delete();
                                     });
                                 }
 
@@ -376,9 +435,10 @@ class StockTransferResource extends Resource
                         if (!empty($skipped)) $msg .= count($skipped) . ' already existed (updated). ';
 
                         Notification::make()
-                            ->title('✅ Transfer Accepted')
+                            ->title('✅ Transfer Accepted & Vendors Mapped')
                             ->body(trim($msg) ?: 'Items processed.')
-                            ->success()->send();
+                            ->success()
+                            ->send();
                     }),
 
                 // ── DENY — only for INCOMING pending ─────────────────────
@@ -411,12 +471,14 @@ class StockTransferResource extends Resource
                                 tenancy()->initialize($srcTenant);
 
                                 StockTransfer::where('transfer_number', $record->transfer_number)
-                                    ->update(['status' => 'denied', 'actioned_by' => auth()->user()->name, 'actioned_at' => now()]);
+                                    ->update([
+                                        'status'      => 'denied',
+                                        'actioned_by' => auth()->user()->name,
+                                        'actioned_at' => now(),
+                                    ]);
 
                                 foreach ($snapshot as $snap) {
                                     if (empty($snap['barcode'])) continue;
-                                    
-                                    // 🚀 Ensure we restore in the source DB, DO NOT DELETE IT
                                     ProductItem::where('barcode', $snap['barcode'])
                                         ->where('status', 'on_hold')
                                         ->update(['status' => 'in_stock']);
@@ -437,7 +499,8 @@ class StockTransferResource extends Resource
                         Notification::make()
                             ->title('Transfer Denied')
                             ->body('Items returned to sender\'s inventory.')
-                            ->warning()->send();
+                            ->warning()
+                            ->send();
                     }),
 
                 // ── CANCEL — only for OUTGOING pending (sender withdraws) ─
@@ -475,7 +538,11 @@ class StockTransferResource extends Resource
                             if ($destTenant) {
                                 tenancy()->initialize($destTenant);
                                 StockTransfer::where('transfer_number', $record->transfer_number)
-                                    ->update(['status' => 'denied', 'actioned_by' => auth()->user()->name, 'actioned_at' => now()]);
+                                    ->update([
+                                        'status'      => 'denied',
+                                        'actioned_by' => auth()->user()->name,
+                                        'actioned_at' => now(),
+                                    ]);
                                 tenancy()->initialize(Tenant::find($currentTenant));
                             }
                         }
@@ -483,7 +550,8 @@ class StockTransferResource extends Resource
                         Notification::make()
                             ->title('Transfer Cancelled')
                             ->body('Items restored to In Stock.')
-                            ->warning()->send();
+                            ->warning()
+                            ->send();
                     }),
 
                 // ── EDIT — only for OUTGOING pending ─────────────────────
@@ -492,7 +560,8 @@ class StockTransferResource extends Resource
                         return $record->status === 'pending'
                             && $record->from_tenant === tenant('id');
                     }),
-                    // ── QUICK VIEW MODAL ──────────────────────────────────────
+
+                // ── QUICK VIEW MODAL ──────────────────────────────────────
                 Tables\Actions\Action::make('quick_view')
                     ->label('View Items')
                     ->icon('heroicon-o-eye')
@@ -532,7 +601,7 @@ class StockTransferResource extends Resource
                                     ->label('')
                                     ->content(function () use ($record) {
                                         $snapshot = is_array($record->item_snapshot) ? $record->item_snapshot : [];
-                                        
+
                                         if (empty($snapshot)) {
                                             return new HtmlString("<div class='text-gray-400 italic text-sm py-4'>No items found in this transfer payload.</div>");
                                         }
@@ -544,11 +613,12 @@ class StockTransferResource extends Resource
                                         $html .= '</tr></thead><tbody>';
 
                                         foreach ($snapshot as $item) {
-                                            // Format the data safely whether it came from the DB directly or the snapshot array
                                             $barcode = $item['barcode'] ?? 'N/A';
                                             $desc    = $item['custom_description'] ?? 'No Description';
                                             $metal   = $item['metal_type'] ?? '—';
-                                            $price   = isset($item['retail_price']) ? '$' . number_format((float)$item['retail_price'], 2) : '—';
+                                            $price   = isset($item['retail_price'])
+                                                ? '$' . number_format((float) $item['retail_price'], 2)
+                                                : '—';
 
                                             $html .= "<tr class='border-b border-gray-100 hover:bg-gray-50 transition'>";
                                             $html .= "<td class='p-2 font-mono font-bold text-primary-600'>{$barcode}</td>";

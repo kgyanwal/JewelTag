@@ -51,12 +51,12 @@ class LaybuyResource extends Resource
                                             return new HtmlString("<div class='text-sm text-gray-400 italic font-medium'>No physical items found in the original sale records.</div>");
                                         }
 
-                                        $rows = $record->sale->items->map(function($item) {
+                                        $rows = $record->sale->items->map(function ($item) {
                                             $stock = $item->productItem->barcode ?? 'N/A';
                                             $desc = $item->custom_description ?? 'No Description';
                                             $jobDesc = $item->job_description ?? '--';
                                             $price = number_format($item->sold_price, 2);
-                                            
+
                                             return "
                                                 <tr class='border-b border-gray-100'>
                                                     <td class='py-2 text-xs font-mono'>{$stock}</td>
@@ -91,19 +91,19 @@ class LaybuyResource extends Resource
                                         $i->id => "{$i->barcode} - {$i->custom_description} (\${$i->retail_price})"
                                     ]))
                                     ->getSearchResultsUsing(function (string $search) {
-    return \App\Models\ProductItem::query()
-        ->where('status', 'on_hold')  // ✅ only reserved/held items
-        ->where(function ($q) use ($search) {
-            $q->where('barcode', 'like', "%{$search}%")
-              ->orWhere('custom_description', 'like', "%{$search}%");
-        })
-        ->limit(50)
-        ->get()
-        ->mapWithKeys(fn($i) => [
-            $i->id => "{$i->barcode} — " . \Illuminate\Support\Str::limit($i->custom_description ?? '', 35)
-                . " (\${$i->retail_price})"
-        ]);
-})
+                                        return \App\Models\ProductItem::query()
+                                            ->where('status', 'on_hold')  // ✅ only reserved/held items
+                                            ->where(function ($q) use ($search) {
+                                                $q->where('barcode', 'like', "%{$search}%")
+                                                    ->orWhere('custom_description', 'like', "%{$search}%");
+                                            })
+                                            ->limit(50)
+                                            ->get()
+                                            ->mapWithKeys(fn($i) => [
+                                                $i->id => "{$i->barcode} — " . \Illuminate\Support\Str::limit($i->custom_description ?? '', 35)
+                                                    . " (\${$i->retail_price})"
+                                            ]);
+                                    })
                                     ->searchable()
                                     ->dehydrated(false)
                                     ->live()
@@ -161,48 +161,60 @@ class LaybuyResource extends Resource
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set)),
                             ]),
 
-                        // 2. PAYMENT LEDGER (YOUR ORIGINAL CODE)
-                       Section::make('Installment History & Ledger')
-        ->description('Full transparency of all payments received.')
-        ->icon('heroicon-o-table-cells')
-        ->collapsible()
-        ->schema([
-            Placeholder::make('payment_history')
-                ->label('')
-                ->content(function ($record) {
-                    if (!$record || ($record->payments->isEmpty() && (!$record->sale || $record->sale->payments->isEmpty()))) {
-                        return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
-                    }
+                        // 2. PAYMENT LEDGER
+                        Section::make('Installment History & Ledger')
+                            ->description('Full transparency of all payments received.')
+                            ->icon('heroicon-o-table-cells')
+                            ->collapsible()
+                            ->schema([
+                             Placeholder::make('payment_history')
+    ->label('')
+    ->content(function ($record) {
+        if (!$record) return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
 
-                    // 💡 NOTE: This part is important because it merges your 
-                    // OnSwim imported payments with any new payments you take!
-                    $laybuyPayments = $record->payments;
-                    $salePayments = $record->sale ? $record->sale->payments : collect();
-                    
-                    $allPayments = $laybuyPayments->concat($salePayments)->sortByDesc('created_at');
+        // 🚀 THE FIX: We pull directly from the 'payments' relationship.
+        // This bypasses the Sale ID issues and shows the permanent ledger history.
+        $allPayments = $record->laybuyPayments;
 
-                    $rows = $allPayments->map(fn($p) => "
-                        <tr class='border-b border-gray-100'>
-                            <td class='py-3 text-sm font-medium'>{$p->created_at->format('M d, Y')}</td>
-                            <td class='py-3 text-sm uppercase text-gray-500'>" . ($p->payment_method ?? $p->method ?? 'N/A') . "</td>
-                            <td class='py-3 text-right text-sm font-bold text-green-600'>$" . number_format($p->amount, 2) . "</td>
-                        </tr>
-                    ")->implode('');
+        if ($allPayments->isEmpty()) {
+            return new HtmlString("<div class='text-sm text-gray-400 italic py-4'>No payment history found.</div>");
+        }
 
-                    return new HtmlString("
-                        <table class='w-full'>
-                            <thead>
-                                <tr class='text-left border-b border-gray-200'>
-                                    <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Date</th>
-                                    <th class='pb-2 text-[10px] uppercase tracking-widest text-gray-400 font-black'>Method</th>
-                                    <th class='pb-2 text-right text-[10px] uppercase tracking-widest text-gray-400 font-black'>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>{$rows}</tbody>
-                        </table>
-                    ");
-                })
-        ]),
+        $rows = $allPayments->map(function ($p) use ($record) {
+            $date = \Carbon\Carbon::parse($p->created_at)->format('M d, Y');            
+            $method = $p->payment_method ?? 'N/A';
+            $printUrl = route('laybuy.print', ['laybuy' => $record->id, 'payment_id' => $p->id, 'source' => 'laybuy']);
+
+            return "
+                <tr class='border-b border-gray-100 hover:bg-gray-50'>
+                    <td class='py-3 text-sm font-medium'>{$date}</td>
+                    <td class='py-3 text-sm uppercase'>
+                        <span class='bg-gray-100 border border-gray-200 text-gray-700 px-2 py-1 rounded text-[10px] font-bold'>{$method}</span>
+                    </td>
+                    <td class='py-3 text-right text-sm font-black text-green-600'>$" . number_format($p->amount, 2) . "</td>
+                    <td class='py-3 text-right'>
+                        <a href='{$printUrl}' target='_blank' style='background-color: #0ea5e9; color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;'>
+                            Receipt
+                        </a>
+                    </td>
+                </tr>";
+        })->implode('');
+
+        return new HtmlString("
+            <table class='w-full text-left'>
+                <thead>
+                    <tr class='border-b border-gray-200'>
+                        <th class='pb-2 text-[10px] uppercase text-gray-400 font-black'>Date</th>
+                        <th class='pb-2 text-[10px] uppercase text-gray-400 font-black'>Method</th>
+                        <th class='pb-2 text-right text-[10px] uppercase text-gray-400 font-black'>Amount</th>
+                        <th class='pb-2 text-right text-[10px] uppercase text-gray-400 font-black'>Action</th>
+                    </tr>
+                </thead>
+                <tbody>{$rows}</tbody>
+            </table>");
+    })
+                                   
+                            ]),
                     ]),
 
                     /* ─── RIGHT COLUMN: CUSTOMER & STATUS (YOUR ORIGINAL CODE) ─── */
@@ -240,18 +252,12 @@ class LaybuyResource extends Resource
                                     ->prefix('$')->readOnly()
                                     ->extraInputAttributes(['class' => 'font-bold text-xl text-gray-900']),
 
-                              TextInput::make('amount_paid')
-    ->label('Amount Collected')
-    ->prefix('$')
-    ->readOnly() // Keep it read-only to prevent math errors
-    ->formatStateUsing(function ($record, $state) {
-        if (!$record) return $state;
-        // This summates both imported payments and new ones
-        $salePayments = $record->sale ? $record->sale->payments->sum('amount') : 0;
-        $laybuyPayments = $record->payments->sum('amount');
-        return $salePayments + $laybuyPayments;
-    })
-    ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
+                                TextInput::make('amount_paid')
+                                    ->label('Amount Collected')
+                                    ->prefix('$')
+                                    ->readOnly() // Keep it read-only to prevent math errors
+                                    ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
+
                                 TextInput::make('balance_due')
                                     ->label('Remaining Balance')
                                     ->prefix('$')->readOnly()
@@ -286,110 +292,188 @@ class LaybuyResource extends Resource
             ]);
     }
 
-   public static function calculateTotals(Get $get, Set $set)
-{
-    $items = $get('layby_items') ?? [];
-    $total = collect($items)->sum(fn($i) => (float)($i['price'] ?? 0));
-    
-    // If we are editing, we should fetch the existing paid amount
-    $paid = (float)($get('amount_paid') ?? 0);
+    public static function calculateTotals(Get $get, Set $set)
+    {
+        $items = $get('layby_items') ?? [];
+        $total = collect($items)->sum(fn($i) => (float)($i['price'] ?? 0));
 
-    $set('total_amount', $total);
-    $set('balance_due', max(0, $total - $paid));
-}
+        // If we are editing, we should fetch the existing paid amount
+        $paid = (float)($get('amount_paid') ?? 0);
+
+        $set('total_amount', $total);
+        $set('balance_due', max(0, $total - $paid));
+    }
 
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn($query) => $query->with(['customer', 'sale.payments', 'laybuyPayments']))
             ->columns([
-                TextColumn::make('laybuy_no')->label('ID')->searchable(),
-                 TextColumn::make('customer.name')
+                TextColumn::make('laybuy_no')
+                    ->label('ID')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold')
+                    ->fontFamily('mono')
+                    ->grow(false),
+
+                TextColumn::make('customer.name')
                     ->label('Customer')
                     ->weight('bold')
-                    // FIX: Show full name like CustomerResource does
-                    ->formatStateUsing(fn($record) =>
+                    ->formatStateUsing(
+                        fn($record) =>
                         trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? ''))
                     )
-                    ->description(fn($record) => $record->customer?->phone),
-                      TextColumn::make('progress')
+                    ->description(fn($record) => $record->customer?->phone)
+                    ->searchable(query: function ($query, string $search) {
+                        return $query->whereHas(
+                            'customer',
+                            fn($q) =>
+                            $q->where('name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%")
+                                ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                ->orWhere('phone', 'like', "%{$search}%")
+                                ->orWhere('customer_no', 'like', "%{$search}%")
+                        );
+                    }),
+
+                TextColumn::make('progress')
                     ->label('Progress')
                     ->getStateUsing(function ($record) {
                         $total = floatval($record->total_amount);
                         if ($total <= 0) return new HtmlString('<span class="text-gray-400">—</span>');
- 
-                        // FIX: Same logic as form progress bar — sum both laybuy + sale payments
-                        $salePayments   = $record->sale ? $record->sale->payments->sum('amount') : 0;
-                        $laybuyPayments = $record->payments->sum('amount');
-                        $paid           = $salePayments + $laybuyPayments;
-                        $perc           = min(100, round(($paid / $total) * 100));
-                        $color          = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
- 
+
+                        // 🚀 FIX: Just use the database column directly instead of summing both tables
+                        $paid  = floatval($record->amount_paid);
+                        $perc  = min(100, round(($paid / $total) * 100));
+                        $color = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
+
                         return new HtmlString("
-                            <div style='min-width:140px;'>
-                                <div style='display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px;'>
-                                    <span style='color:#6b7280;'>\$" . number_format($paid, 2) . " / \$" . number_format($total, 2) . "</span>
-                                    <span style='color:{$color};font-weight:900;'>{$perc}%</span>
-                                </div>
-                                <div style='background:#e5e7eb;border-radius:999px;height:7px;overflow:hidden;'>
-                                    <div style='background:{$color};width:{$perc}%;height:100%;border-radius:999px;transition:width 0.3s;'></div>
-                                </div>
+                        <div style='min-width:140px;'>
+                            <div style='display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px;'>
+                                <span style='color:#6b7280;'>\$" . number_format($paid, 2) . " / \$" . number_format($total, 2) . "</span>
+                                <span style='color:{$color};font-weight:900;'>{$perc}%</span>
                             </div>
-                        ");
+                            <div style='background:#e5e7eb;border-radius:999px;height:7px;overflow:hidden;'>
+                                <div style='background:{$color};width:{$perc}%;height:100%;border-radius:999px;transition:width 0.3s;'></div>
+                            </div>
+                        </div>
+                    ");
                     }),
-                TextColumn::make('balance_due')->money('USD')->label('Balance')->color('danger')->sortable(),
-                TextColumn::make('status')->badge(),
-                TextColumn::make('due_date')->date()->label('Deadline'),
+
+                TextColumn::make('balance_due')
+                    ->money('USD')
+                    ->label('Balance')
+                    ->color('danger')
+                    ->sortable(),
+
+                TextColumn::make('status')
+                    ->badge()
+                    ->color(fn($state) => match ($state) {
+                        'completed'   => 'success',
+                        'cancelled'   => 'danger',
+                        default       => 'warning',
+                    })
+                    ->formatStateUsing(fn($state) => match ($state) {
+                        'in_progress' => 'Active',
+                        'completed'   => 'Paid',
+                        'cancelled'   => 'Cancelled',
+                        default       => $state,
+                    }),
+
+                TextColumn::make('due_date')
+                    ->date('M d, Y')
+                    ->label('Deadline')
+                    ->sortable()
+                    ->color(
+                        fn($record) =>
+                        $record->due_date && $record->due_date < now() && $record->status === 'in_progress'
+                            ? 'danger'
+                            : null
+                    ),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')
+                    ->options([
+                        'in_progress' => 'Active Plan',
+                        'completed'   => 'Fully Paid',
+                        'cancelled'   => 'Cancelled',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\Action::make('quick_pay')
                     ->label('Add Payment')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
-                    ->visible(fn (Laybuy $record) => $record->balance_due > 0)
+                    ->visible(fn(Laybuy $record) => $record->balance_due > 0)
                     ->form([
                         TextInput::make('amount')
                             ->numeric()
                             ->required()
                             ->prefix('$')
-                            ->default(fn(Laybuy $record) => $record->balance_due), 
+                            ->default(fn(Laybuy $record) => $record->balance_due),
                         Select::make('payment_method')
-                            ->options([
-                                'cash' => 'CASH', 
-                                'visa' => 'VISA', 
-                                'mastercard' => 'MASTERCARD', 
-                                'amex' => 'AMEX'
-                            ])
-                            ->default('cash')
+                            ->options(function () {
+                                $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+                                $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                                $options = [];
+                                foreach ($methods as $method) {
+                                    if (strtoupper($method) !== 'LAYBUY') {
+                                        $options[strtoupper($method)] = strtoupper($method);
+                                    }
+                                }
+                                return $options;
+                            })
+                            ->default('CASH')
                             ->required(),
                     ])
                     ->action(function (Laybuy $record, array $data) {
                         DB::transaction(function () use ($record, $data) {
                             $amountPaid = (float) $data['amount'];
-                            
+                            $method = strtoupper(trim($data['payment_method']));
+
+                            // 1. Record for Laybuy History Ledger
+                            \App\Models\LaybuyPayment::create([
+                                'laybuy_id'      => $record->id,
+                                'amount'         => $amountPaid,
+                                'payment_method' => $method,
+                                'created_at'     => now(),
+                                'updated_at'     => now(),
+                            ]);
+
+                            // 2. Record for Main Sales Ledger (End of day reporting)
                             if ($record->sale_id) {
                                 \App\Models\Payment::create([
                                     'sale_id' => $record->sale_id,
-                                    'amount' => $amountPaid,
-                                    'method' => $data['payment_method'],
+                                    'amount'  => $amountPaid,
+                                    'method'  => $method,
                                     'paid_at' => now(),
                                 ]);
                             }
 
+                            // 3. Update the Laybuy balances
                             $newAmountPaid = $record->amount_paid + $amountPaid;
-                            $newBalance = max(0, $record->total_amount - $newAmountPaid);
-                            $newStatus = $newBalance <= 0 ? 'completed' : 'in_progress';
+                            $newBalance    = max(0, $record->total_amount - $newAmountPaid);
+                            $newStatus     = $newBalance <= 0 ? 'completed' : 'in_progress';
 
                             $record->update([
-                                'amount_paid' => $newAmountPaid,
-                                'balance_due' => $newBalance,
-                                'status' => $newStatus,
+                                'amount_paid'    => $newAmountPaid,
+                                'balance_due'    => $newBalance,
+                                'status'         => $newStatus,
+                                'last_paid_date' => now(),
                             ]);
 
-                            if ($newBalance <= 0 && $record->sale_id) {
-                                \App\Models\Sale::where('id', $record->sale_id)->update([
-                                    'status' => 'completed',
-                                    'completed_at' => now(),
-                                ]);
+                            // 4. Mark sale as completed if fully paid off
+                            if ($record->sale_id) {
+                                $sale = \App\Models\Sale::find($record->sale_id);
+                                if ($sale) {
+                                    $sale->update([
+                                        'amount_paid'  => $sale->amount_paid + $amountPaid,
+                                        'balance_due'  => max(0, $sale->final_total - ($sale->amount_paid + $amountPaid)),
+                                        'status'       => $newBalance <= 0 ? 'completed' : $sale->status,
+                                        'completed_at' => $newBalance <= 0 ? now() : $sale->completed_at,
+                                    ]);
+                                }
                             }
                         });
 
@@ -398,9 +482,14 @@ class LaybuyResource extends Resource
                             ->success()
                             ->send();
                     }),
-                
-                Tables\Actions\EditAction::make(),
-            ]);
+
+                Tables\Actions\EditAction::make()
+    // tooltips show when you hover over the button
+    ->tooltip("Click manage ledger to edit today's amount")
+    // If you want a specific icon for the edit button
+    ->icon('heroicon-m-pencil-square'),
+                        ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

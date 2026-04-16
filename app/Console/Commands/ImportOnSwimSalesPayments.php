@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
 class ImportOnSwimSalesPayments extends Command
 {
     // Strictly prevent data deletion by using only --dry-run
-    protected $signature = 'import:onswim-sales-payments {tenant} {--dry-run}';
+    protected $signature = 'import:onswim-sales-payments {tenant} {--date= : The date suffix in MM_DD format} {--dry-run}';
     protected $description = 'Import OnSwim Sales Payments safely mapping to Sales, or directly to Customers without data loss';
 
     public function handle()
@@ -40,8 +40,15 @@ class ImportOnSwimSalesPayments extends Command
 
             // Path & Dynamic File Logic
             $directoryPath = storage_path("/{$tenantId}/data");
-            $yesterday = Carbon::yesterday()->format('Y_m_d'); 
-            $fileName = "sales_payments_{$yesterday}.csv";
+            $dateSuffix = $this->option('date');
+
+            if ($dateSuffix) {
+                // Allows --date=04_05 to find sales_payments_2026_04_05.csv
+                $fileName = "sales_payments_2026_{$dateSuffix}.csv";
+            } else {
+                $fileName = "sales_payments_" . Carbon::yesterday()->format('Y_m_d') . ".csv";
+            }
+            
             $filePath = "{$directoryPath}/{$fileName}";
 
             if (!File::exists($filePath)) {

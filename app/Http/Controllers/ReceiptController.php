@@ -66,4 +66,73 @@ public function customOrderReceipt(Request $request, CustomOrder $customOrder)
     $filename = "DEPOSIT_{$customOrder->order_no}.pdf";
     return $pdf->stream($filename);
 }
+public function printLaybuy(Request $request, \App\Models\Laybuy $laybuy)
+    {
+        $laybuy->load(['customer', 'sale.items.productItem', 'payments']);
+        $store = \App\Models\Store::first();
+
+        $paymentId = $request->query('payment_id');
+        $source    = $request->query('source');
+
+        $laybuyPayments = $laybuy->payments->map(fn($p) => (object)[
+            'id' => $p->id, 'source' => 'laybuy', 'amount' => $p->amount, 
+            'method' => $p->payment_method, 'date' => $p->created_at
+        ]);
+
+        $salePayments = $laybuy->sale ? $laybuy->sale->payments->map(fn($p) => (object)[
+            'id' => $p->id, 'source' => 'payment', 'amount' => $p->amount, 
+            'method' => $p->method, 'date' => $p->paid_at ?? $p->created_at
+        ]) : collect();
+
+        // Remove duplicates
+        $filteredSalePayments = $salePayments->filter(function($sp) use ($laybuyPayments) {
+            foreach ($laybuyPayments as $lp) {
+                if ($sp->amount == $lp->amount && abs(\Carbon\Carbon::parse($sp->date)->diffInSeconds(\Carbon\Carbon::parse($lp->date))) < 60) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        $allPayments = collect()
+            ->concat($laybuyPayments)->concat($filteredSalePayments)
+            ->sortBy('date')->values();
+
+        $targetPayment = null;
+        $runningPaid = 0;
+
+        // 🚀 THE FIX: Calculate running balance dynamically up to the clicked receipt
+        foreach ($allPayments as $p) {
+            $runningPaid += $p->amount;
+            if ($p->id == $paymentId && $p->source == $source) {
+                $targetPayment = $p;
+                break;
+            }
+        }
+
+        // If no specific payment clicked, default to the latest
+        if (!$targetPayment && $allPayments->count() > 0) {
+            $targetPayment = $allPayments->last();
+            $runningPaid = $allPayments->sum('amount');
+        }
+
+        $currentPaymentAmount = $targetPayment ? $targetPayment->amount : 0;
+        $balanceBefore        = max(0, $laybuy->total_amount - ($runningPaid - $currentPaymentAmount));
+        $balanceAfter         = max(0, $laybuy->total_amount - $runningPaid);
+
+        $pdf = Pdf::loadView('receipts.laybuy', [
+            'laybuy'               => $laybuy,
+            'store'                => $store,
+            'targetPayment'        => $targetPayment,
+            'currentPaymentAmount' => $currentPaymentAmount,
+            'balanceBefore'        => $balanceBefore,
+            'balanceAfter'         => $balanceAfter,
+            'paymentDate'          => $targetPayment ? \Carbon\Carbon::parse($targetPayment->date) : now(),
+            'paymentMethod'        => $targetPayment ? strtoupper($targetPayment->method) : 'N/A',
+            'is_pdf'               => true,
+        ]);
+
+        $pdf->setPaper('letter', 'portrait');
+        return $pdf->stream("LAYBUY_{$laybuy->laybuy_no}.pdf");
+    }
 }
