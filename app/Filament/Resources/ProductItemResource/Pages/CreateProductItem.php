@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\ProductItemResource\Pages;
 
 use App\Filament\Resources\ProductItemResource;
-use App\Services\InvoiceOcrService;
+use App\Services\TextractInvoiceService;
 use App\Services\ZebraPrinterService; // 👈 Import the printer service
 use App\Models\ProductItem;
 use Filament\Actions\Action;
@@ -60,7 +60,7 @@ class CreateProductItem extends CreateRecord
             ->send();
     }
 
-    protected function getHeaderActions(): array
+ protected function getHeaderActions(): array
     {
         return [
             Action::make('scanInvoice')
@@ -74,36 +74,40 @@ class CreateProductItem extends CreateRecord
                         ->directory('invoice-scans')
                         ->required()
                 ])
-                // 🚀 THE FIX: We must pass \Filament\Forms\Contracts\HasForms $livewire
-                ->action(function (array $data, InvoiceOcrService $ocrService, \Filament\Forms\Contracts\HasForms $livewire) {
+                // 🚀 2. INJECT THE NEW TEXTRACT SERVICE HERE
+               ->action(function (array $data, TextractInvoiceService $ocrService, \Filament\Forms\Contracts\HasForms $livewire) {
                     $path = storage_path('app/public/' . $data['invoice_image']);
                     
                     try {
-                        // 1. Get the data
+                        // 1. Get the data from AWS
                         $extracted = $ocrService->extractDataFromImage($path);
                         
                         // 2. Safely merge the new data with the existing form data
-                        // This prevents the action from wiping out data the user already typed!
                         $currentState = $livewire->form->getRawState();
                         
-                        // 🚀 THE FIX: Use $livewire->form->fill()
+                        // 3. Fill the form with the AWS data + Smart Parsing data
                         $livewire->form->fill([
                             ...$currentState,
                             'supplier_code'      => $extracted['supplier_code'] ?? $currentState['supplier_code'] ?? null, 
                             'cost_price'         => $extracted['cost_price'] ?? $currentState['cost_price'] ?? 0, 
                             'custom_description' => $extracted['custom_description'] ?? $currentState['custom_description'] ?? '', 
-                            'qty'                => $currentState['qty'] ?? 1
+                            'qty'                => $extracted['qty'] ?? $currentState['qty'] ?? 1,
+                            
+                            // 🚀 NEW FIELDS ADDED HERE:
+                            'metal_type'         => $extracted['metal_type'] ?? $currentState['metal_type'] ?? null,
+                            'diamond_weight'     => $extracted['diamond_weight'] ?? $currentState['diamond_weight'] ?? null,
+                            'size'               => $extracted['size'] ?? $currentState['size'] ?? null,
                         ]);
                         
                         Notification::make()
-                            ->title('Invoice Data Retrieved!')
-                            ->body('The Cost Price and Description fields have been updated.')
+                            ->title('AWS Textract Success!')
+                            ->body('Invoice data, Metal Karat, and CTW successfully extracted.')
                             ->success()
                             ->send();
                             
                     } catch (\Exception $e) {
                         Notification::make()
-                            ->title('OCR Error')
+                            ->title('AWS Error')
                             ->body($e->getMessage())
                             ->danger()
                             ->send();
