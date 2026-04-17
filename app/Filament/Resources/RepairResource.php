@@ -10,7 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Forms\Components\{ Section, TextInput, Select, Toggle, Grid, Textarea, Placeholder, Repeater, Hidden, Group};
+use Filament\Forms\Components\{Section, TextInput, Select, Toggle, Grid, Textarea, Placeholder, Repeater, Hidden, Group};
 use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Actions\Action as FormAction;
 use Filament\Notifications\Notification;
@@ -151,7 +151,7 @@ class RepairResource extends Resource
                                                         TextInput::make('email')->label('Email')->email(),
                                                     ]),
                                                     Grid::make(2)->schema([
-                                                       CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                        CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
                                                         CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
                                                     ]),
                                                     Section::make('Customer Address')
@@ -220,45 +220,45 @@ class RepairResource extends Resource
                                             ->live(),
                                     ])->columnSpanFull(),
 
-                                   Select::make('original_product_id')
-    ->label('Search Store Stock No.')
-    ->placeholder('Search by stock number (G1234, R1001, N...)') 
-    ->options(function () {
-        // ✅ Show ALL stock regardless of status — sold, in_stock, on_hold
-        return \App\Models\ProductItem::query()
-            ->whereNotNull('barcode')
-            ->orderBy('barcode')
-            ->limit(200)
-            ->get()
-            ->mapWithKeys(fn($item) => [
-                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-                    . " [{$item->status}]"
-            ]);
-    })
-    ->getSearchResultsUsing(function (string $search) {
-        // ✅ Search by barcode OR description, no status filter
-        return \App\Models\ProductItem::query()
-            ->where(function ($q) use ($search) {
-                $q->where('barcode', 'like', "%{$search}%")
-                  ->orWhere('custom_description', 'like', "%{$search}%");
-            })
-            ->limit(50)
-            ->get()
-            ->mapWithKeys(fn($item) => [
-                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-                    . " [{$item->status}]"
-            ]);
-    })
-    ->getOptionLabelUsing(fn($value) => \App\Models\ProductItem::find($value)?->barcode . ' — ' . \App\Models\ProductItem::find($value)?->custom_description)
-    ->searchable()
-    ->live()
-    ->afterStateUpdated(function ($state, Forms\Set $set) {
-        if ($item = \App\Models\ProductItem::find($state)) {
-            $set('item_description', $item->custom_description ?? $item->barcode);
-        }
-    })
-    ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
-    ->columnSpanFull(),
+                                    Select::make('original_product_id')
+                                        ->label('Search Store Stock No.')
+                                        ->placeholder('Search by stock number (G1234, R1001, N...)')
+                                        ->options(function () {
+                                            // ✅ Show ALL stock regardless of status — sold, in_stock, on_hold
+                                            return \App\Models\ProductItem::query()
+                                                ->whereNotNull('barcode')
+                                                ->orderBy('barcode')
+                                                ->limit(200)
+                                                ->get()
+                                                ->mapWithKeys(fn($item) => [
+                                                    $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                                                        . " [{$item->status}]"
+                                                ]);
+                                        })
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            // ✅ Search by barcode OR description, no status filter
+                                            return \App\Models\ProductItem::query()
+                                                ->where(function ($q) use ($search) {
+                                                    $q->where('barcode', 'like', "%{$search}%")
+                                                        ->orWhere('custom_description', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(fn($item) => [
+                                                    $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                                                        . " [{$item->status}]"
+                                                ]);
+                                        })
+                                        ->getOptionLabelUsing(fn($value) => \App\Models\ProductItem::find($value)?->barcode . ' — ' . \App\Models\ProductItem::find($value)?->custom_description)
+                                        ->searchable()
+                                        ->live()
+                                        ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                            if ($item = \App\Models\ProductItem::find($state)) {
+                                                $set('item_description', $item->custom_description ?? $item->barcode);
+                                            }
+                                        })
+                                        ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
+                                        ->columnSpanFull(),
                                     Grid::make(2)->schema([
                                         Textarea::make('item_description')
                                             ->label('Item Name / Description')
@@ -301,26 +301,40 @@ class RepairResource extends Resource
                 // ── RIGHT: Staff + Tracking + Workflow ────────────────
                 Group::make()->columnSpan(['lg' => 4])->schema([
 
-                    Section::make('Staff Assignment')
-                        ->icon('heroicon-o-identification')
-                        ->schema([
-                            Select::make('sales_person_list')
-                                ->label('Sales Staff')
-                                ->multiple()
-                                ->searchable()
-                                ->preload()
-                                ->options(\App\Models\User::pluck('name', 'id'))
-                                ->default(fn() => [Session::get('active_staff_name') ?? auth()->user()->name])
-                                ->required()
-                                ->live()
-                                ->afterStateUpdated(function ($state, Forms\Set $set) {
-                                    $set('sales_person_id', !empty($state) ? $state[0] : null);
-                                }),
+                  Section::make('Staff Assignment')
+    ->icon('heroicon-o-identification')
+    ->schema([
+ 
+        // ✅ NO default() here — mutateFormDataBeforeCreate owns this value.
+        // The hidden field just ensures sales_person_id is included in form data.
+        Hidden::make('sales_person_id'),
+ 
+        Select::make('sales_person_list')
+            ->label('Sales Staff')
+            ->multiple()
+            ->searchable()
+            ->preload()
+            ->options(\App\Models\User::pluck('name', 'id'))
+            ->default(function () {
+                // This correctly resolves "Rabin" from the session.
+                $activeName = \Illuminate\Support\Facades\Session::get('active_staff_name');
+ 
+                if ($activeName) {
+                    $user = \App\Models\User::where('name', 'LIKE', "%{$activeName}%")->first();
+                    if ($user) return [$user->id];
+                }
+ 
+                return auth()->id() ? [auth()->id()] : [];
+            })
+            ->required()
+            ->live()
+            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                // Sync the hidden field when user manually changes selection
+                $set('sales_person_id', !empty($state) ? (int) $state[0] : null);
+            }),
+    ]),
 
-                            Hidden::make('sales_person_id'),
-                        ]),
-
-                    Section::make('Repair Tracking')
+                   Section::make('Repair Tracking')
                         ->icon('heroicon-o-map-pin')
                         ->collapsible()
                         ->schema([
@@ -329,9 +343,7 @@ class RepairResource extends Resource
                                     ->label('Dropped By')
                                     ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                                     ->searchable()
-                                    ->preload()
-                                    ->default(fn() => auth()->user()?->name),
-
+                                    ->preload(),
                                 CustomDatePicker::make('date_dropped')
                                     ->label('Date Dropped')
                                     ->displayFormat('M d, Y'),
@@ -342,8 +354,8 @@ class RepairResource extends Resource
                                     ->label('Picked Up By')
                                     ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                                     ->searchable()
-                                    ->preload()
-                                    ->default(fn() => auth()->user()?->name),
+                                    ->preload(),
+                                 
 
                                 CustomDatePicker::make('date_picked_up')
                                     ->label('Date Picked/Received')
@@ -352,16 +364,16 @@ class RepairResource extends Resource
 
                             Grid::make(2)->schema([
                                GoogleAutocomplete::make('repair_location_search')
-        ->label('Repair Location')
-        ->autocompletePlaceholder('Search address or place...')
-        ->countries(['US'])
-        ->columnSpanFull()
-        ->withFields([
-            TextInput::make('repair_location')
-                ->label('Location Name / Address')
-                ->placeholder('e.g. Javier Workshop, Texas Vendor')
-                ->extraInputAttributes(['data-google-field' => '{establishment} {route}']),
-        ]),
+                                    ->label('Repair Location')
+                                    ->autocompletePlaceholder('Search address or place...')
+                                    ->countries(['US'])
+                                    ->columnSpanFull()
+                                    ->withFields([
+                                        TextInput::make('repair_location')
+                                            ->label('Location Name / Address')
+                                            ->placeholder('e.g. Javier Workshop, Texas Vendor')
+                                            ->extraInputAttributes(['data-google-field' => '{establishment} {route}']),
+                                    ]),
 
                                 CustomDatePicker::make('customer_pickup_date')
                                     ->label('Customer Pickup Date')
@@ -419,11 +431,44 @@ class RepairResource extends Resource
                     ->weight('bold')
                     ->grow(false),
 
-                Tables\Columns\TextColumn::make('salesPerson.name')
-                    ->label('BY')
-                    ->html()
-                    ->formatStateUsing(fn($state) => self::staffBadge($state))
-                    ->grow(false),
+            Tables\Columns\TextColumn::make('salesPerson.name')
+    ->label('SALES STAFF')
+    ->html()
+    ->getStateUsing(function ($record) {
+        // sales_person_list is cast to array in the model — contains all selected IDs
+        $list = $record->sales_person_list;
+ 
+        // If cast didn't run (raw string from DB), decode manually
+        if (is_string($list)) {
+            $list = json_decode($list, true);
+        }
+ 
+        if (!empty($list) && is_array($list)) {
+            return \App\Models\User::whereIn('id', $list)
+                ->pluck('name')
+                ->implode('||'); // delimiter to split badges in formatStateUsing
+        }
+ 
+        // Fallback: single staff_id relationship
+        if ($record->salesPerson) {
+            return $record->salesPerson->name;
+        }
+ 
+        return '—';
+    })
+    ->formatStateUsing(function ($state) {
+        if (!$state || $state === '—') {
+            return '<span style="color:#9ca3af;font-size:11px;">—</span>';
+        }
+ 
+        // Split multiple names and render each as a badge
+        $names = explode('||', $state);
+ 
+        return collect($names)
+            ->map(fn($name) => self::staffBadge(trim($name)))
+            ->implode(' ');
+    })
+    ->grow(false),
 
                 Tables\Columns\TextColumn::make('date_dropped')
                     ->label('DROPPED')
@@ -463,7 +508,7 @@ class RepairResource extends Resource
                     ])
                     ->selectablePlaceholder(false)
                     ->grow(false)
-                    ->extraAttributes(fn($record): array => match($record->status) {
+                    ->extraAttributes(fn($record): array => match ($record->status) {
                         'received'    => ['style' => 'background:#F3F4F6;color:#374151;font-weight:700;border-radius:4px;min-width:90px;'],
                         'in_progress' => ['style' => 'background:#FEE2E2;color:#B91C1C;font-weight:700;border-radius:4px;min-width:90px;'],
                         'ready'       => ['style' => 'background:#DCFCE7;color:#15803D;font-weight:700;border-radius:4px;min-width:90px;'],
@@ -481,11 +526,12 @@ class RepairResource extends Resource
                 Tables\Columns\TextColumn::make('customer_pickup_date')
                     ->label('PICKUP')
                     ->placeholder('—')
-                    ->formatStateUsing(fn($state) => $state
-                        ? "<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>"
+                    ->formatStateUsing(
+                        fn($state) => $state
+                            ? "<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>"
                             . \Carbon\Carbon::parse($state)->format('m/d/y')
                             . "</span>"
-                        : '<span style="color:#9ca3af;">—</span>'
+                            : '<span style="color:#9ca3af;">—</span>'
                     )
                     ->html()
                     ->grow(false),
@@ -501,9 +547,10 @@ class RepairResource extends Resource
 
                 Tables\Columns\TextColumn::make('notified_at')
                     ->label('NOTIFIED')
-                    ->getStateUsing(fn($record) => $record->notified_at
-                        ? $record->notified_at->format('m/d/y')
-                        : '—'
+                    ->getStateUsing(
+                        fn($record) => $record->notified_at
+                            ? $record->notified_at->format('m/d/y')
+                            : '—'
                     )
                     ->icon(fn($record) => $record->notified_at ? 'heroicon-s-check-circle' : 'heroicon-o-clock')
                     ->color(fn($record) => $record->notified_at ? 'success' : 'gray')
@@ -547,8 +594,9 @@ class RepairResource extends Resource
                 Tables\Columns\TextColumn::make('estimated_total')
                     ->label('QUOTE')
                     ->money('USD')
-                    ->getStateUsing(fn($record) => collect($record->items ?? [])
-                        ->sum(fn($i) => (float)($i['estimated_cost'] ?? 0))
+                    ->getStateUsing(
+                        fn($record) => collect($record->items ?? [])
+                            ->sum(fn($i) => (float)($i['estimated_cost'] ?? 0))
                     )
                     ->grow(false),
             ])
@@ -580,7 +628,9 @@ class RepairResource extends Resource
                                 ->required(),
                         ])
                         ->action(fn($record, array $data) => self::handleRepairNotification(
-                            $record, $data['notify_method'], $data['message']
+                            $record,
+                            $data['notify_method'],
+                            $data['message']
                         )),
 
                     Tables\Actions\Action::make('markReady')

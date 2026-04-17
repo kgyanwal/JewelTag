@@ -591,11 +591,18 @@ Hidden::make('web_item')->default(false),
                 Tables\Columns\TextColumn::make('rfid_status')->label('RFID')->badge()->getStateUsing(fn($record) => filled($record->rfid_code) ? 'Encoded' : 'Missing')
                     ->color(fn($state) => $state === 'Encoded' ? 'success' : 'gray'),
 
-                Tables\Columns\TextColumn::make('status')->badge()->color(fn($state) => match ($state) {
-                    'in_stock' => 'success',
-                    'sold' => 'danger',
-                    default => 'gray'
-                }),
+             Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->color(fn($state) => match ($state) {
+                        'in_stock' => 'success',
+                        'sold'     => 'danger',
+                        'staged'   => 'warning', // 🚀 Add this line
+                        default    => 'gray'
+                    })
+                    ->formatStateUsing(fn(string $state) => match ($state) {
+                        'staged' => 'Needs Approval', // 🚀 Make it readable
+                        default  => ucfirst(str_replace('_', ' ', $state))
+                    }),
             ])
             ->actions([
                 ActionGroup::make([
@@ -668,6 +675,15 @@ Hidden::make('web_item')->default(false),
                         }),
                     EditAction::make(),
                     ViewAction::make(),
+                    Action::make('approve_stock')
+                        ->label('Approve')
+                        ->icon('heroicon-o-check-badge')
+                        ->color('warning')
+                        ->button()
+                        // ONLY show this button if the item is currently 'staged'
+                        ->visible(fn(ProductItem $record) => $record->status === 'staged')
+                        // When clicked, redirect them to the standard Edit page
+                        ->url(fn(ProductItem $record) => ProductItemResource::getUrl('edit', ['record' => $record])),
                     Action::make('addToWishlist')
                         ->label('Add to Wishlist')
                         ->icon('heroicon-o-heart')

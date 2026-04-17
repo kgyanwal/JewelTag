@@ -145,17 +145,25 @@ class SaleResource extends Resource
                                             )
                                             ->live()
                                             ->dehydrated(false)
-                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                           ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 if (!$state) return;
                                                 $item = ProductItem::find($state);
                                                 if (!$item) return;
 
+                                                // 1. Get the current items array (safely preserving what's already there)
                                                 $currentItems = $get('items') ?? [];
                                                 $qty          = $get('current_qty') ?? 1;
 
-                                                $currentItems[] = [
+                                                // 2. Create a unique UUID for this new regular item
+                                                $newItemId = (string) \Illuminate\Support\Str::uuid();
+
+                                                // 3. Append the new regular item using the unique UUID as the key
+                                                // This prevents it from wiping out the Custom Order, which also uses a UUID key!
+                                                $currentItems[$newItemId] = [
                                                     'product_item_id'     => $item->id,
                                                     'repair_id'           => null,
+                                                    'custom_order_id'     => null, // explicitly mark as not custom
+                                                    'is_new_custom_order' => false, // explicitly mark as not custom
                                                     'stock_no_display'    => $item->barcode,
                                                     'custom_description'  => $item->custom_description ?? $item->barcode,
                                                     'qty'                 => $qty,
@@ -166,7 +174,10 @@ class SaleResource extends Resource
                                                     'is_tax_free'         => false,
                                                 ];
 
+                                                // 4. Save the safely merged array back to the state
                                                 $set('items', $currentItems);
+                                                
+                                                // 5. Reset the search box for the next scan
                                                 $set('current_item_search', null);
                                                 $set('current_qty', 1);
 
@@ -1391,33 +1402,49 @@ Select::make('payment_target')
                                     ->visible(fn(Get $get) => !$get('is_split_payment'))
                                     ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
 
-                                Repeater::make('split_payments')
+                              Repeater::make('split_payments')
     ->label('Payment Breakdown')
     ->schema([
-        Grid::make(3)->schema([ // Changed to 3 columns to fit the new dropdown
+        Grid::make(6)->schema([
             Select::make('method')
                 ->options(self::getPaymentOptions())
                 ->required()
-                ->label('Method'),
+                ->label('Method')
+                ->columnSpan(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    $hasCustom = collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
+                    return $hasCustom ? 2 : 3;
+                }),
             
             TextInput::make('amount')
                 ->numeric()
                 ->prefix('$')
                 ->required()
                 ->label('Amount')
-                ->live(onBlur: true),
+                ->live(onBlur: true)
+                ->columnSpan(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    $hasCustom = collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
+                    return $hasCustom ? 2 : 3;
+                }),
                 
             Select::make('payment_target')
                 ->label('Apply To')
                 ->options([
                     'regular' => 'Regular Sales',
-                    'custom' => 'Custom Deposit',
+                    'custom'  => 'Custom Deposit',
                 ])
                 ->default('regular')
+                ->columnSpan(2)
                 ->visible(function (Get $get) {
                     $items = $get('../../items') ?? [];
-                    return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                        || request()->has('custom_order_id');
+                    return collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
                 })
                 ->live()
                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),

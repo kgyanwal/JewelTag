@@ -252,11 +252,32 @@ class LaybuyResource extends Resource
                                     ->prefix('$')->readOnly()
                                     ->extraInputAttributes(['class' => 'font-bold text-xl text-gray-900']),
 
-                                TextInput::make('amount_paid')
-                                    ->label('Amount Collected')
+                               TextInput::make('amount_paid')
+                                    ->label('Initial Deposit Collected')
                                     ->prefix('$')
-                                    ->readOnly() // Keep it read-only to prevent math errors
+                                    ->numeric()
+                                    ->readOnly(fn(string $operation) => $operation === 'edit')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set))
                                     ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
+
+                                // 🚀 THE FIX: Dynamically show payment options if they enter a deposit
+                                Select::make('initial_payment_method')
+                                    ->label('Deposit Payment Method')
+                                    ->options(function () {
+                                        $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+                                        $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                                        $options = [];
+                                        foreach ($methods as $method) {
+                                            if (strtoupper($method) !== 'LAYBUY') {
+                                                $options[strtoupper($method)] = strtoupper($method);
+                                            }
+                                        }
+                                        return $options;
+                                    })
+                                    ->default('CASH')
+                                    ->visible(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0)
+                                    ->required(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0),
 
                                 TextInput::make('balance_due')
                                     ->label('Remaining Balance')
@@ -432,26 +453,18 @@ class LaybuyResource extends Resource
                             $amountPaid = (float) $data['amount'];
                             $method = strtoupper(trim($data['payment_method']));
 
-                            // 1. Record for Laybuy History Ledger
-                            \App\Models\LaybuyPayment::create([
-                                'laybuy_id'      => $record->id,
-                                'amount'         => $amountPaid,
-                                'payment_method' => $method,
-                                'created_at'     => now(),
-                                'updated_at'     => now(),
-                            ]);
-
-                            // 2. Record for Main Sales Ledger (End of day reporting)
+                            // 1. Record for Main Sales Ledger
                             if ($record->sale_id) {
                                 \App\Models\Payment::create([
-                                    'sale_id' => $record->sale_id,
-                                    'amount'  => $amountPaid,
-                                    'method'  => $method,
-                                    'paid_at' => now(),
+                                    'sale_id'  => $record->sale_id,
+                                    'amount'   => $amountPaid,
+                                    'method'   => $method, // 🚀 Method is successfully passed here
+                                    'paid_at'  => now(),
+                                    'store_id' => auth()->user()->store_id ?? 1,
                                 ]);
                             }
 
-                            // 3. Update the Laybuy balances
+                            // 2. Update the Laybuy balances
                             $newAmountPaid = $record->amount_paid + $amountPaid;
                             $newBalance    = max(0, $record->total_amount - $newAmountPaid);
                             $newStatus     = $newBalance <= 0 ? 'completed' : 'in_progress';
@@ -463,15 +476,19 @@ class LaybuyResource extends Resource
                                 'last_paid_date' => now(),
                             ]);
 
-                            // 4. Mark sale as completed if fully paid off
+                            // 3. Update umbrella Sale & Trigger Sales Report!
                             if ($record->sale_id) {
                                 $sale = \App\Models\Sale::find($record->sale_id);
                                 if ($sale) {
+                                    $saleNewPaid = $sale->amount_paid + $amountPaid;
+                                    $saleNewBalance = max(0, $sale->final_total - $saleNewPaid);
+                                    
                                     $sale->update([
-                                        'amount_paid'  => $sale->amount_paid + $amountPaid,
-                                        'balance_due'  => max(0, $sale->final_total - ($sale->amount_paid + $amountPaid)),
-                                        'status'       => $newBalance <= 0 ? 'completed' : $sale->status,
-                                        'completed_at' => $newBalance <= 0 ? now() : $sale->completed_at,
+                                        'amount_paid'  => $saleNewPaid,
+                                        'balance_due'  => $saleNewBalance,
+                                        // 🚀 THE FIX: When balance hits 0, it flips to completed, triggering MySalesReport
+                                        'status'       => $saleNewBalance <= 0 ? 'completed' : $sale->status,
+                                        'completed_at' => $saleNewBalance <= 0 ? now() : $sale->completed_at,
                                     ]);
                                 }
                             }
