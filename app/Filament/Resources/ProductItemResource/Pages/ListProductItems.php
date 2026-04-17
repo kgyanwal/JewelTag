@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\ProductItemResource\Pages;
 
 use App\Filament\Resources\ProductItemResource;
-use App\Services\GeminiInvoiceService;
+use App\Services\TextractInvoiceService; // 🚀 Use Textract
 use App\Models\ProductItem;
 use App\Models\Supplier;
 use Filament\Actions;
@@ -32,72 +32,85 @@ class ListProductItems extends ListRecords
                         ->directory('invoices')
                         ->required()
                 ])
-                ->action(function (array $data, GeminiInvoiceService $service) {
+                ->action(function (array $data, TextractInvoiceService $service) {
                     $filePath = storage_path('app/public/' . $data['invoice_file']);
                     
-                    Log::info("Starting Bulk Scan for file: " . $filePath);
+                    try {
+                        Log::info("Starting Bulk Scan for file: " . $filePath);
 
-                    $extracted = $service->process($filePath);
+                        // 🚀 1. Call the new Bulk Method
+                        $extracted = $service->extractBulkDataFromImage($filePath);
 
-                    if (!$extracted || empty($extracted['items'])) {
-                        Notification::make()->title('Scanning failed or no items found')->danger()->send();
-                        return;
-                    }
-
-                    // 1. Get the Supplier first to check against their specific codes
-                    $supplier = Supplier::firstOrCreate(['company_name' => $extracted['vendor_name']]);
-
-                    // 2. DUPLICATE CHECK: Check if the FIRST item's style code already exists for this supplier
-                    // This is a "No Migration" way to see if the invoice was already scanned
-                    $firstItemCode = $extracted['items'][0]['style_code'] ?? null;
-                    
-                    if ($firstItemCode) {
-                        $duplicateExists = ProductItem::where('supplier_id', $supplier->id)
-                            ->where('supplier_code', $firstItemCode)
-                            ->exists();
-
-                        if ($duplicateExists) {
-                            Notification::make()
-                                ->title('Potential Duplicate Detected')
-                                ->body("An item with style code '{$firstItemCode}' already exists for {$supplier->company_name}. Scan aborted to prevent duplicates.")
-                                ->danger()
-                                ->send();
+                        if (empty($extracted['items'])) {
+                            Notification::make()->title('No items found on this invoice.')->danger()->send();
                             return;
                         }
-                    }
 
-                    // 3. DATABASE TRANSACTION
-                    DB::transaction(function () use ($extracted, $supplier) {
-                        // Logic for Unique sequential Stock Numbers
-                        $lastItem = ProductItem::where('barcode', 'LIKE', 'G%')
-                                    ->orderByRaw('CAST(SUBSTRING(barcode, 2) AS UNSIGNED) DESC')
-                                    ->first();
-                                    
-                        $nextNumber = $lastItem ? ((int) preg_replace('/[^0-9]/', '', $lastItem->barcode)) + 1 : 1001;
+                        // 2. Fetch or Create Vendor (Textract reads Vendor names!)
+                        $vendorName = $extracted['vendor_name'] !== 'Unknown Vendor' ? $extracted['vendor_name'] : 'Scanned Vendor';
+                        $supplier = Supplier::firstOrCreate(['company_name' => $vendorName]);
 
-                        foreach ($extracted['items'] as $item) {
-                            ProductItem::create([
-                                'store_id' => auth()->user()->store_id ?? 1,
-                                'supplier_id' => $supplier->id,
-                                'barcode' => 'D' . $nextNumber,
-                                'custom_description' => $item['description'] ?? 'Scanned Item',
-                                'qty' => $item['quantity'] ?? 1,
-                                'cost_price' => $item['cost_price'] ?? 0,
-                                'retail_price' => ($item['cost_price'] ?? 0) * 2.5,
-                                'metal_type' => $item['metal_type'] ?? 'General',
-                                'metal_weight' => $item['metal_weight'] ?? 0,
-                                'supplier_code' => $item['style_code'] ?? null, // Uses existing column
-                                'status' => 'in_stock',
-                            ]);
-                            $nextNumber++;
+                        // 3. Duplicate Check
+                        $firstItemCode = $extracted['items'][0]['supplier_code'] ?? null;
+                        if ($firstItemCode) {
+                            $duplicateExists = ProductItem::where('supplier_id', $supplier->id)
+                                ->where('supplier_code', $firstItemCode)
+                                ->exists();
+
+                            if ($duplicateExists) {
+                                Notification::make()
+                                    ->title('Potential Duplicate Detected')
+                                    ->body("An item with code '{$firstItemCode}' already exists. Scan aborted to prevent duplicates.")
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
                         }
-                    });
 
-                    Notification::make()
-                        ->title('Bulk Scan Success')
-                        ->body("Imported " . count($extracted['items']) . " items.")
-                        ->success()
-                        ->send();
+                        // 4. Database Transaction to insert all rows
+                        DB::transaction(function () use ($extracted, $supplier) {
+                            // Fetch default prefix for generating barcodes
+                            $prefix = ProductItemResource::getPrefixForSubDepartment(null);
+
+                            foreach ($extracted['items'] as $item) {
+                                
+                                // Loop based on Qty (If Qty is 3, create 3 separate tags)
+                                for ($i = 0; $i < $item['qty']; $i++) {
+                                    ProductItem::create([
+                                        'store_id'           => auth()->user()->store_id ?? 1,
+                                        'supplier_id'        => $supplier->id,
+                                        // 🚀 Use your custom persistent barcode generator!
+                                        'barcode'            => ProductItemResource::generatePersistentBarcode($prefix),
+                                        'custom_description' => $item['custom_description'] ?: 'Scanned Item',
+                                        'qty'                => 1, // Store as 1 per physical tag
+                                        'cost_price'         => $item['cost_price'],
+                                        'retail_price'       => $item['cost_price'] * 2.5,
+                                        'web_price'          => $item['cost_price'] * 2.5,
+                                        'metal_type'         => $item['metal_type'],
+                                        'diamond_weight'     => $item['diamond_weight'],
+                                        'size'               => $item['size'],
+                                        'supplier_code'      => $item['supplier_code'],
+                                        'status'             => 'in_stock',
+                                        // Generate an RFID if needed
+                                        'rfid_code'          => strtoupper(bin2hex(random_bytes(4))),
+                                    ]);
+                                }
+                            }
+                        });
+
+                        Notification::make()
+                            ->title('Bulk Scan Success')
+                            ->body("Successfully imported line items from {$vendorName}.")
+                            ->success()
+                            ->send();
+
+                    } catch (\Exception $e) {
+                        Notification::make()
+                            ->title('Bulk Scan Error')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
                 })
         ];
     }
