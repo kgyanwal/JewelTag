@@ -248,7 +248,7 @@ protected function mutateFormDataBeforeFill(array $data): array
                     'custom_order_id' => $isCustom ? $customOrder->id : null,
                     'amount'          => $amt,
                     'method'          => strtoupper(trim($p['method'] ?? 'CASH')),
-                    'paid_at'         => $sale->created_at,
+                    'paid_at'         => $sale->completed_at ?? $sale->created_at,
                     'store_id'        => $sale->store_id,
                 ]);
                 $newPosTotalPaid += $amt;
