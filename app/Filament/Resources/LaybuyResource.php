@@ -422,83 +422,118 @@ class LaybuyResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\Action::make('quick_pay')
-                    ->label('Add Payment')
-                    ->icon('heroicon-o-banknotes')
-                    ->color('success')
-                    ->visible(fn(Laybuy $record) => $record->balance_due > 0)
-                    ->form([
-                        TextInput::make('amount')
-                            ->numeric()
-                            ->required()
-                            ->prefix('$')
-                            ->default(fn(Laybuy $record) => $record->balance_due),
-                        Select::make('payment_method')
-                            ->options(function () {
-                                $json = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
-                                $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
-                                $options = [];
-                                foreach ($methods as $method) {
-                                    if (strtoupper($method) !== 'LAYBUY') {
-                                        $options[strtoupper($method)] = strtoupper($method);
-                                    }
-                                }
-                                return $options;
-                            })
-                            ->default('CASH')
-                            ->required(),
-                    ])
-                    ->action(function (Laybuy $record, array $data) {
-                        DB::transaction(function () use ($record, $data) {
-                            $amountPaid = (float) $data['amount'];
-                            $method = strtoupper(trim($data['payment_method']));
-
-                            // 1. Record for Main Sales Ledger
-                            if ($record->sale_id) {
-                                \App\Models\Payment::create([
-                                    'sale_id'  => $record->sale_id,
-                                    'amount'   => $amountPaid,
-                                    'method'   => $method, // 🚀 Method is successfully passed here
-                                    'paid_at'  => now(),
-                                    'store_id' => auth()->user()->store_id ?? 1,
-                                ]);
-                            }
-
-                            // 2. Update the Laybuy balances
-                            $newAmountPaid = $record->amount_paid + $amountPaid;
-                            $newBalance    = max(0, $record->total_amount - $newAmountPaid);
-                            $newStatus     = $newBalance <= 0 ? 'completed' : 'in_progress';
-
-                            $record->update([
-                                'amount_paid'    => $newAmountPaid,
-                                'balance_due'    => $newBalance,
-                                'status'         => $newStatus,
-                                'last_paid_date' => now(),
+           Tables\Actions\Action::make('quick_pay')
+    ->label('Add Payment')
+    ->icon('heroicon-o-banknotes')
+    ->color('success')
+    ->visible(fn(Laybuy $record) => $record->balance_due > 0)
+    ->form([
+        TextInput::make('amount')
+            ->numeric()
+            ->required()
+            ->prefix('$')
+            ->default(fn(Laybuy $record) => $record->balance_due),
+        Select::make('payment_method')
+            ->options(function () {
+                $json    = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+                $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                $options = [];
+                foreach ($methods as $method) {
+                    if (strtoupper($method) !== 'LAYBUY') {
+                        $options[strtoupper($method)] = strtoupper($method);
+                    }
+                }
+                return $options;
+            })
+            ->default('CASH')
+            ->required(),
+    ])
+    ->action(function (Laybuy $record, array $data) {
+        DB::transaction(function () use ($record, $data) {
+            $amountPaid = (float) $data['amount'];
+            $method     = strtoupper(trim($data['payment_method']));
+            $storeId    = auth()->user()->store_id
+                      ?? $record->sale?->store_id
+                      ?? \App\Models\Store::first()?->id;
+            $paidAt     = now(); // 🚀 KEY: always use TODAY's date
+ 
+            // ── 1. Laybuy-specific ledger (for the payment history tab) ──────
+            \App\Models\LaybuyPayment::create([
+                'laybuy_id'      => $record->id,
+                'amount'         => $amountPaid,
+                'payment_method' => $method,
+                'created_at'     => $paidAt,
+                'updated_at'     => $paidAt,
+            ]);
+ 
+            // ── 2. Main payments ledger ───────────────────────────────────────
+            // 🚀 THE FIX: paid_at = TODAY (not sale creation date).
+            // This ensures EOD groups this payment under TODAY's date.
+            // We keep sale_id so the sale balance tracks correctly,
+            // but EOD MUST query payments by payments.paid_at, not sales.created_at.
+            if ($record->sale_id) {
+                \App\Models\Payment::create([
+                    'sale_id'  => $record->sale_id,
+                    'amount'   => $amountPaid,
+                    'method'   => $method,
+                    'paid_at'  => $paidAt, // ← always today
+                    'store_id' => $storeId,
+                ]);
+            }
+ 
+            // ── 3. Update Laybuy running totals ───────────────────────────────
+            $newAmountPaid = (float)$record->amount_paid + $amountPaid;
+            $newBalance    = max(0, (float)$record->total_amount - $newAmountPaid);
+            $newStatus     = $newBalance <= 0.01 ? 'completed' : 'in_progress';
+ 
+            $record->update([
+                'amount_paid'    => $newAmountPaid,
+                'balance_due'    => $newBalance,
+                'status'         => $isFullyPaid ? 'completed' : 'in_progress',
+                'last_paid_date' => $paidAt,
+            ]);
+ 
+           // 4. Sync the Sale — re-sum from payments table so it's always accurate
+        if ($record->sale_id) {
+            $sale      = \App\Models\Sale::find($record->sale_id);
+            $totalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+ 
+            // Compare against sales.final_total (which includes tax)
+            $saleBalance   = max(0, (float) $sale->final_total - $totalPaid);
+            $saleCompleted = $saleBalance <= 0.01;
+ 
+            $sale->update([
+                // Keep payment_method as-is (CASH/VISA/etc) — don't touch it
+                'amount_paid'  => $totalPaid,
+                'balance_due'  => $saleBalance,
+                // 🚀 THIS IS THE KEY: flip to completed when fully paid
+                'status'       => $saleCompleted ? 'completed' : $sale->status,
+                'completed_at' => $saleCompleted ? $paidAt : $sale->completed_at,
+            ]);
+ 
+            // 5. Release stock from on_hold → sold when fully paid
+            if ($saleCompleted) {
+                foreach ($sale->items as $saleItem) {
+                    if ($saleItem->product_item_id) {
+                        \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                            ->where('status', 'on_hold')
+                            ->update([
+                                'status'          => 'sold',
+                                'hold_reason'     => null,
+                                'held_by_sale_id' => null,
                             ]);
-
-                            // 3. Update umbrella Sale & Trigger Sales Report!
-                            if ($record->sale_id) {
-                                $sale = \App\Models\Sale::find($record->sale_id);
-                                if ($sale) {
-                                    $saleNewPaid = $sale->amount_paid + $amountPaid;
-                                    $saleNewBalance = max(0, $sale->final_total - $saleNewPaid);
-                                    
-                                    $sale->update([
-                                        'amount_paid'  => $saleNewPaid,
-                                        'balance_due'  => $saleNewBalance,
-                                        // 🚀 THE FIX: When balance hits 0, it flips to completed, triggering MySalesReport
-                                        'status'       => $saleNewBalance <= 0 ? 'completed' : $sale->status,
-                                        'completed_at' => $saleNewBalance <= 0 ? now() : $sale->completed_at,
-                                    ]);
-                                }
-                            }
-                        });
-
-                        Notification::make()
-                            ->title('Payment Recorded Successfully')
-                            ->success()
-                            ->send();
-                    }),
+                    }
+                }
+            }
+        }
+    });
+ 
+    Notification::make()
+        ->title('Payment Recorded')
+        ->body('$' . number_format($data['amount'], 2) . ' via ' . $data['payment_method'] . ' recorded.')
+        ->success()
+        ->send();
+}),
 
                 Tables\Actions\EditAction::make()
     // tooltips show when you hover over the button
