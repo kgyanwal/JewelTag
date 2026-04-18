@@ -117,11 +117,12 @@ protected function mutateFormDataBeforeFill(array $data): array
         $posPayments = $record->payments()->where('paid_at', '>=', $record->created_at)->get();
         
         // ── Hydrate the "payment_target" dropdowns for the UI ────────────
-        if ($record->is_split_payment || $posPayments->count() > 1) {
+       if ($record->is_split_payment || $posPayments->count() > 1) {
             $data['is_split_payment'] = true;
             $data['split_payments'] = $posPayments->map(function ($p) {
                 return [
-                    'method'         => $p->method,
+                    // 🚀 THE FIX: Force uppercase to guarantee the dropdown renders the text
+                    'method'         => strtoupper($p->method), 
                     'amount'         => $p->amount,
                     'payment_target' => $p->custom_order_id ? 'custom' : 'regular',
                 ];
@@ -130,7 +131,9 @@ protected function mutateFormDataBeforeFill(array $data): array
             $data['is_split_payment'] = false;
             $first = $posPayments->first();
             $data['amount_paid']    = $first?->amount ?? floatval($record->amount_paid);
-            $data['payment_method'] = $first?->method ?? ($record->payment_method ?: 'CASH');
+            
+            // 🚀 THE FIX: Force uppercase here too
+            $data['payment_method'] = strtoupper($first?->method ?? ($record->payment_method ?: 'CASH')); 
             $data['payment_target'] = ($first && $first->custom_order_id) ? 'custom' : 'regular';
         }
 

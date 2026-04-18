@@ -422,11 +422,11 @@ class LaybuyResource extends Resource
                     ]),
             ])
             ->actions([
-           Tables\Actions\Action::make('quick_pay')
+             Tables\Actions\Action::make('quick_pay')
     ->label('Add Payment')
     ->icon('heroicon-o-banknotes')
     ->color('success')
-    ->visible(fn(Laybuy $record) => $record->balance_due > 0)
+    ->visible(fn(Laybuy $record) => $record->balance_due > 0.01)
     ->form([
         TextInput::make('amount')
             ->numeric()
@@ -439,8 +439,9 @@ class LaybuyResource extends Resource
                 $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
                 $options = [];
                 foreach ($methods as $method) {
-                    if (strtoupper($method) !== 'LAYBUY') {
-                        $options[strtoupper($method)] = strtoupper($method);
+                    $clean = strtoupper(trim($method));
+                    if ($clean !== 'LAYBUY') {
+                        $options[$clean] = $clean;
                     }
                 }
                 return $options;
@@ -452,12 +453,10 @@ class LaybuyResource extends Resource
         DB::transaction(function () use ($record, $data) {
             $amountPaid = (float) $data['amount'];
             $method     = strtoupper(trim($data['payment_method']));
-            $storeId    = auth()->user()->store_id
-                      ?? $record->sale?->store_id
-                      ?? \App\Models\Store::first()?->id;
-            $paidAt     = now(); // 🚀 KEY: always use TODAY's date
- 
-            // ── 1. Laybuy-specific ledger (for the payment history tab) ──────
+            $paidAt     = now(); 
+            $storeId    = auth()->user()->store_id ?? $record->sale?->store_id ?? 1;
+
+            // 1. Record in the specific Laybuy Ledger (for the timeline tab)
             \App\Models\LaybuyPayment::create([
                 'laybuy_id'      => $record->id,
                 'amount'         => $amountPaid,
@@ -465,75 +464,67 @@ class LaybuyResource extends Resource
                 'created_at'     => $paidAt,
                 'updated_at'     => $paidAt,
             ]);
- 
-            // ── 2. Main payments ledger ───────────────────────────────────────
-            // 🚀 THE FIX: paid_at = TODAY (not sale creation date).
-            // This ensures EOD groups this payment under TODAY's date.
-            // We keep sale_id so the sale balance tracks correctly,
-            // but EOD MUST query payments by payments.paid_at, not sales.created_at.
+
+            // 2. Record in the Main Sales Ledger (for EOD reports)
             if ($record->sale_id) {
                 \App\Models\Payment::create([
                     'sale_id'  => $record->sale_id,
                     'amount'   => $amountPaid,
                     'method'   => $method,
-                    'paid_at'  => $paidAt, // ← always today
+                    'paid_at'  => $paidAt,
                     'store_id' => $storeId,
                 ]);
             }
- 
-            // ── 3. Update Laybuy running totals ───────────────────────────────
-            $newAmountPaid = (float)$record->amount_paid + $amountPaid;
-            $newBalance    = max(0, (float)$record->total_amount - $newAmountPaid);
-            $newStatus     = $newBalance <= 0.01 ? 'completed' : 'in_progress';
- 
+
+            // 3. Update Laybuy running totals
+            $newLaybuyPaid = (float)$record->amount_paid + $amountPaid;
+            $newLaybuyBal  = max(0, (float)$record->total_amount - $newLaybuyPaid);
+            
             $record->update([
-                'amount_paid'    => $newAmountPaid,
-                'balance_due'    => $newBalance,
-                'status'         => $isFullyPaid ? 'completed' : 'in_progress',
+                'amount_paid'    => $newLaybuyPaid,
+                'balance_due'    => $newLaybuyBal,
+                'status'         => $newLaybuyBal <= 0.01 ? 'completed' : 'in_progress',
                 'last_paid_date' => $paidAt,
             ]);
- 
-           // 4. Sync the Sale — re-sum from payments table so it's always accurate
-        if ($record->sale_id) {
-            $sale      = \App\Models\Sale::find($record->sale_id);
-            $totalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
- 
-            // Compare against sales.final_total (which includes tax)
-            $saleBalance   = max(0, (float) $sale->final_total - $totalPaid);
-            $saleCompleted = $saleBalance <= 0.01;
- 
-            $sale->update([
-                // Keep payment_method as-is (CASH/VISA/etc) — don't touch it
-                'amount_paid'  => $totalPaid,
-                'balance_due'  => $saleBalance,
-                // 🚀 THIS IS THE KEY: flip to completed when fully paid
-                'status'       => $saleCompleted ? 'completed' : $sale->status,
-                'completed_at' => $saleCompleted ? $paidAt : $sale->completed_at,
-            ]);
- 
-            // 5. Release stock from on_hold → sold when fully paid
-            if ($saleCompleted) {
-                foreach ($sale->items as $saleItem) {
-                    if ($saleItem->product_item_id) {
-                        \App\Models\ProductItem::where('id', $saleItem->product_item_id)
-                            ->where('status', 'on_hold')
-                            ->update([
-                                'status'          => 'sold',
-                                'hold_reason'     => null,
-                                'held_by_sale_id' => null,
-                            ]);
+
+            // 4. Sync the master Sale Record
+            if ($record->sale_id) {
+                $sale = $record->sale;
+                // Re-sum all payments to ensure perfect accuracy
+                $totalSalePaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                $newSaleBal    = max(0, (float)$sale->final_total - $totalSalePaid);
+                $isFullyPaid   = $newSaleBal <= 0.01;
+
+                $sale->update([
+                    'amount_paid'  => $totalSalePaid,
+                    'balance_due'  => $newSaleBal,
+                    'status'       => $isFullyPaid ? 'completed' : $sale->status,
+                    'completed_at' => $isFullyPaid ? $paidAt : $sale->completed_at,
+                ]);
+
+                // 5. If fully paid, release items from ON_HOLD to SOLD
+                if ($isFullyPaid) {
+                    foreach ($sale->items as $saleItem) {
+                        if ($saleItem->product_item_id) {
+                            \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                                ->where('status', 'on_hold')
+                                ->update([
+                                    'status'          => 'sold',
+                                    'hold_reason'     => null,
+                                    'held_by_sale_id' => null,
+                                ]);
+                        }
                     }
                 }
             }
-        }
-    });
- 
-    Notification::make()
-        ->title('Payment Recorded')
-        ->body('$' . number_format($data['amount'], 2) . ' via ' . $data['payment_method'] . ' recorded.')
-        ->success()
-        ->send();
-}),
+        });
+
+        Notification::make()
+            ->title('Payment Recorded Successfully')
+            ->body('$' . number_format($data['amount'], 2) . ' applied to plan.')
+            ->success()
+            ->send();
+    }),
 
                 Tables\Actions\EditAction::make()
     // tooltips show when you hover over the button

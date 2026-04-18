@@ -882,7 +882,7 @@ class SaleResource extends Resource
                                 ->icon('heroicon-o-shield-check')
                                 ->collapsible()
                                 ->schema([
-                                    Grid::make(4)->schema([
+                                    Grid::make(5)->schema([
                                         Select::make('has_warranty')
                                             ->label('Include Warranty?')
                                             ->options([0 => 'No', 1 => 'Yes'])
@@ -1144,7 +1144,16 @@ class SaleResource extends Resource
                                                                                             ->default($customer->postcode)
                                                                                             ->extraInputAttributes(['data-google-field' => 'postal_code']),
                                                                                     ]),
-                                                                            ])
+                                                                                ]),
+                                                                            Grid::make(2)->schema([
+                                                                                CustomDatePicker::make('edit_dob')
+                                                                                    ->label('Birth Date')
+                                                                                    ->default($customer->dob)
+                                                                                    ->rule('before_or_equal:today'),
+                                                                                CustomDatePicker::make('edit_wedding_anniversary')
+                                                                                    ->label('Wedding Date')
+                                                                                    ->default($customer->wedding_anniversary),
+                                                                            ]),
                                                                         ]),
                                                                 ]),
                                                         ];
@@ -1158,6 +1167,8 @@ class SaleResource extends Resource
                                                                 'last_name' => $data['edit_last_name'] ?? null,
                                                                 'phone'     => $data['edit_phone'],
                                                                 'email'     => $data['edit_email'] ?? null,
+                                                                'dob'                 => $data['edit_dob'] ?? null,
+                                                        'wedding_anniversary' => $data['edit_wedding_anniversary'] ?? null,
                                                                 'street'    => $data['edit_street'] ?? null,
                                                                 'city'      => $data['edit_city'] ?? null,
                                                                 'state'     => $data['edit_state'] ?? null,
@@ -1965,11 +1976,14 @@ public static function syncStatus(callable|Get $get, callable|Set $set, $totalCo
         $methods        = $json ? json_decode($json, true) : $defaultMethods;
         $options        = [];
 
-        foreach ($methods as $method) {
-            if (strtoupper($method) === 'LAYBUY') {
-                $options['laybuy'] = 'LAYBUY (Installment Plan)';
+       foreach ($methods as $method) {
+            $cleanMethod = strtoupper(trim($method));
+            if ($cleanMethod === 'LAYBUY') {
+                // 🚀 THE FIX: Give it both uppercase and lowercase keys so it never misses
+                $options['LAYBUY'] = 'LAYBUY (Installment Plan)'; 
+                $options['laybuy'] = 'LAYBUY (Installment Plan)'; 
             } else {
-                $options[$method] = $method;
+                $options[$cleanMethod] = $cleanMethod;
             }
         }
         return $options;

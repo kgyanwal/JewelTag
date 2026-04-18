@@ -94,12 +94,14 @@ class EditLaybuy extends EditRecord
                         ]);
 
                         // 4. Update the attached Sale Status
-                        if ($record->sale_id) {
+                       if ($record->sale_id) {
                             $sale = $record->sale;
                             $sale->update([
-                                'amount_paid' => $sale->amount_paid + $amount,
-                                'balance_due' => max(0, $sale->final_total - ($sale->amount_paid + $amount)),
-                                'status'      => $newBalance <= 0 ? 'completed' : $sale->status,
+                                'amount_paid'  => $sale->amount_paid + $amount,
+                                'balance_due'  => max(0, $sale->final_total - ($sale->amount_paid + $amount)),
+                                'status'       => $newBalance <= 0 ? 'completed' : $sale->status,
+                                // 🚀 THE FIX: Trigger the EOD report when paid in full
+                                'completed_at' => $newBalance <= 0 ? now() : $sale->completed_at,
                             ]);
                         }
                     });
@@ -265,14 +267,18 @@ class EditLaybuy extends EditRecord
                         ]);
 
                         // 4. Update the parent Sale
-                        if ($record->sale_id) {
+                       if ($record->sale_id) {
                             $sale = \App\Models\Sale::find($record->sale_id);
                             if ($sale) {
                                 $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                                $saleBalance   = max(0, $sale->final_total - $saleTotalPaid);
+                                
                                 $sale->update([
-                                    'amount_paid' => $saleTotalPaid,
-                                    'balance_due' => max(0, $sale->final_total - $saleTotalPaid),
-                                    'status'      => $newStatus === 'completed' ? 'completed' : 'pending',
+                                    'amount_paid'  => $saleTotalPaid,
+                                    'balance_due'  => $saleBalance,
+                                    'status'       => $newStatus === 'completed' ? 'completed' : 'pending',
+                                    // 🚀 THE FIX: Trigger the EOD report based on recalculated totals
+                                    'completed_at' => $newStatus === 'completed' ? now() : ($saleTotalPaid < $sale->final_total ? null : $sale->completed_at),
                                 ]);
                             }
                         }

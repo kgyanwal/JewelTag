@@ -71,7 +71,18 @@ class CreateLaybuy extends CreateRecord
             $laybuy = parent::handleRecordCreation($data);
 
             // 4. Log the initial deposit into the Ledger
-            if ($amountPaid > 0) {
+           if ($amountPaid > 0) {
+                
+                // 🚀 THE FIX: Log the initial deposit into the Laybuy Ledger Timeline
+                \App\Models\LaybuyPayment::create([
+                    'laybuy_id'      => $laybuy->id,
+                    'amount'         => $amountPaid,
+                    'payment_method' => $paymentMethod,
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ]);
+
+                // Log the initial deposit into the Main Sales Ledger (EOD)
                 \App\Models\Payment::create([
                     'sale_id'  => $sale->id,
                     'amount'   => $amountPaid,
