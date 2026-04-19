@@ -145,7 +145,7 @@ class SaleResource extends Resource
                                             )
                                             ->live()
                                             ->dehydrated(false)
-                                           ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
                                                 if (!$state) return;
                                                 $item = ProductItem::find($state);
                                                 if (!$item) return;
@@ -176,7 +176,7 @@ class SaleResource extends Resource
 
                                                 // 4. Save the safely merged array back to the state
                                                 $set('items', $currentItems);
-                                                
+
                                                 // 5. Reset the search box for the next scan
                                                 $set('current_item_search', null);
                                                 $set('current_qty', 1);
@@ -422,7 +422,7 @@ class SaleResource extends Resource
                                                     foreach ($splits as $k => $v) {
                                                         if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
                                                     }
-                                                   $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit, 'payment_target' => 'custom'];
+                                                    $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit, 'payment_target' => 'custom'];
                                                     $set('split_payments', $cleanSplits);
                                                 }
 
@@ -449,55 +449,55 @@ class SaleResource extends Resource
                                         }
                                         return $data;
                                     })
-                                   ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
-    if (!empty($data['is_new_custom_order'])) {
-        $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
+                                    ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
+                                        if (!empty($data['is_new_custom_order'])) {
+                                            $customData = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
 
-        // 🚀 THE FIX: Extensive fallbacks. If the JSON corrupts, it safely pulls from the livewire repeater row's raw values!
-        $quotedPrice = floatval($customData['quoted_price'] ?? $data['sold_price'] ?? $data['sale_price_override'] ?? 0);
-        
-       $isTaxFree = !empty($customData['is_tax_free']) || !empty($data['is_tax_free']);
-        $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                            // 🚀 THE FIX: Extensive fallbacks. If the JSON corrupts, it safely pulls from the livewire repeater row's raw values!
+                                            $quotedPrice = floatval($customData['quoted_price'] ?? $data['sold_price'] ?? $data['sale_price_override'] ?? 0);
 
-        $discountPct         = min(100, max(0, floatval($customData['discount_percent'] ?? 0)));
-        $discountAmt         = floatval($customData['discount_amount'] ?? ($quotedPrice * $discountPct / 100));
-        $quotedAfterDiscount = max(0, $quotedPrice - $discountAmt);
-        $grandTotal          = $quotedAfterDiscount + ($quotedAfterDiscount * $taxRate);
+                                            $isTaxFree = !empty($customData['is_tax_free']) || !empty($data['is_tax_free']);
+                                            $dbTax = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                            $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
 
-        $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
+                                            $discountPct         = min(100, max(0, floatval($customData['discount_percent'] ?? 0)));
+                                            $discountAmt         = floatval($customData['discount_amount'] ?? ($quotedPrice * $discountPct / 100));
+                                            $quotedAfterDiscount = max(0, $quotedPrice - $discountAmt);
+                                            $grandTotal          = $quotedAfterDiscount + ($quotedAfterDiscount * $taxRate);
 
-        $customOrder = \App\Models\CustomOrder::create([
-            'customer_id'      => $livewire->data['customer_id'] ?? null,
-            'staff_id'         => auth()->id(),
-            'order_type'       => 'custom',
-            'product_name'     => $customData['product_name'] ?? 'Custom',
-            'metal_type'       => $customData['metal_type'] ?? '14k',
-            'quoted_price'     => $quotedPrice, // 🚀 Will now properly save the actual price
-            'discount_percent' => $discountPct,
-            'discount_amount'  => $discountAmt,
-            'due_date'         => $customData['due_date'] ?? null,
-            'design_notes'     => $customData['design_notes'] ?? null,
-            'status'           => 'in_production',
-            'is_tax_free'      => $isTaxFree,
-            'amount_paid'      => $depositAmt,
-            'balance_due'      => max(0, $grandTotal - $depositAmt),
+                                            $depositAmt = floatval($customData['custom_deposit_amount'] ?? $customData['amount_paid'] ?? 0);
 
-            'items'            => [
-                [
-                    'product_name' => $customData['product_name'] ?? 'Custom',
-                    'metal_type'   => $customData['metal_type'] ?? '14k',
-                    'quoted_price' => $quotedPrice,
-                    'design_notes' => $customData['design_notes'] ?? null,
-                    'is_tax_free'  => $isTaxFree,
-                ]
-            ],
-        ]);
-        $data['custom_order_id'] = $customOrder->id;
-    }
-    unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
-    return $data;
-})
+                                            $customOrder = \App\Models\CustomOrder::create([
+                                                'customer_id'      => $livewire->data['customer_id'] ?? null,
+                                                'staff_id'         => auth()->id(),
+                                                'order_type'       => 'custom',
+                                                'product_name'     => $customData['product_name'] ?? 'Custom',
+                                                'metal_type'       => $customData['metal_type'] ?? '14k',
+                                                'quoted_price'     => $quotedPrice, // 🚀 Will now properly save the actual price
+                                                'discount_percent' => $discountPct,
+                                                'discount_amount'  => $discountAmt,
+                                                'due_date'         => $customData['due_date'] ?? null,
+                                                'design_notes'     => $customData['design_notes'] ?? null,
+                                                'status'           => 'in_production',
+                                                'is_tax_free'      => $isTaxFree,
+                                                'amount_paid'      => $depositAmt,
+                                                'balance_due'      => max(0, $grandTotal - $depositAmt),
+
+                                                'items'            => [
+                                                    [
+                                                        'product_name' => $customData['product_name'] ?? 'Custom',
+                                                        'metal_type'   => $customData['metal_type'] ?? '14k',
+                                                        'quoted_price' => $quotedPrice,
+                                                        'design_notes' => $customData['design_notes'] ?? null,
+                                                        'is_tax_free'  => $isTaxFree,
+                                                    ]
+                                                ],
+                                            ]);
+                                            $data['custom_order_id'] = $customOrder->id;
+                                        }
+                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+                                        return $data;
+                                    })
                                     ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
                                         if (!empty($data['is_new_custom_order'])) {
                                             $customData  = is_string($data['new_custom_data']) ? json_decode($data['new_custom_data'], true) : ($data['new_custom_data'] ?? []);
@@ -893,7 +893,7 @@ class SaleResource extends Resource
                                             ->visible(fn(Get $get) => $get('has_warranty') == 1)
                                             ->required(fn(Get $get) => $get('has_warranty') == 1)
                                             ->options(function () {
-                                                $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                                $json = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
                                                 $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
                                                 return array_combine($options, $options);
                                             }),
@@ -905,6 +905,14 @@ class SaleResource extends Resource
                                             ->visible(fn(Get $get) => $get('has_warranty') == 1)
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                        // 🚀 THE FIX: Checkbox added here. Default set to false.
+                                        Checkbox::make('is_warranty_taxed')
+                                            ->label('Tax Warranty?')
+                                            ->default(false)
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
                                         CustomDatePicker::make('follow_up_date')
                                             ->label('Follow Up (2 Weeks)')
                                             ->default(now()->addWeeks(2)->format('Y-m-d'))
@@ -981,7 +989,7 @@ class SaleResource extends Resource
                                             ->required()
                                             ->live()
                                             ->columnSpanFull()
-                                        ->hintAction(
+                                            ->hintAction(
                                                 FormAction::make('view_customer_details')
                                                     ->label('View Profile')
                                                     ->icon('heroicon-o-user-circle')
@@ -1094,7 +1102,7 @@ class SaleResource extends Resource
                                                                         ]),
 
                                                                     // ── TAB 2: EDIT CUSTOMER ──
-                                                                  // ── TAB 2: EDIT CUSTOMER ──
+                                                                    // ── TAB 2: EDIT CUSTOMER ──
                                                                     \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
                                                                         ->icon('heroicon-o-pencil-square')
                                                                         ->schema([
@@ -1118,7 +1126,7 @@ class SaleResource extends Resource
                                                                                     ->label('Email')
                                                                                     ->email()
                                                                                     ->default($customer->email),
-                                                                                    
+
                                                                                 // 🚀 THE FIX: Replaced manual fields with Google Autocomplete
                                                                                 \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
                                                                                     ->label('Search Address')
@@ -1144,16 +1152,7 @@ class SaleResource extends Resource
                                                                                             ->default($customer->postcode)
                                                                                             ->extraInputAttributes(['data-google-field' => 'postal_code']),
                                                                                     ]),
-                                                                                ]),
-                                                                            Grid::make(2)->schema([
-                                                                                CustomDatePicker::make('edit_dob')
-                                                                                    ->label('Birth Date')
-                                                                                    ->default($customer->dob)
-                                                                                    ->rule('before_or_equal:today'),
-                                                                                CustomDatePicker::make('edit_wedding_anniversary')
-                                                                                    ->label('Wedding Date')
-                                                                                    ->default($customer->wedding_anniversary),
-                                                                            ]),
+                                                                            ])
                                                                         ]),
                                                                 ]),
                                                         ];
@@ -1167,8 +1166,6 @@ class SaleResource extends Resource
                                                                 'last_name' => $data['edit_last_name'] ?? null,
                                                                 'phone'     => $data['edit_phone'],
                                                                 'email'     => $data['edit_email'] ?? null,
-                                                                'dob'                 => $data['edit_dob'] ?? null,
-                                                        'wedding_anniversary' => $data['edit_wedding_anniversary'] ?? null,
                                                                 'street'    => $data['edit_street'] ?? null,
                                                                 'city'      => $data['edit_city'] ?? null,
                                                                 'state'     => $data['edit_state'] ?? null,
@@ -1340,36 +1337,36 @@ class SaleResource extends Resource
                                     })
                                     ->columnSpanFull(),
 
-                              Select::make('payment_method')
-    ->label('Payment Method')
-    ->options(self::getPaymentOptions())
-    ->placeholder('Select Payment Method')
-    ->required(fn(Get $get) => !$get('is_split_payment'))
-    ->visible(fn(Get $get) => !$get('is_split_payment'))
-    ->live()
-    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                Select::make('payment_method')
+                                    ->label('Payment Method')
+                                    ->options(self::getPaymentOptions())
+                                    ->placeholder('Select Payment Method')
+                                    ->required(fn(Get $get) => !$get('is_split_payment'))
+                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
 
-Select::make('payment_target')
-    ->label('Apply To')
-    ->options([
-        'regular' => 'Regular Sales',
-        'custom'  => 'Custom Deposit',
-    ])
-    ->default('regular')
-    ->required(function (Get $get) {
-        if ($get('is_split_payment')) return false;
-        $items = $get('items') ?? [];
-        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-            || request()->has('custom_order_id');
-    })
-    ->visible(function (Get $get) {
-        if ($get('is_split_payment')) return false;
-        $items = $get('items') ?? [];
-        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-            || request()->has('custom_order_id');
-    })
-    ->live()
-    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                Select::make('payment_target')
+                                    ->label('Apply To')
+                                    ->options([
+                                        'regular' => 'Regular Sales',
+                                        'custom'  => 'Custom Deposit',
+                                    ])
+                                    ->default('regular')
+                                    ->required(function (Get $get) {
+                                        if ($get('is_split_payment')) return false;
+                                        $items = $get('items') ?? [];
+                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                                            || request()->has('custom_order_id');
+                                    })
+                                    ->visible(function (Get $get) {
+                                        if ($get('is_split_payment')) return false;
+                                        $items = $get('items') ?? [];
+                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                                            || request()->has('custom_order_id');
+                                    })
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                 TextInput::make('display_total_due')
                                     ->label('Total Amount to Collect')
                                     ->prefix('$')
@@ -1413,64 +1410,64 @@ Select::make('payment_target')
                                     ->visible(fn(Get $get) => !$get('is_split_payment'))
                                     ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
 
-                              Repeater::make('split_payments')
-    ->label('Payment Breakdown')
-    ->schema([
-        Grid::make(6)->schema([
-            Select::make('method')
-                ->options(self::getPaymentOptions())
-                ->required()
-                ->label('Method')
-                ->columnSpan(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    $hasCustom = collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                    return $hasCustom ? 2 : 3;
-                }),
-            
-            TextInput::make('amount')
-                ->numeric()
-                ->prefix('$')
-                ->required()
-                ->label('Amount')
-                ->live(onBlur: true)
-                ->columnSpan(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    $hasCustom = collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                    return $hasCustom ? 2 : 3;
-                }),
-                
-            Select::make('payment_target')
-                ->label('Apply To')
-                ->options([
-                    'regular' => 'Regular Sales',
-                    'custom'  => 'Custom Deposit',
-                ])
-                ->default('regular')
-                ->columnSpan(2)
-                ->visible(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    return collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                })
-                ->live()
-                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-        ]),
-    ])
-    ->visible(fn(Get $get) => $get('is_split_payment'))
-    ->defaultItems(2)
-    ->maxItems(6)
-    ->addActionLabel('Add Another Payment Method')
-    ->reorderable(false)
-    ->live()
-    ->afterStateUpdated(function (Get $get, Set $set) {
-        self::updateTotals($get, $set);
-        self::syncStatus($get, $set);
-    }),
+                                Repeater::make('split_payments')
+                                    ->label('Payment Breakdown')
+                                    ->schema([
+                                        Grid::make(6)->schema([
+                                            Select::make('method')
+                                                ->options(self::getPaymentOptions())
+                                                ->required()
+                                                ->label('Method')
+                                                ->columnSpan(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $hasCustom = collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                    return $hasCustom ? 2 : 3;
+                                                }),
+
+                                            TextInput::make('amount')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->required()
+                                                ->label('Amount')
+                                                ->live(onBlur: true)
+                                                ->columnSpan(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $hasCustom = collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                    return $hasCustom ? 2 : 3;
+                                                }),
+
+                                            Select::make('payment_target')
+                                                ->label('Apply To')
+                                                ->options([
+                                                    'regular' => 'Regular Sales',
+                                                    'custom'  => 'Custom Deposit',
+                                                ])
+                                                ->default('regular')
+                                                ->columnSpan(2)
+                                                ->visible(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    return collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                })
+                                                ->live()
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                        ]),
+                                    ])
+                                    ->visible(fn(Get $get) => $get('is_split_payment'))
+                                    ->defaultItems(2)
+                                    ->maxItems(6)
+                                    ->addActionLabel('Add Another Payment Method')
+                                    ->reorderable(false)
+                                    ->live()
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        self::updateTotals($get, $set);
+                                        self::syncStatus($get, $set);
+                                    }),
 
                                 Placeholder::make('split_calc')
                                     ->label('Remaining Balance')
@@ -1502,69 +1499,74 @@ Select::make('payment_target')
 
                             Section::make('Financial Summary')->schema([
                                 self::totalRow('TAX TOTAL', 'tax_amount'),
+                                TextInput::make('tax_amount_warranty')
+        ->label('WARRANTY TAX')
+        ->prefix('$')
+        ->readOnly()
+        ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
                                 self::totalRow('SUBTOTAL', 'subtotal'),
 
-                               Placeholder::make('balance_due_display')
-    ->label('INVOICE TOTALS')
-    ->content(function (Get $get) {
-        $total  = floatval($get('final_total') ?? 0);
-        
-        $isSplit = $get('is_split_payment');
-        $customPaid = 0;
-        $regularPaid = 0;
-        
-        if ($isSplit) {
-            $payments = $get('split_payments') ?? [];
-            foreach ($payments as $p) {
-                $amt = (float)($p['amount'] ?? 0);
-                if (($p['payment_target'] ?? 'regular') === 'custom') {
-                    $customPaid += $amt;
-                } else {
-                    $regularPaid += $amt;
-                }
-            }
-        } else {
-            $amt = floatval($get('amount_paid') ?? 0);
-            if (($get('payment_target') ?? 'regular') === 'custom') {
-                $customPaid += $amt;
-            } else {
-                $regularPaid += $amt;
-            }
-        }
-        
-        $totalPaid = $customPaid + $regularPaid;
-        $remaining = $total - $totalPaid;
+                                Placeholder::make('balance_due_display')
+                                    ->label('INVOICE TOTALS')
+                                    ->content(function (Get $get) {
+                                        $total  = floatval($get('final_total') ?? 0);
 
-        $html = "
+                                        $isSplit = $get('is_split_payment');
+                                        $customPaid = 0;
+                                        $regularPaid = 0;
+
+                                        if ($isSplit) {
+                                            $payments = $get('split_payments') ?? [];
+                                            foreach ($payments as $p) {
+                                                $amt = (float)($p['amount'] ?? 0);
+                                                if (($p['payment_target'] ?? 'regular') === 'custom') {
+                                                    $customPaid += $amt;
+                                                } else {
+                                                    $regularPaid += $amt;
+                                                }
+                                            }
+                                        } else {
+                                            $amt = floatval($get('amount_paid') ?? 0);
+                                            if (($get('payment_target') ?? 'regular') === 'custom') {
+                                                $customPaid += $amt;
+                                            } else {
+                                                $regularPaid += $amt;
+                                            }
+                                        }
+
+                                        $totalPaid = $customPaid + $regularPaid;
+                                        $remaining = $total - $totalPaid;
+
+                                        $html = "
         <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
             <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
             <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
         </div>";
-        
-        if ($customPaid > 0) {
-            $html .= "
+
+                                        if ($customPaid > 0) {
+                                            $html .= "
             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($customPaid, 2) . "</span>
             </div>";
-        }
-        
-        if ($regularPaid > 0) {
-            $html .= "
+                                        }
+
+                                        if ($regularPaid > 0) {
+                                            $html .= "
             <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
                 <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
                 <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($regularPaid, 2) . "</span>
             </div>";
-        }
+                                        }
 
-        if (round($remaining, 2) <= 0) {
-            $overpaid = abs($remaining);
-            return new HtmlString($html . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
-        }
+                                        if (round($remaining, 2) <= 0) {
+                                            $overpaid = abs($remaining);
+                                            return new HtmlString($html . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
+                                        }
 
-        return new HtmlString($html . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
-    })
-    ->live(),
+                                        return new HtmlString($html . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
+                                    })
+                                    ->live(),
                             ]),
                         ]),
                 ]),
@@ -1622,7 +1624,9 @@ Select::make('payment_target')
                     ->label('Customer')
                     ->getStateUsing(fn($record) => $record->customer ? trim($record->customer->name . ' ' . ($record->customer->last_name ?? '')) : '—')
                     ->searchable(query: function (Builder $query, string $search): Builder {
-                        return $query->whereHas('customer', fn($q) =>
+                        return $query->whereHas(
+                            'customer',
+                            fn($q) =>
                             $q->where('name', 'like', "%{$search}%")
                                 ->orWhere('last_name', 'like', "%{$search}%")
                                 ->orWhereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
@@ -1886,88 +1890,91 @@ Select::make('payment_target')
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
 
-  public static function updateTotals(callable|Get $get, callable|Set $set): void
-{
-    $items           = $get('items') ?? [];
-    $shipping        = floatval($get('shipping_charges') ?? 0);
-    $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
-    $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+ public static function updateTotals(callable|Get $get, callable|Set $set): void
+    {
+        $items           = $get('items') ?? [];
+        $shipping        = floatval($get('shipping_charges') ?? 0);
+        $isShippingTaxed = (bool) ($get('shipping_taxed') ?? false);
+        $tradeIn         = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
 
-    $itemsSubtotal = 0;
-    $taxableBasis  = 0;
+        $itemsSubtotal = 0;
+        $taxableItemsBasis = 0;
 
-    foreach ($items as $item) {
-        $qty = intval($item['qty'] ?? 1);
-        if (!empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0) {
-            $rowTotal = floatval($item['sale_price_override']);
-        } else {
-            $price    = floatval($item['sold_price'] ?? 0);
-            $discount = floatval($item['discount_amount'] ?? 0);
-            $rowTotal = ($price * $qty) - $discount;
+        foreach ($items as $item) {
+            $qty = intval($item['qty'] ?? 1);
+            $rowTotal = !empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0
+                ? floatval($item['sale_price_override'])
+                : (floatval($item['sold_price'] ?? 0) * $qty) - floatval($item['discount_amount'] ?? 0);
+
+            $itemsSubtotal += $rowTotal;
+            if (!($item['is_tax_free'] ?? false)) {
+                $taxableItemsBasis += $rowTotal;
+            }
         }
 
-        $itemsSubtotal += $rowTotal;
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = floatval($dbTax) / 100;
 
-        if (!($item['is_tax_free'] ?? false)) {
-            $taxableBasis += $rowTotal;
-        }
-    }
+        if ($isShippingTaxed) $taxableItemsBasis += $shipping;
 
-    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxRate = floatval($dbTax) / 100;
+        // ── WARRANTY CALCULATIONS ──
+        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+        $isWarrantyTaxed = (bool) $get('is_warranty_taxed');
 
-    if ($isShippingTaxed) $taxableBasis += $shipping;
+        $itemsTax = $taxableItemsBasis * $taxRate;
+        $warrantyTax = $isWarrantyTaxed ? ($warrantyCharge * $taxRate) : 0;
 
-    $totalTax       = $taxableBasis * $taxRate;
-    $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+        // Grand total includes everything
+        $totalTax = $itemsTax + $warrantyTax;
+        $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
 
-    $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
+        // Update form state
+        $set('subtotal',            number_format($itemsSubtotal, 2, '.', ''));
+        $set('tax_amount',          number_format($itemsTax, 2, '.', '')); 
+        $set('tax_amount_warranty', number_format($warrantyTax, 2, '.', '')); 
+        $set('final_total',         number_format($grandTotal, 2, '.', ''));
+        $set('display_total_due',   number_format($grandTotal, 2, '.', ''));
 
-    $set('subtotal',    number_format($itemsSubtotal, 2, '.', ''));
-    $set('tax_amount',  number_format($totalTax,      2, '.', ''));
-    $set('final_total', number_format($grandTotal,    2, '.', ''));
-
-    // Tally all payments directly from the main block
-    $isSplit = $get('is_split_payment');
-    if ($isSplit) {
-        $payments   = $get('split_payments') ?? [];
-        $totalCollected = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-    } else {
-        $totalCollected = floatval($get('amount_paid') ?? 0);
-    }
-
-    $changeGiven = max(0, $totalCollected - $grandTotal);
-    $balanceDue  = max(0, $grandTotal - $totalCollected);
-
-    $set('change_given',      number_format($changeGiven, 2, '.', ''));
-    $set('balance_due',       number_format($balanceDue,  2, '.', ''));
-    $set('display_total_due', number_format($grandTotal,  2, '.', ''));
-
-    self::syncStatus($get, $set, $totalCollected);
-}
-
-public static function syncStatus(callable|Get $get, callable|Set $set, $totalCollected = null): void
-{
-    $total = floatval($get('final_total') ?? 0);
-
-    if ($totalCollected === null) {
+        // Tally all payments directly from the main block
         $isSplit = $get('is_split_payment');
         if ($isSplit) {
-            $payments = $get('split_payments') ?? [];
+            $payments   = $get('split_payments') ?? [];
             $totalCollected = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
         } else {
             $totalCollected = floatval($get('amount_paid') ?? 0);
         }
+
+        $changeGiven = max(0, $totalCollected - $grandTotal);
+        $balanceDue  = max(0, $grandTotal - $totalCollected);
+
+        $set('change_given',      number_format($changeGiven, 2, '.', ''));
+        $set('balance_due',       number_format($balanceDue,  2, '.', ''));
+
+        self::syncStatus($get, $set, $totalCollected);
     }
 
-    if (round($total, 2) <= 0) {
-        $fullyPaid = true;
-    } else {
-        $fullyPaid = $totalCollected > 0 && round($totalCollected, 2) >= round($total, 2);
-    }
+    public static function syncStatus(callable|Get $get, callable|Set $set, $totalCollected = null): void
+    {
+        $total = floatval($get('final_total') ?? 0);
 
-    $set('status', $fullyPaid ? 'completed' : 'pending');
-}
+        if ($totalCollected === null) {
+            $isSplit = $get('is_split_payment');
+            if ($isSplit) {
+                $payments = $get('split_payments') ?? [];
+                $totalCollected = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            } else {
+                $totalCollected = floatval($get('amount_paid') ?? 0);
+            }
+        }
+
+        if (round($total, 2) <= 0) {
+            $fullyPaid = true;
+        } else {
+            $fullyPaid = $totalCollected > 0 && round($totalCollected, 2) >= round($total, 2);
+        }
+
+        $set('status', $fullyPaid ? 'completed' : 'pending');
+    }
 
     public static function getPaymentOptions(): array
     {
@@ -1976,14 +1983,11 @@ public static function syncStatus(callable|Get $get, callable|Set $set, $totalCo
         $methods        = $json ? json_decode($json, true) : $defaultMethods;
         $options        = [];
 
-       foreach ($methods as $method) {
-            $cleanMethod = strtoupper(trim($method));
-            if ($cleanMethod === 'LAYBUY') {
-                // 🚀 THE FIX: Give it both uppercase and lowercase keys so it never misses
-                $options['LAYBUY'] = 'LAYBUY (Installment Plan)'; 
-                $options['laybuy'] = 'LAYBUY (Installment Plan)'; 
+        foreach ($methods as $method) {
+            if (strtoupper($method) === 'LAYBUY') {
+                $options['laybuy'] = 'LAYBUY (Installment Plan)';
             } else {
-                $options[$cleanMethod] = $cleanMethod;
+                $options[$method] = $method;
             }
         }
         return $options;

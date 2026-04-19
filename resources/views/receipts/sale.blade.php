@@ -596,6 +596,12 @@
                                 <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">Sales Tax</td>
                                 <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);">${{ number_format($sale->tax_amount, 2) }}</td>
                             </tr>
+                            @if(floatval($sale->tax_amount_warranty) > 0)
+                            <tr>
+                                <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fed7aa;">Warranty Tax</td>
+                                <td align="right" style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fed7aa;">${{ number_format($sale->tax_amount_warranty, 2) }}</td>
+                            </tr>
+                            @endif
                             @if($sale->has_trade_in && !$isCustomDeposit)
                             <tr>
                                 <td style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#ffeb3b;">Trade-In Credit</td>
