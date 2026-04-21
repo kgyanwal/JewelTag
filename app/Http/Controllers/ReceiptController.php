@@ -68,13 +68,13 @@ public function customOrderReceipt(Request $request, CustomOrder $customOrder)
 }
 public function printLaybuy(Request $request, \App\Models\Laybuy $laybuy)
     {
-        $laybuy->load(['customer', 'sale.items.productItem', 'payments']);
+        $laybuy->load(['customer', 'sale.items.productItem', 'laybuyPayments']);
         $store = \App\Models\Store::first();
 
         $paymentId = $request->query('payment_id');
         $source    = $request->query('source');
 
-        $laybuyPayments = $laybuy->payments->map(fn($p) => (object)[
+        $laybuyPayments = $laybuy->laybuyPayments->map(fn($p) => (object)[
             'id' => $p->id, 'source' => 'laybuy', 'amount' => $p->amount, 
             'method' => $p->payment_method, 'date' => $p->created_at
         ]);
