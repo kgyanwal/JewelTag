@@ -18,8 +18,8 @@ class SalesReport extends Page implements HasForms
 
     protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-line';
     protected static ?string $navigationGroup = 'Analytics & Reports';
-    protected static ?string $navigationLabel = 'Sales Reports';
-    protected static ?string $title = 'Sales Report (Shop Takings)';
+    protected static ?string $navigationLabel = 'Store Sales Reports';
+    protected static ?string $title = 'Sales Report & Bank Deposits';
     protected static string $view = 'filament.pages.sales-report';
 
     public ?string $fromDate = null;
@@ -70,9 +70,9 @@ class SalesReport extends Page implements HasForms
 
         $categorized = [
             'Amex' => [],
-            'Electronic' => [],
-            'Manual' => [],
-            'Other' => [],
+            'Credit Card and Finance' => [],
+            'Cash Entry' => [],
+            'Laybys' => [],
         ];
 
         $grandTotal = 0;
@@ -85,12 +85,12 @@ class SalesReport extends Page implements HasForms
             if ($method === 'AMEX' || $method === 'AMERICAN EXPRESS') {
                 $categorized['Amex'][] = $payment;
             } elseif (in_array($method, ['CASH', 'CHECK'])) {
-                $categorized['Manual'][] = $payment;
+                $categorized['Cash Entry'][] = $payment;
             } elseif (in_array($method, ['KATAPULT', 'LAYBUY', 'LAYBUY_DEPOSIT', 'TRADE_IN', 'STORE_CREDIT'])) {
-                $categorized['Other'][] = $payment;
+                $categorized['Laybys'][] = $payment;
             } else {
                 // VISA, MASTERCARD, ACIMA, SNAP, etc.
-                $categorized['Electronic'][] = $payment;
+                $categorized['Credit Card and Finance'][] = $payment;
             }
         }
 

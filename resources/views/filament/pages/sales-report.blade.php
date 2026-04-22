@@ -539,7 +539,7 @@
         </div>
         @endforeach
         <div class="st-summary-pill" style="border-color: #0e7490; background: #f0fdfe;">
-            <div class="st-summary-pill-label" style="color:#0e7490;">Total Banked</div>
+            <div class="st-summary-pill-label" style="color:#0e7490;">Grand Total</div>
             <div class="st-summary-pill-value" style="color:#0c6478; font-size:18px;">${{ number_format($data['grandTotal'], 2) }}</div>
             <div class="st-summary-pill-sub">{{ $totalTransactions }} total txns</div>
         </div>
@@ -593,7 +593,7 @@
     <div class="st-grand-total">
         <div class="st-grand-total-left">
             <div class="st-grand-total-code">PEOD001 · Summary</div>
-            <div class="st-grand-total-label">Total Banked</div>
+            <div class="st-grand-total-label">Grand Total</div>
             <div class="st-grand-total-period">
                 {{ \Carbon\Carbon::parse($fromDate)->format('d M') }} – {{ \Carbon\Carbon::parse($toDate)->format('d M Y') }}
                 &nbsp;·&nbsp; {{ $totalTransactions }} transactions
@@ -626,7 +626,7 @@
         @endforeach
 
         <div class="st-banking-final">
-            <div class="st-banking-final-label">Total Banked</div>
+            <div class="st-banking-final-label">Grand Total</div>
             <div></div>
             <div class="st-banking-final-amount">${{ number_format($data['grandTotal'], 2) }}</div>
         </div>
