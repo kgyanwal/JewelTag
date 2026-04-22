@@ -70,8 +70,8 @@ class MySalesReport extends Page implements HasTable
                         return 'Created: ' . Carbon::parse($record->created_at)
                             ->setTimezone($tz)->format('M d, Y');
                     })
-                    ->sortable(query: fn(Builder $q, string $dir) =>
-                        $q->orderByRaw(self::effectiveDateExpr() . " $dir")
+                    ->sortable(query: fn(Builder $query, string $direction) =>
+                        $query->orderByRaw(self::effectiveDateExpr() . " {$direction}")
                     ),
 
                 TextColumn::make('invoice_number')
