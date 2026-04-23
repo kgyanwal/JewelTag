@@ -301,40 +301,40 @@ class RepairResource extends Resource
                 // ── RIGHT: Staff + Tracking + Workflow ────────────────
                 Group::make()->columnSpan(['lg' => 4])->schema([
 
-                  Section::make('Staff Assignment')
-    ->icon('heroicon-o-identification')
-    ->schema([
- 
-        // ✅ NO default() here — mutateFormDataBeforeCreate owns this value.
-        // The hidden field just ensures sales_person_id is included in form data.
-        Hidden::make('sales_person_id'),
- 
-        Select::make('sales_person_list')
-            ->label('Sales Staff')
-            ->multiple()
-            ->searchable()
-            ->preload()
-            ->options(\App\Models\User::pluck('name', 'id'))
-            ->default(function () {
-                // This correctly resolves "Rabin" from the session.
-                $activeName = \Illuminate\Support\Facades\Session::get('active_staff_name');
- 
-                if ($activeName) {
-                    $user = \App\Models\User::where('name', 'LIKE', "%{$activeName}%")->first();
-                    if ($user) return [$user->id];
-                }
- 
-                return auth()->id() ? [auth()->id()] : [];
-            })
-            ->required()
-            ->live()
-            ->afterStateUpdated(function ($state, Forms\Set $set) {
-                // Sync the hidden field when user manually changes selection
-                $set('sales_person_id', !empty($state) ? (int) $state[0] : null);
-            }),
-    ]),
+                    Section::make('Staff Assignment')
+                        ->icon('heroicon-o-identification')
+                        ->schema([
 
-                   Section::make('Repair Tracking')
+                            // ✅ NO default() here — mutateFormDataBeforeCreate owns this value.
+                            // The hidden field just ensures sales_person_id is included in form data.
+                            Hidden::make('sales_person_id'),
+
+                            Select::make('sales_person_list')
+                                ->label('Sales Staff')
+                                ->multiple()
+                                ->searchable()
+                                ->preload()
+                                ->options(\App\Models\User::pluck('name', 'id'))
+                                ->default(function () {
+                                    // This correctly resolves "Rabin" from the session.
+                                    $activeName = \Illuminate\Support\Facades\Session::get('active_staff_name');
+
+                                    if ($activeName) {
+                                        $user = \App\Models\User::where('name', 'LIKE', "%{$activeName}%")->first();
+                                        if ($user) return [$user->id];
+                                    }
+
+                                    return auth()->id() ? [auth()->id()] : [];
+                                })
+                                ->required()
+                                ->live()
+                                ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                    // Sync the hidden field when user manually changes selection
+                                    $set('sales_person_id', !empty($state) ? (int) $state[0] : null);
+                                }),
+                        ]),
+
+                    Section::make('Repair Tracking')
                         ->icon('heroicon-o-map-pin')
                         ->collapsible()
                         ->schema([
@@ -355,7 +355,7 @@ class RepairResource extends Resource
                                     ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                                     ->searchable()
                                     ->preload(),
-                                 
+
 
                                 CustomDatePicker::make('date_picked_up')
                                     ->label('Date Picked/Received')
@@ -363,7 +363,7 @@ class RepairResource extends Resource
                             ]),
 
                             Grid::make(2)->schema([
-                               GoogleAutocomplete::make('repair_location_search')
+                                GoogleAutocomplete::make('repair_location_search')
                                     ->label('Repair Location')
                                     ->autocompletePlaceholder('Search address or place...')
                                     ->countries(['US'])
@@ -403,7 +403,7 @@ class RepairResource extends Resource
     }
 
     // ── TABLE ─────────────────────────────────────────────────────────
-    public static function table(Table $table): Table
+  public static function table(Table $table): Table
     {
         return $table
             ->striped()
@@ -431,44 +431,34 @@ class RepairResource extends Resource
                     ->weight('bold')
                     ->grow(false),
 
-            Tables\Columns\TextColumn::make('salesPerson.name')
-    ->label('SALES STAFF')
-    ->html()
-    ->getStateUsing(function ($record) {
-        // sales_person_list is cast to array in the model — contains all selected IDs
-        $list = $record->sales_person_list;
- 
-        // If cast didn't run (raw string from DB), decode manually
-        if (is_string($list)) {
-            $list = json_decode($list, true);
-        }
- 
-        if (!empty($list) && is_array($list)) {
-            return \App\Models\User::whereIn('id', $list)
-                ->pluck('name')
-                ->implode('||'); // delimiter to split badges in formatStateUsing
-        }
- 
-        // Fallback: single staff_id relationship
-        if ($record->salesPerson) {
-            return $record->salesPerson->name;
-        }
- 
-        return '—';
-    })
-    ->formatStateUsing(function ($state) {
-        if (!$state || $state === '—') {
-            return '<span style="color:#9ca3af;font-size:11px;">—</span>';
-        }
- 
-        // Split multiple names and render each as a badge
-        $names = explode('||', $state);
- 
-        return collect($names)
-            ->map(fn($name) => self::staffBadge(trim($name)))
-            ->implode(' ');
-    })
-    ->grow(false),
+                Tables\Columns\TextColumn::make('salesPerson.name')
+                    ->label('SALES STAFF')
+                    ->html()
+                    ->getStateUsing(function ($record) {
+                        $list = $record->sales_person_list;
+                        if (is_string($list)) {
+                            $list = json_decode($list, true);
+                        }
+                        if (!empty($list) && is_array($list)) {
+                            return \App\Models\User::whereIn('id', $list)
+                                ->pluck('name')
+                                ->implode('||'); 
+                        }
+                        if ($record->salesPerson) {
+                            return $record->salesPerson->name;
+                        }
+                        return '—';
+                    })
+                    ->formatStateUsing(function ($state) {
+                        if (!$state || $state === '—') {
+                            return '<span style="color:#9ca3af;font-size:11px;">—</span>';
+                        }
+                        $names = explode('||', $state);
+                        return collect($names)
+                            ->map(fn($name) => self::staffBadge(trim($name)))
+                            ->implode(' ');
+                    })
+                    ->grow(false),
 
                 Tables\Columns\TextColumn::make('date_dropped')
                     ->label('DROPPED')
@@ -477,19 +467,23 @@ class RepairResource extends Resource
                     ->size('sm')
                     ->grow(false),
 
-                Tables\Columns\TextColumn::make('dropped_by')
+                // 🚀 THE FIX: Converted to SelectColumn
+                Tables\Columns\SelectColumn::make('dropped_by')
                     ->label('DROP BY')
-                    ->html()
-                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                    ->selectablePlaceholder(true)
                     ->placeholder('—')
-                    ->grow(false),
+                    ->grow(false)
+                    ->extraAttributes(['style' => 'min-width:110px;']),
 
-                Tables\Columns\TextColumn::make('picked_up_by')
+                // 🚀 THE FIX: Converted to SelectColumn
+                Tables\Columns\SelectColumn::make('picked_up_by')
                     ->label('PICK BY')
-                    ->html()
-                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                    ->selectablePlaceholder(true)
                     ->placeholder('—')
-                    ->grow(false),
+                    ->grow(false)
+                    ->extraAttributes(['style' => 'min-width:110px;']),
 
                 Tables\Columns\TextColumn::make('date_picked_up')
                     ->label('PICKED')
@@ -516,12 +510,23 @@ class RepairResource extends Resource
                         default       => ['style' => 'min-width:90px;'],
                     }),
 
-                Tables\Columns\TextColumn::make('repair_location')
+                // 🚀 THE FIX: Converted to SelectColumn
+                Tables\Columns\SelectColumn::make('repair_location')
                     ->label('LOCATION')
-                    ->html()
-                    ->formatStateUsing(fn($state) => self::staffBadge($state))
+                    ->options(function ($record) {
+                        // Get staff names as options
+                        $options = \App\Models\User::pluck('name', 'name')->toArray();
+                        // If the record has a custom location (like "Javier Workshop") that isn't a staff name,
+                        // ensure it appears in the dropdown so it doesn't look blank.
+                        if ($record->repair_location && !array_key_exists($record->repair_location, $options)) {
+                            $options[$record->repair_location] = $record->repair_location;
+                        }
+                        return $options;
+                    })
+                    ->selectablePlaceholder(true)
                     ->placeholder('—')
-                    ->grow(false),
+                    ->grow(false)
+                    ->extraAttributes(['style' => 'min-width:130px;']),
 
                 Tables\Columns\TextColumn::make('customer_pickup_date')
                     ->label('PICKUP')

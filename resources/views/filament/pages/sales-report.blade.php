@@ -503,9 +503,9 @@
     {{-- Header --}}
     <div class="st-header">
         <div class="st-header-left">
-            <div class="st-report-code">PEOD001 · Shop Takings</div>
+            <div class="st-report-code" style="color: white;">Shop Takings</div>
             <div class="st-report-title">Daily Banking & Bank Deposit</div>
-            <div class="st-report-subtitle">Payment method breakdown for selected period</div>
+            <div class="st-report-subtitle" style="color: black;">Payment method breakdown for selected period</div>
         </div>
         <div class="st-header-meta">
             <div>Generated: {{ now()->format('d M Y, H:i') }}</div>
