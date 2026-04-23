@@ -292,7 +292,7 @@
     <table class="meta-table">
         <tr>
             <td width="33%"><strong>Repair #:</strong> {{ $repair->repair_no }}</td>
-            <td width="34%"><strong>Sales Assistant:</strong> {{ $repair->salesPerson?->name ?? 'N/A' }}</td>
+            <td width="34%"><strong>Sales Assistant:</strong> {{ $repair->dropped_by ?? 'N/A' }}</td>
             <td class="right-align" width="33%">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</td>
         </tr>
         <tr>
@@ -410,7 +410,7 @@
     <table class="meta-table">
         <tr>
             <td width="33%"><strong>Repair #:</strong> {{ $repair->repair_no }}</td>
-            <td width="34%"><strong>Staff:</strong> {{ $repair->salesPerson?->name ?? 'N/A' }}</td>
+            <td width="34%"><strong>Staff:</strong> {{ $repair->dropped_by ?? 'N/A' }}</td>
             <td class="right-align" width="33%">Date In: {{ $repair->created_at->format('m/d/Y') }}</td>
         </tr>
         <tr>

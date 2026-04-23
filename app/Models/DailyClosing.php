@@ -14,5 +14,6 @@ class DailyClosing extends Model
         'expected_data' => 'array',
         'actual_data' => 'array',
         'closing_date' => 'date',
+        'sales_summary' => 'array',
     ];
 }

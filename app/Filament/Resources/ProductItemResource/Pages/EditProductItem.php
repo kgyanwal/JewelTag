@@ -19,7 +19,15 @@ class EditProductItem extends EditRecord
             Actions\DeleteAction::make(),
         ];
     }
+protected function mutateFormDataBeforeSave(array $data): array
+    {
+        // If the item was in our holding state, assume the edit means it's now approved
+        if (($this->record->status ?? '') === 'staged') {
+            $data['status'] = 'in_stock';
+        }
 
+        return $data;
+    }
     /**
      * 🚀 This triggers the popup notification after the "Save Changes" button is clicked.
      */

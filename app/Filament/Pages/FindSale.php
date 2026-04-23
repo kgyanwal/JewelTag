@@ -275,19 +275,28 @@ public static function getServiceTypeOptions(): array
                         return new HtmlString($html);
                     }),
 
-                TextColumn::make('status')
-                    ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'completed'          => 'success',
-                        'refunded'           => 'danger',
-                        'partially_refunded' => 'warning',
-                        'cancelled'          => 'gray',
-                        default              => 'gray',
+               TextColumn::make('sale_type_badge')
+                    ->label('TYPE')
+                    ->getStateUsing(function ($record) {
+                        $isLaybuy     = $record->payment_method === 'laybuy';
+                        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
+                        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
+                        $hasSpecialJob = !empty($record->special_jobs);
+
+                        // 🚀 THE FIX: If it's a Laybuy but the balance is 0, show a special completed badge!
+                        if ($isLaybuy) {
+                            if (floatval($record->balance_due) <= 0) {
+                                return new HtmlString("<span style='background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✅ LAYBUY DONE</span>");
+                            }
+                            return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+                        }
+                        
+                        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
+                        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
+                        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
+                        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
                     })
-                    ->formatStateUsing(
-                        fn(string $state) =>
-                        strtoupper(str_replace('_', ' ', $state))
-                    ),
+                    ->grow(false),
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
