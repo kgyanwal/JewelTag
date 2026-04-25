@@ -25,7 +25,16 @@ class CreateSale extends CreateRecord
     {
         return $data;
     }
-
+protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $data['is_warranty_taxed'] = (bool) ($data['is_warranty_taxed'] ?? false);
+        $data['shipping_taxed']    = (bool) ($data['shipping_taxed'] ?? false);
+        $data['has_warranty']      = (int)  ($data['has_warranty'] ?? 0);
+        $data['has_trade_in']      = (int)  ($data['has_trade_in'] ?? 0);
+        $data['warranty_charge']   = (float)($data['warranty_charge'] ?? 0);
+        
+        return $data;
+    }
     public function form(Form $form): Form
     {
         return parent::form($form)->statePath('data');
