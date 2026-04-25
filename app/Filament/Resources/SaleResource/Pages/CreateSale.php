@@ -32,7 +32,7 @@ protected function mutateFormDataBeforeCreate(array $data): array
         $data['has_warranty']      = (int)  ($data['has_warranty'] ?? 0);
         $data['has_trade_in']      = (int)  ($data['has_trade_in'] ?? 0);
         $data['warranty_charge']   = (float)($data['warranty_charge'] ?? 0);
-        
+        unset($data['payment_target']);
         return $data;
     }
     public function form(Form $form): Form

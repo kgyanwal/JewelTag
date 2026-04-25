@@ -19,7 +19,7 @@ class SalesReport extends Page implements HasForms
     protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-line';
     protected static ?string $navigationGroup = 'Analytics & Reports';
     protected static ?string $navigationLabel = 'Store Sales Reports';
-    protected static ?string $title = 'Sales Report & Bank Deposits';
+    protected static ?string $title = '';
     protected static string $view = 'filament.pages.sales-report';
 
     public ?string $fromDate = null;
