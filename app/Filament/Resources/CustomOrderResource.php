@@ -1091,6 +1091,7 @@ class CustomOrderResource extends Resource
                                         'amount'          => round((float) $payment['amount'], 2),
                                         'method'          => strtoupper(trim($payment['method'])),
                                         'paid_at'         => now(),
+                                        'store_id'        => $record->sale?->store_id ?? auth()->user()->store_id ?? 1,
                                     ]);
                                 }
                             } else {
@@ -1100,6 +1101,7 @@ class CustomOrderResource extends Resource
                                     'amount'          => $amountPaid,
                                     'method'          => strtoupper(trim($data['payment_method'])),
                                     'paid_at'         => now(),
+                                    'store_id'        => $record->sale?->store_id ?? auth()->user()->store_id ?? 1,
                                 ]);
                             }
 
