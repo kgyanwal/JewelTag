@@ -161,19 +161,19 @@ class FindPayment extends Page implements HasForms, HasTable
                     // Date Filters - All three now use CustomDatePicker (YYYY-MM-DD)
                     ->when($f['payment_date'] ?? null, function ($q, $v) {
                         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
-                            return $q->whereDate('created_at', $v);
+                            return $q->whereDate('paid_at', $v);
                         }
                         return $q;
                     })
                     ->when($f['date_from'] ?? null, function ($q, $v) {
                         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
-                            return $q->whereDate('created_at', '>=', $v);
+                            return $q->whereDate('paid_at', '>=', $v);
                         }
                         return $q;
                     })
                     ->when($f['date_to'] ?? null, function ($q, $v) {
                         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
-                            return $q->whereDate('created_at', '<=', $v);
+                            return $q->whereDate('paid_at', '<=', $v);
                         }
                         return $q;
                     })
@@ -208,7 +208,7 @@ class FindPayment extends Page implements HasForms, HasTable
                     ->color('gray')
                     ->formatStateUsing(fn($state) => Str::upper($state)),
 
-                TextColumn::make('created_at')
+                TextColumn::make('paid_at')
                     ->label('DATE')
                     ->dateTime('m/d/Y')
                     ->sortable(),
