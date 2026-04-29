@@ -67,6 +67,13 @@ public static function getServiceTypeOptions(): array
                     ->aside()
                     ->schema([
                         Grid::make(4)->schema([
+                            TextInput::make('keyword')
+    ->label('🔍 Item / Keyword Search')
+    ->placeholder('e.g. Tiffany pendant, Marquise ring, R1234...')
+    ->prefixIcon('heroicon-o-magnifying-glass')
+    ->helperText('Searches item descriptions, job notes, invoice #, and customer name')
+    ->live(onBlur: true)
+    ->columnSpanFull(),
                             // ── Use live(onBlur: true) instead of ->live()
                             //    This fires only when the user tabs/clicks away,
                             //    not on every single keypress
@@ -148,6 +155,23 @@ public static function getServiceTypeOptions(): array
                         'items.productItem',  // used in items_summary column
                         'payments',           // used in payment_status_summary column
                     ])
+                    ->when(
+    $this->data['keyword'] ?? null,
+    fn($q, $v) => $q->where(function ($sub) use ($v) {
+        $sub->whereHas('items', fn($iq) =>
+            $iq->where('custom_description', 'like', "%{$v}%")
+               ->orWhere('job_description', 'like', "%{$v}%")
+               ->orWhere('stock_no_display', 'like', "%{$v}%")
+        )
+        ->orWhere('invoice_number', 'like', "%{$v}%")
+        ->orWhere('notes', 'like', "%{$v}%")
+        ->orWhere('job_instructions', 'like', "%{$v}%")
+        ->orWhereHas('customer', fn($cq) =>
+            $cq->whereRaw("CONCAT(name, ' ', COALESCE(last_name,'')) LIKE ?", ["%{$v}%"])
+               ->orWhere('phone', 'like', "%{$v}%")
+        );
+    })
+)
                     ->when(
                         $this->data['invoice_number'] ?? null,
                         fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%")
