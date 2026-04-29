@@ -27,16 +27,20 @@ class EndOfDayClosing extends Page
     public $salesSummary   = []; // Per-staff breakdown
     public $isClosed       = false;
     public $paymentMethods = [];
-
+public ?float $monthlyTarget = null;
+public ?float $dailyTarget   = null;
+public string $debugTarget = '';
     public function mount(): void
     {
         $tz         = Store::first()?->timezone ?? config('app.timezone', 'UTC');
         $this->date = now()->setTimezone($tz)->format('Y-m-d');
+        $this->loadTargetFromSettings();
         $this->loadData();
     }
 
     public function updatedDate(): void
     {
+        $this->loadTargetFromSettings();
         $this->loadData();
     }
 
@@ -230,4 +234,31 @@ class EndOfDayClosing extends Page
                 }),
         ];
     }
+    protected function loadTargetFromSettings(): void
+{
+    $yearMonth = Carbon::parse($this->date)->format('Y-m');
+
+    $override = DB::table('site_settings')
+        ->where('key', 'monthly_target_override_' . $yearMonth)
+        ->value('value');
+
+    $default = DB::table('site_settings')
+        ->where('key', 'monthly_sales_target')
+        ->value('value');
+
+    $active = ($override !== null && $override !== '' && (float) $override > 0)
+        ? $override
+        : $default;
+
+    $this->monthlyTarget = ($active !== null && $active !== '' && (float) $active > 0)
+        ? (float) $active
+        : null;
+
+    $this->dailyTarget = $this->monthlyTarget
+        ? round($this->monthlyTarget / Carbon::parse($this->date)->daysInMonth, 2)
+        : null;
+
+    // Debug — remove after testing
+    $this->debugTarget = "month={$yearMonth} | override={$override} | default={$default} | active={$active} | monthly={$this->monthlyTarget} | daily={$this->dailyTarget}";
+}
 }

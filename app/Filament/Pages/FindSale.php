@@ -43,12 +43,13 @@ class FindSale extends Page implements HasForms, HasTable
 
     // ── Only reset the table when the user STOPS typing (debounced via onBlur)
     //    NOT on every keystroke — this is the #1 performance fix
-    public function updated($property): void
-    {
-        if (str_starts_with($property, 'data.')) {
-            $this->resetTable();
-        }
+  public function updated($property): void
+{
+    if (str_starts_with($property, 'data.')) {
+        $this->resetTable();
+        $this->dispatch('$refresh');
     }
+}
 public static function getServiceTypeOptions(): array
     {
         $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
@@ -97,11 +98,10 @@ public static function getServiceTypeOptions(): array
                                 ->placeholder('All Methods')
                                 ->live(), 
                                               // selects are fine as ->live() — no typing
-                            CustomDatePicker::make('date_from')
-                                ->label('Date From')
-                                ->displayFormat('m/d/Y')
-                                ->live()
-                                ->afterStateUpdated(fn() => $this->resetTable()),
+                           CustomDatePicker::make('date_from')
+    ->label('Date From')
+    ->displayFormat('m/d/Y')
+    ->live(),
                             // date pickers are fine too
 
                            Select::make('job_type')
@@ -110,6 +110,26 @@ public static function getServiceTypeOptions(): array
                                 ->placeholder('All Service Types')
                                 ->live(),
                         ]),
+                         \Filament\Forms\Components\Actions::make([
+            \Filament\Forms\Components\Actions\Action::make('reset_search')
+                ->label('Clear Filters')
+                ->icon('heroicon-o-x-circle')
+                ->color('gray')
+                ->outlined()
+                ->action(function () {
+                    $this->form->fill([
+                        'invoice_number' => null,
+                        'staff_name'     => null,
+                        'first_name'     => null,
+                        'last_name'      => null,
+                        'phone'          => null,
+                        'payment_method' => null,
+                        'date_from'      => null,
+                        'job_type'       => null,
+                    ]);
+                    $this->resetTable();
+                }),
+        ]),
                     ]),
             ]);
     }

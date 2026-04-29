@@ -1025,6 +1025,14 @@ class SaleResource extends Resource
                                                                                             </div>
                                                                                         </div>
                                                                                     "))->columnSpanFull(),
+                                                                                Placeholder::make('view_dob')
+                                                                                    ->label('Birthday')
+                                                                                    ->content(function () use ($customer) {
+                                                                                        if (!$customer->dob) return '—';
+                                                                                        $dob = \Carbon\Carbon::parse($customer->dob);
+                                                                                        $age = $dob->age;
+                                                                                        return new HtmlString("{$dob->format('M d, Y')} <span class='text-gray-400 text-xs'>({$age} yrs)</span>");
+                                                                                    }),
                                                                                 TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
                                                                                 TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
                                                                                 TextInput::make('view_addr')
@@ -1500,10 +1508,10 @@ class SaleResource extends Resource
                             Section::make('Financial Summary')->schema([
                                 self::totalRow('TAX TOTAL', 'tax_amount'),
                                 TextInput::make('tax_amount_warranty')
-        ->label('WARRANTY TAX')
-        ->prefix('$')
-        ->readOnly()
-        ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
+                                    ->label('WARRANTY TAX')
+                                    ->prefix('$')
+                                    ->readOnly()
+                                    ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
                                 self::totalRow('SUBTOTAL', 'subtotal'),
 
                                 Placeholder::make('balance_due_display')
@@ -1890,7 +1898,7 @@ class SaleResource extends Resource
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
 
- public static function updateTotals(callable|Get $get, callable|Set $set): void
+    public static function updateTotals(callable|Get $get, callable|Set $set): void
     {
         $items           = $get('items') ?? [];
         $shipping        = floatval($get('shipping_charges') ?? 0);
@@ -1930,8 +1938,8 @@ class SaleResource extends Resource
 
         // Update form state
         $set('subtotal',            number_format($itemsSubtotal, 2, '.', ''));
-        $set('tax_amount',          number_format($itemsTax, 2, '.', '')); 
-        $set('tax_amount_warranty', number_format($warrantyTax, 2, '.', '')); 
+        $set('tax_amount',          number_format($itemsTax, 2, '.', ''));
+        $set('tax_amount_warranty', number_format($warrantyTax, 2, '.', ''));
         $set('final_total',         number_format($grandTotal, 2, '.', ''));
         $set('display_total_due',   number_format($grandTotal, 2, '.', ''));
 
@@ -1976,22 +1984,29 @@ class SaleResource extends Resource
         $set('status', $fullyPaid ? 'completed' : 'pending');
     }
 
-    public static function getPaymentOptions(): array
-    {
-        $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
-        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
-        $methods        = $json ? json_decode($json, true) : $defaultMethods;
-        $options        = [];
+   public static function getPaymentOptions(): array
+{
+    $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+    $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+    $methods        = $json ? json_decode($json, true) : $defaultMethods;
+    $options        = [];
 
-        foreach ($methods as $method) {
-            if (strtoupper($method) === 'LAYBUY') {
-                $options['laybuy'] = 'LAYBUY (Installment Plan)';
-            } else {
-                $options[$method] = $method;
-            }
+    foreach ($methods as $method) {
+        if (strtoupper($method) === 'LAYBUY') {
+            $options['laybuy'] = 'LAYBUY (Installment Plan)';
+        } else {
+            $options[$method] = $method;
         }
-        return $options;
     }
+
+    // Sort alphabetically by label, but keep LAYBUY at the bottom
+    $regular = array_filter($options, fn($k) => $k !== 'laybuy', ARRAY_FILTER_USE_KEY);
+    asort($regular);
+    
+    return isset($options['laybuy'])
+        ? $regular + ['laybuy' => $options['laybuy']]
+        : $regular;
+}
 
     protected static function totalRow($label, $field)
     {

@@ -23,36 +23,32 @@ class ManageSettings extends Page
     protected static string $view = 'filament.pages.manage-settings';
 
     public ?array $data = [];
+    public string $selectedOverrideMonth = '';
 
     public function mount(): void
     {
         $settings = DB::table('site_settings')->pluck('value', 'key');
 
-        // ── Payment Methods ───────────────────────────────────────────────────
         $pmJson        = $settings['payment_methods'] ?? null;
         $rawPayments   = $pmJson ? json_decode($pmJson, true) : ['CASH', 'VISA'];
         $fmtPayments   = collect($rawPayments)->map(fn($i) => ['name' => $i])->toArray();
 
-        // ── Warranty Options ──────────────────────────────────────────────────
         $woJson        = $settings['warranty_options'] ?? null;
         $rawWarranties = $woJson ? json_decode($woJson, true) : ['1 Year', 'Lifetime'];
         $fmtWarranties = collect($rawWarranties)->map(fn($i) => ['name' => $i])->toArray();
 
-        // ── Inventory Prefixes ────────────────────────────────────────────────
         $pfJson      = $settings['sub_department_prefixes'] ?? null;
         $fmtPrefixes = $pfJson ? json_decode($pfJson, true) : [];
 
-        // ── Service Types ─────────────────────────────────────────────────────
         $defaults = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
         $stJson   = $settings['service_types'] ?? null;
         $rawSt    = $stJson ? json_decode($stJson, true) : $defaults;
         $fmtSt    = collect($rawSt)->map(fn($i) => ['name' => $i])->toArray();
 
+        $caJson   = $settings['certificate_agencies'] ?? null;
+        $rawCa    = $caJson ? json_decode($caJson, true) : ['GIA', 'IGI', 'AGS', 'HRD', 'EGL', 'GSI'];
+        $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
 
-        // ── Certificate Agencies ──────────────────────────────────────────────────
-$caJson   = $settings['certificate_agencies'] ?? null;
-$rawCa    = $caJson ? json_decode($caJson, true) : ['GIA', 'IGI', 'AGS', 'HRD', 'EGL', 'GSI'];
-$fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
         $this->form->fill([
             'tax_rate'                  => $settings['tax_rate'] ?? '7.63',
             'barcode_prefix'            => $settings['barcode_prefix'] ?? 'D',
@@ -71,9 +67,22 @@ $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
             'aws_sms_secret_access_key' => $settings['aws_sms_secret_access_key'] ?? '',
             'aws_sms_default_region'    => $settings['aws_sms_default_region'] ?? 'us-east-2',
             'aws_sns_sms_from'          => $settings['aws_sns_sms_from'] ?? '',
-            'certificate_agencies' => $fmtCa,
+            'certificate_agencies'      => $fmtCa,
+            'monthly_sales_target'      => $settings['monthly_sales_target'] ?? '',
+            'override_month'            => now()->format('Y-m'),
+            'monthly_target_override'   => $settings['monthly_target_override_' . now()->format('Y-m')] ?? '',
         ]);
     }
+
+public function updatedDataOverrideMonth(): void
+{
+    // Only fires when the month dropdown changes — not when typing the amount
+    $month = $this->data['override_month'] ?? now()->format('Y-m');
+    $saved = DB::table('site_settings')
+        ->where('key', 'monthly_target_override_' . $month)
+        ->value('value');
+    $this->data['monthly_target_override'] = $saved ?? '';
+}
 
     public static function shouldRegisterNavigation(): bool
     {
@@ -81,14 +90,24 @@ $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
         return $staff?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
     }
 
-    // ── INDIVIDUAL SAVE METHODS ───────────────────────────────────────────────
-
     public function saveSystem(): void
     {
         $state = $this->form->getState();
-        foreach (['tax_rate', 'barcode_prefix', 'zebra_printer_ip'] as $key) {
-            DB::table('site_settings')->updateOrInsert(['key' => $key], ['value' => $state[$key] ?? '', 'updated_at' => now()]);
+
+        foreach (['tax_rate', 'barcode_prefix', 'zebra_printer_ip', 'monthly_sales_target'] as $key) {
+            DB::table('site_settings')->updateOrInsert(
+                ['key' => $key],
+                ['value' => $state[$key] ?? '', 'updated_at' => now()]
+            );
         }
+
+        $selectedMonth = $state['override_month'] ?? now()->format('Y-m');
+        $override      = $state['monthly_target_override'] ?? '';
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'monthly_target_override_' . $selectedMonth],
+            ['value' => (string) $override, 'updated_at' => now()]
+        );
+
         Notification::make()->title('✅ System settings saved')->success()->send();
     }
 
@@ -99,13 +118,15 @@ $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
         DB::table('site_settings')->updateOrInsert(['key' => 'payment_methods'], ['value' => json_encode($flat), 'updated_at' => now()]);
         Notification::make()->title('✅ Payment methods saved')->success()->send();
     }
-public function saveCertificateAgencies(): void
-{
-    $state = $this->form->getState();
-    $flat  = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
-    DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flat), 'updated_at' => now()]);
-    Notification::make()->title('✅ Certificate agencies saved')->success()->send();
-}
+
+    public function saveCertificateAgencies(): void
+    {
+        $state = $this->form->getState();
+        $flat  = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
+        DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flat), 'updated_at' => now()]);
+        Notification::make()->title('✅ Certificate agencies saved')->success()->send();
+    }
+
     public function saveWarranties(): void
     {
         $state = $this->form->getState();
@@ -159,8 +180,6 @@ public function saveCertificateAgencies(): void
         Notification::make()->title('✅ SMS settings saved')->success()->send();
     }
 
-    // ── FORM ──────────────────────────────────────────────────────────────────
-
     public function form(Form $form): Form
     {
         return $form
@@ -168,32 +187,39 @@ public function saveCertificateAgencies(): void
                 Tabs::make('Settings')
                     ->tabs([
 
-                        // ── 1. SYSTEM ─────────────────────────────────────────
+                        // ══════════════════════════════════════════
+                        // TAB 1: SYSTEM
+                        // ══════════════════════════════════════════
                         Tabs\Tab::make('⚙️ System')
                             ->schema([
+
+                                // ── Hardware & Tax ────────────────────────────
                                 Section::make('system_config')
                                     ->key('system_config')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🖥️</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#0ea5e9,#0284c7);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(14,165,233,0.3);">🖥️</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">System Configuration</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Core system rules — tax rate, barcode prefix, and hardware settings.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Hardware & Tax</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Tax rate, barcode prefix, and Zebra printer IP address.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Grid::make(3)->schema([
                                             TextInput::make('tax_rate')
-                                                ->label('💰 Sales Tax Rate')
+                                                ->label('Sales Tax Rate')
                                                 ->numeric()->suffix('%')->required()
+                                                ->prefixIcon('heroicon-m-calculator')
                                                 ->helperText('Applied to all taxable items at checkout'),
                                             TextInput::make('barcode_prefix')
-                                                ->label('🏷️ Barcode Prefix')
+                                                ->label('Barcode Prefix')
                                                 ->placeholder('e.g. D')->required()
+                                                ->prefixIcon('heroicon-m-tag')
                                                 ->helperText('Single letter prefix for invoice numbers'),
                                             TextInput::make('zebra_printer_ip')
-                                                ->label('🖨️ Zebra Printer IP')
+                                                ->label('Zebra Printer IP')
                                                 ->placeholder('e.g. 192.168.1.60')->required()
                                                 ->prefixIcon('heroicon-m-printer')
                                                 ->helperText('Local network IP for label printing'),
@@ -201,7 +227,91 @@ public function saveCertificateAgencies(): void
                                     ])
                                     ->footerActions([
                                         \Filament\Forms\Components\Actions\Action::make('save_system')
-                                            ->label('Save System Settings')
+                                            ->label('Save Hardware & Tax')
+                                            ->icon('heroicon-o-check-circle')
+                                            ->color('success')
+                                            ->action(fn() => $this->saveSystem()),
+                                    ])
+                                    ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+
+                                // ── Monthly Sales Targets ─────────────────────
+                                Section::make('monthly_targets_section')
+                                    ->key('monthly_targets_section')
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#10b981,#059669);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(16,185,129,0.3);">🎯</div>
+                                            <div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Monthly Sales Targets</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Set a default monthly goal. EOD automatically calculates the daily target (÷ days in month). Override specific months below.</div>
+                                            </div>
+                                        </div>
+                                    '))
+                                    ->schema([
+
+                                        // Default target — full-width row with clear label
+                                        \Filament\Forms\Components\Placeholder::make('default_target_label')
+                                            ->label('')
+                                            ->content(new \Illuminate\Support\HtmlString('
+                                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:-4px;">
+                                                    <div style="width:3px;height:16px;background:#10b981;border-radius:2px;flex-shrink:0;"></div>
+                                                    <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#374151;">Default Target — Applies to all months</span>
+                                                </div>
+                                            ')),
+
+                                        Grid::make(3)->schema([
+                                            TextInput::make('monthly_sales_target')
+                                                ->label('Monthly Target ($)')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->placeholder('e.g. 30000')
+                                                ->prefixIcon('heroicon-m-banknotes')
+                                                ->helperText('Used for any month without a specific override')
+                                                ->columnSpan(1),
+                                        ]),
+
+                                        // Divider
+                                        \Filament\Forms\Components\Placeholder::make('override_divider')
+                                            ->label('')
+                                            ->content(new \Illuminate\Support\HtmlString('
+                                                <div style="display:flex;align-items:center;gap:12px;margin:8px 0 4px;">
+                                                    <div style="flex:1;height:1px;background:#e5e7eb;"></div>
+                                                    <div style="display:flex;align-items:center;gap:6px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:20px;padding:4px 12px;">
+                                                        <span style="font-size:13px;">📅</span>
+                                                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6b7280;">Month-Specific Override</span>
+                                                        <span style="font-size:10px;color:#9ca3af;font-style:italic;">optional</span>
+                                                    </div>
+                                                    <div style="flex:1;height:1px;background:#e5e7eb;"></div>
+                                                </div>
+                                            ')),
+
+                                        // Override row — month picker + amount side by side
+                                        Grid::make(3)->schema([
+                                            \Filament\Forms\Components\Select::make('override_month')
+                                                ->label('Select Month to Override')
+                                                ->options(collect(range(0, 11))->mapWithKeys(function ($i) {
+                                                    $date = now()->subMonths($i);
+                                                    return [$date->format('Y-m') => $date->format('F Y')];
+                                                })->toArray())
+                                                ->default(now()->format('Y-m'))
+                                                ->live()
+                                                ->prefixIcon('heroicon-m-calendar')
+                                                ->helperText('Pick any of the last 12 months')
+                                                ->columnSpan(1),
+
+                                            TextInput::make('monthly_target_override')
+                                                ->label('Override Amount ($)')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->placeholder('Leave blank to use default')
+                                                ->prefixIcon('heroicon-m-pencil-square')
+                                                ->helperText('Specific target for the selected month only')
+                                                ->columnSpan(1),
+                                        ]),
+                                    ])
+                                    ->footerActions([
+                                        \Filament\Forms\Components\Actions\Action::make('save_targets')
+                                            ->label('Save Targets')
                                             ->icon('heroicon-o-check-circle')
                                             ->color('success')
                                             ->action(fn() => $this->saveSystem()),
@@ -209,22 +319,24 @@ public function saveCertificateAgencies(): void
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
 
-                        // ── 2. SALES ──────────────────────────────────────────
+                        // ══════════════════════════════════════════
+                        // TAB 2: SALES
+                        // ══════════════════════════════════════════
                         Tabs\Tab::make('🛒 Sales')
                             ->schema([
 
-                                // Payment Methods
                                 Section::make('payment_methods_section')
                                     ->key('payment_methods_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#10b981,#059669);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">💳</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#10b981,#059669);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(16,185,129,0.3);">💳</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">Payment Methods</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Configure accepted payment types shown at checkout. LAYBUY is automatically handled as an installment plan.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Payment Methods</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Configure accepted payment types shown at checkout. LAYBUY is automatically handled as an installment plan.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Repeater::make('payment_methods')->hiddenLabel()
                                             ->schema([TextInput::make('name')->required()->placeholder('e.g. KATAPULT, AFFIRM, ZELLE')])
@@ -237,18 +349,18 @@ public function saveCertificateAgencies(): void
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
 
-                                // Warranty Options
                                 Section::make('warranty_options_section')
                                     ->key('warranty_options_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🛡️</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(245,158,11,0.3);">🛡️</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">Warranty Options</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Define warranty periods available when completing a sale.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Warranty Options</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Define warranty periods available when completing a sale.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Repeater::make('warranty_options')->hiddenLabel()
                                             ->schema([TextInput::make('name')->required()->placeholder('e.g. 2 Years, Lifetime')])
@@ -261,18 +373,18 @@ public function saveCertificateAgencies(): void
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
 
-                                // Workshop Service Types
                                 Section::make('service_types_section')
                                     ->key('service_types_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🛠️</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(139,92,246,0.3);">🛠️</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">Workshop Service Types</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">These appear in the Workshop dropdown when creating a sale. Default types (Resize, Solder, etc.) are pre-loaded.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Workshop Service Types</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">These appear in the Workshop dropdown when creating a sale. Default types (Resize, Solder, etc.) are pre-loaded.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Repeater::make('service_types')->hiddenLabel()
                                             ->schema([TextInput::make('name')->label('Service Name')->required()->placeholder('e.g. Chain Soldering, Pearl Restringing')])
@@ -285,18 +397,18 @@ public function saveCertificateAgencies(): void
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
 
-                                // Receipt Terms
                                 Section::make('receipt_terms_section')
                                     ->key('receipt_terms_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#06b6d4,#0891b2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📄</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#06b6d4,#0891b2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(6,182,212,0.3);">📄</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">Receipt Terms & Conditions</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Text printed at the bottom of customer receipts for standard sales and repairs.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Receipt Terms & Conditions</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Text printed at the bottom of customer receipts for standard sales and repairs.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         RichEditor::make('receipt_terms')
                                             ->label('Standard Sale Receipt Terms')
@@ -313,20 +425,24 @@ public function saveCertificateAgencies(): void
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
 
-                        // ── 3. STOCK / INVENTORY ──────────────────────────────
+                        // ══════════════════════════════════════════
+                        // TAB 3: STOCK / SUPPLIER
+                        // ══════════════════════════════════════════
                         Tabs\Tab::make('📦 Stock/Supplier')
                             ->schema([
+
                                 Section::make('prefixes_section')
                                     ->key('prefixes_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#f97316,#ea580c);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📦</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#f97316,#ea580c);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(249,115,22,0.3);">📦</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">Inventory Prefix Rules</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Map sub-departments to barcode prefixes for automatic item classification.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Inventory Prefix Rules</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Map sub-departments to barcode prefixes for automatic item classification.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Repeater::make('sub_department_prefixes')->hiddenLabel()
                                             ->schema([
@@ -343,47 +459,50 @@ public function saveCertificateAgencies(): void
                                             ->action(fn() => $this->savePrefixes()),
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
-                                    // Certificate Agencies
-Section::make('certificate_agencies_section')
-    ->key('certificate_agencies_section')
-    ->description(new \Illuminate\Support\HtmlString(
-        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-            <div style="width:48px;height:48px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🏅</div>
-            <div>
-                <div style="font-size:15px;font-weight:800;color:#0f172a;">Certificate Agencies</div>
-                <div style="font-size:12px;color:#64748b;margin-top:2px;">Grading labs available when adding jewelry specs (GIA, IGI, etc).</div>
-            </div>
-        </div>'
-    ))
-    ->schema([
-        Repeater::make('certificate_agencies')->hiddenLabel()
-            ->schema([TextInput::make('name')->required()->placeholder('e.g. GIA, IGI, AGS')])
-            ->addActionLabel('+ Add Agency')->grid(3),
-    ])
-    ->footerActions([
-        \Filament\Forms\Components\Actions\Action::make('save_certificate_agencies')
-            ->label('Save Certificate Agencies')->icon('heroicon-o-check-circle')->color('success')
-            ->action(fn() => $this->saveCertificateAgencies()),
-    ])
-    ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+
+                                Section::make('certificate_agencies_section')
+                                    ->key('certificate_agencies_section')
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(99,102,241,0.3);">🏅</div>
+                                            <div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Certificate Agencies</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Grading labs available when adding jewelry specs (GIA, IGI, etc).</div>
+                                            </div>
+                                        </div>
+                                    '))
+                                    ->schema([
+                                        Repeater::make('certificate_agencies')->hiddenLabel()
+                                            ->schema([TextInput::make('name')->required()->placeholder('e.g. GIA, IGI, AGS')])
+                                            ->addActionLabel('+ Add Agency')->grid(3),
+                                    ])
+                                    ->footerActions([
+                                        \Filament\Forms\Components\Actions\Action::make('save_certificate_agencies')
+                                            ->label('Save Certificate Agencies')->icon('heroicon-o-check-circle')->color('success')
+                                            ->action(fn() => $this->saveCertificateAgencies()),
+                                    ])
+                                    ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
 
-                        // ── 4. INTEGRATIONS ───────────────────────────────────
+                        // ══════════════════════════════════════════
+                        // TAB 4: INTEGRATIONS
+                        // ══════════════════════════════════════════
                         Tabs\Tab::make('☁️ Integrations')
                             ->schema([
 
-                                // AWS S3 / SES
                                 Section::make('aws_section')
                                     ->key('aws_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#FF9900,#e68a00);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📧</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#FF9900,#e68a00);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(255,153,0,0.3);">📧</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">AWS S3 & Email (SES)</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Used for file storage and transactional email delivery to customers.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">AWS S3 & Email (SES)</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Used for file storage and transactional email delivery to customers.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Grid::make(2)->schema([
                                             TextInput::make('aws_access_key_id')->label('Access Key ID')->placeholder('AKIA...'),
@@ -399,18 +518,18 @@ Section::make('certificate_agencies_section')
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
 
-                                // SMS / SNS
                                 Section::make('sms_section')
                                     ->key('sms_section')
-                                    ->description(new \Illuminate\Support\HtmlString(
-                                        '<div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px;">
-                                            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ec4899,#db2777);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">📱</div>
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#ec4899,#db2777);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(236,72,153,0.3);">📱</div>
                                             <div>
-                                                <div style="font-size:15px;font-weight:800;color:#0f172a;">SMS Messaging (SNS)</div>
-                                                <div style="font-size:12px;color:#64748b;margin-top:2px;">Credentials for sending SMS notifications and receipt links to customers.</div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">SMS Messaging (SNS)</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Credentials for sending SMS notifications and receipt links to customers.</div>
                                             </div>
-                                        </div>'
-                                    ))
+                                        </div>
+                                    '))
                                     ->schema([
                                         Grid::make(2)->schema([
                                             TextInput::make('aws_sms_access_key_id')->label('SMS Access Key ID')->placeholder('AKIA...'),
@@ -452,7 +571,8 @@ Section::make('certificate_agencies_section')
         $keysToSave = [
             'tax_rate', 'barcode_prefix', 'zebra_printer_ip', 'receipt_terms', 'repair_terms',
             'aws_access_key_id', 'aws_secret_access_key', 'aws_default_region', 'aws_bucket',
-            'aws_sms_access_key_id', 'aws_sms_secret_access_key', 'aws_sms_default_region', 'aws_sns_sms_from',
+            'aws_sms_access_key_id', 'aws_sms_secret_access_key', 'aws_sms_default_region',
+            'aws_sns_sms_from', 'monthly_sales_target',
         ];
 
         foreach ($keysToSave as $key) {
@@ -461,6 +581,14 @@ Section::make('certificate_agencies_section')
                 ['value' => $state[$key] ?? '', 'updated_at' => now()]
             );
         }
+
+        // Save month override
+        $selectedMonth = $state['override_month'] ?? now()->format('Y-m');
+        $override      = $state['monthly_target_override'] ?? '';
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'monthly_target_override_' . $selectedMonth],
+            ['value' => (string) $override, 'updated_at' => now()]
+        );
 
         $flatPayments = collect($state['payment_methods'] ?? [])->pluck('name')->filter()->values()->toArray();
         DB::table('site_settings')->updateOrInsert(['key' => 'payment_methods'], ['value' => json_encode($flatPayments), 'updated_at' => now()]);
@@ -477,7 +605,7 @@ Section::make('certificate_agencies_section')
         DB::table('site_settings')->updateOrInsert(['key' => 'service_types'], ['value' => json_encode($flatServiceTypes), 'updated_at' => now()]);
 
         $flatCa = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
-DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flatCa), 'updated_at' => now()]);
+        DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flatCa), 'updated_at' => now()]);
 
         Notification::make()->title('✅ All settings saved successfully')->success()->send();
     }
