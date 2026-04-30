@@ -45,12 +45,12 @@ class ProductItemResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-archive-box';
     protected static ?string $navigationLabel = 'Assemble Stock';
     protected static ?string $navigationGroup = 'Inventory';
-   protected static ?string $recordTitleAttribute = 'barcode';
+    protected static ?string $recordTitleAttribute = 'barcode';
 
-  public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
-{
-    return "{$record->barcode} — " . \Illuminate\Support\Str::limit($record->custom_description, 40);
-}
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return "{$record->barcode} — " . \Illuminate\Support\Str::limit($record->custom_description, 40);
+    }
 
     /**
      * Converts RFID Hex to a short alphanumeric tag (Option 2)
@@ -84,7 +84,7 @@ class ProductItemResource extends Resource
 
         return $prefix . $nextNumber;
     }
-   public static function getPrefixForSubDepartment(?string $subDept): string
+    public static function getPrefixForSubDepartment(?string $subDept): string
     {
         // 1. Get the Default Prefix (Fallback)
         $defaultPrefix = \Illuminate\Support\Facades\DB::table('site_settings')
@@ -129,113 +129,123 @@ class ProductItemResource extends Resource
     {
         return $form->schema([
             Section::make()
-    ->compact()
-    ->schema([
-        /* ───────── TOP RADIO TOGGLE ───────── */
-        Radio::make('entry_type')
-            ->label('')
-            ->options([
-                'new' => 'Assemble New Stock Item',
-                'copy' => 'Copy Existing Item',
-            ])
-            ->default('new')
-            ->inline()
-            ->live()
-            ->extraAttributes(['class' => 'font-bold text-lg'])
-            ->afterStateUpdated(fn (Set $set) => $set('template_item_id', null)),
+                ->compact()
+                ->schema([
+                    /* ───────── TOP RADIO TOGGLE ───────── */
+                    Radio::make('entry_type')
+                        ->label('')
+                        ->options([
+                            'new' => 'Assemble New Stock Item',
+                            'copy' => 'Copy Existing Item',
+                        ])
+                        ->default('new')
+                        ->inline()
+                        ->live()
+                        ->extraAttributes(['class' => 'font-bold text-lg'])
+                        ->afterStateUpdated(fn(Set $set) => $set('template_item_id', null)),
 
-        /* ───────── ADVANCED FILTER BAR (Visible only when 'copy' is selected) ───────── */
-        Grid::make(12)
-            ->visible(fn (Get $get) => $get('entry_type') === 'copy')
-            ->schema([
-                
-                // 1. Filter by Vendor
-                Select::make('filter_vendor')
-                    ->label('Filter Vendor')
-                    ->options(\App\Models\Supplier::pluck('company_name', 'id'))
-                    ->searchable()
-                    ->placeholder('All Vendors')
-                    ->live()
-                    ->columnSpan(3),
+                    /* ───────── ADVANCED FILTER BAR (Visible only when 'copy' is selected) ───────── */
+                    Grid::make(12)
+                        ->visible(fn(Get $get) => $get('entry_type') === 'copy')
+                        ->schema([
 
-                // 2. Filter by Department
-                Select::make('filter_dept')
-                    ->label('Filter Dept')
-                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->pluck('name', 'name'))
-                    ->placeholder('All Depts')
-                    ->live()
-                    ->columnSpan(3),
+                            // 1. Filter by Vendor
+                            Select::make('filter_vendor')
+                                ->label('Filter Vendor')
+                                ->options(\App\Models\Supplier::pluck('company_name', 'id'))
+                                ->searchable()
+                                ->placeholder('All Vendors')
+                                ->live()
+                                ->columnSpan(3),
 
-                // 3. Filter by Category
-                Select::make('filter_category')
-                    ->label('Filter Category')
-                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->mapWithKeys(fn($i)=>[$i=>$i]))
-                    ->placeholder('All Categories')
-                    ->live()
-                    ->columnSpan(3),
+                            // 2. Filter by Department
+                            Select::make('filter_dept')
+                                ->label('Filter Dept')
+                                ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->pluck('name', 'name'))
+                                ->placeholder('All Depts')
+                                ->live()
+                                ->columnSpan(3),
 
-                /* ───────── DYNAMIC STOCK SELECTOR (Filtered by above choices) ───────── */
-                Select::make('template_item_id')
-                    ->label('Select Stock:')
-                    ->placeholder('SEARCH FILTERED ITEMS...')
-                    // 🚀 THE LOGIC: This dropdown now changes based on the filters above
-                   ->options(function (Get $get) {
-    $query = ProductItem::withTrashed(); // include soft-deleted/archived
+                            // 3. Filter by Category
+                            Select::make('filter_category')
+                                ->label('Filter Category')
+                                ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->mapWithKeys(fn($i) => [$i => $i]))
+                                ->placeholder('All Categories')
+                                ->live()
+                                ->columnSpan(3),
 
-    if ($get('filter_vendor')) $query->where('supplier_id', $get('filter_vendor'));
-    if ($get('filter_dept')) $query->where('department', $get('filter_dept'));
+                            /* ───────── DYNAMIC STOCK SELECTOR (Filtered by above choices) ───────── */
+                            Select::make('template_item_id')
+                                ->label('Select Stock:')
+                                ->placeholder('SEARCH FILTERED ITEMS...')
+                                // 🚀 THE LOGIC: This dropdown now changes based on the filters above
+                              ->getSearchResultsUsing(function (string $search, Get $get) {
+    $query = ProductItem::withTrashed();
+
+    if ($get('filter_vendor'))   $query->where('supplier_id', $get('filter_vendor'));
+    if ($get('filter_dept'))     $query->where('department', $get('filter_dept'));
     if ($get('filter_category')) $query->where('category', $get('filter_category'));
 
-    return $query->latest()
-        ->limit(200)
+    return $query
+        ->where(fn($q) => $q
+            ->where('barcode', 'like', "%{$search}%")
+            ->orWhere('custom_description', 'like', "%{$search}%")
+            ->orWhere('supplier_code', 'like', "%{$search}%")
+        )
+        ->orderByRaw("CASE WHEN barcode = ? THEN 0 WHEN barcode LIKE ? THEN 1 ELSE 2 END", [$search, "{$search}%"])
+        ->limit(50)
         ->get()
         ->mapWithKeys(fn($i) => [
             $i->id => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
         ]);
 })
-                    ->searchable()
-                    ->live()
-                    ->required(fn(Get $get) => $get('entry_type') === 'copy')
-                    ->columnSpan(3)
-                    ->afterStateUpdated(function ($state, Set $set) {
-                        if (!$state) return;
-                        $item = ProductItem::find($state);
-                        if (!$item) return;
+->getOptionLabelUsing(fn($value) => optional(
+    ProductItem::withTrashed()->find($value),
+    fn($i) => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
+))
+                                ->searchable()
+                                ->live()
+                                ->required(fn(Get $get) => $get('entry_type') === 'copy')
+                                ->columnSpan(3)
+                                ->afterStateUpdated(function ($state, Set $set) {
+                                    if (!$state) return;
+                                    $item = ProductItem::find($state);
+                                    if (!$item) return;
 
-                        // 📋 CLONE ALL FIELDS LIVE
-                        $set('supplier_id', $item->supplier_id);
-                        $set('supplier_code', $item->supplier_code);
-                        $set('is_memo', $item->is_memo);
-                        $set('memo_status', $item->memo_status);
-                        $set('department', $item->department);
-                        $set('sub_department', $item->sub_department);
-                        $set('category', $item->category);
-                        $set('metal_type', $item->metal_type);
-                        $set('metal_weight', $item->metal_weight);
-                        $set('diamond_weight', $item->diamond_weight);
-                        $set('size', $item->size);
-                        $set('custom_description', $item->custom_description);
-                        $set('cost_price', $item->cost_price);
-                        $set('retail_price', $item->retail_price);
-                        $set('web_price', $item->web_price);
-                        
-                        // CLONE JEWELRY SPECS (Hidden Fields)
-                        $set('certificate_number', $item->certificate_number);
-                        $set('certificate_agency', $item->certificate_agency);
-                        $set('shape', $item->shape);
-                        $set('color', $item->color);
-                        $set('clarity', $item->clarity);
-                        $set('cut', $item->cut);
-                        $set('polish', $item->polish);
-                        $set('symmetry', $item->symmetry);
-                        $set('fluorescence', $item->fluorescence);
-                        $set('measurements', $item->measurements);
-                        $set('is_lab_grown', $item->is_lab_grown);
+                                    // 📋 CLONE ALL FIELDS LIVE
+                                    $set('supplier_id', $item->supplier_id);
+                                    $set('supplier_code', $item->supplier_code);
+                                    $set('is_memo', $item->is_memo);
+                                    $set('memo_status', $item->memo_status);
+                                    $set('department', $item->department);
+                                    $set('sub_department', $item->sub_department);
+                                    $set('category', $item->category);
+                                    $set('metal_type', $item->metal_type);
+                                    $set('metal_weight', $item->metal_weight);
+                                    $set('diamond_weight', $item->diamond_weight);
+                                    $set('size', $item->size);
+                                    $set('custom_description', $item->custom_description);
+                                    $set('cost_price', $item->cost_price);
+                                    $set('retail_price', $item->retail_price);
+                                    $set('web_price', $item->web_price);
 
-                        Notification::make()->title('Template Applied')->success()->send();
-                    }),
-            ]),
-    ]),
+                                    // CLONE JEWELRY SPECS (Hidden Fields)
+                                    $set('certificate_number', $item->certificate_number);
+                                    $set('certificate_agency', $item->certificate_agency);
+                                    $set('shape', $item->shape);
+                                    $set('color', $item->color);
+                                    $set('clarity', $item->clarity);
+                                    $set('cut', $item->cut);
+                                    $set('polish', $item->polish);
+                                    $set('symmetry', $item->symmetry);
+                                    $set('fluorescence', $item->fluorescence);
+                                    $set('measurements', $item->measurements);
+                                    $set('is_lab_grown', $item->is_lab_grown);
+
+                                    Notification::make()->title('Template Applied')->success()->send();
+                                }),
+                        ]),
+                ]),
             Section::make('Assemble New Stock Item')
                 ->columns(12)
                 ->schema([
@@ -474,82 +484,82 @@ class ProductItemResource extends Resource
                     TextInput::make('web_price')->label('Web price')->prefix('$')->numeric()->live()->columnSpan(3),
                     TextInput::make('discount_percent')->label('Discount percent')->suffix('%')->default(0)->numeric()->columnSpan(2),
 
-                  Textarea::make('custom_description')
-                    ->label('Description')
-                    ->rows(3)
-                    ->columnSpan(12)
-                    // 🚀 ON-SWIM STYLE POPUP
-                    ->hintAction(
-                        Forms\Components\Actions\Action::make('moreDetails')
-                            ->label('Add Jewelry Specs')
-                            ->icon('heroicon-o-sparkles')
-                            ->color('info')
-                            ->modalHeading('Detailed Specifications')
-                            ->modalWidth('4xl')
-                            ->fillForm(fn (Get $get) => [
-                                'certificate_number' => $get('certificate_number'),
-                                'certificate_agency' => $get('certificate_agency'),
-                                'shape' => $get('shape'),
-                                'color' => $get('color'),
-                                'clarity' => $get('clarity'),
-                                'cut' => $get('cut'),
-                                'polish' => $get('polish'),
-                                'symmetry' => $get('symmetry'),
-                                'fluorescence' => $get('fluorescence'),
-                                'measurements' => $get('measurements'),
-                                'is_lab_grown' => $get('is_lab_grown'),
-                            ])
-                            ->form([
-                                Grid::make(3)->schema([
-                                    TextInput::make('certificate_number')->label('Cert #'),
-                                    Select::make('certificate_agency')
-    ->options(function () {
-        $json = DB::table('site_settings')->where('key', 'certificate_agencies')->value('value');
-        $data = $json ? json_decode($json, true) : ['GIA', 'IGI', 'AGS', 'HRD'];
-        return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
-    })
-    ->searchable(),
-                                    Toggle::make('is_lab_grown')->label('Lab Grown?')->inline(false),
-                                ]),
-                                Section::make('Stone Details')->schema([
-                                    Grid::make(4)->schema([
-                                        TextInput::make('shape'),
-                                        TextInput::make('color'),
-                                        TextInput::make('clarity'),
-                                        TextInput::make('cut'),
-                                        TextInput::make('polish'),
-                                        TextInput::make('symmetry'),
-                                        TextInput::make('fluorescence'),
-                                        TextInput::make('measurements'),
+                    Textarea::make('custom_description')
+                        ->label('Description')
+                        ->rows(3)
+                        ->columnSpan(12)
+                        // 🚀 ON-SWIM STYLE POPUP
+                        ->hintAction(
+                            Forms\Components\Actions\Action::make('moreDetails')
+                                ->label('Add Jewelry Specs')
+                                ->icon('heroicon-o-sparkles')
+                                ->color('info')
+                                ->modalHeading('Detailed Specifications')
+                                ->modalWidth('4xl')
+                                ->fillForm(fn(Get $get) => [
+                                    'certificate_number' => $get('certificate_number'),
+                                    'certificate_agency' => $get('certificate_agency'),
+                                    'shape' => $get('shape'),
+                                    'color' => $get('color'),
+                                    'clarity' => $get('clarity'),
+                                    'cut' => $get('cut'),
+                                    'polish' => $get('polish'),
+                                    'symmetry' => $get('symmetry'),
+                                    'fluorescence' => $get('fluorescence'),
+                                    'measurements' => $get('measurements'),
+                                    'is_lab_grown' => $get('is_lab_grown'),
+                                ])
+                                ->form([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('certificate_number')->label('Cert #'),
+                                        Select::make('certificate_agency')
+                                            ->options(function () {
+                                                $json = DB::table('site_settings')->where('key', 'certificate_agencies')->value('value');
+                                                $data = $json ? json_decode($json, true) : ['GIA', 'IGI', 'AGS', 'HRD'];
+                                                return collect($data)->filter()->mapWithKeys(fn($item) => [$item => $item])->toArray();
+                                            })
+                                            ->searchable(),
+                                        Toggle::make('is_lab_grown')->label('Lab Grown?')->inline(false),
                                     ]),
-                                ]),
-                            ])
-                            ->action(function (array $data, Set $set) {
-                                foreach ($data as $key => $value) {
-                                    $set($key, $value);
-                                }
-                            })
-                    ),
+                                    Section::make('Stone Details')->schema([
+                                        Grid::make(4)->schema([
+                                            TextInput::make('shape'),
+                                            TextInput::make('color'),
+                                            TextInput::make('clarity'),
+                                            TextInput::make('cut'),
+                                            TextInput::make('polish'),
+                                            TextInput::make('symmetry'),
+                                            TextInput::make('fluorescence'),
+                                            TextInput::make('measurements'),
+                                        ]),
+                                    ]),
+                                ])
+                                ->action(function (array $data, Set $set) {
+                                    foreach ($data as $key => $value) {
+                                        $set($key, $value);
+                                    }
+                                })
+                        ),
 
-                // 🚀 HIDDEN STORAGE (Connects the popup to your database)
-               Hidden::make('certificate_number')->default(''),
-Hidden::make('certificate_agency')->default(''),
-Hidden::make('is_lab_grown')->default(false),
+                    // 🚀 HIDDEN STORAGE (Connects the popup to your database)
+                    Hidden::make('certificate_number')->default(''),
+                    Hidden::make('certificate_agency')->default(''),
+                    Hidden::make('is_lab_grown')->default(false),
 
-Hidden::make('shape')->default(''),
-Hidden::make('color')->default(''),
-Hidden::make('clarity')->default(''),
-Hidden::make('cut')->default(''),
-Hidden::make('polish')->default(''),
-Hidden::make('symmetry')->default(''),
-Hidden::make('fluorescence')->default(''),
-Hidden::make('measurements')->default(''),
+                    Hidden::make('shape')->default(''),
+                    Hidden::make('color')->default(''),
+                    Hidden::make('clarity')->default(''),
+                    Hidden::make('cut')->default(''),
+                    Hidden::make('polish')->default(''),
+                    Hidden::make('symmetry')->default(''),
+                    Hidden::make('fluorescence')->default(''),
+                    Hidden::make('measurements')->default(''),
 
-Hidden::make('markup')->default(0),
-Hidden::make('web_item')->default(false),
-Hidden::make('markup')->default(0.00),
-Hidden::make('web_item')->default(false),
-                    
+                    Hidden::make('markup')->default(0),
+                    Hidden::make('web_item')->default(false),
+                    Hidden::make('markup')->default(0.00),
+                    Hidden::make('web_item')->default(false),
+
                     TextInput::make('barcode')
                         ->label('Stock Number')
                         // Sets an initial value on page load
@@ -568,18 +578,18 @@ Hidden::make('web_item')->default(false),
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('date_added')
-    ->label('DATE IN')
-    ->getStateUsing(function (ProductItem $record) {
-        $date = $record->date_in ?? $record->created_at;
-        return $date?->format('M d, Y');
-    })
-    ->description(function (ProductItem $record) {
-        $date = $record->date_in ?? $record->created_at;
-        return $date?->format('h:i A');
-    })
-    ->size('xs')
-    ->color('gray')
-    ->grow(false),
+                    ->label('DATE IN')
+                    ->getStateUsing(function (ProductItem $record) {
+                        $date = $record->date_in ?? $record->created_at;
+                        return $date?->format('M d, Y');
+                    })
+                    ->description(function (ProductItem $record) {
+                        $date = $record->date_in ?? $record->created_at;
+                        return $date?->format('h:i A');
+                    })
+                    ->size('xs')
+                    ->color('gray')
+                    ->grow(false),
                 Tables\Columns\TextColumn::make('barcode')->label('STOCK NO.')->searchable()->weight('bold'),
                 Tables\Columns\TextColumn::make('short_id')->label('TAG ID')->getStateUsing(fn($record) => self::generateShortCode($record->rfid_code))->fontFamily('mono')->color('info'),
                 Tables\Columns\IconColumn::make('is_trade_in')->label('SOURCE')->boolean()->trueIcon('heroicon-o-user-group')->falseIcon('heroicon-o-building-office'),
@@ -591,7 +601,7 @@ Hidden::make('web_item')->default(false),
                 Tables\Columns\TextColumn::make('rfid_status')->label('RFID')->badge()->getStateUsing(fn($record) => filled($record->rfid_code) ? 'Encoded' : 'Missing')
                     ->color(fn($state) => $state === 'Encoded' ? 'success' : 'gray'),
 
-             Tables\Columns\TextColumn::make('status')
+                Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn($state) => match ($state) {
                         'in_stock' => 'success',
@@ -630,7 +640,7 @@ Hidden::make('web_item')->default(false),
 
                             try {
                                 DB::transaction(function () use ($itemData, $targetTenantId, $sourceVendorName, $sourceVendorCode, $record, $sourceTenantId, $barcode) {
-                                    
+
                                     // 2. Switch context to Destination
                                     $targetTenant = Tenant::find($targetTenantId);
                                     tenancy()->initialize($targetTenant);
@@ -646,7 +656,7 @@ Hidden::make('web_item')->default(false),
 
                                     // 4. Prepare data
                                     unset($itemData['id'], $itemData['created_at'], $itemData['updated_at']);
-                                    $itemData['supplier_id'] = $targetSupplier->id; 
+                                    $itemData['supplier_id'] = $targetSupplier->id;
                                     $itemData['status'] = 'in_stock';
 
                                     // 5. Create item
@@ -667,7 +677,6 @@ Hidden::make('web_item')->default(false),
                                 }, 5); // 5 attempts for deadlock safety
 
                                 Notification::make()->title('Transfer Successful')->body("Item {$barcode} moved to {$targetTenantId}")->success()->send();
-
                             } catch (\Exception $e) {
                                 tenancy()->initialize(Tenant::find($sourceTenantId));
                                 Notification::make()->title('Transfer Error')->body($e->getMessage())->danger()->persistent()->send();
@@ -744,21 +753,21 @@ Hidden::make('web_item')->default(false),
                         }
                         $livewire->dispatch('zebra-print', zpl: $service->getZplCode($record, true));
                     }),
-                    
+
                 ]),
             ])
             ->defaultSort('created_at', 'desc');
     }
 
-   public static function runSmartPricing(Get $get, Forms\Set $set): void
+    public static function runSmartPricing(Get $get, Forms\Set $set): void
     {
         $cost = floatval($get('cost_price'));
         $dept = $get('department');
         if ($cost <= 0 || !$dept) return;
-        
+
         $depts = \App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [];
         $data = null;
-        
+
         // 🚀 THE FIX: Safely loop through the array to prevent string offset crashes
         foreach ($depts as $item) {
             if (is_array($item) && isset($item['name']) && $item['name'] === $dept) {

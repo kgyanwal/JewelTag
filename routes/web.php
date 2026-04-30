@@ -50,3 +50,4 @@ Route::get('/google-test', function () {
 
     return $response->json();
 });
+

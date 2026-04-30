@@ -1302,31 +1302,38 @@ class CustomOrderResource extends Resource
         return $options;
     }
 
-    public static function calculateBalance(Get $get, Set $set): void
-    {
-        $quoted    = floatval($get('quoted_price') ?? 0);
-        $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
-        $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
-        $discAmt   = min($quoted, max(0, $discAmt));
-        $afterDisc = $quoted - $discAmt;
-        $isTaxFree = (bool)($get('is_tax_free') ?? false);
-        
-        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+   public static function calculateBalance(Get $get, Set $set): void
+{
+    $quoted    = floatval($get('quoted_price') ?? 0);
+    $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
+    $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
+    $discAmt   = min($quoted, max(0, $discAmt));
+    $tradeIn   = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+    $afterDisc = max(0, $quoted - $discAmt - $tradeIn);
+    $isTaxFree = (bool)($get('is_tax_free') ?? false);
 
-        $isSplit = (bool)($get('is_split_deposit') ?? false);
-        $paid    = $isSplit
-            ? collect($get('split_deposit_payments') ?? [])->sum(fn($p) => (float)($p['amount'] ?? 0))
-            : floatval($get('amount_paid') ?? 0);
+    $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
 
-        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        
-        $tax     = ($afterDisc + $warrantyCharge) * $taxRate;
-        $total   = $afterDisc + $warrantyCharge + $tax;
+    $isSplit = (bool)($get('is_split_deposit') ?? false);
 
-        $set('discount_amount', round($discAmt, 2));
-        $set('balance_due', round(max(0, $total - $paid), 2));
+    if ($isSplit) {
+        $splitPayments = $get('split_deposit_payments') ?? [];
+        $paid = collect($splitPayments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+        // Also sync amount_paid to reflect the split total
+        $set('amount_paid', round($paid, 2));
+    } else {
+        $paid = floatval($get('amount_paid') ?? 0);
     }
+
+    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+
+    $tax   = ($afterDisc + $warrantyCharge) * $taxRate;
+    $total = $afterDisc + $warrantyCharge + $tax;
+
+    $set('discount_amount', round($discAmt, 2));
+    $set('balance_due', round(max(0, $total - $paid), 2));
+}
 
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
     {

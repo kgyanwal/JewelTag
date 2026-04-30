@@ -260,8 +260,8 @@
                             {{ $receiptType == 'normal' ? $sale->invoice_number : strtoupper($receiptType).'-'.$sale->invoice_number }}
                         </span>
                         <div style="font-size:10px;line-height:1.4;margin-top:8px;">
-                            <div><i class="fas fa-calendar-day"></i> <b>Date:</b> {{ $sale->created_at->format('m/d/Y') }}</div>
-                            <div><i class="fas fa-clock"></i> <b>Time:</b> {{ $sale->created_at->format('h:i A') }}</div>
+                           <div><i class="fas fa-calendar-day"></i> <b>Date:</b> {{ $sale->created_at?->format('m/d/Y') ?? 'N/A' }}</div>
+<div><i class="fas fa-clock"></i> <b>Time:</b> {{ $sale->created_at?->format('h:i A') ?? 'N/A' }}</div>
                             <div><i class="fas fa-user-tie"></i> <b>Associate:</b> {{ is_array($sale->sales_person_list) ? implode(', ', $sale->sales_person_list) : $sale->sales_person_list }}</div>
                         </div>
                     </div>

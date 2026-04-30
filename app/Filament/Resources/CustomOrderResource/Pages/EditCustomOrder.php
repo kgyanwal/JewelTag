@@ -85,6 +85,7 @@ class EditCustomOrder extends EditRecord
      // ── CALCULATE GRAND TOTAL ────────
         $quoted         = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0); 
         $discountAmount = floatval($data['discount_amount'] ?? $this->record->discount_amount ?? 0);
+        $tradeIn        = ($data['has_trade_in'] ?? 0) == 1 ? floatval($data['trade_in_value'] ?? 0) : 0;
         $afterDiscount  = max(0, $quoted - $discountAmount);
         
         $hasWarranty    = ($data['has_warranty'] ?? $this->record->has_warranty ?? 0) == 1;
