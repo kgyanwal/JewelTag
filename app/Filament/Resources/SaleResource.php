@@ -222,33 +222,37 @@ class SaleResource extends Resource
                                                     Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false),
                                                 ]),
                                             ])
-                                            ->action(function (array $data, Get $get, Set $set) {
-                                                $price      = floatval($data['price'] ?? 0);
-                                                $qty        = intval($data['qty'] ?? 1);
-                                                $discPct    = floatval($data['discount_percent'] ?? 0);
-                                                $lineTotal  = $price * $qty;
-                                                $discAmt    = $lineTotal * ($discPct / 100);
-                                                $finalPrice = $lineTotal - $discAmt;
+                                           ->action(function (array $data, Get $get, Set $set) {
+    $price      = floatval($data['price'] ?? 0);
+    $qty        = intval($data['qty'] ?? 1);
+    $discPct    = floatval($data['discount_percent'] ?? 0);
+    $lineTotal  = $price * $qty;
+    $discAmt    = $lineTotal * ($discPct / 100);
+    $finalPrice = $lineTotal - $discAmt;
 
-                                                $currentItems   = $get('items') ?? [];
-                                                $currentItems[] = [
-                                                    'product_item_id'     => null,
-                                                    'repair_id'           => null,
-                                                    'custom_order_id'     => null,
-                                                    'is_non_stock'        => true,
-                                                    'stock_no_display'    => 'NON-TAG',
-                                                    'custom_description'  => $data['description'],
-                                                    'qty'                 => $qty,
-                                                    'sold_price'          => $price,
-                                                    'sale_price_override' => $finalPrice,
-                                                    'discount_percent'    => $discPct,
-                                                    'discount_amount'     => $discAmt,
-                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
-                                                ];
+    $currentItems = $get('items') ?? [];
+    
+    // 🚀 THE FIX: Generate a strict UUID instead of using a blank [] array push
+    $newItemId = (string) \Illuminate\Support\Str::uuid();
+    
+    $currentItems[$newItemId] = [
+        'product_item_id'     => null,
+        'repair_id'           => null,
+        'custom_order_id'     => null,
+        'is_non_stock'        => true,
+        'stock_no_display'    => 'NON-TAG',
+        'custom_description'  => $data['description'],
+        'qty'                 => $qty,
+        'sold_price'          => $price,
+        'sale_price_override' => $finalPrice,
+        'discount_percent'    => $discPct,
+        'discount_amount'     => $discAmt,
+        'is_tax_free'         => $data['is_tax_free'] ?? false,
+    ];
 
-                                                $set('items', $currentItems);
-                                                self::updateTotals($get, $set);
-                                            }),
+    $set('items', $currentItems);
+    self::updateTotals($get, $set);
+}),
 
                                         // ── NEW CUSTOM ORDER ──────────────────────────────────────────
                                         FormAction::make('create_new_custom_order')
