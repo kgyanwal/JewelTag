@@ -30,11 +30,6 @@ class MySalesReport extends Page implements HasTable
     protected static string  $view            = 'filament.pages.my-sales-report';
 
     // ─── SHARED HELPER ───────────────────────────────────────────────────────
-    // Returns the "effective completion date" expression for a sale.
-    // Priority: completed_at → updated_at → created_at
-    // This guarantees laybuy sales with a NULL completed_at still sort/filter
-    // correctly using the date the record was last touched (which is when
-    // quick_pay updated balance_due to 0).
     private static function effectiveDateExpr(): string
     {
         return 'COALESCE(completed_at, updated_at, created_at)';
@@ -56,7 +51,6 @@ class MySalesReport extends Page implements HasTable
                     })
             )
             ->columns([
-                // Effective date column — shows completed_at, falls back gracefully
                 TextColumn::make('effective_date')
                     ->label('Completed Date')
                     ->getStateUsing(function ($record) use ($tz) {
@@ -112,9 +106,16 @@ class MySalesReport extends Page implements HasTable
                         ($record->is_split_payment ? 'info' : 'gray')
                     ),
 
-                TextColumn::make('subtotal')
-                    ->label('Subtotal (My Sale)')
+                // 🚀 THE FIX: Calculate Pre-Tax Total including Trade-Ins
+                TextColumn::make('pre_tax_total')
+                    ->label('Pre-Tax Total (My Sale)')
                     ->alignRight()
+                    ->getStateUsing(function ($record) {
+                        return floatval($record->subtotal) 
+                             + floatval($record->warranty_charge ?? 0) 
+                             + floatval($record->shipping_charges ?? 0)
+                             - floatval($record->trade_in_value ?? 0); // 👈 Deduct Trade-In
+                    })
                     ->formatStateUsing(function ($state, $record) {
                         $staffList = is_string($record->sales_person_list)
                             ? json_decode($record->sales_person_list, true)
@@ -140,21 +141,27 @@ class MySalesReport extends Page implements HasTable
                         Summarizer::make()
                             ->label('')
                             ->using(function ($query) {
-                                $sales = $query->get(['subtotal', 'sales_person_list']);
+                                // 🚀 Added trade_in_value to DB fetch
+                                $sales = $query->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'sales_person_list']);
 
                                 $splitTotal = $splitTotalFull = $soloTotal = $myTotal = 0;
 
                                 foreach ($sales as $sale) {
+                                    $saleVolume = floatval($sale->subtotal) 
+                                                + floatval($sale->warranty_charge ?? 0) 
+                                                + floatval($sale->shipping_charges ?? 0)
+                                                - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+
                                     $staffList = is_string($sale->sales_person_list)
                                         ? json_decode($sale->sales_person_list, true)
                                         : ($sale->sales_person_list ?? []);
                                     $count  = max(1, is_array($staffList) ? count($staffList) : 1);
-                                    $share  = floatval($sale->subtotal) / $count;
+                                    $share  = $saleVolume / $count;
                                     $myTotal += $share;
 
                                     if ($count > 1) {
                                         $splitTotal     += $share;
-                                        $splitTotalFull += floatval($sale->subtotal);
+                                        $splitTotalFull += $saleVolume;
                                     } else {
                                         $soloTotal += $share;
                                     }
@@ -171,9 +178,6 @@ class MySalesReport extends Page implements HasTable
                     ),
             ])
             ->filters([
-                // ── DATE FILTER ───────────────────────────────────────────────
-                // Uses COALESCE(completed_at, updated_at, created_at) so rows
-                // with NULL completed_at (old laybuy records) are never dropped.
                 Filter::make('date_range')
                     ->label('Date Range')
                     ->form([
@@ -207,7 +211,6 @@ class MySalesReport extends Page implements HasTable
                         return $indicators;
                     }),
 
-                // ── STAFF FILTER ──────────────────────────────────────────────
                 Filter::make('staff_filter')
                     ->label('Associate')
                     ->form([
@@ -273,27 +276,35 @@ class MySalesReport extends Page implements HasTable
             ->whereJsonContains('sales_person_list', $viewingUser)
             ->whereRaw("$expr >= ?", [$from])
             ->whereRaw("$expr <= ?", [$until])
-            ->get(['subtotal', 'tax_amount', 'sales_person_list', 'payment_method']);
+            // 🚀 Added trade_in_value here too
+            ->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'tax_amount', 'sales_person_list', 'payment_method']);
 
         $netShare = $laybuyCount = 0;
         foreach ($sales as $sale) {
+            $saleVolume = floatval($sale->subtotal) 
+                        + floatval($sale->warranty_charge ?? 0) 
+                        + floatval($sale->shipping_charges ?? 0)
+                        - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+
             $staffList = is_string($sale->sales_person_list)
                 ? json_decode($sale->sales_person_list, true)
                 : ($sale->sales_person_list ?? []);
             $count     = max(1, is_array($staffList) ? count($staffList) : 1);
-            $netShare += floatval($sale->subtotal) / $count;
+            $netShare += $saleVolume / $count;
             if ($sale->payment_method === 'laybuy') $laybuyCount++;
         }
 
         // ── STORE TOTAL ───────────────────────────────────────────────────────
         $storeTotal = null;
         if ($isSuperadmin) {
+            // 🚀 Update raw SQL to deduct trade-ins
             $storeTotal = Sale::query()
                 ->where('status', 'completed')
                 ->where('balance_due', 0)
                 ->whereRaw("$expr >= ?", [$from])
                 ->whereRaw("$expr <= ?", [$until])
-                ->sum('subtotal');
+                ->selectRaw('SUM(subtotal + COALESCE(warranty_charge, 0) + COALESCE(shipping_charges, 0) - COALESCE(trade_in_value, 0)) as total_volume')
+                ->value('total_volume');
         }
 
         // ── STAFF LEADERBOARD ─────────────────────────────────────────────────
@@ -304,9 +315,14 @@ class MySalesReport extends Page implements HasTable
                 ->where('balance_due', 0)
                 ->whereRaw("$expr >= ?", [$from])
                 ->whereRaw("$expr <= ?", [$until])
-                ->get(['subtotal', 'sales_person_list']);
+                ->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'sales_person_list']);
 
             foreach ($allSales as $sale) {
+                $saleVolume = floatval($sale->subtotal) 
+                            + floatval($sale->warranty_charge ?? 0) 
+                            + floatval($sale->shipping_charges ?? 0)
+                            - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+
                 $staffList = is_string($sale->sales_person_list)
                     ? json_decode($sale->sales_person_list, true)
                     : ($sale->sales_person_list ?? []);
@@ -316,8 +332,7 @@ class MySalesReport extends Page implements HasTable
                 foreach ($staffList as $name) {
                     $name = trim($name);
                     if (!$name) continue;
-                    $staffBreakdown[$name] = ($staffBreakdown[$name] ?? 0)
-                        + floatval($sale->subtotal) / $count;
+                    $staffBreakdown[$name] = ($staffBreakdown[$name] ?? 0) + ($saleVolume / $count);
                 }
             }
             arsort($staffBreakdown);
@@ -327,7 +342,7 @@ class MySalesReport extends Page implements HasTable
             'count'           => $sales->count(),
             'net_share'       => $netShare,
             'tax'             => $sales->sum('tax_amount'),
-            'store_total'     => $storeTotal,
+            'store_total'     => floatval($storeTotal),
             'laybuy_count'    => $laybuyCount,
             'is_privileged'   => $isPrivileged,
             'is_superadmin'   => $isSuperadmin,
