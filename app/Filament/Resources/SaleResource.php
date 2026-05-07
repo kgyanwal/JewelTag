@@ -137,7 +137,7 @@ class SaleResource extends Resource
                                             ->preload()
                                             ->options(
                                                 fn() => ProductItem::where('qty', '>', 0)
-                                                    ->whereIn('status', ['in_stock', 'sold'])
+                                                    ->where('status', 'in_stock')
                                                     ->get()
                                                     ->mapWithKeys(fn($item) => [
                                                         $item->id => "{$item->barcode} - {$item->qty} left " . ($item->status === 'sold' ? '[CURRENTLY SOLD]' : "(\${$item->retail_price})")
@@ -222,37 +222,37 @@ class SaleResource extends Resource
                                                     Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false),
                                                 ]),
                                             ])
-                                           ->action(function (array $data, Get $get, Set $set) {
-    $price      = floatval($data['price'] ?? 0);
-    $qty        = intval($data['qty'] ?? 1);
-    $discPct    = floatval($data['discount_percent'] ?? 0);
-    $lineTotal  = $price * $qty;
-    $discAmt    = $lineTotal * ($discPct / 100);
-    $finalPrice = $lineTotal - $discAmt;
+                                            ->action(function (array $data, Get $get, Set $set) {
+                                                $price      = floatval($data['price'] ?? 0);
+                                                $qty        = intval($data['qty'] ?? 1);
+                                                $discPct    = floatval($data['discount_percent'] ?? 0);
+                                                $lineTotal  = $price * $qty;
+                                                $discAmt    = $lineTotal * ($discPct / 100);
+                                                $finalPrice = $lineTotal - $discAmt;
 
-    $currentItems = $get('items') ?? [];
-    
-    // 🚀 THE FIX: Generate a strict UUID instead of using a blank [] array push
-    $newItemId = (string) \Illuminate\Support\Str::uuid();
-    
-    $currentItems[$newItemId] = [
-        'product_item_id'     => null,
-        'repair_id'           => null,
-        'custom_order_id'     => null,
-        'is_non_stock'        => true,
-        'stock_no_display'    => 'NON-TAG',
-        'custom_description'  => $data['description'],
-        'qty'                 => $qty,
-        'sold_price'          => $price,
-        'sale_price_override' => $finalPrice,
-        'discount_percent'    => $discPct,
-        'discount_amount'     => $discAmt,
-        'is_tax_free'         => $data['is_tax_free'] ?? false,
-    ];
+                                                $currentItems = $get('items') ?? [];
 
-    $set('items', $currentItems);
-    self::updateTotals($get, $set);
-}),
+                                                // 🚀 THE FIX: Generate a strict UUID instead of using a blank [] array push
+                                                $newItemId = (string) \Illuminate\Support\Str::uuid();
+
+                                                $currentItems[$newItemId] = [
+                                                    'product_item_id'     => null,
+                                                    'repair_id'           => null,
+                                                    'custom_order_id'     => null,
+                                                    'is_non_stock'        => true,
+                                                    'stock_no_display'    => 'NON-TAG',
+                                                    'custom_description'  => $data['description'],
+                                                    'qty'                 => $qty,
+                                                    'sold_price'          => $price,
+                                                    'sale_price_override' => $finalPrice,
+                                                    'discount_percent'    => $discPct,
+                                                    'discount_amount'     => $discAmt,
+                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
+                                                ];
+
+                                                $set('items', $currentItems);
+                                                self::updateTotals($get, $set);
+                                            }),
 
                                         // ── NEW CUSTOM ORDER ──────────────────────────────────────────
                                         FormAction::make('create_new_custom_order')
@@ -1138,7 +1138,15 @@ class SaleResource extends Resource
                                                                                     ->label('Email')
                                                                                     ->email()
                                                                                     ->default($customer->email),
-
+                                                                                Grid::make(2)->schema([
+                                                                                    CustomDatePicker::make('edit_dob')
+                                                                                        ->rule('before_or_equal:today')
+                                                                                        ->label('Birth Date')
+                                                                                        ->default($customer->dob),
+                                                                                    CustomDatePicker::make('edit_anniversary')
+                                                                                        ->label('Wedding Date')
+                                                                                        ->default($customer->wedding_anniversary),
+                                                                                ]),
                                                                                 // 🚀 THE FIX: Replaced manual fields with Google Autocomplete
                                                                                 \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
                                                                                     ->label('Search Address')
@@ -1658,7 +1666,7 @@ class SaleResource extends Resource
                             return $item->custom_description;
                         })->toArray();
                     })
-                    ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
+                    ->limitList(4)->expandableLimitedList()->size('xs')->color('gray'),
 
                 TextColumn::make('status')
                     ->badge()
@@ -1988,29 +1996,29 @@ class SaleResource extends Resource
         $set('status', $fullyPaid ? 'completed' : 'pending');
     }
 
-   public static function getPaymentOptions(): array
-{
-    $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
-    $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
-    $methods        = $json ? json_decode($json, true) : $defaultMethods;
-    $options        = [];
+    public static function getPaymentOptions(): array
+    {
+        $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+        $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
+        $methods        = $json ? json_decode($json, true) : $defaultMethods;
+        $options        = [];
 
-    foreach ($methods as $method) {
-        if (strtoupper($method) === 'LAYBUY') {
-            $options['laybuy'] = 'LAYBUY (Installment Plan)';
-        } else {
-            $options[$method] = $method;
+        foreach ($methods as $method) {
+            if (strtoupper($method) === 'LAYBUY') {
+                $options['laybuy'] = 'LAYBUY (Installment Plan)';
+            } else {
+                $options[$method] = $method;
+            }
         }
-    }
 
-    // Sort alphabetically by label, but keep LAYBUY at the bottom
-    $regular = array_filter($options, fn($k) => $k !== 'laybuy', ARRAY_FILTER_USE_KEY);
-    asort($regular);
-    
-    return isset($options['laybuy'])
-        ? $regular + ['laybuy' => $options['laybuy']]
-        : $regular;
-}
+        // Sort alphabetically by label, but keep LAYBUY at the bottom
+        $regular = array_filter($options, fn($k) => $k !== 'laybuy', ARRAY_FILTER_USE_KEY);
+        asort($regular);
+
+        return isset($options['laybuy'])
+            ? $regular + ['laybuy' => $options['laybuy']]
+            : $regular;
+    }
 
     protected static function totalRow($label, $field)
     {

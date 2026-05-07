@@ -27,13 +27,21 @@ class TenantResource extends Resource
                 Forms\Components\Section::make('Store Infrastructure')
                     ->columns(2)
                     ->schema([
-                        Forms\Components\TextInput::make('id')
+                      Forms\Components\TextInput::make('id')
                             ->label('Database ID (Tenant ID)')
                             ->required()
                             ->disabled(fn($record) => $record !== null)
                             ->placeholder('e.g. lxdiamond')
+                            
+                            // 🚀 THE FIX: Allow any normal name, but block 1-2 letter typos and spaces
+                            ->minLength(3) 
+                            ->regex('/^[a-z0-9]+$/') // Only lowercase letters and numbers allowed
+                            ->validationMessages([
+                                'regex' => 'The Store ID can only contain lowercase letters and numbers (no spaces or symbols allowed).',
+                                'min' => 'The Store ID must be at least 3 characters long to prevent accidental typos.',
+                            ])
+                            
                             ->unique(ignoreRecord: true),
-
                         Forms\Components\TextInput::make('domain')
                             ->label('Primary Domain')
                             ->required()

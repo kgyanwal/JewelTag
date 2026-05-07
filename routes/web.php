@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PageController;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
@@ -51,3 +52,18 @@ Route::get('/google-test', function () {
     return $response->json();
 });
 
+Route::post('/contact', function (\Illuminate\Http\Request $request) {
+    \Illuminate\Support\Facades\Mail::raw(
+        "Name: {$request->name}\nEmail: {$request->email}\nBusiness: {$request->business}\nType: {$request->type}\n\nMessage:\n{$request->message}",
+        function ($message) use ($request) {
+            $message->to('info@jeweltag.us')
+                    ->subject("JewelTag Inquiry from {$request->business}")
+                    ->replyTo($request->email);
+        }
+    );
+    return response()->json(['success' => true]);
+});
+
+Route::get('/privacy-policy', [PageController::class, 'privacy'])->name('privacy');
+Route::get('/documentation', [PageController::class, 'documentation'])->name('docs');
+Route::get('/api-reference', [PageController::class, 'apiReference'])->name('api');

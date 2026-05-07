@@ -1211,10 +1211,10 @@
                 <div>
                     <h4 class="text-white font-bold text-sm mb-4">Resources</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#" class="text-white/60 hover:text-white">Documentation</a></li>
-                        <li><a href="#" class="text-white/60 hover:text-white">API Reference</a></li>
-                        <li><a href="#" class="text-white/60 hover:text-white">Privacy Policy</a></li>
-                    </ul>
+        <li><a href="{{ route('docs') }}" class="text-white/60 hover:text-white">Documentation</a></li>
+        <li><a href="{{ route('api') }}" class="text-white/60 hover:text-white">API Reference</a></li>
+        <li><a href="{{ route('privacy') }}" class="text-white/60 hover:text-white">Privacy Policy</a></li>
+    </ul>
                 </div>
             </div>
 
@@ -1323,43 +1323,58 @@
         }
 
         // Form Submissions
-        document.getElementById('demo-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-           fetch('https://formspree.io/f/xpwzabcd', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json'
-                }
-            }).then(r => {
-                if (r.ok) {
-                    alert('Thank you! We\'ll be in touch within 1 hour.');
-                    this.reset();
-                } else {
-                    alert('Something went wrong. Please email info@jeweltag.us directly.');
-                }
-            });
-        });
+       // Form Submissions
+document.getElementById('demo-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const inputs = this.querySelectorAll('input');
+    const payload = new FormData();
+    payload.append('name', inputs[0].value + ' ' + inputs[1].value);
+    payload.append('email', inputs[2].value);
+    payload.append('business', inputs[3].value);
+    payload.append('type', 'Free Trial Request');
+    payload.append('message', 'Requested a 30-day free trial.');
+    payload.append('_token', '{{ csrf_token() }}');
 
-        document.getElementById('contact-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            fetch('https://formspree.io/f/YOUR_FORM_ID', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json'
-                }
-            }).then(r => {
-                if (r.ok) {
-                    alert('Message sent! We\'ll respond within 1 hour.');
-                    this.reset();
-                } else {
-                    alert('Something went wrong. Please email info@jeweltag.us directly.');
-                }
-            });
-        });
+    fetch('/contact', {
+        method: 'POST',
+        body: payload
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Thank you! We\'ll be in touch within 1 hour.');
+            this.reset();
+        } else {
+            alert('Something went wrong. Please email info@jeweltag.us directly.');
+        }
+    });
+});
+
+document.getElementById('contact-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const inputs = this.querySelectorAll('input, select, textarea');
+    const payload = new FormData();
+    payload.append('name', inputs[0].value);
+    payload.append('email', inputs[1].value);
+    payload.append('business', inputs[2].value);
+    payload.append('type', inputs[3].value);
+    payload.append('message', inputs[4].value);
+    payload.append('_token', '{{ csrf_token() }}');
+
+    fetch('/contact', {
+        method: 'POST',
+        body: payload
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Message sent! We\'ll respond within 1 hour.');
+            this.reset();
+        } else {
+            alert('Something went wrong. Please email info@jeweltag.us directly.');
+        }
+    });
+});
 
         // Smooth Scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
