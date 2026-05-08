@@ -526,11 +526,68 @@ class LaybuyResource extends Resource
             ->send();
     }),
 
-                Tables\Actions\EditAction::make()
-    // tooltips show when you hover over the button
-    ->tooltip("Click manage ledger to edit today's amount")
-    // If you want a specific icon for the edit button
-    ->icon('heroicon-m-pencil-square'),
+                 Tables\Actions\Action::make('cancel_laybuy')
+        ->label('Cancel Plan')
+        ->icon('heroicon-o-x-circle')
+        ->color('danger')
+        ->requiresConfirmation()
+        ->modalHeading('Cancel Laybuy Plan?')
+        ->modalDescription('This will release all reserved items back to in-stock and mark the plan as cancelled.')
+        ->visible(fn(Laybuy $record) => $record->status === 'in_progress')
+        ->action(function (Laybuy $record) {
+            DB::transaction(function () use ($record) {
+                if ($record->sale_id) {
+                    $sale = \App\Models\Sale::with('items')->find($record->sale_id);
+                    if ($sale) {
+                        foreach ($sale->items as $saleItem) {
+                            if ($saleItem->product_item_id) {
+                                \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                                    ->where('status', 'on_hold')
+                                    ->update([
+                                        'status'          => 'in_stock',
+                                        'hold_reason'     => null,
+                                        'held_by_sale_id' => null,
+                                    ]);
+                            }
+                        }
+                        $sale->update(['status' => 'cancelled']);
+                    }
+                }
+                $record->update(['status' => 'cancelled']);
+            });
+ 
+            Notification::make()
+                ->title('Laybuy Cancelled')
+                ->body('All reserved items released back to stock.')
+                ->warning()
+                ->send();
+        }),
+ 
+    // ── EDIT ─────────────────────────────────────────────────────
+    Tables\Actions\EditAction::make()
+        ->tooltip('Manage ledger')
+        ->icon('heroicon-m-pencil-square'),
+ 
+    // ── DELETE ───────────────────────────────────────────────────
+    Tables\Actions\DeleteAction::make()
+        ->before(function (Laybuy $record) {
+            if ($record->sale_id) {
+                $sale = \App\Models\Sale::with('items')->find($record->sale_id);
+                if ($sale) {
+                    foreach ($sale->items as $saleItem) {
+                        if ($saleItem->product_item_id) {
+                            \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                                ->where('status', 'on_hold')
+                                ->update([
+                                    'status'          => 'in_stock',
+                                    'hold_reason'     => null,
+                                    'held_by_sale_id' => null,
+                                ]);
+                        }
+                    }
+                }
+            }
+        }),
                         ])
             ->defaultSort('created_at', 'desc');
     }

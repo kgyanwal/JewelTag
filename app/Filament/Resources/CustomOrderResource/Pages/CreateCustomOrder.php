@@ -23,16 +23,20 @@ class CreateCustomOrder extends CreateRecord
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
+        if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
+    $data['amount_paid'] = round(
+        collect($this->splitDepositPayments)->sum(fn($p) => (float)($p['amount'] ?? 0)),
+        2
+    );
+}
+
         // 🚀 THE FIX: We MUST unset any field that exists in the Form but NOT in the Database!
         // This prevents the "Unknown Column" SQL crash.
         unset(
             $data['initial_payment_method'],
             $data['is_split_deposit'],
             $data['split_deposit_payments'],
-            $data['has_trade_in'],
-            $data['trade_in_value'],
-            $data['trade_in_description'],
-            $data['trade_in_receipt_no']
+           
         );
 
         // Auto-calculate quoted_price and balance_due from items (with discount + tax)

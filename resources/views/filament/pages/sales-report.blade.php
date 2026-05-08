@@ -1,634 +1,714 @@
 <x-filament-panels::page>
 
 <style>
-/* ══════════════════════════════════════════════════════════
-   SHOP TAKINGS — Daily Banking & Bank Deposit
-   Clean, compact, data-dense professional report UI
-══════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
-.st-wrap {
-    font-family: 'IBM Plex Sans', sans-serif;
+/* ═══════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════ */
+.sr-root {
+    font-family: 'Inter', sans-serif;
     color: #0f172a;
-    max-width: 860px;
+    max-width: 960px;
     margin: 0 auto;
+    padding: 8px 0 40px;
 }
 
-/* ── Header ─────────────────────────────────────────── */
-.st-header {
+/* ═══════════════════════════════════════
+   HERO HEADER
+═══════════════════════════════════════ */
+.sr-hero {
+    background: linear-gradient(135deg, #0c4a58 0%, #0e7490 55%, #0891b2 100%);
+    border-radius: 20px;
+    padding: 32px 36px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(14,116,144,0.3);
+}
+
+.sr-hero::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 65%);
+    pointer-events: none;
+}
+
+.sr-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 40%;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 65%);
+    pointer-events: none;
+}
+
+.sr-hero-inner {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 2px solid #0e7490;
+    flex-wrap: wrap;
+    gap: 20px;
+    position: relative;
+    z-index: 1;
 }
 
-.st-header-left {}
-
-.st-report-code {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 2px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #0e7490;
-    margin-bottom: 4px;
+    color: rgba(186,230,253,0.9);
+    margin-bottom: 10px;
+}
+.sr-hero-eyebrow::before {
+    content: '';
+    width: 20px; height: 1.5px;
+    background: rgba(186,230,253,0.7);
 }
 
-.st-report-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #0f172a;
+.sr-hero-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0 0 6px;
+    letter-spacing: -0.03em;
     line-height: 1.2;
 }
 
-.st-report-subtitle {
-    font-size: 12px;
-    color: #64748b;
-    margin-top: 3px;
+.sr-hero-sub {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    margin: 0;
 }
 
-.st-header-meta {
+.sr-hero-meta {
     text-align: right;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: #64748b;
-    line-height: 1.7;
+    flex-shrink: 0;
 }
 
-/* ── Date Filter Card ────────────────────────────────── */
-.st-filter-card {
-    background: #f8fafc;
+.sr-hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 8px;
+    white-space: nowrap;
+}
+
+.sr-hero-badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 6px #4ade80;
+}
+
+.sr-hero-generated {
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* ═══════════════════════════════════════
+   FILTER STRIP
+═══════════════════════════════════════ */
+.sr-filter {
+    background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin-bottom: 20px;
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
-.st-filter-label {
+.sr-filter-icon {
+    width: 36px; height: 36px;
+    background: #f0fdfe;
+    border: 1px solid #a5f3fc;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: #0e7490;
+}
+
+.sr-filter-icon svg { width: 16px; height: 16px; }
+
+.sr-filter-label {
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: #64748b;
+    color: #94a3b8;
     white-space: nowrap;
     flex-shrink: 0;
 }
 
-.st-filter-form {
-    flex: 1;
-}
+.sr-filter-fields { flex: 1; }
+.sr-filter-fields .fi-fo-field-wrp { margin-bottom: 0 !important; }
 
-.st-filter-form .fi-fo-field-wrp {
-    margin-bottom: 0 !important;
-}
-
-/* ── Section wrapper ─────────────────────────────────── */
-.st-section {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-
-/* ── Section header bar ──────────────────────────────── */
-.st-section-head {
-    background: #0e7490;
-    display: grid;
-    grid-template-columns: 1fr 80px 110px 110px;
-    padding: 8px 16px;
-    gap: 8px;
-}
-
-.st-section-head span {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: #ffffff;
-}
-
-.st-section-head span.right { text-align: right; }
-.st-section-head span.center { text-align: center; }
-
-/* ── Category group ──────────────────────────────────── */
-.st-group {}
-
-.st-group-label {
+/* ═══════════════════════════════════════
+   ACTIONS
+═══════════════════════════════════════ */
+.sr-actions {
     display: flex;
-    align-items: center;
+    justify-content: flex-end;
     gap: 8px;
-    padding: 9px 16px 7px;
-    background: #f1f5f9;
-    border-top: 1px solid #e2e8f0;
+    margin-bottom: 24px;
 }
 
-.st-group-label:first-child {
-    border-top: none;
+.sr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 9px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+.sr-btn-ghost {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.sr-btn-ghost:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.sr-btn svg { width: 14px; height: 14px; }
+
+/* ═══════════════════════════════════════
+   SUMMARY STAT CARDS
+═══════════════════════════════════════ */
+.sr-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
 }
 
-.st-group-dot {
-    width: 8px;
-    height: 8px;
+.sr-stat {
+    background: #ffffff;
+    border: 1px solid #e8ecf3;
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.sr-stat:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+
+.sr-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 7px;
+}
+
+.sr-stat-dot {
+    width: 7px; height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
-.st-group-name {
+.sr-stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    color: #0e7490;
+    line-height: 1;
+    margin-bottom: 5px;
+}
+
+.sr-stat-sub {
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: #475569;
+    color: #94a3b8;
 }
 
-/* ── Payment method row ──────────────────────────────── */
-.st-method-row {
+.sr-stat.grand {
+    border-color: #a5f3fc;
+    background: linear-gradient(135deg, #f0fdfe 0%, #e0f7fa 100%);
+}
+.sr-stat.grand .sr-stat-label { color: #0e7490; }
+.sr-stat.grand .sr-stat-value { font-size: 22px; color: #0c4a58; }
+
+/* ═══════════════════════════════════════
+   TRANSACTION TABLE CARD
+═══════════════════════════════════════ */
+.sr-card {
+    background: #ffffff;
+    border: 1px solid #e8ecf3;
+    border-radius: 18px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* Table header bar */
+.sr-table-head {
+    background: #0e7490;
     display: grid;
-    grid-template-columns: 1fr 80px 110px 110px;
-    align-items: center;
-    padding: 7px 16px;
+    grid-template-columns: 1fr 90px 130px 130px;
+    padding: 11px 20px;
     gap: 8px;
-    border-top: 1px solid #f1f5f9;
-    transition: background 0.12s;
 }
-
-.st-method-row:hover {
-    background: #f8fafc;
+.sr-table-head span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
 }
+.sr-table-head span.r { text-align: right; }
+.sr-table-head span.c { text-align: center; }
 
-.st-method-name {
+/* Group label */
+.sr-group-label {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #0e7490;
-    padding-left: 16px;
+    padding: 10px 20px 8px;
+    background: #f8fafc;
+    border-top: 1px solid #e8ecf3;
 }
+.sr-group-label:first-of-type { border-top: none; }
 
-.st-method-name::before {
-    content: '';
-    display: inline-block;
-    width: 3px;
-    height: 14px;
-    border-radius: 2px;
-    background: currentColor;
-    opacity: 0.4;
+.sr-group-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
 }
 
-.st-method-times {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
+.sr-group-name {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: #64748b;
+}
+
+/* Method row */
+.sr-method-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 130px 130px;
+    align-items: center;
+    padding: 10px 20px;
+    gap: 8px;
+    border-top: 1px solid #f1f5f9;
+    transition: background 0.1s;
+}
+.sr-method-row:hover { background: #fafbff; }
+
+.sr-method-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e3a4a;
+    padding-left: 20px;
+    position: relative;
+}
+.sr-method-name::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    width: 3px; height: 14px;
+    border-radius: 2px;
+    background: #0e7490;
+    opacity: 0.3;
+}
+
+.sr-method-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #94a3b8;
     text-align: center;
 }
 
-.st-method-subtotal {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-method-sub {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 500;
-    color: #334155;
+    color: #475569;
     text-align: right;
 }
 
-.st-method-total-col {
-    text-align: right;
-}
-
-/* ── Empty state ─────────────────────────────────────── */
-.st-empty-row {
+/* Empty row */
+.sr-empty-row {
     display: grid;
-    grid-template-columns: 1fr 80px 110px 110px;
-    padding: 7px 16px;
+    grid-template-columns: 1fr 90px 130px 130px;
+    padding: 10px 20px;
     gap: 8px;
     border-top: 1px solid #f1f5f9;
 }
+.sr-empty-text { padding-left: 20px; font-size: 12px; color: #cbd5e1; font-style: italic; }
+.sr-empty-num  { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #e2e8f0; text-align: center; }
+.sr-empty-numr { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #e2e8f0; text-align: right; }
 
-.st-empty-text {
-    padding-left: 16px;
-    font-size: 12px;
-    color: #94a3b8;
-    font-style: italic;
-}
-
-.st-empty-zero {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: #cbd5e1;
-    text-align: center;
-}
-
-.st-empty-zero-right {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: #cbd5e1;
-    text-align: right;
-}
-
-/* ── Group subtotal row ──────────────────────────────── */
-.st-group-total {
+/* Group subtotal row */
+.sr-group-total {
     display: grid;
-    grid-template-columns: 1fr 80px 110px 110px;
-    padding: 7px 16px 10px;
+    grid-template-columns: 1fr 90px 130px 130px;
+    padding: 9px 20px 12px;
     gap: 8px;
     background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid #e8ecf3;
 }
-
-.st-group-total-label {
+.sr-group-total-label {
     font-size: 11px;
     font-weight: 600;
     color: #64748b;
-    padding-left: 16px;
+    padding-left: 20px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.06em;
 }
-
-.st-group-total-amount {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-group-total-amount {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    font-weight: 600;
-    color: #0f172a;
+    font-weight: 700;
+    color: #0c4a58;
     text-align: right;
 }
 
-/* ── Grand Total Card ────────────────────────────────── */
-.st-grand-total {
-    background: #0e7490;
-    border-radius: 12px;
-    padding: 18px 20px;
+/* ═══════════════════════════════════════
+   GRAND TOTAL BANNER
+═══════════════════════════════════════ */
+.sr-grand-banner {
+    background: linear-gradient(135deg, #0c4a58 0%, #0e7490 100%);
+    border-radius: 16px;
+    padding: 24px 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
-    box-shadow: 0 4px 12px rgba(14,116,144,0.25);
-}
-
-.st-grand-total-left {}
-
-.st-grand-total-code {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    color: rgba(255,255,255,0.6);
-    text-transform: uppercase;
-    margin-bottom: 2px;
-}
-
-.st-grand-total-label {
-    font-size: 15px;
-    font-weight: 700;
-    color: #ffffff;
-}
-
-.st-grand-total-period {
-    font-size: 11px;
-    color: rgba(255,255,255,0.65);
-    margin-top: 2px;
-}
-
-.st-grand-total-right {}
-
-.st-grand-total-amount {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 28px;
-    font-weight: 600;
-    color: #ffffff;
-    letter-spacing: -0.5px;
-}
-
-/* ── Summary pills row ───────────────────────────────── */
-.st-summary-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
     margin-bottom: 20px;
+    box-shadow: 0 8px 30px rgba(14,116,144,0.3);
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
-.st-summary-pill {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 10px 16px;
-    flex: 1;
-    min-width: 120px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.st-summary-pill-label {
+.sr-grand-left {}
+.sr-grand-code {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: 1.2px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.5);
     text-transform: uppercase;
-    color: #94a3b8;
     margin-bottom: 4px;
 }
-
-.st-summary-pill-value {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-grand-label {
     font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 3px;
+}
+.sr-grand-period {
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+}
+
+.sr-grand-right {}
+.sr-grand-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 34px;
     font-weight: 600;
-    color: #0e7490;
+    color: #ffffff;
+    letter-spacing: -1px;
+    line-height: 1;
 }
 
-.st-summary-pill-sub {
-    font-size: 10px;
-    color: #94a3b8;
-    margin-top: 2px;
-}
-
-/* ── Banking section ─────────────────────────────────── */
-.st-banking-section {
+/* ═══════════════════════════════════════
+   BANKING SECTION
+═══════════════════════════════════════ */
+.sr-banking-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    border: 1px solid #e8ecf3;
+    border-radius: 18px;
     overflow: hidden;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
 }
 
-.st-banking-head {
+.sr-banking-head {
     background: #1e293b;
     display: grid;
-    grid-template-columns: 1fr 110px 110px;
-    padding: 8px 16px;
+    grid-template-columns: 1fr 130px 130px;
+    padding: 11px 20px;
     gap: 8px;
 }
-
-.st-banking-head span {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10px;
+.sr-banking-head span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
     font-weight: 600;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: rgba(255,255,255,0.5);
 }
+.sr-banking-head span.r { text-align: right; }
 
-.st-banking-head span.right { text-align: right; }
-
-.st-banking-row {
+.sr-banking-row {
     display: grid;
-    grid-template-columns: 1fr 110px 110px;
+    grid-template-columns: 1fr 130px 130px;
     align-items: center;
-    padding: 8px 16px;
+    padding: 12px 20px;
     gap: 8px;
     border-top: 1px solid #f1f5f9;
+    transition: background 0.1s;
 }
+.sr-banking-row:hover { background: #fafbff; }
 
-.st-banking-row:hover { background: #f8fafc; }
-
-.st-banking-row-label {
+.sr-banking-row-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-size: 13px;
     font-weight: 500;
     color: #334155;
     padding-left: 12px;
 }
 
-.st-banking-row-sub {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-banking-row-sub {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
-    color: #64748b;
+    color: #94a3b8;
     text-align: right;
 }
 
-.st-banking-row-total {
-    font-family: 'IBM Plex Mono', monospace;
+.sr-banking-row-total {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 600;
     color: #0f172a;
     text-align: right;
 }
 
-.st-banking-final {
+.sr-banking-final {
     display: grid;
-    grid-template-columns: 1fr 110px 110px;
+    grid-template-columns: 1fr 130px 130px;
     align-items: center;
-    padding: 14px 16px;
+    padding: 16px 20px;
     background: #f8fafc;
-    border-top: 2px solid #1e293b;
+    border-top: 2px solid #e2e8f0;
 }
 
-.st-banking-final-label {
+.sr-banking-final-label {
     font-size: 13px;
     font-weight: 700;
     color: #0f172a;
     padding-left: 12px;
 }
 
-.st-banking-final-amount {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 16px;
+.sr-banking-final-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
     font-weight: 700;
     color: #0e7490;
     text-align: right;
-    border-top: 2px solid #0e7490;
-    border-bottom: 4px double #0e7490;
-    padding: 3px 0;
-    margin-left: auto;
+    text-decoration: underline double;
+    text-underline-offset: 4px;
 }
 
-/* ── Print button ────────────────────────────────────── */
-.st-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-bottom: 8px;
-}
+/* ═══════════════════════════════════════
+   DOT COLORS
+═══════════════════════════════════════ */
+.dot-amex         { background: #f59e0b; }
+.dot-electronic   { background: #0ea5e9; }
+.dot-manual       { background: #10b981; }
+.dot-other        { background: #8b5cf6; }
+.dot-credit       { background: #3b82f6; }
+.dot-cash         { background: #10b981; }
+.dot-layby        { background: #f59e0b; }
 
-.st-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 16px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    border: none;
-    text-decoration: none;
-    transition: all 0.15s;
-}
-
-.st-btn-primary {
-    background: #0e7490;
-    color: white;
-}
-
-.st-btn-primary:hover { background: #0c6478; }
-
-.st-btn-ghost {
-    background: #f1f5f9;
-    color: #475569;
-    border: 1px solid #e2e8f0;
-}
-
-.st-btn-ghost:hover { background: #e2e8f0; }
-
-/* ── Color dots per category ─────────────────────────── */
-.dot-amex     { background: #f59e0b; }
-.dot-electronic { background: #0ea5e9; }
-.dot-manual   { background: #10b981; }
-.dot-other    { background: #8b5cf6; }
-
-/* ── Print styles ────────────────────────────────────── */
+/* ═══════════════════════════════════════
+   PRINT
+═══════════════════════════════════════ */
 @media print {
-    .st-filter-card, .st-actions { display: none !important; }
-    .st-wrap { max-width: 100%; }
+    .sr-filter, .sr-actions { display: none !important; }
+    .sr-root { max-width: 100%; }
     body { background: white !important; }
-    .st-section, .st-banking-section { box-shadow: none !important; border: 1px solid #ccc !important; }
-    .st-grand-total { background: #0e7490 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sr-card, .sr-banking-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+    .sr-grand-banner, .sr-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 
 @php
     $data = $this->reportData;
-    $dotClass = ['Amex' => 'dot-amex', 'Electronic' => 'dot-electronic', 'Manual' => 'dot-manual', 'Other' => 'dot-other'];
+    $dotClass = [
+        'Amex'                      => 'dot-amex',
+        'Credit Card and Finance'   => 'dot-credit',
+        'Cash Entry'                => 'dot-cash',
+        'Laybys'                    => 'dot-layby',
+        'Electronic'                => 'dot-electronic',
+        'Manual'                    => 'dot-manual',
+        'Other'                     => 'dot-other',
+    ];
     $totalTransactions = collect($data['categories'])->flatten(1)->sum('count');
 @endphp
 
-<div class="st-wrap">
+<div class="sr-root">
 
-    {{-- Header --}}
-    <div class="st-header">
-        <div class="st-header-left">
-            <div class="st-report-code" style="color: white;">Shop Takings</div>
-            <div class="st-report-title">Daily Banking & Bank Deposit</div>
-            <div class="st-report-subtitle" style="color: black;">Payment method breakdown for selected period</div>
-        </div>
-        <div class="st-header-meta">
-            <div>Generated: {{ now()->format('d M Y, H:i') }}</div>
-            <div>Period: {{ \Carbon\Carbon::parse($fromDate)->format('d M Y') }} – {{ \Carbon\Carbon::parse($toDate)->format('d M Y') }}</div>
-        </div>
-    </div>
-
-    {{-- Date Filter --}}
-    <div class="st-filter-card">
-        <div class="st-filter-label">📅 Period</div>
-        <div class="st-filter-form">
-            {{ $this->form }}
+    {{-- ══ HERO ══ --}}
+    <div class="sr-hero">
+        <div class="sr-hero-inner">
+            <div>
+                <div class="sr-hero-eyebrow">Shop Takings</div>
+                <h1 class="sr-hero-title">Daily Banking & Bank Deposit</h1>
+                <p class="sr-hero-sub">Payment method breakdown for selected period</p>
+            </div>
+            <div class="sr-hero-meta">
+                <div class="sr-hero-badge">
+                    <span class="sr-hero-badge-dot"></span>
+                    {{ \Carbon\Carbon::parse($fromDate)->format('d M Y') }} – {{ \Carbon\Carbon::parse($toDate)->format('d M Y') }}
+                </div>
+                <div class="sr-hero-generated">Generated: {{ now()->format('d M Y, H:i') }}</div>
+            </div>
         </div>
     </div>
 
-    {{-- Actions --}}
-    <div class="st-actions">
-        <button class="st-btn st-btn-ghost" onclick="window.print()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    {{-- ══ FILTER ══ --}}
+    <div class="sr-filter">
+        <div class="sr-filter-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+        </div>
+        <div class="sr-filter-label">Period</div>
+        <div class="sr-filter-fields">{{ $this->form }}</div>
+    </div>
+
+    {{-- ══ ACTIONS ══ --}}
+    <div class="sr-actions">
+        <button class="sr-btn sr-btn-ghost" onclick="window.print()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+            </svg>
             Print
         </button>
     </div>
 
-    {{-- Summary Pills --}}
-    <div class="st-summary-row">
+    {{-- ══ STAT CARDS ══ --}}
+    <div class="sr-stats">
         @foreach($data['categories'] as $groupName => $payments)
-        <div class="st-summary-pill">
-            <div class="st-summary-pill-label">{{ $groupName }}</div>
-            <div class="st-summary-pill-value">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
-            <div class="st-summary-pill-sub">{{ collect($payments)->sum('count') }} txns</div>
+        <div class="sr-stat">
+            <div class="sr-stat-label">
+                <span class="sr-stat-dot {{ $dotClass[$groupName] ?? 'dot-other' }}"></span>
+                {{ $groupName }}
+            </div>
+            <div class="sr-stat-value">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
+            <div class="sr-stat-sub">{{ collect($payments)->sum('count') }} transactions</div>
         </div>
         @endforeach
-        <div class="st-summary-pill" style="border-color: #0e7490; background: #f0fdfe;">
-            <div class="st-summary-pill-label" style="color:#0e7490;">Grand Total</div>
-            <div class="st-summary-pill-value" style="color:#0c6478; font-size:18px;">${{ number_format($data['grandTotal'], 2) }}</div>
-            <div class="st-summary-pill-sub">{{ $totalTransactions }} total txns</div>
+
+        <div class="sr-stat grand">
+            <div class="sr-stat-label">Grand Total</div>
+            <div class="sr-stat-value">${{ number_format($data['grandTotal'], 2) }}</div>
+            <div class="sr-stat-sub">{{ $totalTransactions }} total transactions</div>
         </div>
     </div>
 
-    {{-- ══ TRANSACTIONS TABLE ══ --}}
-    <div class="st-section">
-        <div class="st-section-head">
+    {{-- ══ TRANSACTION TABLE ══ --}}
+    <div class="sr-card">
+        <div class="sr-table-head">
             <span>Payment Method</span>
-            <span class="center">Times</span>
-            <span class="right">Sub Total</span>
-            <span class="right">Total In</span>
+            <span class="c">Times</span>
+            <span class="r">Sub Total</span>
+            <span class="r">Total In</span>
         </div>
 
         @foreach($data['categories'] as $groupName => $payments)
-        <div class="st-group">
-            <div class="st-group-label">
-                <div class="st-group-dot {{ $dotClass[$groupName] ?? 'dot-other' }}"></div>
-                <div class="st-group-name">{{ $groupName }}</div>
-            </div>
+        <div class="sr-group-label">
+            <div class="sr-group-dot {{ $dotClass[$groupName] ?? 'dot-other' }}"></div>
+            <div class="sr-group-name">{{ $groupName }}</div>
+        </div>
 
-            @if(empty($payments))
-                <div class="st-empty-row">
-                    <div class="st-empty-text">No transactions</div>
-                    <div class="st-empty-zero">0</div>
-                    <div class="st-empty-zero-right">$0.00</div>
-                    <div></div>
-                </div>
-            @else
-                @foreach($payments as $payment)
-                <div class="st-method-row">
-                    <div class="st-method-name">{{ ucwords(strtolower(str_replace('_', ' ', $payment->method))) }}</div>
-                    <div class="st-method-times">{{ $payment->count }}</div>
-                    <div class="st-method-subtotal">${{ number_format($payment->total, 2) }}</div>
-                    <div class="st-method-total-col"></div>
-                </div>
-                @endforeach
-            @endif
-
-            <div class="st-group-total">
-                <div class="st-group-total-label">{{ $groupName }} Total</div>
+        @if(empty($payments))
+            <div class="sr-empty-row">
+                <div class="sr-empty-text">No transactions</div>
+                <div class="sr-empty-num">0</div>
+                <div class="sr-empty-numr">$0.00</div>
                 <div></div>
-                <div></div>
-                <div class="st-group-total-amount">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
             </div>
+        @else
+            @foreach($payments as $payment)
+            <div class="sr-method-row">
+                <div class="sr-method-name">{{ ucwords(strtolower(str_replace('_', ' ', $payment->method))) }}</div>
+                <div class="sr-method-count">{{ $payment->count }}</div>
+                <div class="sr-method-sub">${{ number_format($payment->total, 2) }}</div>
+                <div></div>
+            </div>
+            @endforeach
+        @endif
+
+        <div class="sr-group-total">
+            <div class="sr-group-total-label">{{ $groupName }} Total</div>
+            <div></div>
+            <div></div>
+            <div class="sr-group-total-amount">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
         </div>
         @endforeach
     </div>
 
-    {{-- ══ GRAND TOTAL CARD ══ --}}
-    <div class="st-grand-total">
-        <div class="st-grand-total-left">
-            <div class="st-grand-total-code">PEOD001 · Summary</div>
-            <div class="st-grand-total-label">Grand Total</div>
-            <div class="st-grand-total-period">
+    {{-- ══ GRAND TOTAL BANNER ══ --}}
+    <div class="sr-grand-banner">
+        <div class="sr-grand-left">
+            <div class="sr-grand-code">PEOD001 · Summary</div>
+            <div class="sr-grand-label">Grand Total</div>
+            <div class="sr-grand-period">
                 {{ \Carbon\Carbon::parse($fromDate)->format('d M') }} – {{ \Carbon\Carbon::parse($toDate)->format('d M Y') }}
                 &nbsp;·&nbsp; {{ $totalTransactions }} transactions
             </div>
         </div>
-        <div class="st-grand-total-right">
-            <div class="st-grand-total-amount">${{ number_format($data['grandTotal'], 2) }}</div>
+        <div class="sr-grand-right">
+            <div class="sr-grand-amount">${{ number_format($data['grandTotal'], 2) }}</div>
         </div>
     </div>
 
-    {{-- ══ BANKING TOTALS SECTION ══ --}}
-    <div class="st-banking-section">
-        <div class="st-banking-head">
+    {{-- ══ BANKING TOTALS ══ --}}
+    <div class="sr-banking-card">
+        <div class="sr-banking-head">
             <span>Banking Totals</span>
-            <span class="right">Sub Total</span>
-            <span class="right">Total</span>
+            <span class="r">Sub Total</span>
+            <span class="r">Total</span>
         </div>
 
         @foreach($data['categories'] as $groupName => $payments)
-        <div class="st-banking-row">
-            <div class="st-banking-row-label">
-                <span style="display:inline-flex;align-items:center;gap:8px;">
-                    <span class="st-group-dot {{ $dotClass[$groupName] ?? 'dot-other' }}" style="width:7px;height:7px;border-radius:50%;display:inline-block;"></span>
-                    {{ $groupName }} — Today's
-                </span>
+        <div class="sr-banking-row">
+            <div class="sr-banking-row-label">
+                <span class="sr-group-dot {{ $dotClass[$groupName] ?? 'dot-other' }}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
+                {{ $groupName }} — Today's
             </div>
-            <div class="st-banking-row-sub">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
-            <div class="st-banking-row-total">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
+            <div class="sr-banking-row-sub">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
+            <div class="sr-banking-row-total">${{ number_format($data['groupTotals'][$groupName], 2) }}</div>
         </div>
         @endforeach
 
-        <div class="st-banking-final">
-            <div class="st-banking-final-label">Grand Total</div>
+        <div class="sr-banking-final">
+            <div class="sr-banking-final-label">Grand Total</div>
             <div></div>
-            <div class="st-banking-final-amount">${{ number_format($data['grandTotal'], 2) }}</div>
+            <div class="sr-banking-final-amount">${{ number_format($data['grandTotal'], 2) }}</div>
         </div>
     </div>
 

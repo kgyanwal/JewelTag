@@ -1,26 +1,22 @@
 <x-filament-widgets::widget>
-    @php
-    $data = $this->getViewData();
-    $store = $data['store'];
-    $todaySales = $data['todaySales'];
-    $totalStock = $data['totalStock'] ?? 0;
-    $activeOrders = $data['activeOrders'] ?? 0;
-    $pendingRepairs = $data['pendingRepairs'] ?? 0;
-    $pendingLaybuys = $data['pendingLaybuys'] ?? 0;
-    $pendingCustomOrders = $data['pendingCustomOrders'] ?? 0;
-    $pendingFollowUps = $data['pendingFollowUps'] ?? 0;
-    $memoItems = $data['memoItems'] ?? 0;
-    $tradeInRequests = $data['tradeInRequests'] ?? 0;
+@php
+$data = $this->getViewData();
+$store = $data['store'];
+$todaySales = $data['todaySales'];
+$totalStock = $data['totalStock'] ?? 0;
+$activeOrders = $data['activeOrders'] ?? 0;
+$pendingRepairs = $data['pendingRepairs'] ?? 0;
+$pendingLaybuys = $data['pendingLaybuys'] ?? 0;
+$pendingCustomOrders = $data['pendingCustomOrders'] ?? 0;
+$pendingFollowUps = $data['pendingFollowUps'] ?? 0;
+$memoItems = $data['memoItems'] ?? 0;
+$tradeInRequests = $data['tradeInRequests'] ?? 0;
 
-    $timezone = $store->timezone ?? 'America/Denver';
-    $state = $store->state ?? 'NM';
-
-    // 🚀 THE FIX: Create a single Carbon instance for this request
-    $now = now()->setTimezone($timezone);
-    $tzAbbreviation = $now->format('T');
-
-
-    @endphp
+$timezone = $store->timezone ?? 'America/Denver';
+$state = $store->state ?? 'NM';
+$now = now()->setTimezone($timezone);
+$tzAbbreviation = $now->format('T');
+@endphp
 
     <div class="ultimate-jewel-dashboard" style="margin-top: -1rem;">
         <!-- Premium Metallic Header -->

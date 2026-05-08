@@ -79,7 +79,16 @@ class AppServiceProvider extends ServiceProvider
         };
 
         // Create folders when tenancy initializes or when a new store is created
-        Event::listen(TenancyInitialized::class, fn (TenancyInitialized $event) => $createTenantFolders($event->tenancy->tenant->id));
+       Event::listen(TenancyInitialized::class, function (TenancyInitialized $event) use ($createTenantFolders) {
+    $createTenantFolders($event->tenancy->tenant->id);
+    try {
+        $tz = \App\Models\Store::first()?->timezone;
+        if ($tz) {
+            config(['app.timezone' => $tz]);
+            date_default_timezone_set($tz);
+        }
+    } catch (\Exception $e) {}
+});
         Event::listen(TenantCreated::class, fn (TenantCreated $event) => $createTenantFolders($event->tenant->id));
 
         /**

@@ -425,8 +425,60 @@
                     Open for Entry
                 </span>
             @endif
-        </div>
+ </div>
     </div>
+
+    {{-- ═══════════ TARGET BANNER ═══════════ --}}
+   @php
+    $daysInMonth     = \Carbon\Carbon::parse($date)->daysInMonth;
+    $totalActualSum  = array_sum($actualTotals ?? []);
+    $targetPct       = 0;
+    $targetColor     = '#ef4444';
+    if (!empty($dailyTarget) && $dailyTarget > 0 && $totalActualSum > 0) {
+        $targetPct   = min(100, round(($totalActualSum / $dailyTarget) * 100));
+        $targetColor = $targetPct >= 100 ? '#10b981' : ($targetPct >= 70 ? '#f59e0b' : '#ef4444');
+    }
+@endphp
+
+    @if(!empty($monthlyTarget) && $monthlyTarget > 0)
+    <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <span style="font-size:24px;flex-shrink:0;">🎯</span>
+        <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0369a1;margin-bottom:6px;">
+                Sales Target — {{ \Carbon\Carbon::parse($date)->format('F Y') }}
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Monthly</div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#0c4a6e;">${{ number_format($monthlyTarget, 0) }}</div>
+                </div>
+                <div style="width:1px;height:36px;background:#bae6fd;"></div>
+                <div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Daily (÷ {{ $daysInMonth }} days)</div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#0ea5e9;">${{ number_format($dailyTarget, 0) }}</div>
+                </div>
+                <div style="width:1px;height:36px;background:#bae6fd;"></div>
+                <div style="min-width:200px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                        <span style="font-size:11px;font-weight:600;color:#64748b;">Today's progress</span>
+                        <span style="font-size:11px;font-weight:700;color:{{ $targetColor }};">{{ $targetPct }}%</span>
+                    </div>
+                    <div style="height:8px;border-radius:4px;background:#bae6fd;overflow:hidden;">
+                        <div style="height:100%;border-radius:4px;width:{{ $targetPct }}%;background:{{ $targetColor }};transition:width 0.5s;"></div>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${{ number_format($totalActualSum, 0) }} of ${{ number_format($dailyTarget, 0) }}</div>
+                </div>
+            </div>
+        </div>
+     
+    </div>
+    @elseif(auth()->user()->hasRole('Superadmin'))
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#92400e;">
+        💡 <strong>No monthly target set.</strong>
+        <a href="{{ \App\Filament\Pages\ManageSettings::getUrl() }}" style="color:#0ea5e9;font-weight:600;text-decoration:underline;">Set one in Store Settings → System tab.</a>
+    </div>
+    @endif
+
 
     {{-- ═══════════ COMPUTED VALUES ═══════════ --}}
     @php
@@ -477,15 +529,23 @@
                     Expected
                     <svg style="width:10px; height:10px; color:#94a3b8;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 </div>
-                <div class="eod-sc-val" style="color:#4f46e5; display: flex; align-items: center;">
-                    $<input 
-                        type="number" 
-                        step="0.01" 
-                        wire:model.live="totalExpected" 
-                        class="eod-editable-input" 
-                        placeholder="{{ number_format($systemExpected, 2, '.', '') }}"
-                    >
-                </div>
+             <div class="eod-sc-val" style="color:#4f46e5; display:flex; align-items:center;">
+    $<input
+        type="number"
+        step="0.01"
+        wire:model.live="totalExpected"
+        class="eod-editable-input"
+        placeholder="{{ number_format($systemExpected, 2, '.', '') }}"
+    >
+</div>
+@if($dailyTarget)
+<div style="display:inline-flex;align-items:center;gap:5px;margin-top:5px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:6px;padding:3px 8px;">
+    <span style="font-size:11px;">🎯</span>
+    <span style="font-size:10px;font-weight:700;color:#0369a1;letter-spacing:0.03em;">
+        Target: ${{ number_format($dailyTarget, 0) }}/day
+    </span>
+</div>
+@endif
             </div>
         </div>
 

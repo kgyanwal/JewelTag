@@ -34,10 +34,11 @@ class ActivityLogResource extends Resource
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('DATE')
                     ->dateTime('M d, Y h:i:s A')
-                    ->sortable(),
+                    ->sortable()
+                    ->timezone(fn () => \App\Models\Store::first()->timezone ?? 'America/Denver'),
 
                 Tables\Columns\TextColumn::make('user.name')
-                    ->label('USERNAME')
+                    ->label('STAFF NAME')
                     ->searchable()
                     ->weight('bold'),
 
@@ -86,7 +87,7 @@ class ActivityLogResource extends Resource
                         Forms\Components\Grid::make(4)->schema([
                             // 1. Username Select
                             Forms\Components\Select::make('user_id')
-                                ->label('Username')
+                                ->label('Staff Name')
                                 ->relationship('user', 'name')
                                 ->placeholder('Any')
                                 ->preload(),
@@ -130,16 +131,27 @@ class ActivityLogResource extends Resource
                                 ])->placeholder('Any'),
                         ]),
                     ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when($data['user_id'], fn ($q, $v) => $q->where('user_id', $v))
-                            ->when($data['exact_date'], fn ($q, $v) => $q->whereDate('created_at', $v))
-                            ->when($data['hour'] !== null && $data['hour'] !== '', fn ($q, $v) => $q->whereHour('created_at', $v))
-                            ->when($data['minute'] !== null && $data['minute'] !== '', fn ($q, $v) => $q->whereMinute('created_at', $v))
-                            ->when($data['uri_path'], fn ($q, $v) => $q->where('url', 'like', "%{$v}%"))
-                            ->when($data['ref_no'], fn ($q, $v) => $q->where('identifier', 'like', "%{$v}%"))
-                            ->when($data['action_type'], fn ($q, $v) => $q->where('action', $v));
-                    })
+                 ->query(function (Builder $query, array $data): Builder {
+    // 🚀 1. Get the store's timezone
+    $storeTimezone = \App\Models\Store::first()->timezone ?? 'America/Denver';
+
+    return $query
+        ->when($data['user_id'], fn ($q, $v) => $q->where('user_id', $v))
+        ->when($data['uri_path'], fn ($q, $v) => $q->where('url', 'like', "%{$v}%"))
+        ->when($data['ref_no'], fn ($q, $v) => $q->where('identifier', 'like', "%{$v}%"))
+        ->when($data['action_type'], fn ($q, $v) => $q->where('action', $v))
+        
+        // 🚀 2. Handle Timezone Conversion for Date Searches
+        ->when($data['exact_date'], function ($q, $v) use ($storeTimezone) {
+            // Convert the local start of day to UTC
+            $startOfDayUTC = \Carbon\Carbon::parse($v, $storeTimezone)->startOfDay()->utc();
+            // Convert the local end of day to UTC
+            $endOfDayUTC = \Carbon\Carbon::parse($v, $storeTimezone)->endOfDay()->utc();
+            
+            // Search between those exact UTC boundaries
+            $q->whereBetween('created_at', [$startOfDayUTC, $endOfDayUTC]);
+        });
+})
             ], layout: FiltersLayout::AboveContent) // 👈 This creates the "Search Panel" UI
             ->filtersFormColumns(1);
     }

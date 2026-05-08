@@ -19,17 +19,17 @@
             background: white;
         }
 
-        /* ── CLEAN 2-PAGE FIX ── */
         .page { page-break-after: always; clear: both; }
         .page:last-child { page-break-after: avoid; }
 
-        /* ── Header ── */
+        /* ── Header — white bg, teal border only ── */
         .header {
             text-align: center;
             margin-bottom: 8px;
             padding: 8px 6px;
-            background: #249E94;
-            color: white;
+            background: #ffffff;
+            color: #1a6b65;
+            border: 2px solid #249E94;
             border-radius: 6px;
         }
         .brand-name {
@@ -38,25 +38,30 @@
             margin: 0 0 2px 0;
             letter-spacing: 1px;
             text-transform: uppercase;
+            color: #1a6b65;
         }
         .legal-name {
             font-size: 12px;
             font-weight: bold;
             margin: 0 0 3px 0;
+            color: #249E94;
         }
         .store-details {
             font-size: 9px;
             line-height: 1.2;
+            color: #444;
         }
 
+        /* ── Document title — border only ── */
         .document-title {
             text-align: center;
             font-size: 16px;
             font-weight: bold;
             margin: 8px 0;
             padding: 6px 10px;
-            background: #249E94;
-            color: white;
+            background: #ffffff;
+            color: #1a6b65;
+            border: 2px solid #249E94;
             border-radius: 4px;
             letter-spacing: 0.5px;
         }
@@ -75,8 +80,8 @@
             text-transform: uppercase;
             margin: 0 4px;
         }
-        .badge-warranty { background: #dc2626; color: white; }
-        .badge-store    { background: #0284c7; color: white; }
+        .badge-warranty { background: #fef2f2; color: #dc2626; border: 1px solid #dc2626; }
+        .badge-store    { background: #eff6ff; color: #0284c7; border: 1px solid #0284c7; }
 
         .meta-table {
             width: 100%;
@@ -100,8 +105,8 @@
         }
 
         .customer-box {
-            background: #f0f9f8;
-            border: 2px solid #249E94;
+            background: #f9fefe;
+            border: 1.5px solid #249E94;
             padding: 7px 12px;
             margin: 6px 0;
             border-radius: 4px;
@@ -111,11 +116,11 @@
             font-size: 13px;
             font-weight: 900;
             text-transform: uppercase;
-            color: #249E94;
+            color: #1a6b65;
             margin-bottom: 3px;
         }
 
-        /* ── Customer Copy Table (shows price) ── */
+        /* ── Customer Copy Table — light tinted header ── */
         .customer-table {
             width: 100%;
             border-collapse: collapse;
@@ -125,11 +130,12 @@
         .customer-table th {
             border: none;
             padding: 8px 6px;
-            background: #249E94;
-            color: white;
+            background: #e8f5f4;
+            color: #1a6b65;
             font-weight: bold;
             font-size: 10px;
             text-align: left;
+            border-bottom: 2px solid #249E94;
         }
         .customer-table td {
             border-bottom: 1px solid #e0e0e0;
@@ -142,10 +148,10 @@
             background: #e8f5f3 !important;
             font-weight: bold;
             font-size: 11px;
-            color: #249E94;
+            color: #1a6b65;
         }
 
-        /* ── Workshop Table (NO price shown) ── */
+        /* ── Workshop Table — light tinted header ── */
         .workshop-table {
             width: 100%;
             border-collapse: collapse;
@@ -155,10 +161,11 @@
         .workshop-table th {
             border: none;
             padding: 8px 6px;
-            background: #249E94;
-            color: white;
+            background: #e8f5f4;
+            color: #1a6b65;
             font-weight: bold;
             text-align: left;
+            border-bottom: 2px solid #249E94;
         }
         .workshop-table td {
             border-bottom: 1px solid #e0e0e0;
@@ -167,7 +174,7 @@
             background: white;
         }
         .workshop-table td.notes-col {
-            background: #fff8e1 !important;
+            background: #fffdf0 !important;
         }
 
         .status-pill {
@@ -179,23 +186,23 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        .status-received  { background: #e5e7eb; color: #374151; }
-        .status-progress  { background: #dbeafe; color: #1d4ed8; }
-        .status-ready     { background: #dcfce7; color: #166534; }
-        .status-delivered { background: #f3e8ff; color: #7e22ce; }
+        .status-received  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+        .status-progress  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .status-ready     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .status-delivered { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
 
         .notes-section {
             margin: 10px 0;
-            border: 2px solid #249E94;
+            border: 1.5px solid #249E94;
             padding: 10px;
-            background: #f0f9f8;
+            background: #f9fefe;
             border-radius: 4px;
             min-height: 70px;
             font-size: 10px;
         }
 
         .warranty-box {
-            background: #fef2f2;
+            background: #fff5f5;
             border: 2px dashed #dc2626;
             padding: 6px 10px;
             border-radius: 4px;
@@ -216,7 +223,7 @@
             text-align: center;
             font-weight: bold;
             font-size: 10px;
-            color: #249E94;
+            color: #1a6b65;
         }
         .signature-box.right { float: right; }
         .clearfix::after { content: ""; display: table; clear: both; }
@@ -340,7 +347,7 @@
                     @if(!empty($rItem['is_warranty']))
                         <span style="color:#dc2626;font-weight:bold;">WARRANTY</span>
                     @elseif(!empty($rItem['final_cost']) && floatval($rItem['final_cost']) > 0)
-                        <strong style="color:#249E94;">${{ number_format($rItem['final_cost'], 2) }}</strong>
+                        <strong style="color:#1a6b65;">${{ number_format($rItem['final_cost'], 2) }}</strong>
                     @elseif(!empty($rItem['estimated_cost']) && floatval($rItem['estimated_cost']) > 0)
                         <span style="color:#888;">Est. ${{ number_format($rItem['estimated_cost'], 2) }}</span>
                     @else
@@ -452,7 +459,7 @@
                     </div>
                     @if(!empty($rItem['is_warranty']))
                         <div style="margin-top:3px;">
-                            <span style="background:#dc2626;color:white;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:900;">WARRANTY</span>
+                            <span style="background:#fef2f2;color:#dc2626;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:900;border:1px solid #dc2626;">WARRANTY</span>
                         </div>
                     @endif
                 </td>
@@ -467,16 +474,16 @@
     </table>
 
     <div class="notes-section">
-        <strong>JEWELER BENCH NOTES / WORK CARRIED OUT:</strong><br><br><br>
+        <strong style="color:#1a6b65;">JEWELER BENCH NOTES / WORK CARRIED OUT:</strong><br><br><br>
     </div>
 
     <div style="background:white;border:1px solid #e0e0e0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:10px;">
         <strong>MATERIALS USED:</strong>
         <table style="width:100%;margin-top:5px;border-collapse:collapse;">
             <tr>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#249E94;font-size:9px;">Material</th>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#249E94;font-size:9px;">Weight / Qty</th>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#249E94;font-size:9px;">Notes</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Material</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Weight / Qty</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Notes</th>
             </tr>
             <tr><td style="padding:7px 4px;">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
             <tr><td style="padding:7px 4px;border-top:1px solid #f0f0f0;">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>

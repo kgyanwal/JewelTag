@@ -403,7 +403,8 @@ class RepairResource extends Resource
     }
 
     // ── TABLE ─────────────────────────────────────────────────────────
-  public static function table(Table $table): Table
+   // ── TABLE ─────────────────────────────────────────────────────────
+    public static function table(Table $table): Table
     {
         return $table
             ->striped()
@@ -442,7 +443,7 @@ class RepairResource extends Resource
                         if (!empty($list) && is_array($list)) {
                             return \App\Models\User::whereIn('id', $list)
                                 ->pluck('name')
-                                ->implode('||'); 
+                                ->implode('||');
                         }
                         if ($record->salesPerson) {
                             return $record->salesPerson->name;
@@ -467,21 +468,21 @@ class RepairResource extends Resource
                     ->size('sm')
                     ->grow(false),
 
-                // 🚀 THE FIX: Converted to SelectColumn
                 Tables\Columns\SelectColumn::make('dropped_by')
                     ->label('DROP BY')
                     ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)
                     ->placeholder('—')
+                    ->searchable()
                     ->grow(false)
                     ->extraAttributes(['style' => 'min-width:110px;']),
 
-                // 🚀 THE FIX: Converted to SelectColumn
                 Tables\Columns\SelectColumn::make('picked_up_by')
                     ->label('PICK BY')
                     ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)
                     ->placeholder('—')
+                    ->searchable()
                     ->grow(false)
                     ->extraAttributes(['style' => 'min-width:110px;']),
 
@@ -510,23 +511,23 @@ class RepairResource extends Resource
                         default       => ['style' => 'min-width:90px;'],
                     }),
 
-                // 🚀 THE FIX: Converted to SelectColumn
+                // 🚀 THE FIX: Repair Location now pulls unique locations from the repairs table
                 Tables\Columns\SelectColumn::make('repair_location')
                     ->label('LOCATION')
-                    ->options(function ($record) {
-                        // Get staff names as options
-                        $options = \App\Models\User::pluck('name', 'name')->toArray();
-                        // If the record has a custom location (like "Javier Workshop") that isn't a staff name,
-                        // ensure it appears in the dropdown so it doesn't look blank.
-                        if ($record->repair_location && !array_key_exists($record->repair_location, $options)) {
-                            $options[$record->repair_location] = $record->repair_location;
-                        }
-                        return $options;
+                    ->options(function () {
+                        // Dynamically pull all existing, unique locations from the database
+                        return \App\Models\Repair::query()
+                            ->whereNotNull('repair_location')
+                            ->where('repair_location', '!=', '')
+                            ->distinct()
+                            ->pluck('repair_location', 'repair_location')
+                            ->toArray();
                     })
                     ->selectablePlaceholder(true)
                     ->placeholder('—')
+                    ->searchable()
                     ->grow(false)
-                    ->extraAttributes(['style' => 'min-width:130px;']),
+                    ->extraAttributes(['style' => 'min-width:150px;']),
 
                 Tables\Columns\TextColumn::make('customer_pickup_date')
                     ->label('PICKUP')

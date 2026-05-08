@@ -260,8 +260,8 @@
                             {{ $receiptType == 'normal' ? $sale->invoice_number : strtoupper($receiptType).'-'.$sale->invoice_number }}
                         </span>
                         <div style="font-size:10px;line-height:1.4;margin-top:8px;">
-                            <div><i class="fas fa-calendar-day"></i> <b>Date:</b> {{ $sale->created_at->format('m/d/Y') }}</div>
-                            <div><i class="fas fa-clock"></i> <b>Time:</b> {{ $sale->created_at->format('h:i A') }}</div>
+                           <div><i class="fas fa-calendar-day"></i> <b>Date:</b> {{ $sale->created_at?->format('m/d/Y') ?? 'N/A' }}</div>
+<div><i class="fas fa-clock"></i> <b>Time:</b> {{ $sale->created_at?->format('h:i A') ?? 'N/A' }}</div>
                             <div><i class="fas fa-user-tie"></i> <b>Associate:</b> {{ is_array($sale->sales_person_list) ? implode(', ', $sale->sales_person_list) : $sale->sales_person_list }}</div>
                         </div>
                     </div>
@@ -273,17 +273,25 @@
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
             <tr>
                 <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $receiptColor }};">
-                    <div style="font-size:9px;color:{{ $receiptColor }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">
-                        <i class="fas fa-user-circle"></i> Customer Information
-                    </div>
-                    <div style="font-size:15px;font-weight:700;color:{{ $receiptColor }};margin-bottom:5px;">
-                        {{ $sale->customer->name ?? 'Valued' }} {{ $sale->customer->last_name ?? 'Customer' }}
-                    </div>
-                    <div style="color:#546e7a;line-height:1.5;font-size:10px;">
-                        <div><i class="fas fa-phone"></i> {{ $sale->customer->phone ?? 'N/A' }}</div>
-                        <div><i class="fas fa-envelope"></i> {{ $sale->customer->email ?? 'N/A' }}</div>
-                    </div>
-                </td>
+    <div style="font-size:9px;color:{{ $receiptColor }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">
+        <i class="fas fa-user-circle"></i> Customer Information
+    </div>
+    <div style="font-size:15px;font-weight:700;color:{{ $receiptColor }};margin-bottom:5px;">
+        {{ $sale->customer->name ?? 'Valued' }} {{ $sale->customer->last_name ?? 'Customer' }}
+    </div>
+    <div style="color:#546e7a;line-height:1.5;font-size:10px;">
+        <div><i class="fas fa-phone"></i> {{ $sale->customer->phone ?? 'N/A' }}</div>
+        <div><i class="fas fa-envelope"></i> {{ $sale->customer->email ?? 'N/A' }}</div>
+        
+        {{-- Show Birthday if it exists in the database --}}
+        @if(optional($sale->customer)->dob)
+            <div style="margin-top:2px;">
+                <i class="fas fa-gift" style="color:{{ $receiptColor }};"></i> 
+                <b>Birthday:</b> {{ \Carbon\Carbon::parse($sale->customer->dob)->format('M d, Y') }}
+            </div>
+        @endif
+    </div>
+</td>
                 <td width="4%"></td>
                 <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $receiptColor }};">
                     <div style="font-size:9px;color:{{ $receiptColor }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">

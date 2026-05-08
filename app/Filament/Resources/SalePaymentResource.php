@@ -85,14 +85,19 @@ class SalePaymentResource extends Resource
                 ->searchable(),
 
             // ↓ Sale balance — is this job fully paid?
-            TextColumn::make('sale.balance_due')
-                ->label('Balance Due')
-                ->formatStateUsing(function ($record) {
-                    $due = $record->sale?->balance_due ?? 0;
-                    return '$' . number_format($due, 2);
-                })
-                ->color(fn($record) => ($record->sale?->balance_due ?? 0) > 0 ? 'danger' : 'success')
-                ->weight('bold'),
+         TextColumn::make('sale.balance_due')
+    ->label('Balance Due')
+    ->formatStateUsing(function ($record) {
+        $due = $record->sale?->balance_due ?? 0;
+        return '$' . number_format($due, 2);
+    })
+    ->color(fn($record) => ($record->sale?->balance_due ?? 0) > 0 ? 'danger' : 'success')
+    ->weight('bold')
+    ->sortable(query: function ($query, string $direction) {
+        $query->join('sales', 'sale_payments.sale_id', '=', 'sales.id')
+              ->orderBy('sales.balance_due', $direction)
+              ->select('sale_payments.*');
+    }),
         ])
         ->filters([
             Tables\Filters\TernaryFilter::make('is_layby')

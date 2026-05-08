@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+
 class FindSale extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
@@ -47,9 +48,10 @@ class FindSale extends Page implements HasForms, HasTable
     {
         if (str_starts_with($property, 'data.')) {
             $this->resetTable();
+            $this->dispatch('$refresh');
         }
     }
-public static function getServiceTypeOptions(): array
+    public static function getServiceTypeOptions(): array
     {
         $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
         $json  = DB::table('site_settings')->where('key', 'service_types')->value('value');
@@ -66,6 +68,13 @@ public static function getServiceTypeOptions(): array
                     ->aside()
                     ->schema([
                         Grid::make(4)->schema([
+                            TextInput::make('keyword')
+                                ->label('🔍 Item / Keyword Search')
+                                ->placeholder('e.g. Tiffany pendant, Marquise ring, R1234...')
+                                ->prefixIcon('heroicon-o-magnifying-glass')
+                                ->helperText('Searches item descriptions, job notes, invoice #, and customer name')
+                                ->live(onBlur: true)
+                                ->columnSpanFull(),
                             // ── Use live(onBlur: true) instead of ->live()
                             //    This fires only when the user tabs/clicks away,
                             //    not on every single keypress
@@ -95,20 +104,39 @@ public static function getServiceTypeOptions(): array
                             Select::make('payment_method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
                                 ->placeholder('All Methods')
-                                ->live(), 
-                                              // selects are fine as ->live() — no typing
+                                ->live(),
+                            // selects are fine as ->live() — no typing
                             CustomDatePicker::make('date_from')
                                 ->label('Date From')
                                 ->displayFormat('m/d/Y')
-                                ->live()
-                                ->afterStateUpdated(fn() => $this->resetTable()),
+                                ->live(),
                             // date pickers are fine too
 
-                           Select::make('job_type')
+                            Select::make('job_type')
                                 ->label('Job Type')
                                 ->options(fn() => self::getServiceTypeOptions())
                                 ->placeholder('All Service Types')
                                 ->live(),
+                        ]),
+                        \Filament\Forms\Components\Actions::make([
+                            \Filament\Forms\Components\Actions\Action::make('reset_search')
+                                ->label('Clear Filters')
+                                ->icon('heroicon-o-x-circle')
+                                ->color('gray')
+                                ->outlined()
+                                ->action(function () {
+                                    $this->form->fill([
+                                        'invoice_number' => null,
+                                        'staff_name'     => null,
+                                        'first_name'     => null,
+                                        'last_name'      => null,
+                                        'phone'          => null,
+                                        'payment_method' => null,
+                                        'date_from'      => null,
+                                        'job_type'       => null,
+                                    ]);
+                                    $this->resetTable();
+                                }),
                         ]),
                     ]),
             ]);
@@ -128,6 +156,27 @@ public static function getServiceTypeOptions(): array
                         'items.productItem',  // used in items_summary column
                         'payments',           // used in payment_status_summary column
                     ])
+                    ->when(
+                        $this->data['keyword'] ?? null,
+                        fn($q, $v) => $q->where(function ($sub) use ($v) {
+                            $sub->whereHas(
+                                'items',
+                                fn($iq) =>
+                                $iq->where('custom_description', 'like', "%{$v}%")
+                                    ->orWhere('job_description', 'like', "%{$v}%")
+                                    ->orWhere('stock_no_display', 'like', "%{$v}%")
+                            )
+                                ->orWhere('invoice_number', 'like', "%{$v}%")
+                                ->orWhere('notes', 'like', "%{$v}%")
+                                ->orWhere('job_instructions', 'like', "%{$v}%")
+                                ->orWhereHas(
+                                    'customer',
+                                    fn($cq) =>
+                                    $cq->whereRaw("CONCAT(name, ' ', COALESCE(last_name,'')) LIKE ?", ["%{$v}%"])
+                                        ->orWhere('phone', 'like', "%{$v}%")
+                                );
+                        })
+                    )
                     ->when(
                         $this->data['invoice_number'] ?? null,
                         fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%")
@@ -275,7 +324,7 @@ public static function getServiceTypeOptions(): array
                         return new HtmlString($html);
                     }),
 
-               TextColumn::make('sale_type_badge')
+                TextColumn::make('sale_type_badge')
                     ->label('TYPE')
                     ->getStateUsing(function ($record) {
                         $isLaybuy     = $record->payment_method === 'laybuy';
@@ -290,7 +339,7 @@ public static function getServiceTypeOptions(): array
                             }
                             return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
                         }
-                        
+
                         if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
                         if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
                         if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
@@ -615,11 +664,12 @@ public static function getServiceTypeOptions(): array
                                 $digits = substr($digits, 1);
                             }
                             $formattedPhone = '+1' . $digits;
-                            $store          = $record->store;
-                            $baseUrl        = $store && !empty($store->domain_url)
-                                ? rtrim($store->domain_url, '/')
-                                : config('app.url');
-                            $link      = $baseUrl . '/receipt/' . $record->id;
+                            $store     = $record->store;
+                            $storeName = $store->name ?? 'Our Store';
+
+                            // 🚀 Use Laravel's url() helper. It automatically reads your current tenant domain!
+                            // If you are on lxd.localhost:8000, it generates http://lxd.localhost:8000/receipt/17
+                            $link = url('/receipt/' . $record->id);
                             $storeName = $store->name ?? 'Diamond Square';
                             $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
                             try {

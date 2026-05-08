@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JewelTag.us | Ultimate Jewelry Management & Inventory Software</title>
     <meta name="description" content="World's most advanced jewelry inventory management, POS, CRM, and business intelligence platform for jewelers, retailers, and luxury brands.">
-    
+
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
@@ -14,7 +15,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- AOS Animation Library -->
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
-    
+
     <style>
         :root {
             --primary-gold: #d97706;
@@ -31,131 +32,170 @@
             --onyx-black: #111827;
             --text-main: #1e293b;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Inter', sans-serif;
             color: var(--text-main);
             overflow-x: hidden;
             background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
         }
-        
+
         .playfair {
             font-family: 'Playfair Display', serif;
         }
-        
+
         .cormorant {
             font-family: 'Cormorant Garamond', serif;
         }
-        
+
         /* Gold Gradients */
-        .gold-gradient { 
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold)); 
+        .gold-gradient {
+            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
         }
-        
-        .gold-text { 
-            color: var(--primary-gold); 
+
+        .gold-text {
+            color: var(--primary-gold);
         }
-        
+
         .gold-gradient-text {
             background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold), var(--dark-gold));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        
+
         /* Advanced Animations */
         @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            33% { transform: translateY(-20px) rotate(3deg); }
-            66% { transform: translateY(-10px) rotate(-3deg); }
+
+            0%,
+            100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+
+            33% {
+                transform: translateY(-20px) rotate(3deg);
+            }
+
+            66% {
+                transform: translateY(-10px) rotate(-3deg);
+            }
         }
-        
+
         @keyframes diamond-sparkle {
-            0%, 100% { opacity: 0.3; transform: scale(0.8) rotate(0deg); }
-            50% { opacity: 1; transform: scale(1.2) rotate(180deg); }
+
+            0%,
+            100% {
+                opacity: 0.3;
+                transform: scale(0.8) rotate(0deg);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.2) rotate(180deg);
+            }
         }
-        
+
         @keyframes shimmer {
-            0% { background-position: -2000px 0; }
-            100% { background-position: 2000px 0; }
+            0% {
+                background-position: -2000px 0;
+            }
+
+            100% {
+                background-position: 2000px 0;
+            }
         }
-        
+
         @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 20px rgba(217, 119, 6, 0.3); }
-            50% { box-shadow: 0 0 40px rgba(217, 119, 6, 0.6); }
+
+            0%,
+            100% {
+                box-shadow: 0 0 20px rgba(217, 119, 6, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 40px rgba(217, 119, 6, 0.6);
+            }
         }
-        
+
         @keyframes gradient-shift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
         }
-        
+
         .animate-float {
             animation: float 8s ease-in-out infinite;
         }
-        
+
         .animate-sparkle {
             animation: diamond-sparkle 3s infinite;
         }
-        
+
         .animate-shimmer {
             animation: shimmer 3s infinite linear;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
             background-size: 1000px 100%;
         }
-        
+
         .animate-pulse-glow {
             animation: pulse-glow 2s infinite;
         }
-        
+
         .animate-gradient-shift {
             background-size: 200% 200%;
             animation: gradient-shift 5s ease infinite;
         }
-        
+
         /* Premium Backgrounds */
         .luxury-gradient-bg {
             background: linear-gradient(135deg, var(--deep-sapphire) 0%, var(--royal-blue) 100%);
         }
-        
+
         .gold-gradient-bg {
             background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold));
         }
-        
+
         .diamond-mesh-bg {
-            background-image: 
+            background-image:
                 radial-gradient(circle at 25% 25%, rgba(217, 119, 6, 0.1) 2px, transparent 2px),
                 radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.1) 2px, transparent 2px);
             background-size: 60px 60px;
         }
-        
+
         .jewel-pattern-bg {
             background-color: #f8fafc;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 10% 20%, rgba(217, 119, 6, 0.05) 0%, transparent 20%),
                 radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 20%);
         }
-        
+
         .diamond-text {
             background: linear-gradient(135deg, #ffffff, #e2e8f0, #cbd5e1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        
+
         /* Premium Cards */
         .luxury-card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(20px);
             border: 1px solid rgba(217, 119, 6, 0.2);
-            box-shadow: 
+            box-shadow:
                 0 20px 40px rgba(0, 0, 0, 0.05),
                 0 1px 0 rgba(255, 255, 255, 0.8) inset;
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -163,7 +203,7 @@
             position: relative;
             overflow: hidden;
         }
-        
+
         .luxury-card::before {
             content: '';
             position: absolute;
@@ -174,15 +214,15 @@
             background: linear-gradient(90deg, var(--primary-gold), var(--secondary-gold));
             border-radius: 24px 24px 0 0;
         }
-        
+
         .luxury-card:hover {
             transform: translateY(-15px) scale(1.02);
-            box-shadow: 
+            box-shadow:
                 0 40px 80px rgba(0, 0, 0, 0.1),
                 0 0 0 1px rgba(217, 119, 6, 0.3),
                 0 0 40px rgba(217, 119, 6, 0.1);
         }
-        
+
         .jewel-icon-card {
             width: 80px;
             height: 80px;
@@ -197,7 +237,7 @@
             position: relative;
             overflow: hidden;
         }
-        
+
         .jewel-icon-card::after {
             content: '';
             position: absolute;
@@ -205,15 +245,15 @@
             left: -50%;
             width: 200%;
             height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
             opacity: 0;
             transition: opacity 0.3s;
         }
-        
+
         .jewel-icon-card:hover::after {
             opacity: 1;
         }
-        
+
         /* Navigation */
         .nav-luxury {
             background: rgba(255, 255, 255, 0.98);
@@ -221,7 +261,7 @@
             border-bottom: 1px solid rgba(217, 119, 6, 0.1);
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
         }
-        
+
         /* Buttons */
         .btn-luxury {
             background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
@@ -240,7 +280,7 @@
             justify-content: center;
             text-transform: uppercase;
         }
-        
+
         .btn-luxury::before {
             content: '';
             position: absolute;
@@ -251,16 +291,16 @@
             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
             transition: left 0.7s;
         }
-        
+
         .btn-luxury:hover {
             transform: translateY(-5px) scale(1.05);
             box-shadow: 0 20px 40px rgba(217, 119, 6, 0.3);
         }
-        
+
         .btn-luxury:hover::before {
             left: 100%;
         }
-        
+
         .btn-outline-luxury {
             border: 2px solid var(--primary-gold);
             color: var(--primary-gold);
@@ -275,14 +315,14 @@
             align-items: center;
             justify-content: center;
         }
-        
+
         .btn-outline-luxury:hover {
             background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
             color: white;
             transform: translateY(-5px);
             box-shadow: 0 15px 30px rgba(217, 119, 6, 0.2);
         }
-        
+
         /* Stats */
         .stat-number {
             font-size: 4.5rem;
@@ -294,7 +334,7 @@
             line-height: 1;
             text-shadow: 0 5px 15px rgba(217, 119, 6, 0.2);
         }
-        
+
         /* Partner Card */
         .partner-card {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -305,13 +345,13 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
             transition: all 0.4s ease;
         }
-        
+
         .partner-card:hover {
             transform: translateY(-10px);
             border-color: rgba(59, 130, 246, 0.6);
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.3), 0 0 30px rgba(59, 130, 246, 0.2);
         }
-        
+
         /* Testimonials */
         .testimonial-luxury {
             background: white;
@@ -322,7 +362,7 @@
             position: relative;
             overflow: hidden;
         }
-        
+
         .testimonial-luxury::before {
             content: '"';
             position: absolute;
@@ -333,7 +373,7 @@
             color: rgba(217, 119, 6, 0.1);
             line-height: 1;
         }
-        
+
         /* Pricing */
         .pricing-luxury {
             background: white;
@@ -344,13 +384,13 @@
             position: relative;
             overflow: hidden;
         }
-        
+
         .pricing-luxury.featured {
             border-color: var(--primary-gold);
             transform: scale(1.05);
             box-shadow: 0 40px 80px rgba(217, 119, 6, 0.15);
         }
-        
+
         .pricing-luxury.featured::before {
             content: 'MOST POPULAR';
             position: absolute;
@@ -364,7 +404,7 @@
             letter-spacing: 1px;
             transform: rotate(45deg);
         }
-        
+
         /* Forms */
         .form-luxury {
             border: 2px solid rgba(217, 119, 6, 0.2);
@@ -375,13 +415,13 @@
             background: white;
             font-size: 16px;
         }
-        
+
         .form-luxury:focus {
             outline: none;
             border-color: var(--primary-gold);
             box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.1);
         }
-        
+
         /* Footer */
         .footer-luxury {
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
@@ -389,7 +429,7 @@
             position: relative;
             overflow: hidden;
         }
-        
+
         .footer-luxury::before {
             content: '';
             position: absolute;
@@ -403,7 +443,7 @@
             z-index: 0;
             opacity: 0.4;
         }
-        
+
         /* Hero Section */
         .hero-luxury {
             background: linear-gradient(135deg, #0A2540 0%, #1E3A8A 100%);
@@ -413,7 +453,7 @@
             display: flex;
             align-items: center;
         }
-        
+
         .hero-luxury::before {
             content: '';
             position: absolute;
@@ -424,7 +464,7 @@
             right: -300px;
             border-radius: 50%;
         }
-        
+
         .hero-luxury::after {
             content: '';
             position: absolute;
@@ -435,62 +475,63 @@
             left: -250px;
             border-radius: 50%;
         }
-        
+
         .diamond-grid {
             position: absolute;
             width: 100%;
             height: 100%;
-            background-image: 
-                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
             background-size: 50px 50px;
             z-index: 0;
         }
-        
+
         /* Floating Elements */
         .floating-diamond {
             position: absolute;
             width: 80px;
             height: 80px;
-            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
-            border: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 20px;
             transform: rotate(45deg);
             z-index: 1;
         }
-        
+
         .glass-card {
             background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(217, 119, 6, 0.1);
         }
-        
+
         /* Responsive */
         @media (max-width: 1024px) {
             .stat-number {
                 font-size: 3.5rem;
             }
-            
+
             .pricing-luxury.featured {
                 transform: scale(1);
             }
-            
+
             .hero-luxury::before,
             .hero-luxury::after {
                 display: none;
             }
         }
-        
+
         @media (max-width: 768px) {
             .stat-number {
                 font-size: 2.8rem;
             }
-            
-            .btn-luxury, .btn-outline-luxury {
+
+            .btn-luxury,
+            .btn-outline-luxury {
                 padding: 14px 28px;
                 font-size: 14px;
             }
-            
+
             .jewel-icon-card {
                 width: 64px;
                 height: 64px;
@@ -499,10 +540,11 @@
         }
     </style>
 </head>
+
 <body class="antialiased relative">
     <!-- Gold Top Bar -->
     <div class="fixed top-0 left-0 w-full h-1 gold-gradient z-50"></div>
-    
+
     <!-- Animated Background Elements -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div class="floating-diamond animate-float" style="top:10%; left:5%; animation-delay:0s;"></div>
@@ -510,7 +552,7 @@
         <div class="floating-diamond animate-float" style="bottom:30%; left:15%; animation-delay:2s; width:100px; height:100px;"></div>
         <div class="floating-diamond animate-float" style="bottom:15%; right:5%; animation-delay:3s; width:70px; height:70px;"></div>
     </div>
-    
+
     <!-- Navigation -->
     <nav class="nav-luxury fixed w-full z-50 py-4">
         <div class="container mx-auto px-6 lg:px-8">
@@ -524,7 +566,7 @@
                         <h1 class="text-2xl lg:text-3xl font-bold playfair gold-gradient-text">JewelTag<span class="text-deep-sapphire">.us</span></h1>
                     </div>
                 </div>
-                
+
                 <!-- Desktop Menu -->
                 <div class="hidden lg:flex items-center space-x-8">
                     <a href="#features" class="text-gray-700 hover:text-amber-600 font-semibold text-sm uppercase tracking-wider transition duration-300">Features</a>
@@ -538,13 +580,13 @@
                         <i class="fas fa-crown mr-2"></i> Free Demo
                     </a>
                 </div>
-                
+
                 <!-- Mobile Menu Button -->
                 <button id="mobile-menu-button" class="lg:hidden text-gray-700">
                     <i class="fas fa-bars text-2xl"></i>
                 </button>
             </div>
-            
+
             <!-- Mobile Menu -->
             <div id="mobile-menu" class="lg:hidden hidden mt-6 pb-4">
                 <div class="flex flex-col space-y-4">
@@ -569,15 +611,15 @@
                         <span class="w-2 h-2 rounded-full bg-amber-500 mr-2"></span>
                         <span class="text-white/90 text-sm font-semibold tracking-wider">TRUSTED BY 750+ LUXURY JEWELERS WORLDWIDE</span>
                     </div>
-                    
+
                     <h1 class="text-5xl lg:text-7xl font-black text-white mb-6 playfair leading-tight">
                         The <span class="gold-gradient-text">Ultimate Platform</span> for Jewelry Excellence
                     </h1>
-                    
+
                     <p class="text-xl lg:text-2xl text-white/80 mb-8 leading-relaxed">
                         Transform your jewelry business with the world's most advanced inventory management, POS, CRM, and business intelligence platform designed exclusively for luxury retailers.
                     </p>
-                    
+
                     <div class="flex flex-col sm:flex-row gap-4">
                         <a href="#demo" class="btn-luxury text-center">
                             <i class="fas fa-play-circle mr-3"></i> Start 30-Day Trial
@@ -586,7 +628,7 @@
                             <i class="fas fa-gem mr-3"></i> Enter Master Portal
                         </a>
                     </div>
-                    
+
                     <div class="mt-10 flex items-center">
                         <div class="flex -space-x-3">
                             <div class="w-12 h-12 rounded-full gold-gradient flex items-center justify-center text-white text-sm font-bold border-2 border-white">JD</div>
@@ -607,7 +649,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="lg:w-1/2 relative" data-aos="fade-left">
                     <!-- Dashboard Preview -->
                     <div class="glass-card rounded-2xl p-4 shadow-2xl animate-float" style="animation-delay: 1s;">
@@ -626,7 +668,7 @@
                                     +32.5%
                                 </div>
                             </div>
-                            
+
                             <div class="grid grid-cols-2 gap-3">
                                 <div class="bg-white/10 rounded-lg p-3">
                                     <p class="text-white/80 text-xs">Inventory</p>
@@ -637,7 +679,7 @@
                                     <p class="text-xl font-bold">$1,249</p>
                                 </div>
                             </div>
-                            
+
                             <!-- Live Activity -->
                             <div class="mt-4 pt-4 border-t border-white/20">
                                 <div class="flex items-center justify-between text-xs">
@@ -664,7 +706,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Floating Elements -->
                     <div class="absolute -top-6 -right-6 w-24 h-24 gold-gradient rounded-2xl opacity-20 blur-xl"></div>
                     <div class="absolute -bottom-6 -left-6 w-32 h-32 bg-blue-600 rounded-2xl opacity-10 blur-xl"></div>
@@ -708,7 +750,7 @@
                     Designed exclusively for jewelry businesses, our comprehensive platform transforms every aspect of your operations.
                 </p>
             </div>
-            
+
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- Feature 1 -->
                 <div class="luxury-card p-6">
@@ -728,7 +770,7 @@
                         </li>
                     </ul>
                 </div>
-                
+
                 <!-- Feature 2 -->
                 <div class="luxury-card p-6">
                     <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
@@ -747,7 +789,7 @@
                         </li>
                     </ul>
                 </div>
-                
+
                 <!-- Feature 3 -->
                 <div class="luxury-card p-6">
                     <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
@@ -766,7 +808,7 @@
                         </li>
                     </ul>
                 </div>
-                
+
                 <!-- Feature 4 -->
                 <div class="luxury-card p-6">
                     <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
@@ -785,7 +827,7 @@
                         </li>
                     </ul>
                 </div>
-                
+
                 <!-- Feature 5 -->
                 <div class="luxury-card p-6">
                     <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
@@ -804,7 +846,7 @@
                         </li>
                     </ul>
                 </div>
-                
+
                 <!-- Feature 6 -->
                 <div class="luxury-card p-6">
                     <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
@@ -860,7 +902,7 @@
                 </h2>
                 <p class="text-lg text-gray-600">Your journey to jewelry management excellence in 4 simple steps.</p>
             </div>
-            
+
             <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
                 <div class="text-center">
                     <div class="w-16 h-16 gold-gradient rounded-full flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">01</div>
@@ -899,7 +941,7 @@
                 </h2>
                 <p class="text-lg text-gray-600">Trusted by leading jewelers worldwide</p>
             </div>
-            
+
             <div class="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
                     <div class="flex items-center mb-4">
@@ -912,7 +954,7 @@
                     <p class="text-gray-600 text-sm italic">"Inventory reconciliation reduced from 3 weeks to 2 days. Stock accuracy increased to 99.8%."</p>
                     <div class="mt-3 text-amber-600 font-bold text-sm">+42% Revenue</div>
                 </div>
-                
+
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
                     <div class="flex items-center mb-4">
                         <div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3">MR</div>
@@ -924,7 +966,7 @@
                     <p class="text-gray-600 text-sm italic">"Repair admin time reduced by 70%. Customer satisfaction increased from 82% to 98%."</p>
                     <div class="mt-3 text-amber-600 font-bold text-sm">+156% Repair Revenue</div>
                 </div>
-                
+
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
                     <div class="flex items-center mb-4">
                         <div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3">JW</div>
@@ -949,14 +991,14 @@
                 </h2>
                 <p class="text-lg text-gray-600">Transparent pricing, no hidden fees, no long-term contracts.</p>
             </div>
-            
+
             <div class="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 <!-- Essential Plan -->
                 <div class="pricing-luxury p-6">
                     <h3 class="text-xl font-bold mb-2">Essential</h3>
                     <p class="text-sm text-gray-500 mb-4">For small jewelry shops</p>
                     <div class="mb-4">
-                        <span class="text-3xl font-bold gold-gradient-text">$149</span>
+                        <span class="text-3xl font-bold gold-gradient-text">$299</span>
                         <span class="text-gray-500 text-sm">/month</span>
                     </div>
                     <ul class="space-y-2 text-sm mb-6">
@@ -967,13 +1009,13 @@
                     </ul>
                     <a href="#demo" class="btn-outline-luxury w-full text-center py-3 text-sm">Start Free Trial</a>
                 </div>
-                
+
                 <!-- Professional Plan -->
                 <div class="pricing-luxury featured p-6">
                     <h3 class="text-xl font-bold mb-2">Professional</h3>
                     <p class="text-sm text-gray-500 mb-4">Most popular choice</p>
                     <div class="mb-4">
-                        <span class="text-3xl font-bold gold-gradient-text">$299</span>
+                        <span class="text-3xl font-bold gold-gradient-text">$899</span>
                         <span class="text-gray-500 text-sm">/month</span>
                     </div>
                     <ul class="space-y-2 text-sm mb-6">
@@ -984,7 +1026,7 @@
                     </ul>
                     <a href="#demo" class="btn-luxury w-full text-center py-3 text-sm">Start Free Trial</a>
                 </div>
-                
+
                 <!-- Enterprise Plan -->
                 <div class="pricing-luxury p-6">
                     <h3 class="text-xl font-bold mb-2">Enterprise</h3>
@@ -1001,7 +1043,7 @@
                     <a href="#contact" class="btn-outline-luxury w-full text-center py-3 text-sm">Contact Sales</a>
                 </div>
             </div>
-            
+
             <div class="mt-8 text-center">
                 <p class="text-xs text-gray-500">
                     <i class="fas fa-shield-alt text-amber-600 mr-1"></i> All plans include: 256-bit encryption • Daily backups • 99.95% uptime SLA • GDPR compliance
@@ -1019,7 +1061,7 @@
                 </h2>
                 <p class="text-white/80">Start your 30-day premium trial today. No credit card required.</p>
             </div>
-            
+
             <div class="max-w-2xl mx-auto bg-white rounded-2xl p-8">
                 <form id="demo-form" class="space-y-4">
                     <div class="grid sm:grid-cols-2 gap-4">
@@ -1047,7 +1089,7 @@
                     <span class="text-deep-sapphire">Frequently Asked</span> <span class="gold-gradient-text">Questions</span>
                 </h2>
             </div>
-            
+
             <div class="max-w-3xl mx-auto space-y-4">
                 <div class="bg-white rounded-xl p-5 border border-gray-200">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(1)">
@@ -1058,7 +1100,7 @@
                         Most customers complete implementation within 2-3 weeks, including discovery, migration, training, and go-live support.
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-xl p-5 border border-gray-200">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(2)">
                         <h3 class="font-bold text-sm">Can we import existing data?</h3>
@@ -1068,7 +1110,7 @@
                         Yes! We support data imports from all major jewelry management systems, spreadsheets, and custom databases.
                     </div>
                 </div>
-                
+
                 <div class="bg-white rounded-xl p-5 border border-gray-200">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(3)">
                         <h3 class="font-bold text-sm">What security measures do you have?</h3>
@@ -1090,7 +1132,7 @@
                     <span class="diamond-text">Connect With Our</span> <span class="gold-gradient-text">Expert Team</span>
                 </h2>
             </div>
-            
+
             <div class="grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto mb-10">
                 <div class="text-center text-white">
                     <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3">
@@ -1103,7 +1145,7 @@
                     <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3">
                         <i class="fas fa-envelope"></i>
                     </div>
-                    <p class="text-sm font-bold">sales@jeweltag.us</p>
+                    <p class="text-sm font-bold">info@jeweltag.us</p>
                     <p class="text-white/60 text-xs">24hr response</p>
                 </div>
                 <div class="text-center text-white">
@@ -1114,7 +1156,7 @@
                     <p class="text-white/60 text-xs">Click chat icon below</p>
                 </div>
             </div>
-            
+
             <div class="max-w-2xl mx-auto bg-white rounded-2xl p-8">
                 <form id="contact-form" class="space-y-4">
                     <input type="text" placeholder="Your Name" class="form-luxury py-3 text-sm" required>
@@ -1169,13 +1211,13 @@
                 <div>
                     <h4 class="text-white font-bold text-sm mb-4">Resources</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#" class="text-white/60 hover:text-white">Documentation</a></li>
-                        <li><a href="#" class="text-white/60 hover:text-white">API Reference</a></li>
-                        <li><a href="#" class="text-white/60 hover:text-white">Privacy Policy</a></li>
-                    </ul>
+        <li><a href="{{ route('docs') }}" class="text-white/60 hover:text-white">Documentation</a></li>
+        <li><a href="{{ route('api') }}" class="text-white/60 hover:text-white">API Reference</a></li>
+        <li><a href="{{ route('privacy') }}" class="text-white/60 hover:text-white">Privacy Policy</a></li>
+    </ul>
                 </div>
             </div>
-            
+
             <div class="pt-6 border-t border-white/10 text-center">
                 <p class="text-white/40 text-xs">
                     © {{ date('Y') }} JewelTag Systems. All rights reserved. | ISO 27001 Certified • SOC 2 Compliant
@@ -1195,7 +1237,7 @@
         <button id="chat-toggle" class="w-14 h-14 gold-gradient rounded-full flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all">
             <i class="fas fa-comment text-xl"></i>
         </button>
-        
+
         <div id="chat-window" class="absolute bottom-20 right-0 w-80 bg-white rounded-xl shadow-2xl hidden">
             <div class="p-4 border-b border-gray-200">
                 <div class="flex items-center">
@@ -1235,7 +1277,7 @@
 
     <!-- AOS Animation Library -->
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-    
+
     <script>
         // Initialize AOS
         AOS.init({
@@ -1243,7 +1285,7 @@
             once: true,
             offset: 50
         });
-        
+
         // Mobile Menu Toggle
         document.getElementById('mobile-menu-button').addEventListener('click', function() {
             document.getElementById('mobile-menu').classList.toggle('hidden');
@@ -1265,7 +1307,10 @@
         });
 
         backToTop.addEventListener('click', function() {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
         });
 
         // FAQ Toggle
@@ -1278,17 +1323,58 @@
         }
 
         // Form Submissions
-        document.getElementById('demo-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Thank you! Your trial request has been submitted. Our team will contact you within 1 hour.');
-            this.reset();
-        });
+       // Form Submissions
+document.getElementById('demo-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const inputs = this.querySelectorAll('input');
+    const payload = new FormData();
+    payload.append('name', inputs[0].value + ' ' + inputs[1].value);
+    payload.append('email', inputs[2].value);
+    payload.append('business', inputs[3].value);
+    payload.append('type', 'Free Trial Request');
+    payload.append('message', 'Requested a 30-day free trial.');
+    payload.append('_token', '{{ csrf_token() }}');
 
-        document.getElementById('contact-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Thank you for your message! We\'ll get back to you within 1 hour.');
+    fetch('/contact', {
+        method: 'POST',
+        body: payload
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Thank you! We\'ll be in touch within 1 hour.');
             this.reset();
-        });
+        } else {
+            alert('Something went wrong. Please email info@jeweltag.us directly.');
+        }
+    });
+});
+
+document.getElementById('contact-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const inputs = this.querySelectorAll('input, select, textarea');
+    const payload = new FormData();
+    payload.append('name', inputs[0].value);
+    payload.append('email', inputs[1].value);
+    payload.append('business', inputs[2].value);
+    payload.append('type', inputs[3].value);
+    payload.append('message', inputs[4].value);
+    payload.append('_token', '{{ csrf_token() }}');
+
+    fetch('/contact', {
+        method: 'POST',
+        body: payload
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Message sent! We\'ll respond within 1 hour.');
+            this.reset();
+        } else {
+            alert('Something went wrong. Please email info@jeweltag.us directly.');
+        }
+    });
+});
 
         // Smooth Scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -1297,10 +1383,14 @@
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
                     document.getElementById('mobile-menu')?.classList.add('hidden');
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
                 }
             });
         });
     </script>
 </body>
+
 </html>

@@ -137,7 +137,7 @@ class SaleResource extends Resource
                                             ->preload()
                                             ->options(
                                                 fn() => ProductItem::where('qty', '>', 0)
-                                                    ->whereIn('status', ['in_stock', 'sold'])
+                                                    ->where('status', 'in_stock')
                                                     ->get()
                                                     ->mapWithKeys(fn($item) => [
                                                         $item->id => "{$item->barcode} - {$item->qty} left " . ($item->status === 'sold' ? '[CURRENTLY SOLD]' : "(\${$item->retail_price})")
@@ -230,8 +230,12 @@ class SaleResource extends Resource
                                                 $discAmt    = $lineTotal * ($discPct / 100);
                                                 $finalPrice = $lineTotal - $discAmt;
 
-                                                $currentItems   = $get('items') ?? [];
-                                                $currentItems[] = [
+                                                $currentItems = $get('items') ?? [];
+
+                                                // 🚀 THE FIX: Generate a strict UUID instead of using a blank [] array push
+                                                $newItemId = (string) \Illuminate\Support\Str::uuid();
+
+                                                $currentItems[$newItemId] = [
                                                     'product_item_id'     => null,
                                                     'repair_id'           => null,
                                                     'custom_order_id'     => null,
@@ -1025,6 +1029,14 @@ class SaleResource extends Resource
                                                                                             </div>
                                                                                         </div>
                                                                                     "))->columnSpanFull(),
+                                                                                Placeholder::make('view_dob')
+                                                                                    ->label('Birthday')
+                                                                                    ->content(function () use ($customer) {
+                                                                                        if (!$customer->dob) return '—';
+                                                                                        $dob = \Carbon\Carbon::parse($customer->dob);
+                                                                                        $age = $dob->age;
+                                                                                        return new HtmlString("{$dob->format('M d, Y')} <span class='text-gray-400 text-xs'>({$age} yrs)</span>");
+                                                                                    }),
                                                                                 TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
                                                                                 TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
                                                                                 TextInput::make('view_addr')
@@ -1126,7 +1138,15 @@ class SaleResource extends Resource
                                                                                     ->label('Email')
                                                                                     ->email()
                                                                                     ->default($customer->email),
-
+                                                                                Grid::make(2)->schema([
+                                                                                    CustomDatePicker::make('edit_dob')
+                                                                                        ->rule('before_or_equal:today')
+                                                                                        ->label('Birth Date')
+                                                                                        ->default($customer->dob),
+                                                                                    CustomDatePicker::make('edit_anniversary')
+                                                                                        ->label('Wedding Date')
+                                                                                        ->default($customer->wedding_anniversary),
+                                                                                ]),
                                                                                 // 🚀 THE FIX: Replaced manual fields with Google Autocomplete
                                                                                 \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
                                                                                     ->label('Search Address')
@@ -1500,10 +1520,10 @@ class SaleResource extends Resource
                             Section::make('Financial Summary')->schema([
                                 self::totalRow('TAX TOTAL', 'tax_amount'),
                                 TextInput::make('tax_amount_warranty')
-        ->label('WARRANTY TAX')
-        ->prefix('$')
-        ->readOnly()
-        ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
+                                    ->label('WARRANTY TAX')
+                                    ->prefix('$')
+                                    ->readOnly()
+                                    ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
                                 self::totalRow('SUBTOTAL', 'subtotal'),
 
                                 Placeholder::make('balance_due_display')
@@ -1646,7 +1666,7 @@ class SaleResource extends Resource
                             return $item->custom_description;
                         })->toArray();
                     })
-                    ->limitList(1)->expandableLimitedList()->size('xs')->color('gray'),
+                    ->limitList(4)->expandableLimitedList()->size('xs')->color('gray'),
 
                 TextColumn::make('status')
                     ->badge()
@@ -1890,7 +1910,7 @@ class SaleResource extends Resource
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
 
- public static function updateTotals(callable|Get $get, callable|Set $set): void
+    public static function updateTotals(callable|Get $get, callable|Set $set): void
     {
         $items           = $get('items') ?? [];
         $shipping        = floatval($get('shipping_charges') ?? 0);
@@ -1930,8 +1950,8 @@ class SaleResource extends Resource
 
         // Update form state
         $set('subtotal',            number_format($itemsSubtotal, 2, '.', ''));
-        $set('tax_amount',          number_format($itemsTax, 2, '.', '')); 
-        $set('tax_amount_warranty', number_format($warrantyTax, 2, '.', '')); 
+        $set('tax_amount',          number_format($itemsTax, 2, '.', ''));
+        $set('tax_amount_warranty', number_format($warrantyTax, 2, '.', ''));
         $set('final_total',         number_format($grandTotal, 2, '.', ''));
         $set('display_total_due',   number_format($grandTotal, 2, '.', ''));
 
@@ -1990,7 +2010,14 @@ class SaleResource extends Resource
                 $options[$method] = $method;
             }
         }
-        return $options;
+
+        // Sort alphabetically by label, but keep LAYBUY at the bottom
+        $regular = array_filter($options, fn($k) => $k !== 'laybuy', ARRAY_FILTER_USE_KEY);
+        asort($regular);
+
+        return isset($options['laybuy'])
+            ? $regular + ['laybuy' => $options['laybuy']]
+            : $regular;
     }
 
     protected static function totalRow($label, $field)

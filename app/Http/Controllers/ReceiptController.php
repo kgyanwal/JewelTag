@@ -11,9 +11,11 @@ use Illuminate\Http\Request;
 class ReceiptController extends Controller
 {
     // Change $sale to $record to match the Route parameter {record}
-    public function show(Request $request, Sale $record)
+   // We removed "Sale $record" and just ask for the ID directly
+    public function show(Request $request, $record)
     {
-        $record->load(['customer', 'items.productItem', 'store']);
+        // 🚀 FORCE Laravel to find the exact sale and its relationships
+        $sale = \App\Models\Sale::with(['customer', 'items.productItem', 'store'])->findOrFail($record);
         
         $type = $request->query('type', 'standard'); // standard, gift, job
 
@@ -24,11 +26,11 @@ class ReceiptController extends Controller
         };
 
         $pdf = Pdf::loadView($view, [
-            'sale' => $record, // We still pass it as 'sale' to the Blade template
+            'sale' => $sale, // Pass the correctly loaded sale here
             'is_pdf' => true
         ]);
 
-        $filename = strtoupper($type) . "_{$record->invoice_number}.pdf";
+        $filename = strtoupper($type) . "_{$sale->invoice_number}.pdf";
         return $pdf->stream($filename);
     }
 
