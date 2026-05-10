@@ -298,7 +298,7 @@
                 <p class="text-gray-600">If you have questions about this Privacy Policy or our data practices, please contact our Data Protection Officer:</p>
                 <div class="bg-gray-50 rounded-xl p-4 space-y-2">
                     <p><i class="fas fa-building w-6 text-amber-500"></i> <strong class="text-deep-sapphire">JewelTag Systems Inc.</strong></p>
-                    <p><i class="fas fa-map-marker-alt w-6 text-amber-500"></i> 580 Fifth Avenue, Suite 2500<br>New York, NY 10036</p>
+                    <p><i class="fas fa-map-marker-alt w-6 text-amber-500"></i>6600 Menaul Blvd NE Suite 6508<br>Albuquerque NM 87110</p> 
                     <p><i class="fas fa-envelope w-6 text-amber-500"></i> <a href="mailto:privacy@jeweltag.us" class="text-amber-600 hover:underline">privacy@jeweltag.us</a></p>
                     <p><i class="fas fa-phone w-6 text-amber-500"></i> <a href="tel:18005393582" class="text-amber-600 hover:underline">1-800-JEWEL-TAG</a></p>
                 </div>

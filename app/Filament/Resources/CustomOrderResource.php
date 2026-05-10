@@ -201,7 +201,7 @@ class CustomOrderResource extends Resource
                                                                             ->label('Email')
                                                                             ->email()
                                                                             ->default($customer->email),
-                                                                        
+
                                                                         \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
                                                                             ->label('Search Address')
                                                                             ->autocompletePlaceholder('Start typing address...')
@@ -313,7 +313,7 @@ class CustomOrderResource extends Resource
                                     ->prefixIcon('heroicon-o-identification')
                                     ->required(),
                             ]),
-                    ]),
+                        ]),
 
                     Section::make('Order Type')
                         ->icon('heroicon-o-tag')
@@ -420,172 +420,219 @@ class CustomOrderResource extends Resource
                                         ->rows(3)
                                         ->columnSpanFull(),
 
-                               // 🚀 NEW AUTO-GENERATING AI REFERENCE IMAGE FIELD
-TextInput::make('reference_image')
-    ->label('Reference Image URL')
-    ->placeholder('https://...')
-    ->url()
-    ->columnSpanFull()
-    ->hintAction(
-        \Filament\Forms\Components\Actions\Action::make('ai_concept_generator')
-            ->label('✨ Auto-Generate Image')
-            ->color('fuchsia')
-            ->icon('heroicon-s-sparkles')
-            ->modalHeading('AI Concept Generator')
-            ->modalWidth('4xl')
-            ->modalSubmitActionLabel('Attach to Order')
-            // 🚀 1. Gather all the data the user already typed into the form!
-            ->mountUsing(function (\Filament\Forms\Form $form, Get $get) {
-                $product = $get('product_name') ?? 'jewelry piece';
-                $metal   = $get('metal_type') ?? '';
-                $size    = $get('size') ? "Size {$get('size')}" : '';
-                $diamond = $get('diamond_weight') ? "{$get('diamond_weight')} CTW" : '';
-                $notes   = $get('design_notes') ?? '';
+                                    // 🚀 NEW AUTO-GENERATING AI REFERENCE IMAGE FIELD
+                                    TextInput::make('reference_image')
+                                        ->label('Reference Image URL')
+                                        ->placeholder('https://...')
+                                        ->url()
+                                        ->columnSpanFull()
+                                        ->hintAction(
+                                            \Filament\Forms\Components\Actions\Action::make('ai_concept_generator')
+                                                ->label('✨ Auto-Generate Image')
+                                                ->color('fuchsia')
+                                                ->icon('heroicon-s-sparkles')
+                                                ->modalHeading('AI Concept Generator')
+                                                ->modalWidth('4xl')
+                                                ->modalSubmitActionLabel('✅ Save Selected Image to Order')
+                                                // 🚀 1. Gather all the data the user already typed into the form!
+                                                ->mountUsing(function (\Filament\Forms\Form $form, Get $get) {
+                                                    $product = $get('product_name') ?? 'jewelry piece';
+                                                    $metal   = $get('metal_type') ?? '';
+                                                    $size    = $get('size') ? "Size {$get('size')}" : '';
+                                                    $diamond = $get('diamond_weight') ? "{$get('diamond_weight')} CTW" : '';
+                                                    $notes   = $get('design_notes') ?? '';
 
-                // Combine it all into a perfect, invisible master prompt
-                $prompt = trim("Highly detailed professional jewelry photography, bright studio lighting, realistic, 8k resolution, white background. A {$metal} {$product}. {$size}. {$diamond}. {$notes}");
+                                                    // Combine it all into a perfect, invisible master prompt
+                                                    $prompt = trim("Highly detailed professional jewelry photography, bright studio lighting, realistic, 8k resolution, white background. A {$metal} {$product}. {$size}. {$diamond}. {$notes}");
 
-                // Load it into the modal invisibly
-                $form->fill([
-                    'generated_prompt' => $prompt,
-                    'has_generated'    => false,
-                    'generated_images' => [],
-                ]);
-            })
-            ->form([ 
-                Hidden::make('generated_prompt'),
-                Hidden::make('has_generated'),
-                Hidden::make('generated_images'),
+                                                    // Load it into the modal invisibly
+                                                    $form->fill([
+                                                        'generated_prompt' => $prompt,
+                                                        'has_generated'    => false,
+                                                        'generated_images' => [],
+                                                    ]);
+                                                })
+                                                ->form([
+                                                    Hidden::make('generated_prompt'),
+                                                    Hidden::make('has_generated'),
+                                                    Hidden::make('generated_images'),
 
-                // 🚀 2. Automatically trigger the API as soon as the modal opens
-                Placeholder::make('ai_trigger')
-                    ->hiddenLabel()
-                    ->content(function (Get $get, Set $set) {
-                        $prompt = $get('generated_prompt');
-                        $alreadyGenerated = $get('has_generated');
+                                                    // 🚀 2. Automatically trigger the API as soon as the modal opens
+                                                    Placeholder::make('ai_trigger')
+                                                        ->hiddenLabel()
+                                                        ->content(function (Get $get, Set $set) {
+                                                            $prompt = $get('generated_prompt');
+                                                            $alreadyGenerated = $get('has_generated');
 
-                        if (!$prompt || $alreadyGenerated) return new HtmlString("<div class='text-gray-500 italic'>Loading AI engine...</div>");
+                                                            if (!$prompt || $alreadyGenerated) return new HtmlString("<div class='text-gray-500 italic'>Loading AI engine...</div>");
 
-                        // 🚀 Allow PHP extra time to prevent 30-second timeouts
-                        set_time_limit(120);
+                                                            // 🚀 Allow PHP extra time to prevent 30-second timeouts
+                                                            set_time_limit(120);
 
-                        try {
-                            $apiKey = env('GEMINI_API_KEY');
-                            
-                            // 1. Try Google Gemini with the correct generateContent endpoint
-                            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                                'Content-Type' => 'application/json',
-                            ])->timeout(30)->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={$apiKey}", [
-                                "contents" => [
-                                    [
-                                        "role" => "user",
-                                        "parts" => [
-                                            ["text" => $prompt]
-                                        ]
-                                    ]
-                                ]
-                            ]);
+                                                            try {
+                                                                $apiKey = env('GEMINI_API_KEY');
 
-                            $images = [];
+                                                                // 1. Try Google Gemini with the correct generateContent endpoint
+                                                                $response = \Illuminate\Support\Facades\Http::withHeaders([
+                                                                    'Content-Type' => 'application/json',
+                                                                ])->timeout(30)->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={$apiKey}", [
+                                                                    "contents" => [
+                                                                        [
+                                                                            "role" => "user",
+                                                                            "parts" => [
+                                                                                ["text" => $prompt]
+                                                                            ]
+                                                                        ]
+                                                                    ]
+                                                                ]);
 
-                            if ($response->successful()) {
-                                $data = $response->json();
-                                
-                                // Extract the base64 image data from the Gemini response structure
-                                if (isset($data['candidates'])) {
-                                    foreach ($data['candidates'] as $candidate) {
-                                        if (isset($candidate['content']['parts'])) {
-                                            foreach ($candidate['content']['parts'] as $part) {
-                                                if (isset($part['inlineData']['data'])) {
-                                                    $b64 = $part['inlineData']['data'];
-                                                    $filename = 'ai-concepts/' . \Illuminate\Support\Str::uuid() . '.jpg';
-                                                    \Illuminate\Support\Facades\Storage::disk('public')->put($filename, base64_decode($b64));
-                                                    $images[] = asset('storage/' . $filename);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                                                                $images = [];
 
-                            // If Gemini succeeded but only returned 1 image, or if it failed entirely, 
-                            // we pad the remaining slots using the backend free fallback so the UI always has 3 options.
-                            if (count($images) < 3) {
-                                $errorMsg = $response->json()['error']['message'] ?? 'Unknown Gemini API Error';
-                                $wasGeminiFailure = empty($images);
-                                $needed = 3 - count($images);
+                                                                if ($response->successful()) {
+                                                                    $data = $response->json();
 
-                                // 🚀 FETCH CONCURRENTLY to bypass 30 second timeouts
-                                $fallbackResponses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($prompt, $needed) {
-                                    $reqs = [];
-                                    for ($i = 1; $i <= $needed; $i++) {
-                                        $seed = rand(1, 999999);
-                                        $safePrompt = urlencode($prompt . " design variation " . $i);
-                                        $url = "https://image.pollinations.ai/prompt/{$safePrompt}?seed={$seed}&width=1024&height=1024&nologo=true";
-                                        $reqs[] = $pool->timeout(30)->get($url);
-                                    }
-                                    return $reqs;
-                                });
+                                                                    // Extract the base64 image data from the Gemini response structure
+                                                                    if (isset($data['candidates'])) {
+                                                                        foreach ($data['candidates'] as $candidate) {
+                                                                            if (isset($candidate['content']['parts'])) {
+                                                                                foreach ($candidate['content']['parts'] as $part) {
+                                                                                    if (isset($part['inlineData']['data'])) {
+                                                                                        $b64 = $part['inlineData']['data'];
+                                                                                        $filename = 'ai-concepts/' . \Illuminate\Support\Str::uuid() . '.jpg';
+                                                                                        \Illuminate\Support\Facades\Storage::disk('public')->put($filename, base64_decode($b64));
+                                                                                        $images[] = asset('storage/' . $filename);
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
 
-                                foreach ($fallbackResponses as $res) {
-                                    if ($res instanceof \Illuminate\Http\Client\Response && $res->ok()) {
-                                        $filename = 'ai-concepts/fallback-' . \Illuminate\Support\Str::uuid() . '.jpg';
-                                        \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $res->body());
-                                        $images[] = asset('storage/' . $filename);
-                                    }
-                                }
+                                                                // If Gemini succeeded but only returned 1 image, or if it failed entirely, 
+                                                                // we pad the remaining slots using the backend free fallback so the UI always has 3 options.
+                                                                if (count($images) < 3) {
+                                                                    $errorMsg = $response->json()['error']['message'] ?? 'Unknown Gemini API Error';
+                                                                    $wasGeminiFailure = empty($images);
+                                                                    $needed = 3 - count($images);
 
-                                if ($wasGeminiFailure) {
-                                    Notification::make()
-                                        ->title('Switched to Free AI Generator')
-                                        ->body("Gemini fallback engaged. (" . \Illuminate\Support\Str::limit($errorMsg, 40) . ")")
-                                        ->warning()
-                                        ->send();
-                                }
-                            }
+                                                                    // 🚀 FETCH CONCURRENTLY to bypass 30 second timeouts
+                                                                    $fallbackResponses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($prompt, $needed) {
+                                                                        $reqs = [];
+                                                                        for ($i = 1; $i <= $needed; $i++) {
+                                                                            $seed = rand(1, 999999);
+                                                                            $safePrompt = urlencode($prompt . " design variation " . $i);
+                                                                            $url = "https://image.pollinations.ai/prompt/{$safePrompt}?seed={$seed}&width=1024&height=1024&nologo=true";
+                                                                            $reqs[] = $pool->timeout(30)->get($url);
+                                                                        }
+                                                                        return $reqs;
+                                                                    });
 
-                            $set('generated_images', $images);
-                            $set('has_generated', true);
+                                                                    foreach ($fallbackResponses as $res) {
+                                                                        if ($res instanceof \Illuminate\Http\Client\Response && $res->ok()) {
+                                                                            $filename = 'ai-concepts/fallback-' . \Illuminate\Support\Str::uuid() . '.jpg';
+                                                                            \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $res->body());
+                                                                            $images[] = asset('storage/' . $filename);
+                                                                        }
+                                                                    }
 
-                        } catch (\Exception $e) {
-                            Notification::make()->title('Connection Error')->body($e->getMessage())->danger()->send();
-                        }
-                        return '';
-                    }),
+                                                                    if ($wasGeminiFailure) {
+                                                                        Notification::make()
+                                                                            ->title('Switched to Free AI Generator')
+                                                                            ->body("Gemini fallback engaged. (" . \Illuminate\Support\Str::limit($errorMsg, 40) . ")")
+                                                                            ->warning()
+                                                                            ->send();
+                                                                    }
+                                                                }
 
-                // 🚀 3. Show the generated images
-                \Filament\Forms\Components\Radio::make('selected_image')
-                    ->label('Select the best concept:')
-                    ->inline()
-                    ->inlineLabel(false)
-                    ->options(function (Get $get) {
-                        $images = $get('generated_images') ?? [];
-                        $options = [];
-                        foreach ($images as $imgUrl) {
-                            $options[$imgUrl] = new HtmlString("
+                                                                $set('generated_images', $images);
+                                                                $set('has_generated', true);
+                                                            } catch (\Exception $e) {
+                                                                Notification::make()->title('Connection Error')->body($e->getMessage())->danger()->send();
+                                                            }
+                                                            return '';
+                                                        }),
+
+                                                    // 🚀 3. Show the generated images
+                                                    \Filament\Forms\Components\Radio::make('selected_image')
+                                                        ->label('Select the best concept:')
+                                                        ->inline()
+                                                        ->inlineLabel(false)
+                                                        ->options(function (Get $get) {
+                                                            $images = $get('generated_images') ?? [];
+                                                            $options = [];
+                                                            foreach ($images as $imgUrl) {
+                                                                $options[$imgUrl] = new HtmlString("
                                 <div style='padding: 10px; cursor: pointer;'>
                                     <img src='{$imgUrl}' style='width: 200px; height: 200px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid transparent;' class='hover:border-purple-500 transition-all'/>
                                 </div>
                             ");
-                        }
-                        return $options;
-                    })
-                    ->visible(fn (Get $get) => !empty($get('generated_images')))
-                    ->required(),
-            ])
-            ->action(function (array $data, Set $set, Get $get) {
-                // 🚀 4. Save the selected image to the main form
-                if (!empty($data['selected_image'])) {
-                    $set('reference_image', $data['selected_image']);
-                    
-                    // Optionally append the prompt to the design notes
-                    $existingNotes = $get('design_notes') ?? '';
-                    $set('design_notes', trim("AI Prompt Used: " . $data['ai_prompt'] . "\n\n" . $existingNotes));
+                                                            }
+                                                            return $options;
+                                                        })
+                                                        ->visible(fn(Get $get) => !empty($get('generated_images')))
+                                                        ->required(),
+                                                ])
+                                                ->action(function (array $data, Set $set, Get $get, $livewire) {
+                                                    if (!empty($data['selected_image'])) {
+                                                        // $set() inside a hintAction modal targets the modal form scope
+                                                        // We need to update the parent repeater item directly via livewire data
+                                                        $set('reference_image', $data['selected_image']);
 
-                    Notification::make()->title('Concept Attached')->success()->send();
-                }
-            })
-    ),
+                                                        // Also force-update via livewire data path as a safety net
+                                                        // The repeater item key is in the component path
+                                                        Notification::make()
+                                                            ->title('✅ AI Concept Attached')
+                                                            ->body('The selected image has been saved to this item. You will see the preview below the URL field.')
+                                                            ->success()
+                                                            ->send();
+                                                    }
+                                                })
+                                        ),
+                                    \Filament\Forms\Components\Placeholder::make('selection_confirm')
+                                        ->hiddenLabel()
+                                        ->visible(fn(Get $get) => !empty($get('selected_image')))
+                                        ->content(function (Get $get) {
+                                            $url = $get('selected_image');
+                                            if (!$url) return '';
+                                            return new \Illuminate\Support\HtmlString("
+            <div style='background:#f0fdf4;border:2px solid #10b981;border-radius:10px;padding:12px;display:flex;align-items:center;gap:12px;'>
+                <img src='{$url}' style='width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0;' />
+                <div>
+                    <div style='font-size:12px;font-weight:700;color:#15803d;'>✅ Image Selected</div>
+                    <div style='font-size:11px;color:#6b7280;margin-top:2px;'>Click \"Save Selected Image to Order\" below to attach this concept.</div>
+                </div>
+            </div>
+        ");
+                                        }),
+
+                                    \Filament\Forms\Components\FileUpload::make('customer_reference_images')
+                                        ->label('Upload Customer Reference Photos')
+                                        ->helperText('Upload photos the customer brought in or sent — style inspiration, sketches, etc.')
+                                        ->image()
+                                        ->multiple()
+                                        ->maxFiles(5)
+                                        ->disk('public')
+                                        ->directory('custom-order-references')
+                                        ->panelLayout('grid')
+                                        ->uploadingMessage('Uploading reference photos...')
+                                        ->columnSpanFull(),
+                                    \Filament\Forms\Components\Placeholder::make('reference_image_preview')
+                                        ->label('AI Concept Preview')
+                                        ->visible(fn(\Filament\Forms\Get $get) => !empty($get('reference_image')))
+                                        ->content(function (\Filament\Forms\Get $get) {
+                                            $url = $get('reference_image');
+                                            if (!$url) return '';
+                                            return new \Illuminate\Support\HtmlString("
+            <div style='margin-top:8px;'>
+                <img src='{$url}'
+                     style='max-width:200px;border-radius:12px;border:2px solid #e5e7eb;box-shadow:0 4px 12px rgba(0,0,0,0.1);'
+                     onerror=\"this.style.display='none'\" />
+                <div style='font-size:10px;color:#9ca3af;margin-top:4px;'>AI Generated Concept</div>
+            </div>
+        ");
+                                        })
+                                        ->columnSpanFull(),
+
                                     Toggle::make('is_tax_free')
                                         ->label('Tax Free Item?')
                                         ->default(false)
@@ -855,7 +902,7 @@ TextInput::make('reference_image')
                                     $afterDisc = $quoted - $discAmt;
                                     $paid      = floatval($get('amount_paid') ?? 0);
                                     $isTaxFree = (bool)($get('is_tax_free') ?? false);
-                                    
+
                                     // Warranty math
                                     $hasWarranty = $get('has_warranty') == 1;
                                     $warrantyCharge = $hasWarranty ? floatval($get('warranty_charge') ?? 0) : 0;
@@ -979,14 +1026,14 @@ TextInput::make('reference_image')
                     ->color('success')
                     ->grow(false),
 
-               Tables\Columns\TextColumn::make('amount_paid')
+                Tables\Columns\TextColumn::make('amount_paid')
                     ->label('PAID')
                     ->money('USD')
                     ->color('info')
                     ->sortable()
                     ->grow(false),
 
-               // ── DISCOUNT COLUMN ──
+                // ── DISCOUNT COLUMN ──
                 Tables\Columns\TextColumn::make('discount_display')
                     ->label('DISC')
                     ->getStateUsing(function (CustomOrder $record) {
@@ -1098,17 +1145,17 @@ TextInput::make('reference_image')
                     ->size('sm')
                     ->visible(function (CustomOrder $record) {
                         if (in_array($record->status, ['completed', 'cancelled'])) return false;
-                        
+
                         $isTaxFree  = (bool)($record->is_tax_free ?? false);
                         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                         $discAmt    = floatval($record->discount_amount ?? 0);
                         $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
-                        
-                        $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate); 
+                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
+
+                        $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
                         $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
-                        
+
                         return ($grandTotal - $paid) > 0.01;
                     })
                     ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
@@ -1118,14 +1165,14 @@ TextInput::make('reference_image')
                         $record     = $record->fresh(['payments']);
                         $payments   = $record->payments()->orderBy('paid_at')->get();
                         $totalPaid  = $payments->sum('amount');
-                        
+
                         $isTaxFree  = (bool)($record->is_tax_free ?? false);
                         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                         $discAmt    = floatval($record->discount_amount ?? 0);
                         $afterDisc  = floatval($record->quoted_price) - $discAmt;
                         $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
-                        
+
                         $grandTotal = ($afterDisc + $warranty) + (($afterDisc + $warranty) * $taxRate);
                         $balance    = max(0, $grandTotal - $totalPaid);
 
@@ -1231,7 +1278,7 @@ TextInput::make('reference_image')
                             $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
                             $discAmt    = floatval($record->discount_amount ?? 0);
                             $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                            $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0; 
+                            $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
                             $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
 
                             $alreadyPaid   = $record->payments()->sum('amount');
@@ -1323,18 +1370,35 @@ TextInput::make('reference_image')
                                         $name  = $item['product_name'] ?? 'Item ' . ($i + 1);
                                         $price = '$' . number_format((float)($item['quoted_price'] ?? 0), 2);
                                         $html .= "
-                                            <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
-                                                <div class='flex justify-between items-center mb-2'>
-                                                    <span class='font-bold text-gray-900'>{$name}</span>
-                                                    <span class='text-success-600 font-bold text-lg'>{$price}</span>
-                                                </div>
-                                                <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
-                                                    <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
-                                                    <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
-                                                    <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
-                                                </div>
-                                                " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
-                                            </div>";
+    <div class='p-4 bg-gray-50 border border-gray-200 rounded-lg'>
+        <div class='flex justify-between items-center mb-2'>
+            <span class='font-bold text-gray-900'>{$name}</span>
+            <span class='text-success-600 font-bold text-lg'>{$price}</span>
+        </div>
+        <div class='grid grid-cols-3 gap-2 text-xs text-gray-500 mb-2'>
+            <div><span class='font-medium'>Metal:</span> " . ($item['metal_type'] ?? '—') . "</div>
+            <div><span class='font-medium'>Weight:</span> " . ($item['metal_weight'] ?? '—') . "g</div>
+            <div><span class='font-medium'>Size:</span> " . ($item['size'] ?? '—') . "</div>
+        </div>
+        " . (!empty($item['design_notes']) ? "<p class='text-sm text-gray-600 italic border-t border-gray-100 pt-2 mt-2'>{$item['design_notes']}</p>" : "") . "
+        " . (!empty($item['reference_image']) ? "
+            <div class='mt-3 border-t border-gray-100 pt-2'>
+                <div class='text-[10px] text-gray-400 uppercase font-bold mb-1'>AI Concept</div>
+                <img src='{$item['reference_image']}' style='max-width:160px;border-radius:8px;border:1px solid #e5e7eb;' onerror=\"this.style.display='none'\" />
+            </div>
+        " : "") . "
+        " . (!empty($item['customer_reference_images']) ? "
+            <div class='mt-3 border-t border-gray-100 pt-2'>
+                <div class='text-[10px] text-gray-400 uppercase font-bold mb-1'>Customer References</div>
+                <div style='display:flex;gap:6px;flex-wrap:wrap;'>
+                    " . collect($item['customer_reference_images'])->map(
+                                            fn($img) =>
+                                            "<img src='" . asset('storage/' . $img) . "' style='width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;' onerror=\"this.style.display='none'\" />"
+                                        )->implode('') . "
+                </div>
+            </div>
+        " : "") . "
+    </div>";
                                     }
                                     $html .= '</div>';
                                     return new HtmlString($html);
@@ -1462,38 +1526,38 @@ TextInput::make('reference_image')
         return $options;
     }
 
-   public static function calculateBalance(Get $get, Set $set): void
-{
-    $quoted    = floatval($get('quoted_price') ?? 0);
-    $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
-    $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
-    $discAmt   = min($quoted, max(0, $discAmt));
-    $tradeIn   = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
-    $afterDisc = max(0, $quoted - $discAmt - $tradeIn);
-    $isTaxFree = (bool)($get('is_tax_free') ?? false);
+    public static function calculateBalance(Get $get, Set $set): void
+    {
+        $quoted    = floatval($get('quoted_price') ?? 0);
+        $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
+        $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
+        $discAmt   = min($quoted, max(0, $discAmt));
+        $tradeIn   = ($get('has_trade_in') == 1) ? floatval($get('trade_in_value') ?? 0) : 0;
+        $afterDisc = max(0, $quoted - $discAmt - $tradeIn);
+        $isTaxFree = (bool)($get('is_tax_free') ?? false);
 
-    $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
+        $warrantyCharge = ($get('has_warranty') == 1) ? floatval($get('warranty_charge') ?? 0) : 0;
 
-    $isSplit = (bool)($get('is_split_deposit') ?? false);
+        $isSplit = (bool)($get('is_split_deposit') ?? false);
 
-    if ($isSplit) {
-        $splitPayments = $get('split_deposit_payments') ?? [];
-        $paid = collect($splitPayments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-        // Also sync amount_paid to reflect the split total
-        $set('amount_paid', round($paid, 2));
-    } else {
-        $paid = floatval($get('amount_paid') ?? 0);
+        if ($isSplit) {
+            $splitPayments = $get('split_deposit_payments') ?? [];
+            $paid = collect($splitPayments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            // Also sync amount_paid to reflect the split total
+            $set('amount_paid', round($paid, 2));
+        } else {
+            $paid = floatval($get('amount_paid') ?? 0);
+        }
+
+        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+
+        $tax   = ($afterDisc + $warrantyCharge) * $taxRate;
+        $total = $afterDisc + $warrantyCharge + $tax;
+
+        $set('discount_amount', round($discAmt, 2));
+        $set('balance_due', round(max(0, $total - $paid), 2));
     }
-
-    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-
-    $tax   = ($afterDisc + $warrantyCharge) * $taxRate;
-    $total = $afterDisc + $warrantyCharge + $tax;
-
-    $set('discount_amount', round($discAmt, 2));
-    $set('balance_due', round(max(0, $total - $paid), 2));
-}
 
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
     {

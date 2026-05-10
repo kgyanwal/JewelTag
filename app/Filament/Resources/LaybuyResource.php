@@ -84,52 +84,53 @@ class LaybuyResource extends Resource
                             ->description('Scan or search items to put aside for this customer.')
                             ->icon('heroicon-o-archive-box')
                             ->schema([
-                                Select::make('item_search')
-                                    ->label('Add Item to Plan')
-                                    ->placeholder('Scan barcode or type item description...')
-                                    ->options(fn() => ProductItem::where('status', 'in_stock')->get()->mapWithKeys(fn($i) => [
-                                        $i->id => "{$i->barcode} - {$i->custom_description} (\${$i->retail_price})"
-                                    ]))
-                                    ->getSearchResultsUsing(function (string $search) {
-                                        return \App\Models\ProductItem::query()
-                                            ->where('status', 'on_hold')  // ✅ only reserved/held items
-                                            ->where(function ($q) use ($search) {
-                                                $q->where('barcode', 'like', "%{$search}%")
-                                                    ->orWhere('custom_description', 'like', "%{$search}%");
-                                            })
-                                            ->limit(50)
-                                            ->get()
-                                            ->mapWithKeys(fn($i) => [
-                                                $i->id => "{$i->barcode} — " . \Illuminate\Support\Str::limit($i->custom_description ?? '', 35)
-                                                    . " (\${$i->retail_price})"
-                                            ]);
-                                    })
-                                    ->searchable()
-                                    ->dehydrated(false)
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if (!$state) return;
+                              Select::make('item_search')
+    ->label('Add Item to Plan')
+    ->placeholder('Scan barcode or type item description...')
+    // Show a default list of available stock before they type
+    ->options(fn() => ProductItem::where('status', 'in_stock')->limit(50)->get()->mapWithKeys(fn($i) => [
+        $i->id => "{$i->barcode} - {$i->custom_description} (\${$i->retail_price})"
+    ]))
+    ->getSearchResultsUsing(function (string $search) {
+        return \App\Models\ProductItem::query()
+            ->where('status', 'in_stock')  // 🚀 THE FIX: Search for items currently IN STOCK!
+            ->where(function ($q) use ($search) {
+                $q->where('barcode', 'like', "%{$search}%")
+                    ->orWhere('custom_description', 'like', "%{$search}%");
+            })
+            ->limit(50)
+            ->get()
+            ->mapWithKeys(fn($i) => [
+                $i->id => "{$i->barcode} — " . \Illuminate\Support\Str::limit($i->custom_description ?? '', 35)
+                    . " (\${$i->retail_price})"
+            ]);
+    })
+    ->searchable()
+    ->dehydrated(false)
+    ->live()
+    ->afterStateUpdated(function ($state, Set $set, Get $get) {
+        if (!$state) return;
 
-                                        $item = ProductItem::find($state);
-                                        $items = $get('layby_items') ?? [];
+        $item = ProductItem::find($state);
+        $items = $get('layby_items') ?? [];
 
-                                        if (collect($items)->contains('product_item_id', $state)) {
-                                            Notification::make()->title('Item already added')->warning()->send();
-                                            $set('item_search', null);
-                                            return;
-                                        }
+        if (collect($items)->contains('product_item_id', $state)) {
+            Notification::make()->title('Item already added')->warning()->send();
+            $set('item_search', null);
+            return;
+        }
 
-                                        $items[] = [
-                                            'product_item_id' => $item->id,
-                                            'barcode' => $item->barcode,
-                                            'description' => $item->custom_description,
-                                            'price' => $item->retail_price,
-                                        ];
+        $items[] = [
+            'product_item_id' => $item->id,
+            'barcode' => $item->barcode,
+            'description' => $item->custom_description,
+            'price' => $item->retail_price,
+        ];
 
-                                        $set('layby_items', $items);
-                                        $set('item_search', null);
-                                        self::calculateTotals($get, $set);
-                                    }),
+        $set('layby_items', $items);
+        $set('item_search', null);
+        self::calculateTotals($get, $set);
+    }),
 
                                 Repeater::make('layby_items')
                                     ->label('Items reserved in this agreement')
