@@ -160,7 +160,7 @@ class EditSale extends EditRecord
                         $data['items'][$key]['stock_no_display']    = $productItem->barcode;
                         $data['items'][$key]['custom_description']  = $item['custom_description'] ?? $productItem->custom_description ?? $productItem->barcode;
                         $data['items'][$key]['sold_price']          = $item['sold_price'] ?? $productItem->retail_price;
-                        $data['items'][$key]['sale_price_override'] = $item['sale_price_override'] ?? ($productItem->retail_price * ($item['qty'] ?? 1));
+                        $data['items'][$key]['sale_price_override'] = $item['sale_price_override'] ?? (($item['sold_price'] * ($item['qty'] ?? 1)) - ($item['discount_amount'] ?? 0));
                     }
                 }
                 // 3. Handle Repair Items
