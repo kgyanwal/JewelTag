@@ -55,7 +55,7 @@
         // Payment number (which payment is this?)
         $allPayments1 = $sale->payments()->orderBy('paid_at')->get()->map(fn($p) => ['id' => $p->id, 'source' => 'payments', 'date' => $p->paid_at]);
         $allPayments2 = $sale->salePayments()->orderBy('payment_date')->get()->map(fn($p) => ['id' => $p->id, 'source' => 'sale_payments', 'date' => $p->payment_date]);
-        $allSorted    = $allPayments1->merge($allPayments2)->sortBy('date')->values();
+        $allSorted = $allPayments1->concat($allPayments2)->sortBy('date')->values();
         $paymentIndex = $allSorted->search(fn($p) => $p['id'] == $payment->id && $p['source'] == $source);
         $paymentNum   = $paymentIndex !== false ? $paymentIndex + 1 : '?';
         $totalPayments = $allSorted->count();
