@@ -31,11 +31,11 @@ class ActivityLogResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('created_at')
-                    ->label('DATE')
-                    ->dateTime('M d, Y h:i:s A')
-                    ->sortable()
-                    ->timezone(fn () => \App\Models\Store::first()->timezone ?? 'America/Denver'),
+               Tables\Columns\TextColumn::make('created_at')
+    ->label('DATE')
+    ->dateTime('M d, Y h:i:s A')
+    ->sortable()
+    ->timezone(fn () => config('app.timezone', 'America/Denver')),
 
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('STAFF NAME')
@@ -133,7 +133,7 @@ class ActivityLogResource extends Resource
                     ])
                  ->query(function (Builder $query, array $data): Builder {
     // 🚀 1. Get the store's timezone
-    $storeTimezone = \App\Models\Store::first()->timezone ?? 'America/Denver';
+    $storeTimezone = config('app.timezone', 'America/Denver');
 
     return $query
         ->when($data['user_id'], fn ($q, $v) => $q->where('user_id', $v))

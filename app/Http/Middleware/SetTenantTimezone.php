@@ -8,20 +8,35 @@ use App\Models\Store;
 
 class SetTenantTimezone
 {
-    public function handle(Request $request, Closure $next)
-    {
-        // Check if a tenant is initialized
-        if (tenancy()->initialized) {
-            // Get the timezone from your Store model
-            $store = Store::first(); 
-            
-            if ($store && $store->timezone) {
-                // This overrides config('app.timezone') for the duration of this request only
-                config(['app.timezone' => $store->timezone]);
-                date_default_timezone_set($store->timezone);
-            }
+   public function handle(Request $request, Closure $next)
+{
+    if (function_exists('tenancy') && tenancy()->initialized) {
+        $store = Store::first();
+        if ($store && $store->timezone) {
+            config(['app.timezone' => $store->timezone]);
+            date_default_timezone_set($store->timezone);
         }
-
-        return $next($request);
     }
+
+    // Also try to initialize from domain if not yet initialized
+    if (function_exists('tenancy') && !tenancy()->initialized) {
+        try {
+            $domain = \Stancl\Tenancy\Database\Models\Domain::where('domain', $request->getHost())->first();
+            if ($domain) {
+                tenancy()->initialize($domain->tenant);
+                $store = Store::first();
+                if ($store && $store->timezone) {
+                    config(['app.timezone' => $store->timezone]);
+                    date_default_timezone_set($store->timezone);
+                }
+            }
+        } catch (\Exception $e) {
+            // silent
+        }
+    }
+
+    return $next($request);
+}
+
+    
 }
