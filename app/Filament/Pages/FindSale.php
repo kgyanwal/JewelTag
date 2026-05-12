@@ -47,8 +47,8 @@ class FindSale extends Page implements HasForms, HasTable
     public function updated($property): void
     {
         if (str_starts_with($property, 'data.')) {
+            $this->resetPage();
             $this->resetTable();
-            $this->dispatch('$refresh');
         }
     }
     public static function getServiceTypeOptions(): array
@@ -73,14 +73,22 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->placeholder('e.g. Tiffany pendant, Marquise ring, R1234...')
                                 ->prefixIcon('heroicon-o-magnifying-glass')
                                 ->helperText('Searches item descriptions, job notes, invoice #, and customer name')
-                                ->live(onBlur: true)
+                                ->live(debounce: 600)
+                                ->afterStateUpdated(function () {
+                                    $this->resetPage();
+                                    $this->resetTable();
+                                })
                                 ->columnSpanFull(),
                             // ── Use live(onBlur: true) instead of ->live()
                             //    This fires only when the user tabs/clicks away,
                             //    not on every single keypress
                             TextInput::make('invoice_number')
                                 ->label('Invoice / Job #')
-                                ->live(onBlur: true),   // ← WAS: ->live()
+                                ->live(debounce: 600)
+                                ->afterStateUpdated(function () {
+                                    $this->resetPage();
+                                    $this->resetTable();
+                                }),
 
                             TextInput::make('staff_name')
                                 ->label('Sales Staff')
@@ -211,10 +219,10 @@ class FindSale extends Page implements HasForms, HasTable
                         $this->data['date_from'] ?? null,
                         fn($q, $v) => $q->whereDate('created_at', '>=', $v)
                     )
-                   ->when(
-    !$this->getTableSortColumn(),
-    fn($q) => $q->latest('created_at')
-)
+                    ->when(
+                        !$this->getTableSortColumn(),
+                        fn($q) => $q->latest('created_at')
+                    )
             )
             ->columns([
                 TextColumn::make('created_at')
