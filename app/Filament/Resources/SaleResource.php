@@ -1366,9 +1366,7 @@ class SaleResource extends Resource
     'id'       => $p->id,
 ]);
  
-           $allPayments = $payments1->concat($payments2)->sortByDesc(function ($p) {
-    return \Carbon\Carbon::parse($p['date'] . ' ' . $p['time'])->timestamp;
-})->values();
+           $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
             $grandTotal  = floatval($record->final_total);
             $running     = 0;
             $customer    = $record->customer;
@@ -1376,70 +1374,82 @@ class SaleResource extends Resource
             $custPhone   = $customer?->phone ?? '—';
             $invoiceNo   = $record->invoice_number;
  
-            $rows = '';
-            foreach ($allPayments as $index => $p) {
-                $num        = $index + 1;
-                $running   += $p['amount'];
-                $balance    = max(0, $grandTotal - $running);
-                $balColor   = $balance <= 0 ? '#16a34a' : '#dc2626';
-                $balLabel   = $balance <= 0 ? '✅ Paid in Full' : '$' . number_format($balance, 2) . ' remaining';
-                $amountFmt  = number_format($p['amount'], 2);
-                $runningFmt = number_format($running, 2);
-                $timeHtml   = !empty($p['time'])
-                    ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>"
-                    : '';
-                $sourceLabel = ucfirst(str_replace('_', ' ', $p['source']));
-                $method      = $p['method'];
-                $date        = $p['date'];
- 
-                $receiptUrl = route('sales.payment-receipt', [
-    'record'     => $record->id,
-    'source'     => $p['source'],
-    'payment_id' => $p['id'],
-]);
- 
-                $rows .= "
-                    <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;
-                                margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
-                        <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
-                            <div>
-                                <div style='font-size:13px;font-weight:800;color:#1e293b;'>
-                                    #{$num} — {$date} {$timeHtml}
-                                </div>
-                                <div style='margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
-                                    <span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;
-                                                 border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;'>
-                                        {$method}
-                                    </span>
-                                    <span style='font-size:12px;color:#64748b;'>via {$sourceLabel}</span>
-                                </div>
-                                <div style='margin-top:6px;font-size:11px;color:{$balColor};font-weight:600;'>
-                                    {$balLabel}
-                                </div>
-                            </div>
-                            <div style='text-align:right;'>
-                                <div style='font-size:20px;font-weight:900;color:#10b981;'>
-                                    +\${$amountFmt}
-                                </div>
-                                <div style='margin-top:6px;'>
-                                    <a href='{$receiptUrl}' target='_blank'
-                                       style='display:inline-block;background:#0ea5e9;color:#fff;
-                                              border-radius:6px;padding:4px 12px;font-size:11px;
-                                              font-weight:700;text-decoration:none;'>
-                                        🖨️ Print Receipt
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                        <div style='margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb;
-                                    display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:#64748b;'>
-                            <div><span style='font-weight:600;color:#374151;'>Customer:</span> {$custName}</div>
-                            <div><span style='font-weight:600;color:#374151;'>Phone:</span> {$custPhone}</div>
-                            <div><span style='font-weight:600;color:#374151;'>Invoice:</span> {$invoiceNo}</div>
-                            <div><span style='font-weight:600;color:#374151;'>Running Total Paid:</span> \${$runningFmt}</div>
-                        </div>
-                    </div>";
-            }
+
+            $paymentsWithBalance = [];
+$running = 0;
+foreach ($allPayments as $index => $p) {
+    $running += $p['amount'];
+    $balance  = max(0, $grandTotal - $running);
+    $paymentsWithBalance[] = array_merge($p, [
+        'running' => $running,
+        'balance' => $balance,
+        'num'     => $index + 1,
+    ]);
+}
+           $rows = '';
+foreach (array_reverse($paymentsWithBalance) as $p) {
+    $num        = $p['num'];
+    $balance    = $p['balance'];
+    $running    = $p['running'];
+    $balColor   = $balance <= 0 ? '#16a34a' : '#dc2626';
+    $balLabel   = $balance <= 0 ? '✅ Paid in Full' : '$' . number_format($balance, 2) . ' remaining';
+    $amountFmt  = number_format($p['amount'], 2);
+    $runningFmt = number_format($running, 2);
+    $timeHtml   = !empty($p['time'])
+        ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>"
+        : '';
+    $sourceLabel = ucfirst(str_replace('_', ' ', $p['source']));
+    $method      = $p['method'];
+    $date        = $p['date'];
+
+    $receiptUrl = route('sales.payment-receipt', [
+        'record'     => $record->id,
+        'source'     => $p['source'],
+        'payment_id' => $p['id'],
+    ]);
+
+    $rows .= "
+        <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;
+                    margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
+            <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                <div>
+                    <div style='font-size:13px;font-weight:800;color:#1e293b;'>
+                        #{$num} — {$date} {$timeHtml}
+                    </div>
+                    <div style='margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
+                        <span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;
+                                     border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;'>
+                            {$method}
+                        </span>
+                        <span style='font-size:12px;color:#64748b;'>via {$sourceLabel}</span>
+                    </div>
+                    <div style='margin-top:6px;font-size:11px;color:{$balColor};font-weight:600;'>
+                        {$balLabel}
+                    </div>
+                </div>
+                <div style='text-align:right;'>
+                    <div style='font-size:20px;font-weight:900;color:#10b981;'>
+                        +\${$amountFmt}
+                    </div>
+                    <div style='margin-top:6px;'>
+                        <a href='{$receiptUrl}' target='_blank'
+                           style='display:inline-block;background:#0ea5e9;color:#fff;
+                                  border-radius:6px;padding:4px 12px;font-size:11px;
+                                  font-weight:700;text-decoration:none;'>
+                            🖨️ Print Receipt
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div style='margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb;
+                        display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:#64748b;'>
+                <div><span style='font-weight:600;color:#374151;'>Customer:</span> {$custName}</div>
+                <div><span style='font-weight:600;color:#374151;'>Phone:</span> {$custPhone}</div>
+                <div><span style='font-weight:600;color:#374151;'>Invoice:</span> {$invoiceNo}</div>
+                <div><span style='font-weight:600;color:#374151;'>Running Total Paid:</span> \${$runningFmt}</div>
+            </div>
+        </div>";
+}
  
             $totalPaid    = $allPayments->sum('amount');
             $finalBal     = max(0, $grandTotal - $totalPaid);
