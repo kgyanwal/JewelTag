@@ -50,6 +50,9 @@ Route::middleware([
 Route::get('/repairs/{repair}/print', [ReceiptController::class, 'printRepair'])
     ->name('repair.print')
     ->middleware(['auth']);
+  Route::get('/sales/{record}/payment-receipt/{source}/{payment_id}', [ReceiptController::class, 'paymentReceipt'])
+    ->name('sales.payment-receipt')
+    ->middleware(['auth']);  
 Route::get('/custom-order-receipt/{customOrder}', [ReceiptController::class, 'customOrderReceipt'])
     ->name('custom-orders.deposit-receipt');
 Route::get('/laybuys/{laybuy}/print', [ReceiptController::class, 'printLaybuy'])

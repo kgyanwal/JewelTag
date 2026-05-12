@@ -137,4 +137,23 @@ public function printLaybuy(Request $request, \App\Models\Laybuy $laybuy)
         $pdf->setPaper('letter', 'portrait');
         return $pdf->stream("LAYBUY_{$laybuy->laybuy_no}.pdf");
     }
+
+    public function paymentReceipt(Request $request, Sale $record, string $source, int $payment_id)
+{
+    $sale = $record->load([
+        'customer', 'store', 'items.productItem',
+        'items.customOrder', 'items.repair',
+        'payments', 'salePayments', 'laybuy',
+    ]);
+
+    if ($source === 'sale_payments') {
+        $payment = \App\Models\SalePayment::findOrFail($payment_id);
+    } else {
+        $payment = \App\Models\Payment::findOrFail($payment_id);
+    }
+
+    abort_if($payment->sale_id !== $sale->id, 403, 'Payment does not belong to this sale.');
+
+    return view('receipts.payment_receipt', compact('sale', 'payment', 'source'));
+}
 }

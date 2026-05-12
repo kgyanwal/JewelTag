@@ -167,22 +167,30 @@ body, .fi-body {
 .fi-logo { padding: 0.25rem; }
 
 /* ── NAV — no wrap ────────────────────────── */
-.fi-topbar nav {
+/* ONLY navigation menu items */
+.fi-topbar nav > ul {
+    display: flex !important;
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     scrollbar-width: none !important;
 }
-.fi-topbar nav::-webkit-scrollbar { display: none !important; }
-.fi-topbar nav button,
-.fi-topbar nav a {
+
+.fi-topbar nav > ul::-webkit-scrollbar {
+    display: none !important;
+}
+
+/* ONLY top menu links/buttons */
+.fi-topbar nav > ul > li > a,
+.fi-topbar nav > ul > li > button {
     white-space: nowrap !important;
     font-size: 0.82rem !important;
     padding: 6px 12px !important;
     border-radius: 6px !important;
     transition: background 0.15s !important;
 }
-.fi-topbar nav button:hover,
-.fi-topbar nav a:hover {
+
+.fi-topbar nav > ul > li > a:hover,
+.fi-topbar nav > ul > li > button:hover {
     background: rgba(13,148,136,0.1) !important;
     color: #0d9488 !important;
 }

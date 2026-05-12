@@ -15,6 +15,7 @@ use Filament\Tables\Filters\Filter;
 use App\Forms\Components\CustomDatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\DB;
 
 class SoldStockReport extends Page implements HasTable
 {
@@ -47,13 +48,11 @@ class SoldStockReport extends Page implements HasTable
                     ->limit(50)
                     ->searchable(),
 
-                // 🚀 CUSTOMER INFORMATION INTEGRATION
                 TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        // Find the sale item that matches this product
                         $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)->first();
-                        $sale = $saleItem ? $saleItem->sale : null;
+                        $sale     = $saleItem ? $saleItem->sale : null;
                         $customer = $sale ? $sale->customer : null;
 
                         if (!$customer) return 'No Customer Data';
@@ -85,12 +84,15 @@ class SoldStockReport extends Page implements HasTable
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
-                            ->when($data['from'], fn($q) => $q->whereDate('updated_at', '>=', $data['from']))
+                            ->when($data['from'],  fn($q) => $q->whereDate('updated_at', '>=', $data['from']))
                             ->when($data['until'], fn($q) => $q->whereDate('updated_at', '<=', $data['until']));
                     }),
-                
+
                 SelectFilter::make('category')
-                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->flatten()->mapWithKeys(fn($i) => [$i => $i])->toArray()),
+                    ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])
+                        ->flatten()
+                        ->mapWithKeys(fn($i) => [$i => $i])
+                        ->toArray()),
             ])
             ->actions([
                 \Filament\Tables\Actions\Action::make('view_sale')
@@ -99,7 +101,73 @@ class SoldStockReport extends Page implements HasTable
                     ->color('info')
                     ->url(function ($record) {
                         $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)->first();
-                        return $saleItem ? \App\Filament\Resources\SaleResource::getUrl('view', ['record' => $saleItem->sale_id]) : null;
+                        return $saleItem
+                            ? \App\Filament\Resources\SaleResource::getUrl('view', ['record' => $saleItem->sale_id])
+                            : null;
+                    }),
+
+                \Filament\Tables\Actions\Action::make('restock')
+                    ->label('Restock')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->visible(fn() => auth()->user()?->hasRole('Superadmin'))
+                    ->form([
+                        \Filament\Forms\Components\Select::make('reason')
+                            ->label('Reason for Restock')
+                            ->options([
+                                'returned_by_customer' => 'Returned by Customer',
+                                'sale_cancelled'       => 'Sale Cancelled / Voided',
+                                'incorrect_sale'       => 'Incorrect Sale Entry',
+                                'consignment_returned' => 'Consignment Returned',
+                                'damaged_exchange'     => 'Damaged — Exchange',
+                                'trade_in_reversal'    => 'Trade-In Reversal',
+                                'admin_correction'     => 'Admin Correction',
+                                'other'                => 'Other',
+                            ])
+                            ->required()
+                            ->searchable(),
+
+                        \Filament\Forms\Components\Textarea::make('notes')
+                            ->label('Additional Notes')
+                            ->placeholder('Optional details about this restock...')
+                            ->rows(3),
+                    ])
+                    ->requiresConfirmation()
+                    ->modalHeading('Restock Item')
+                    ->modalDescription('This will mark the item as available again. Please provide a reason.')
+                    ->modalSubmitActionLabel('Confirm Restock')
+                    ->action(function ($record, array $data) {
+                        // Update product status back to active
+                        $record->update(['status' => 'active']);
+
+                        // Log using DB directly — avoids activity() helper namespace issue
+                        try {
+                            DB::table('activity_log')->insert([
+                                'log_name'     => 'Inventory',
+                                'description'  => 'Item restocked. Reason: ' . $data['reason'],
+                                'subject_type' => ProductItem::class,
+                                'subject_id'   => $record->id,
+                                'causer_type'  => get_class(auth()->user()),
+                                'causer_id'    => auth()->id(),
+                                'properties'   => json_encode([
+                                    'reason'          => $data['reason'],
+                                    'notes'           => $data['notes'] ?? null,
+                                    'previous_status' => 'sold',
+                                    'new_status'      => 'active',
+                                ]),
+                                'event'        => 'restocked',
+                                'created_at'   => now(),
+                                'updated_at'   => now(),
+                            ]);
+                        } catch (\Exception $e) {
+                            // Silent — restock completes even if log fails
+                        }
+
+                        \Filament\Notifications\Notification::make()
+                            ->title('Item Restocked')
+                            ->body("'{$record->barcode}' is now active in inventory.")
+                            ->success()
+                            ->send();
                     }),
             ]);
     }
@@ -108,7 +176,7 @@ class SoldStockReport extends Page implements HasTable
     {
         return [
             'totalSoldValue' => ProductItem::where('status', 'sold')->sum('retail_price'),
-            'soldCount' => ProductItem::where('status', 'sold')->count(),
+            'soldCount'      => ProductItem::where('status', 'sold')->count(),
         ];
     }
 }
