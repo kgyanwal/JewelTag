@@ -1343,28 +1343,32 @@ class SaleResource extends Resource
             $payments1 = $record->payments()
                 ->orderBy('paid_at')
                 ->get()
-                ->map(fn($p) => [
-                    'date'   => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
-                    'time'   => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
-                    'method' => strtoupper($p->method ?? '—'),
-                    'amount' => floatval($p->amount),
-                    'source' => 'payments',
-                    'id'     => $p->id,
-                ]);
+               ->map(fn($p) => [
+    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+    'method'   => strtoupper($p->method ?? '—'),
+    'amount'   => floatval($p->amount),
+    'source'   => 'payments',
+    'id'       => $p->id,
+]);
  
             $payments2 = $record->salePayments()
                 ->orderBy('payment_date')
                 ->get()
-                ->map(fn($p) => [
-                    'date'   => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
-                    'time'   => '',
-                    'method' => strtoupper($p->payment_method ?? '—'),
-                    'amount' => floatval($p->amount),
-                    'source' => 'sale_payments',
-                    'id'     => $p->id,
-                ]);
+               ->map(fn($p) => [
+    'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
+    'time'     => '',
+    'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
+    'method'   => strtoupper($p->payment_method ?? '—'),
+    'amount'   => floatval($p->amount),
+    'source'   => 'sale_payments',
+    'id'       => $p->id,
+]);
  
-           $allPayments = $payments1->concat($payments2)->sortByDesc('date')->values();
+           $allPayments = $payments1->concat($payments2)->sortByDesc(function ($p) {
+    return \Carbon\Carbon::parse($p['date'] . ' ' . $p['time'])->timestamp;
+})->values();
             $grandTotal  = floatval($record->final_total);
             $running     = 0;
             $customer    = $record->customer;
