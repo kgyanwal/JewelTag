@@ -1364,7 +1364,7 @@ class SaleResource extends Resource
                     'id'     => $p->id,
                 ]);
  
-            $allPayments = $payments1->concat($payments2)->sortBy('date')->values();
+           $allPayments = $payments1->concat($payments2)->sortByDesc('date')->values();
             $grandTotal  = floatval($record->final_total);
             $running     = 0;
             $customer    = $record->customer;
