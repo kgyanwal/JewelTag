@@ -37,20 +37,29 @@ class FindSale extends Page implements HasForms, HasTable
 
     public ?array $data = [];
 
-    public function mount(): void
-    {
-        $this->form->fill();
-    }
+  public function mount(): void
+{
+    $this->form->fill([
+        'keyword'        => null,
+        'invoice_number' => null,
+        'staff_name'     => null,
+        'first_name'     => null,
+        'last_name'      => null,
+        'phone'          => null,
+        'payment_method' => null,
+        'date_from'      => null,
+        'job_type'       => null,
+    ]);
+}
 
     // ── Only reset the table when the user STOPS typing (debounced via onBlur)
     //    NOT on every keystroke — this is the #1 performance fix
-    public function updated($property): void
-    {
-        if (str_starts_with($property, 'data.')) {
-            $this->resetPage();
-            $this->resetTable();
-        }
+   public function updated($property): void
+{
+    if (str_starts_with($property, 'data.')) {
+        $this->resetTable();
     }
+}
     public static function getServiceTypeOptions(): array
     {
         $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
@@ -132,19 +141,20 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->icon('heroicon-o-x-circle')
                                 ->color('gray')
                                 ->outlined()
-                                ->action(function () {
-                                    $this->form->fill([
-                                        'invoice_number' => null,
-                                        'staff_name'     => null,
-                                        'first_name'     => null,
-                                        'last_name'      => null,
-                                        'phone'          => null,
-                                        'payment_method' => null,
-                                        'date_from'      => null,
-                                        'job_type'       => null,
-                                    ]);
-                                    $this->resetTable();
-                                }),
+                               ->action(function () {
+    $this->form->fill([
+        'keyword'        => null,
+        'invoice_number' => null,
+        'staff_name'     => null,
+        'first_name'     => null,
+        'last_name'      => null,
+        'phone'          => null,
+        'payment_method' => null,
+        'date_from'      => null,
+        'job_type'       => null,
+    ]);
+    $this->resetTable();
+}),
                         ]),
                     ]),
             ]);
