@@ -179,30 +179,31 @@ class ProductItemResource extends Resource
                                 ->label('Select Stock:')
                                 ->placeholder('SEARCH FILTERED ITEMS...')
                                 // 🚀 THE LOGIC: This dropdown now changes based on the filters above
-                              ->getSearchResultsUsing(function (string $search, Get $get) {
-    $query = ProductItem::withTrashed();
+                                ->getSearchResultsUsing(function (string $search, Get $get) {
+                                    $query = ProductItem::withTrashed();
 
-    if ($get('filter_vendor'))   $query->where('supplier_id', $get('filter_vendor'));
-    if ($get('filter_dept'))     $query->where('department', $get('filter_dept'));
-    if ($get('filter_category')) $query->where('category', $get('filter_category'));
+                                    if ($get('filter_vendor'))   $query->where('supplier_id', $get('filter_vendor'));
+                                    if ($get('filter_dept'))     $query->where('department', $get('filter_dept'));
+                                    if ($get('filter_category')) $query->where('category', $get('filter_category'));
 
-    return $query
-        ->where(fn($q) => $q
-            ->where('barcode', 'like', "%{$search}%")
-            ->orWhere('custom_description', 'like', "%{$search}%")
-            ->orWhere('supplier_code', 'like', "%{$search}%")
-        )
-        ->orderByRaw("CASE WHEN barcode = ? THEN 0 WHEN barcode LIKE ? THEN 1 ELSE 2 END", [$search, "{$search}%"])
-        ->limit(50)
-        ->get()
-        ->mapWithKeys(fn($i) => [
-            $i->id => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
-        ]);
-})
-->getOptionLabelUsing(fn($value) => optional(
-    ProductItem::withTrashed()->find($value),
-    fn($i) => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
-))
+                                    return $query
+                                        ->where(
+                                            fn($q) => $q
+                                                ->where('barcode', 'like', "%{$search}%")
+                                                ->orWhere('custom_description', 'like', "%{$search}%")
+                                                ->orWhere('supplier_code', 'like', "%{$search}%")
+                                        )
+                                        ->orderByRaw("CASE WHEN barcode = ? THEN 0 WHEN barcode LIKE ? THEN 1 ELSE 2 END", [$search, "{$search}%"])
+                                        ->limit(50)
+                                        ->get()
+                                        ->mapWithKeys(fn($i) => [
+                                            $i->id => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
+                                        ]);
+                                })
+                                ->getOptionLabelUsing(fn($value) => optional(
+                                    ProductItem::withTrashed()->find($value),
+                                    fn($i) => "{$i->barcode} [{$i->status}] - " . Str::limit($i->custom_description, 30)
+                                ))
                                 ->searchable()
                                 ->live()
                                 ->required(fn(Get $get) => $get('entry_type') === 'copy')

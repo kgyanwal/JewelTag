@@ -137,8 +137,11 @@ class SoldStockReport extends Page implements HasTable
                     ->modalDescription('This will mark the item as available again. Please provide a reason.')
                     ->modalSubmitActionLabel('Confirm Restock')
                     ->action(function ($record, array $data) {
-                        // Update product status back to active
-                        $record->update(['status' => 'active']);
+                        // Update product status back to in_stock
+                      $record->update([
+        'status' => 'in_stock',
+        'qty'    => 1,
+    ]);
 
                         // Log using DB directly — avoids activity() helper namespace issue
                         try {
@@ -153,7 +156,7 @@ class SoldStockReport extends Page implements HasTable
                                     'reason'          => $data['reason'],
                                     'notes'           => $data['notes'] ?? null,
                                     'previous_status' => 'sold',
-                                    'new_status'      => 'active',
+                                    'new_status'      => 'in_stock',
                                 ]),
                                 'event'        => 'restocked',
                                 'created_at'   => now(),
@@ -165,7 +168,7 @@ class SoldStockReport extends Page implements HasTable
 
                         \Filament\Notifications\Notification::make()
                             ->title('Item Restocked')
-                            ->body("'{$record->barcode}' is now active in inventory.")
+                            ->body("'{$record->barcode}' is now in_stock in inventory.")
                             ->success()
                             ->send();
                     }),

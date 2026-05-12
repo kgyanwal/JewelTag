@@ -211,7 +211,10 @@ class FindSale extends Page implements HasForms, HasTable
                         $this->data['date_from'] ?? null,
                         fn($q, $v) => $q->whereDate('created_at', '>=', $v)
                     )
-                    ->latest()
+                   ->when(
+    !$this->getTableSortColumn(),
+    fn($q) => $q->latest('created_at')
+)
             )
             ->columns([
                 TextColumn::make('created_at')
@@ -705,6 +708,7 @@ class FindSale extends Page implements HasForms, HasTable
                     ->button()
                     ->outlined(),
             ])
+            ->defaultSort('created_at', 'desc')
             ->defaultPaginationPageOption(15)  // ← show 15 rows, not 25 (reduces render load)
             ->paginationPageOptions([10, 15, 25, 50]);
     }
