@@ -31,6 +31,7 @@ class EndOfDayClosing extends Page
     public ?float $dailyTarget   = null;
     public string $debugTarget = '';
     public ?float $monthlyActual = null;
+    public ?float $lastYearDaySales = null;
     public function mount(): void
     {
         $tz         = Store::first()?->timezone ?? config('app.timezone', 'UTC');
@@ -267,5 +268,13 @@ class EndOfDayClosing extends Page
 
         $this->monthlyActual = \App\Models\Payment::whereBetween('paid_at', [$startOfMonth, $endOfDay])
             ->sum('amount');
+
+            // Last year same day sales
+$lastYearDate     = \Carbon\Carbon::parse($this->date)->subYear();
+$lastYearStartUtc = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->startOfDay()->setTimezone('UTC');
+$lastYearEndUtc   = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->endOfDay()->setTimezone('UTC');
+
+$this->lastYearDaySales = \App\Models\Payment::whereBetween('paid_at', [$lastYearStartUtc, $lastYearEndUtc])
+    ->sum('amount');
     }
 }

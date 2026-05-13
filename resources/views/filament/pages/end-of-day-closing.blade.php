@@ -507,7 +507,42 @@
                     </span>
                 </div>
             </div>
+<div style="width:1px;height:60px;background:#bae6fd;flex-shrink:0;"></div>
 
+{{-- Last Year Same Day --}}
+@php
+    $lyDate       = \Carbon\Carbon::parse($date)->subYear()->format('M d, Y');
+    $lyVal        = $lastYearDaySales ?? 0;
+    $lyDiff       = $totalActualSum - $lyVal;
+    $lyDiffSign   = $lyDiff >= 0 ? '+' : '-';
+    $lyDiffColor  = $lyDiff >= 0 ? '#10b981' : '#ef4444';
+    $lyDiffLabel  = $lyDiff >= 0 ? '▲' : '▼';
+    $lyPct        = $lyVal > 0 ? round((abs($lyDiff) / $lyVal) * 100) : 0;
+@endphp
+<div style="min-width:180px;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;font-weight:700;color:#0369a1;">📊 vs Last Year</span>
+        <span style="font-size:11px;font-weight:700;color:{{ $lyDiffColor }};">
+            {{ $lyDiffLabel }} {{ $lyPct }}%
+        </span>
+    </div>
+    <div style="height:10px;border-radius:5px;background:#bae6fd;overflow:hidden;position:relative;">
+        {{-- Last year bar (gray baseline) --}}
+        @if($lyVal > 0 || $totalActualSum > 0)
+            @php $maxVal = max($lyVal, $totalActualSum, 1); @endphp
+            <div style="position:absolute;top:0;left:0;height:100%;width:{{ min(100, round(($lyVal/$maxVal)*100)) }}%;background:#94a3b8;border-radius:5px;opacity:0.4;"></div>
+            <div style="position:absolute;top:0;left:0;height:100%;width:{{ min(100, round(($totalActualSum/$maxVal)*100)) }}%;background:{{ $lyDiffColor }};border-radius:5px;transition:width 0.5s;"></div>
+        @endif
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+        <span style="color:#94a3b8;">
+            {{ $lyVal > 0 ? '$'.number_format($lyVal, 0).' ('.$lyDate.')' : 'No data '.$lyDate }}
+        </span>
+        <span style="color:{{ $lyDiffColor }};font-weight:600;">
+            {{ $lyDiffSign }}${{ number_format(abs($lyDiff), 0) }}
+        </span>
+    </div>
+</div>
         </div>
     </div>
 </div>
