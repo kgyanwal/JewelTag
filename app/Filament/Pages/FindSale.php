@@ -35,28 +35,66 @@ class FindSale extends Page implements HasForms, HasTable
     protected static ?string $title           = 'Find Sale';
     protected static string  $view            = 'filament.pages.find-sale';
 
-    public ?array $data = [];
+   #[\Livewire\Attributes\Url(as: 'keyword')]
+public ?string $keyword = null;
 
-  public function mount(): void
+#[\Livewire\Attributes\Url(as: 'inv')]
+public ?string $invoice_number = null;
+
+#[\Livewire\Attributes\Url(as: 'staff')]
+public ?string $staff_name = null;
+
+#[\Livewire\Attributes\Url(as: 'fname')]
+public ?string $first_name = null;
+
+#[\Livewire\Attributes\Url(as: 'lname')]
+public ?string $last_name = null;
+
+#[\Livewire\Attributes\Url(as: 'phone')]
+public ?string $phone = null;
+
+#[\Livewire\Attributes\Url(as: 'method')]
+public ?string $payment_method = null;
+
+#[\Livewire\Attributes\Url(as: 'from')]
+public ?string $date_from = null;
+
+#[\Livewire\Attributes\Url(as: 'job')]
+public ?string $job_type = null;
+
+public ?array $data = [];
+
+public function mount(): void
 {
     $this->form->fill([
-        'keyword'        => null,
-        'invoice_number' => null,
-        'staff_name'     => null,
-        'first_name'     => null,
-        'last_name'      => null,
-        'phone'          => null,
-        'payment_method' => null,
-        'date_from'      => null,
-        'job_type'       => null,
+        'keyword'        => $this->keyword,
+        'invoice_number' => $this->invoice_number,
+        'staff_name'     => $this->staff_name,
+        'first_name'     => $this->first_name,
+        'last_name'      => $this->last_name,
+        'phone'          => $this->phone,
+        'payment_method' => $this->payment_method,
+        'date_from'      => $this->date_from,
+        'job_type'       => $this->job_type,
     ]);
 }
 
     // ── Only reset the table when the user STOPS typing (debounced via onBlur)
     //    NOT on every keystroke — this is the #1 performance fix
-   public function updated($property): void
+  public function updated($property): void
 {
     if (str_starts_with($property, 'data.')) {
+        // Sync form data back to URL properties
+        $this->keyword        = $this->data['keyword'] ?? null;
+        $this->invoice_number = $this->data['invoice_number'] ?? null;
+        $this->staff_name     = $this->data['staff_name'] ?? null;
+        $this->first_name     = $this->data['first_name'] ?? null;
+        $this->last_name      = $this->data['last_name'] ?? null;
+        $this->phone          = $this->data['phone'] ?? null;
+        $this->payment_method = $this->data['payment_method'] ?? null;
+        $this->date_from      = $this->data['date_from'] ?? null;
+        $this->job_type       = $this->data['job_type'] ?? null;
+
         $this->resetTable();
     }
 }
@@ -731,9 +769,23 @@ class FindSale extends Page implements HasForms, HasTable
             ->paginationPageOptions([10, 15, 25, 50]);
     }
 
-    public function resetFilters(): void
-    {
-        $this->form->fill();
-        $this->resetTable();
-    }
+   public function resetFilters(): void
+{
+    $this->keyword = $this->invoice_number = $this->staff_name = null;
+    $this->first_name = $this->last_name = $this->phone = null;
+    $this->payment_method = $this->date_from = $this->job_type = null;
+
+    $this->form->fill([
+        'keyword'        => null,
+        'invoice_number' => null,
+        'staff_name'     => null,
+        'first_name'     => null,
+        'last_name'      => null,
+        'phone'          => null,
+        'payment_method' => null,
+        'date_from'      => null,
+        'job_type'       => null,
+    ]);
+    $this->resetTable();
+}
 }

@@ -428,8 +428,7 @@
  </div>
     </div>
 
-    {{-- ═══════════ TARGET BANNER ═══════════ --}}
-   @php
+@php
     $daysInMonth     = \Carbon\Carbon::parse($date)->daysInMonth;
     $totalActualSum  = array_sum($actualTotals ?? []);
     $targetPct       = 0;
@@ -438,46 +437,86 @@
         $targetPct   = min(100, round(($totalActualSum / $dailyTarget) * 100));
         $targetColor = $targetPct >= 100 ? '#10b981' : ($targetPct >= 70 ? '#f59e0b' : '#ef4444');
     }
+
+    // Monthly progress
+    $monthlyActualVal  = $monthlyActual ?? 0;
+    $monthlyPct        = 0;
+    $monthlyColor      = '#ef4444';
+    $monthlyRemaining  = 0;
+    if (!empty($monthlyTarget) && $monthlyTarget > 0) {
+        $monthlyPct       = min(100, round(($monthlyActualVal / $monthlyTarget) * 100));
+        $monthlyColor     = $monthlyPct >= 100 ? '#10b981' : ($monthlyPct >= 70 ? '#f59e0b' : '#ef4444');
+        $monthlyRemaining = max(0, $monthlyTarget - $monthlyActualVal);
+    }
+    $currentDay = \Carbon\Carbon::parse($date)->day;
 @endphp
 
-    @if(!empty($monthlyTarget) && $monthlyTarget > 0)
-    <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-        <span style="font-size:24px;flex-shrink:0;">🎯</span>
-        <div>
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0369a1;margin-bottom:6px;">
-                Sales Target — {{ \Carbon\Carbon::parse($date)->format('F Y') }}
-            </div>
+@if(!empty($monthlyTarget) && $monthlyTarget > 0)
+<div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <span style="font-size:24px;flex-shrink:0;">🎯</span>
+    <div style="flex:1;min-width:0;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0369a1;margin-bottom:10px;">
+            Sales Target — {{ \Carbon\Carbon::parse($date)->format('F Y') }}
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap;">
+
+            {{-- Monthly & Daily targets --}}
             <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
                 <div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Monthly</div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Monthly Goal</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#0c4a6e;">${{ number_format($monthlyTarget, 0) }}</div>
                 </div>
                 <div style="width:1px;height:36px;background:#bae6fd;"></div>
                 <div>
-                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Daily (÷ {{ $daysInMonth }} days)</div>
+                    <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;">Daily (÷ {{ $daysInMonth }})</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#0ea5e9;">${{ number_format($dailyTarget, 0) }}</div>
                 </div>
-                <div style="width:1px;height:36px;background:#bae6fd;"></div>
-                <div style="min-width:200px;">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                        <span style="font-size:11px;font-weight:600;color:#64748b;">Today's progress</span>
-                        <span style="font-size:11px;font-weight:700;color:{{ $targetColor }};">{{ $targetPct }}%</span>
-                    </div>
-                    <div style="height:8px;border-radius:4px;background:#bae6fd;overflow:hidden;">
-                        <div style="height:100%;border-radius:4px;width:{{ $targetPct }}%;background:{{ $targetColor }};transition:width 0.5s;"></div>
-                    </div>
-                    <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${{ number_format($totalActualSum, 0) }} of ${{ number_format($dailyTarget, 0) }}</div>
+            </div>
+
+            <div style="width:1px;height:60px;background:#bae6fd;flex-shrink:0;"></div>
+
+            {{-- Today's progress --}}
+            <div style="min-width:180px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="font-size:11px;font-weight:700;color:#0369a1;">📅 Today</span>
+                    <span style="font-size:11px;font-weight:700;color:{{ $targetColor }};">{{ $targetPct }}%</span>
+                </div>
+                <div style="height:10px;border-radius:5px;background:#bae6fd;overflow:hidden;">
+                    <div style="height:100%;border-radius:5px;width:{{ $targetPct }}%;background:{{ $targetColor }};transition:width 0.5s;"></div>
+                </div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:3px;">
+                    ${{ number_format($totalActualSum, 0) }} of ${{ number_format($dailyTarget, 0) }}
                 </div>
             </div>
+
+            <div style="width:1px;height:60px;background:#bae6fd;flex-shrink:0;"></div>
+
+            {{-- Monthly progress --}}
+            <div style="min-width:220px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="font-size:11px;font-weight:700;color:#0369a1;">📆 Month (Day {{ $currentDay }}/{{ $daysInMonth }})</span>
+                    <span style="font-size:11px;font-weight:700;color:{{ $monthlyColor }};">{{ $monthlyPct }}%</span>
+                </div>
+                <div style="height:10px;border-radius:5px;background:#bae6fd;overflow:hidden;">
+                    <div style="height:100%;border-radius:5px;width:{{ $monthlyPct }}%;background:{{ $monthlyColor }};transition:width 0.5s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px;">
+                    <span style="color:#0369a1;font-weight:600;">${{ number_format($monthlyActualVal, 0) }} collected</span>
+                    <span style="color:{{ $monthlyRemaining > 0 ? '#ef4444' : '#10b981' }};font-weight:600;">
+                        {{ $monthlyRemaining > 0 ? '$'.number_format($monthlyRemaining, 0).' left' : '✅ Goal reached!' }}
+                    </span>
+                </div>
+            </div>
+
         </div>
-     
     </div>
-    @elseif(auth()->user()->hasRole('Superadmin'))
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#92400e;">
-        💡 <strong>No monthly target set.</strong>
-        <a href="{{ \App\Filament\Pages\ManageSettings::getUrl() }}" style="color:#0ea5e9;font-weight:600;text-decoration:underline;">Set one in Store Settings → System tab.</a>
-    </div>
-    @endif
+</div>
+@elseif(auth()->user()->hasRole('Superadmin'))
+<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#92400e;">
+    💡 <strong>No monthly target set.</strong>
+    <a href="{{ \App\Filament\Pages\ManageSettings::getUrl() }}" style="color:#0ea5e9;font-weight:600;text-decoration:underline;">Set one in Store Settings → System tab.</a>
+</div>
+@endif
 
 
     {{-- ═══════════ COMPUTED VALUES ═══════════ --}}

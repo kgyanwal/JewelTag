@@ -27,9 +27,10 @@ class EndOfDayClosing extends Page
     public $salesSummary   = []; // Per-staff breakdown
     public $isClosed       = false;
     public $paymentMethods = [];
-public ?float $monthlyTarget = null;
-public ?float $dailyTarget   = null;
-public string $debugTarget = '';
+    public ?float $monthlyTarget = null;
+    public ?float $dailyTarget   = null;
+    public string $debugTarget = '';
+    public ?float $monthlyActual = null;
     public function mount(): void
     {
         $tz         = Store::first()?->timezone ?? config('app.timezone', 'UTC');
@@ -131,9 +132,9 @@ public string $debugTarget = '';
             ->whereNotIn('id', function ($q) use ($startUtc, $endUtc) {
                 // Exclude laybuy sales that already have payment rows today
                 $q->select('sale_id')
-                  ->from('payments')
-                  ->whereBetween('paid_at', [$startUtc, $endUtc])
-                  ->whereNotNull('sale_id');
+                    ->from('payments')
+                    ->whereBetween('paid_at', [$startUtc, $endUtc])
+                    ->whereNotNull('sale_id');
             })
             ->sum('amount_paid');
 
@@ -235,30 +236,36 @@ public string $debugTarget = '';
         ];
     }
     protected function loadTargetFromSettings(): void
-{
-    $yearMonth = Carbon::parse($this->date)->format('Y-m');
+    {
+        $yearMonth = Carbon::parse($this->date)->format('Y-m');
 
-    $override = DB::table('site_settings')
-        ->where('key', 'monthly_target_override_' . $yearMonth)
-        ->value('value');
+        $override = DB::table('site_settings')
+            ->where('key', 'monthly_target_override_' . $yearMonth)
+            ->value('value');
 
-    $default = DB::table('site_settings')
-        ->where('key', 'monthly_sales_target')
-        ->value('value');
+        $default = DB::table('site_settings')
+            ->where('key', 'monthly_sales_target')
+            ->value('value');
 
-    $active = ($override !== null && $override !== '' && (float) $override > 0)
-        ? $override
-        : $default;
+        $active = ($override !== null && $override !== '' && (float) $override > 0)
+            ? $override
+            : $default;
 
-    $this->monthlyTarget = ($active !== null && $active !== '' && (float) $active > 0)
-        ? (float) $active
-        : null;
+        $this->monthlyTarget = ($active !== null && $active !== '' && (float) $active > 0)
+            ? (float) $active
+            : null;
 
-    $this->dailyTarget = $this->monthlyTarget
-        ? round($this->monthlyTarget / Carbon::parse($this->date)->daysInMonth, 2)
-        : null;
+        $this->dailyTarget = $this->monthlyTarget
+            ? round($this->monthlyTarget / Carbon::parse($this->date)->daysInMonth, 2)
+            : null;
 
-    // Debug — remove after testing
-    $this->debugTarget = "month={$yearMonth} | override={$override} | default={$default} | active={$active} | monthly={$this->monthlyTarget} | daily={$this->dailyTarget}";
-}
+        // Debug — remove after testing
+        $this->debugTarget = "month={$yearMonth} | override={$override} | default={$default} | active={$active} | monthly={$this->monthlyTarget} | daily={$this->dailyTarget}";
+        $tz = \App\Models\Store::first()?->timezone ?? config('app.timezone', 'UTC');
+        $startOfMonth = \Carbon\Carbon::parse($this->date, $tz)->startOfMonth()->setTimezone('UTC');
+        $endOfDay     = \Carbon\Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
+
+        $this->monthlyActual = \App\Models\Payment::whereBetween('paid_at', [$startOfMonth, $endOfDay])
+            ->sum('amount');
+    }
 }

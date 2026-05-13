@@ -396,6 +396,7 @@ HTML
                 \App\Filament\Pages\StockListingReport::class,
                 \App\Filament\Pages\ManageApiKeys::class,
                 \App\Filament\Pages\SalesReport::class,
+                \App\Filament\Pages\RestockLogs::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\DashboardQuickMenu::class,
