@@ -35,69 +35,76 @@ class FindSale extends Page implements HasForms, HasTable
     protected static ?string $title           = 'Find Sale';
     protected static string  $view            = 'filament.pages.find-sale';
 
-   #[\Livewire\Attributes\Url(as: 'keyword')]
-public ?string $keyword = null;
+    #[\Livewire\Attributes\Url(as: 'keyword')]
+    public ?string $keyword = null;
 
-#[\Livewire\Attributes\Url(as: 'inv')]
-public ?string $invoice_number = null;
+    #[\Livewire\Attributes\Url(as: 'inv')]
+    public ?string $invoice_number = null;
 
-#[\Livewire\Attributes\Url(as: 'staff')]
-public ?string $staff_name = null;
+    #[\Livewire\Attributes\Url(as: 'staff')]
+    public ?string $staff_name = null;
 
-#[\Livewire\Attributes\Url(as: 'fname')]
-public ?string $first_name = null;
+    #[\Livewire\Attributes\Url(as: 'fname')]
+    public ?string $first_name = null;
 
-#[\Livewire\Attributes\Url(as: 'lname')]
-public ?string $last_name = null;
+    #[\Livewire\Attributes\Url(as: 'lname')]
+    public ?string $last_name = null;
 
-#[\Livewire\Attributes\Url(as: 'phone')]
-public ?string $phone = null;
+    #[\Livewire\Attributes\Url(as: 'phone')]
+    public ?string $phone = null;
 
-#[\Livewire\Attributes\Url(as: 'method')]
-public ?string $payment_method = null;
+    #[\Livewire\Attributes\Url(as: 'method')]
+    public ?string $payment_method = null;
 
-#[\Livewire\Attributes\Url(as: 'from')]
-public ?string $date_from = null;
+    #[\Livewire\Attributes\Url(as: 'from')]
+    public ?string $date_from = null;
 
-#[\Livewire\Attributes\Url(as: 'job')]
-public ?string $job_type = null;
+    #[\Livewire\Attributes\Url(as: 'to')]
+    public ?string $date_to = null;
 
-public ?array $data = [];
+    #[\Livewire\Attributes\Url(as: 'job')]
+    public ?string $job_type = null;
 
-public function mount(): void
-{
-    $this->form->fill([
-        'keyword'        => $this->keyword,
-        'invoice_number' => $this->invoice_number,
-        'staff_name'     => $this->staff_name,
-        'first_name'     => $this->first_name,
-        'last_name'      => $this->last_name,
-        'phone'          => $this->phone,
-        'payment_method' => $this->payment_method,
-        'date_from'      => $this->date_from,
-        'job_type'       => $this->job_type,
-    ]);
-}
+    public ?array $data = [];
 
-    // ── Only reset the table when the user STOPS typing (debounced via onBlur)
-    //    NOT on every keystroke — this is the #1 performance fix
-  public function updated($property): void
-{
-    if (str_starts_with($property, 'data.')) {
-        // Sync form data back to URL properties
-        $this->keyword        = $this->data['keyword'] ?? null;
-        $this->invoice_number = $this->data['invoice_number'] ?? null;
-        $this->staff_name     = $this->data['staff_name'] ?? null;
-        $this->first_name     = $this->data['first_name'] ?? null;
-        $this->last_name      = $this->data['last_name'] ?? null;
-        $this->phone          = $this->data['phone'] ?? null;
-        $this->payment_method = $this->data['payment_method'] ?? null;
-        $this->date_from      = $this->data['date_from'] ?? null;
-        $this->job_type       = $this->data['job_type'] ?? null;
+    public function mount(): void
+    {
+        // ── Set data FIRST so Filament's fill doesn't wipe it
+        $this->data = [
+            'keyword'        => $this->keyword,
+            'invoice_number' => $this->invoice_number,
+            'staff_name'     => $this->staff_name,
+            'first_name'     => $this->first_name,
+            'last_name'      => $this->last_name,
+            'phone'          => $this->phone,
+            'payment_method' => $this->payment_method,
+            'date_from'      => $this->date_from,
+            'date_to'        => $this->date_to,
+            'job_type'       => $this->job_type,
+        ];
 
-        $this->resetTable();
+        // ── Then fill the form from the same values
+        $this->form->fill($this->data);
     }
-}
+
+    public function updated($property): void
+    {
+        if (str_starts_with($property, 'data.')) {
+            $this->keyword        = $this->data['keyword'] ?? null;
+            $this->invoice_number = $this->data['invoice_number'] ?? null;
+            $this->staff_name     = $this->data['staff_name'] ?? null;
+            $this->first_name     = $this->data['first_name'] ?? null;
+            $this->last_name      = $this->data['last_name'] ?? null;
+            $this->phone          = $this->data['phone'] ?? null;
+            $this->payment_method = $this->data['payment_method'] ?? null;
+            $this->date_from      = $this->data['date_from'] ?? null;
+            $this->date_to        = $this->data['date_to'] ?? null;
+            $this->job_type       = $this->data['job_type'] ?? null;
+
+            $this->resetTable();
+        }
+    }
+
     public static function getServiceTypeOptions(): array
     {
         $defaultTypes = ['Resize', 'Solder / Weld', 'Bail Change', 'Shortening', 'Stone Setting', 'Engraving', 'Polishing / Rhodium'];
@@ -105,6 +112,7 @@ public function mount(): void
         $types = $json ? json_decode($json, true) : $defaultTypes;
         return collect($types)->filter()->mapWithKeys(fn($type) => [$type => $type])->toArray();
     }
+
     public function form(Form $form): Form
     {
         return $form
@@ -126,9 +134,7 @@ public function mount(): void
                                     $this->resetTable();
                                 })
                                 ->columnSpanFull(),
-                            // ── Use live(onBlur: true) instead of ->live()
-                            //    This fires only when the user tabs/clicks away,
-                            //    not on every single keypress
+
                             TextInput::make('invoice_number')
                                 ->label('Invoice / Job #')
                                 ->live(debounce: 600)
@@ -140,38 +146,54 @@ public function mount(): void
                             TextInput::make('staff_name')
                                 ->label('Sales Staff')
                                 ->placeholder('e.g. Anthony')
-                                ->live(onBlur: true),   // ← WAS: ->live()
+                                ->live(debounce: 600)
+                                ->afterStateUpdated(function () {
+                                    $this->resetPage();
+                                    $this->resetTable();
+                                }),
 
                             TextInput::make('first_name')
                                 ->label('First Name')
-                                ->live(onBlur: true),   // ← WAS: ->live()
+                                ->live(onBlur: true),
 
                             TextInput::make('last_name')
                                 ->label('Last Name')
-                                ->live(onBlur: true),   // ← WAS: ->live()
+                                ->live(onBlur: true),
 
                             TextInput::make('phone')
                                 ->label('Phone Number')
                                 ->tel()
                                 ->prefix('+1')
-                                ->live(onBlur: true),   // ← WAS: ->live()
+                                ->live(onBlur: true),
 
                             Select::make('payment_method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
                                 ->placeholder('All Methods')
-                                ->live(),
-                            // selects are fine as ->live() — no typing
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
+
                             CustomDatePicker::make('date_from')
-                                ->label('Date From')
-                                ->displayFormat('m/d/Y')
-                                ->live(),
-                            // date pickers are fine too
+    ->label('Date From')
+    ->displayFormat('m/d/Y')
+    ->live()
+    ->afterStateUpdated(function () {
+        $this->resetTable();
+    }),
+
+CustomDatePicker::make('date_to')
+    ->label('Date To')
+    ->displayFormat('m/d/Y')
+    ->live()
+    ->afterStateUpdated(function () {
+        $this->resetTable();
+    }),
 
                             Select::make('job_type')
                                 ->label('Job Type')
                                 ->options(fn() => self::getServiceTypeOptions())
                                 ->placeholder('All Service Types')
-                                ->live(),
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable()),
                         ]),
                         \Filament\Forms\Components\Actions::make([
                             \Filament\Forms\Components\Actions\Action::make('reset_search')
@@ -179,8 +201,14 @@ public function mount(): void
                                 ->icon('heroicon-o-x-circle')
                                 ->color('gray')
                                 ->outlined()
-                               ->action(function () {
-    $this->form->fill([
+                              ->action(function () {
+    // Clear URL properties
+    $this->keyword = $this->invoice_number = $this->staff_name = null;
+    $this->first_name = $this->last_name = $this->phone = null;
+    $this->payment_method = $this->date_from = $this->date_to = $this->job_type = null;
+
+    // Clear form fields
+    $this->data = [
         'keyword'        => null,
         'invoice_number' => null,
         'staff_name'     => null,
@@ -189,8 +217,11 @@ public function mount(): void
         'phone'          => null,
         'payment_method' => null,
         'date_from'      => null,
+        'date_to'        => null,
         'job_type'       => null,
-    ]);
+    ];
+
+    $this->form->fill($this->data);
     $this->resetTable();
 }),
                         ]),
@@ -205,15 +236,13 @@ public function mount(): void
             ->modifyQueryUsing(
                 fn(Builder $query) => $query
                     ->withoutTrashed()
-                    // ── Eager load ALL relationships used in columns
-                    //    This collapses N+1 queries into exactly 4 queries total
                     ->with([
-                        'customer',           // used in customer name column
-                        'items.productItem',  // used in items_summary column
-                        'payments',           // used in payment_status_summary column
+                        'customer',
+                        'items.productItem',
+                        'payments',
                     ])
                     ->when(
-                        $this->data['keyword'] ?? null,
+                        $this->data['keyword'] ?? $this->keyword ?? null,
                         fn($q, $v) => $q->where(function ($sub) use ($v) {
                             $sub->whereHas(
                                 'items',
@@ -234,38 +263,61 @@ public function mount(): void
                         })
                     )
                     ->when(
-                        $this->data['invoice_number'] ?? null,
+                        $this->data['invoice_number'] ?? $this->invoice_number ?? null,
                         fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%")
                     )
                     ->when(
-                        $this->data['staff_name'] ?? null,
-                        fn($q, $v) => $q->where('sales_person_list', 'like', "%{$v}%")
-                    )
+    $this->data['staff_name'] ?? $this->staff_name ?? null,
+    fn($q, $v) => $q->where(function($sub) use ($v) {
+        $names = array_filter(explode(' ', trim($v)));
+        foreach ($names as $name) {
+            $sub->where('sales_person_list', 'like', "%{$name}%");
+        }
+    })
+)
                     ->when(
-                        $this->data['first_name'] ?? null,
+                        $this->data['first_name'] ?? $this->first_name ?? null,
                         fn($q, $v) => $q->whereHas(
                             'customer',
                             fn($sq) => $sq->where('name', 'like', "%{$v}%")
                         )
                     )
                     ->when(
-                        $this->data['last_name'] ?? null,
+                        $this->data['last_name'] ?? $this->last_name ?? null,
                         fn($q, $v) => $q->whereHas(
                             'customer',
                             fn($sq) => $sq->where('last_name', 'like', "%{$v}%")
                         )
                     )
                     ->when(
-                        $this->data['payment_method'] ?? null,
+                        $this->data['payment_method'] ?? $this->payment_method ?? null,
                         fn($q, $v) => $q->where('payment_method', $v)
                     )
                     ->when(
-                        $this->data['job_type'] ?? null,
+                        $this->data['job_type'] ?? $this->job_type ?? null,
                         fn($q, $v) => $q->where('job_type', $v)
                     )
                     ->when(
-                        $this->data['date_from'] ?? null,
-                        fn($q, $v) => $q->whereDate('created_at', '>=', $v)
+                        $this->data['date_from'] ?? $this->date_from ?? null,
+                        function ($q, $v) {
+                            try {
+                                $date = \Carbon\Carbon::parse($v)->format('Y-m-d');
+                                if ($date) $q->whereDate('created_at', '>=', $date);
+                            } catch (\Exception $e) {
+                                $q->whereDate('created_at', '>=', $v);
+                            }
+                        }
+                    )
+                    ->when(
+                        $this->data['date_to'] ?? $this->date_to ?? null,
+                        function ($q, $v) {
+                            try {
+                                $date = \Carbon\Carbon::parse($v)->format('Y-m-d');
+                                if ($date) $q->whereDate('created_at', '<=', $date);
+                            } catch (\Exception $e) {
+                                $q->whereDate('created_at', '<=', $v);
+                            }
+                        }
                     )
                     ->when(
                         !$this->getTableSortColumn(),
@@ -283,22 +335,28 @@ public function mount(): void
                     ->weight('bold')
                     ->color('primary')
                     ->copyable(),
+
                 TextColumn::make('sale_type_badge')
                     ->label('TYPE')
                     ->getStateUsing(function ($record) {
-                        $isLaybuy     = $record->payment_method === 'laybuy';
-                        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
-                        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
+                        $isLaybuy      = $record->payment_method === 'laybuy';
+                        $hasRepair     = $record->items->contains(fn($i) => !empty($i->repair_id));
+                        $hasCustom     = $record->items->contains(fn($i) => !empty($i->custom_order_id));
                         $hasSpecialJob = !empty($record->special_jobs);
 
-                        if ($isLaybuy) return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+                        if ($isLaybuy) {
+                            if (floatval($record->balance_due) <= 0) {
+                                return new HtmlString("<span style='background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✅ LAYBUY DONE</span>");
+                            }
+                            return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
+                        }
                         if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
                         if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
                         if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
                         return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
                     })
                     ->grow(false),
-                // ── customer relationship is now eager loaded so no extra query per row
+
                 TextColumn::make('customer_name_display')
                     ->label('Customer')
                     ->getStateUsing(
@@ -323,9 +381,8 @@ public function mount(): void
                 TextColumn::make('items_summary')
                     ->label('ITEMS / DESCRIPTION')
                     ->getStateUsing(function ($record) {
-                        // items->productItem already eager loaded — no extra queries
                         return $record->items
-                            ->take(3)   // ← cap at 3 lines per row to avoid huge cells
+                            ->take(3)
                             ->map(
                                 fn($i) => ($i->productItem?->barcode ?? 'Item') . ': ' .
                                     Str::limit($i->custom_description ?? '', 30)
@@ -344,27 +401,18 @@ public function mount(): void
                     ->separator(',')
                     ->toggleable(),
 
-                // ── payments already eager loaded — no extra query per row
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
                     ->getStateUsing(function ($record) {
-                        // 1. Identify if this is a Custom Order Conversion
                         $isCustomDeposit = $record->has_trade_in
                             && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-                        // 2. The Bill Total (Grand Total)
-                        // We add trade_in_value back because final_total is already "Net" in the DB
                         $total = floatval($record->final_total);
                         if ($isCustomDeposit) {
                             $total += floatval($record->trade_in_value);
                         }
 
-                        // 3. The actual money collected
-                        // We sum the payments table. 
-                        // IMPORTANT: Our CreateSale logic already linked custom order payments to this sale_id.
                         $paid = floatval($record->payments->sum('amount'));
-
-                        // Fallback for legacy data not using the payments table
                         if ($paid == 0 && floatval($record->amount_paid) > 0) {
                             $paid = floatval($record->amount_paid);
                         }
@@ -382,87 +430,40 @@ public function mount(): void
 
                         return new HtmlString($html);
                     }),
-
-                TextColumn::make('sale_type_badge')
-                    ->label('TYPE')
-                    ->getStateUsing(function ($record) {
-                        $isLaybuy     = $record->payment_method === 'laybuy';
-                        $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
-                        $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
-                        $hasSpecialJob = !empty($record->special_jobs);
-
-                        // 🚀 THE FIX: If it's a Laybuy but the balance is 0, show a special completed badge!
-                        if ($isLaybuy) {
-                            if (floatval($record->balance_due) <= 0) {
-                                return new HtmlString("<span style='background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✅ LAYBUY DONE</span>");
-                            }
-                            return new HtmlString("<span style='background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>⏳ LAYBUY</span>");
-                        }
-
-                        if ($hasRepair) return new HtmlString("<span style='background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔧 REPAIR</span>");
-                        if ($hasCustom) return new HtmlString("<span style='background:#f5f3ff;color:#7c3aed;border:1px solid #c4b5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>✨ CUSTOM</span>");
-                        if ($hasSpecialJob) return new HtmlString("<span style='background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🛠️ SERVICE</span>");
-                        return new HtmlString("<span style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>💎 SALE</span>");
-                    })
-                    ->grow(false),
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
                     ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
-
-                        // Superadmin/Admin always can edit
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
-
-                        // Laybuy always editable
                         if ($record->payment_method === 'laybuy') return true;
-
-                        // Custom order always editable
                         $record->loadMissing('items');
                         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-
-                        // Pending always editable
                         if ($record->status === 'pending') return true;
-
-                        // Completed with balance due — allow to fix
                         if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
-
-                        // Day not closed — editable
                         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
                         if (!$dayClosed) return true;
-
-                        // Day closed — only show Edit if approved request exists
                         return SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
                             ->where('status', 'approved')
                             ->exists();
                     }),
 
-                // ── REQUEST EDIT — shown when day is closed + no pending/approved request ──
                 Action::make('request_edit')
                     ->label('Request Edit')
                     ->icon('heroicon-o-pencil-square')
                     ->color('warning')
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
-
-                        // Admins don't need to request
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
-
-                        // Laybuy/custom — no request needed
                         if ($record->payment_method === 'laybuy') return false;
                         $record->loadMissing('items');
                         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return false;
-
-                        // Only for completed + fully paid + day closed
                         if ($record->status !== 'completed') return false;
                         if (floatval($record->balance_due) > 0) return false;
-
                         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
                         if (!$dayClosed) return false;
-
-                        // Hide if already has pending or approved request
                         return !SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
                             ->whereIn('status', ['pending', 'approved'])
@@ -477,10 +478,8 @@ public function mount(): void
                             'sale_id'          => $record->id,
                             'user_id'          => auth()->id(),
                             'status'           => 'pending',
-                            'proposed_changes' => [], // Ensure this is an array as per your model cast
+                            'proposed_changes' => [],
                         ]);
-
-                        // Notify all admins in-app
                         $admins = \App\Models\User::role(['Superadmin', 'Administration'])->get();
                         foreach ($admins as $admin) {
                             Notification::make()
@@ -489,7 +488,6 @@ public function mount(): void
                                 ->warning()
                                 ->sendToDatabase($admin);
                         }
-
                         Notification::make()
                             ->title('Request Sent')
                             ->body('Your edit request has been sent to Administration for approval.')
@@ -497,7 +495,6 @@ public function mount(): void
                             ->send();
                     }),
 
-                // ── PENDING INDICATOR — disabled button while waiting ─────────
                 Action::make('edit_pending')
                     ->label('Edit Pending...')
                     ->icon('heroicon-o-clock')
@@ -506,13 +503,11 @@ public function mount(): void
                     ->visible(function (Sale $record) {
                         $user = Staff::user();
                         if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
-
                         return SaleEditRequest::where('sale_id', $record->id)
                             ->where('user_id', auth()->id())
                             ->where('status', 'pending')
                             ->exists();
                     }),
-
 
                 Action::make('quick_view')
                     ->label('View')
@@ -584,10 +579,8 @@ public function mount(): void
                                             $rowTotal = ($price * ($item->qty ?? 1)) - $disc;
 
                                             $html .= "<tr class='border-b border-gray-100'>";
-                                            $html .= "<td class='p-2 font-mono text-primary-600'>"
-                                                . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
-                                            $html .= "<td class='p-2 text-gray-600'>"
-                                                . e($item->custom_description) . "</td>";
+                                            $html .= "<td class='p-2 font-mono text-primary-600'>" . ($item->productItem?->barcode ?? 'MANUAL') . "</td>";
+                                            $html .= "<td class='p-2 text-gray-600'>" . e($item->custom_description) . "</td>";
                                             $html .= "<td class='p-2 text-right'>$" . number_format($price, 2) . "</td>";
                                             $html .= "<td class='p-2 text-right text-danger-600'>-$" . number_format($disc, 2) . "</td>";
                                             $html .= "<td class='p-2 text-right font-bold'>$" . number_format($rowTotal, 2) . "</td>";
@@ -606,50 +599,30 @@ public function mount(): void
                                     ->schema([
                                         Placeholder::make('j_type')->label('Type')->content($record->job_type ?? '—'),
                                         Placeholder::make('j_metal')->label('Metal')->content($record->metal_type ?? '—'),
-                                        Placeholder::make('j_size')->label('Sizing')
-                                            ->content("{$record->current_size} ➔ {$record->target_size}"),
-                                        Placeholder::make('j_notes')->label('Instructions')
-                                            ->content($record->job_instructions ?? '—'),
+                                        Placeholder::make('j_size')->label('Sizing')->content("{$record->current_size} ➔ {$record->target_size}"),
+                                        Placeholder::make('j_notes')->label('Instructions')->content($record->job_instructions ?? '—'),
                                     ]),
 
                                 Section::make('Totals')
                                     ->columnSpan(fn() => !empty($record->job_type) ? 1 : 2)
                                     ->schema([
                                         Grid::make(2)->schema([
-                                            Placeholder::make('f_sub')
-                                                ->label('Subtotal')
-                                                ->content('$' . number_format($record->subtotal, 2)),
-                                            Placeholder::make('f_tax')
-                                                ->label('Tax')
-                                                ->content('$' . number_format($record->tax_amount, 2)),
-                                            Placeholder::make('f_trade')
-                                                ->label('Trade-In')
-                                                ->content('-$' . number_format($record->trade_in_value ?? 0, 2)),
-                                            Placeholder::make('f_total')
-                                                ->label('Grand Total')
-                                                ->content(new HtmlString(
-                                                    "<span class='text-xl font-black text-gray-900'>$"
-                                                        . number_format($record->final_total, 2) . "</span>"
-                                                )),
+                                            Placeholder::make('f_sub')->label('Subtotal')->content('$' . number_format($record->subtotal, 2)),
+                                            Placeholder::make('f_tax')->label('Tax')->content('$' . number_format($record->tax_amount, 2)),
+                                            Placeholder::make('f_trade')->label('Trade-In')->content('-$' . number_format($record->trade_in_value ?? 0, 2)),
+                                            Placeholder::make('f_total')->label('Grand Total')->content(new HtmlString("<span class='text-xl font-black text-gray-900'>$" . number_format($record->final_total, 2) . "</span>")),
                                         ]),
                                         Placeholder::make('f_paid')
                                             ->label('Total Payments Received')
                                             ->content(function () use ($record) {
-                                                // Source of truth: Sum of all payments linked to this Sale ID
                                                 $amt = $record->payments->sum('amount');
-
-                                                return new HtmlString(
-                                                    "<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$"
-                                                        . number_format($amt, 2) . "</div>"
-                                                );
+                                                return new HtmlString("<div class='p-2 bg-success-50 border border-success-200 rounded text-success-700 font-bold'>$" . number_format($amt, 2) . "</div>");
                                             }),
                                     ]),
                             ]),
 
                             Section::make('Internal Notes')->collapsed()->schema([
-                                Placeholder::make('f_notes')
-                                    ->label('')
-                                    ->content($record->notes ?? 'No internal notes recorded.'),
+                                Placeholder::make('f_notes')->label('')->content($record->notes ?? 'No internal notes recorded.'),
                             ]),
                         ]),
                     ]),
@@ -660,9 +633,7 @@ public function mount(): void
                         ->icon('heroicon-o-printer')
                         ->url(fn(Sale $record) => route('sales.receipt', ['record' => $record, 'type' => 'standard']))
                         ->openUrlInNewTab()
-                        ->extraAttributes([
-                            'onclick' => "let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); }; return false;"
-                        ]),
+                        ->extraAttributes(['onclick' => "let win = window.open(this.href, '_blank'); win.onload = function() { win.print(); }; return false;"]),
 
                     \Filament\Tables\Actions\Action::make('printGift')
                         ->label('Gift Receipt')
@@ -685,22 +656,15 @@ public function mount(): void
                         ->requiresConfirmation()
                         ->action(function (Sale $record) {
                             if (!$record->customer || empty($record->customer->email)) {
-                                \Filament\Notifications\Notification::make()
-                                    ->title('Email Missing')->body('Customer has no email address.')
-                                    ->danger()->send();
+                                \Filament\Notifications\Notification::make()->title('Email Missing')->body('Customer has no email address.')->danger()->send();
                                 return;
                             }
                             $mailable = new \App\Mail\CustomerReceipt($record);
                             $sent     = $mailable->sendDirectly();
                             if ($sent) {
-                                \Filament\Notifications\Notification::make()
-                                    ->title('Receipt Sent')
-                                    ->body("Successfully emailed to {$record->customer->email}")
-                                    ->success()->send();
+                                \Filament\Notifications\Notification::make()->title('Receipt Sent')->body("Successfully emailed to {$record->customer->email}")->success()->send();
                             } else {
-                                \Filament\Notifications\Notification::make()
-                                    ->title('Email Error')->body('Ensure there is customer email & contact superadmin for other errors.')
-                                    ->danger()->send();
+                                \Filament\Notifications\Notification::make()->title('Email Error')->body('Ensure there is customer email & contact superadmin for other errors.')->danger()->send();
                             }
                         }),
 
@@ -713,9 +677,7 @@ public function mount(): void
                         ->action(function (Sale $record) {
                             $phone = $record->customer->phone ?? null;
                             if (empty($phone)) {
-                                \Filament\Notifications\Notification::make()
-                                    ->title('Error')->body('Customer has no phone number.')
-                                    ->danger()->send();
+                                \Filament\Notifications\Notification::make()->title('Error')->body('Customer has no phone number.')->danger()->send();
                                 return;
                             }
                             $digits = preg_replace('/[^0-9]/', '', $phone);
@@ -724,12 +686,8 @@ public function mount(): void
                             }
                             $formattedPhone = '+1' . $digits;
                             $store     = $record->store;
-                            $storeName = $store->name ?? 'Our Store';
-
-                            // 🚀 Use Laravel's url() helper. It automatically reads your current tenant domain!
-                            // If you are on lxd.localhost:8000, it generates http://lxd.localhost:8000/receipt/17
-                            $link = url('/receipt/' . $record->id);
                             $storeName = $store->name ?? 'Diamond Square';
+                            $link      = url('/receipt/' . $record->id);
                             $message   = "Hi {$record->customer->name}, thanks for visiting {$storeName}! View your receipt here: {$link}";
                             try {
                                 $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
@@ -753,8 +711,7 @@ public function mount(): void
                                 ]);
                                 \Filament\Notifications\Notification::make()->title('SMS Sent')->success()->send();
                             } catch (\Exception $e) {
-                                \Filament\Notifications\Notification::make()
-                                    ->title('SMS Failed')->body($e->getMessage())->danger()->send();
+                                \Filament\Notifications\Notification::make()->title('SMS Failed')->body($e->getMessage())->danger()->send();
                             }
                         }),
                 ])
@@ -765,27 +722,28 @@ public function mount(): void
                     ->outlined(),
             ])
             ->defaultSort('created_at', 'desc')
-            ->defaultPaginationPageOption(15)  // ← show 15 rows, not 25 (reduces render load)
+            ->defaultPaginationPageOption(15)
             ->paginationPageOptions([10, 15, 25, 50]);
     }
 
-   public function resetFilters(): void
-{
-    $this->keyword = $this->invoice_number = $this->staff_name = null;
-    $this->first_name = $this->last_name = $this->phone = null;
-    $this->payment_method = $this->date_from = $this->job_type = null;
+    public function resetFilters(): void
+    {
+        $this->keyword = $this->invoice_number = $this->staff_name = null;
+        $this->first_name = $this->last_name = $this->phone = null;
+        $this->payment_method = $this->date_from = $this->date_to = $this->job_type = null;
 
-    $this->form->fill([
-        'keyword'        => null,
-        'invoice_number' => null,
-        'staff_name'     => null,
-        'first_name'     => null,
-        'last_name'      => null,
-        'phone'          => null,
-        'payment_method' => null,
-        'date_from'      => null,
-        'job_type'       => null,
-    ]);
-    $this->resetTable();
-}
+        $this->form->fill([
+            'keyword'        => null,
+            'invoice_number' => null,
+            'staff_name'     => null,
+            'first_name'     => null,
+            'last_name'      => null,
+            'phone'          => null,
+            'payment_method' => null,
+            'date_from'      => null,
+            'date_to'        => null,
+            'job_type'       => null,
+        ]);
+        $this->resetTable();
+    }
 }
