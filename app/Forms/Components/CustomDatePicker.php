@@ -14,12 +14,16 @@ class CustomDatePicker extends Field
     use HasExtraInputAttributes;
 
     protected string $view = 'forms.components.custom-date-picker';
-   protected string $displayFormat = 'M d, Y';
+    protected string $displayFormat = 'm/d/Y';
 
     /**
      * Forces the component to be reactive with Livewire.
      */
-  
+    public function isLive(): bool
+    {
+        return true;
+    }
+
     public function displayFormat(string $format): static
     {
         $this->displayFormat = $format;

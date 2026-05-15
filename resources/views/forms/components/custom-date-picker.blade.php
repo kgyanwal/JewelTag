@@ -15,7 +15,7 @@ $maxDate = $getExtraInputAttributes()['max'] ?? null;
 
 <x-dynamic-component :component="$getFieldWrapperView()" :field="$field">
     <div x-data="customDatePicker({
-            state: $wire.entangle('{{ $statePath }}'),
+            state: $wire.entangle('{{ $statePath }}').live,
             displayFormat: '{{ $displayFormat }}',
             maxDate: '{{ $maxDate }}'
         })" class="relative">
@@ -321,8 +321,7 @@ document.addEventListener('alpine:init', () => {
                     this.state = this.maxDate; // Snap back to max allowed date
                     this.updateDigitsFromState();
                 } else {
-                    this.state = `${y}-${m}-${d}`;
-                    this.$dispatch('input', this.state);
+                    this.state = attemptedDate;
                     this.calendarYear = parsedY;
                     this.calendarMonth = parsedM - 1;
                 }
