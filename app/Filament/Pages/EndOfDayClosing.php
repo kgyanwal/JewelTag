@@ -266,15 +266,28 @@ class EndOfDayClosing extends Page
         $startOfMonth = \Carbon\Carbon::parse($this->date, $tz)->startOfMonth()->setTimezone('UTC');
         $endOfDay     = \Carbon\Carbon::parse($this->date, $tz)->endOfDay()->setTimezone('UTC');
 
-        $this->monthlyActual = \App\Models\Payment::whereBetween('paid_at', [$startOfMonth, $endOfDay])
+        $monthlyFromPayments = \App\Models\Payment::whereBetween('paid_at', [$startOfMonth, $endOfDay])
             ->sum('amount');
 
-            // Last year same day sales
-$lastYearDate     = \Carbon\Carbon::parse($this->date)->subYear();
-$lastYearStartUtc = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->startOfDay()->setTimezone('UTC');
-$lastYearEndUtc   = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->endOfDay()->setTimezone('UTC');
+        $monthlyFromSalePayments = \Illuminate\Support\Facades\DB::table('sale_payments')
+            ->whereBetween('payment_date', [$startOfMonth, $endOfDay])
+            ->sum('amount');
 
-$this->lastYearDaySales = \App\Models\Payment::whereBetween('paid_at', [$lastYearStartUtc, $lastYearEndUtc])
-    ->sum('amount');
+        $this->monthlyActual = $monthlyFromPayments + $monthlyFromSalePayments;
+
+        // Last year same day sales
+        $lastYearDate     = \Carbon\Carbon::parse($this->date)->subYear();
+        $lastYearStartUtc = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->startOfDay()->setTimezone('UTC');
+        $lastYearEndUtc   = \Carbon\Carbon::parse($lastYearDate->format('Y-m-d'), $tz)->endOfDay()->setTimezone('UTC');
+
+        // Query both payments and sale_payments tables
+        $lastYearFromPayments = \App\Models\Payment::whereBetween('paid_at', [$lastYearStartUtc, $lastYearEndUtc])
+            ->sum('amount');
+
+        $lastYearFromSalePayments = \Illuminate\Support\Facades\DB::table('sale_payments')
+            ->whereBetween('payment_date', [$lastYearStartUtc, $lastYearEndUtc])
+            ->sum('amount');
+
+        $this->lastYearDaySales = $lastYearFromPayments + $lastYearFromSalePayments;
     }
 }
