@@ -334,21 +334,28 @@ class StockTransferResource extends Resource
                         }
 
                         // 2. Import the items
+                        // 2. Import the items
                         foreach ($snapshot as $itemData) {
                             if (empty($itemData['barcode'])) continue;
 
-                            // ── Prefix barcode with T for destination tenant ────────
-                            $originalBarcode    = $itemData['barcode'];
-                            $barcode            = Str::startsWith($originalBarcode, 'T')
-                                ? $originalBarcode
-                                : 'T' . $originalBarcode;
+                            // 🚀 THE FIX: Keep the exact same barcode! Stop prepending 'T'.
+                            $barcode = $itemData['barcode'];
                             $itemData['barcode'] = $barcode;
 
-                            // Apply the mapped vendor ID!
+                            // 🚀 THE FIX: Auto-fallback vendor mapping
                             $origVendor = $itemData['supplier_company_name'] ?? null;
-                            $itemData['supplier_id'] = $origVendor && isset($vendorMap[$origVendor]) 
+                            $mappedId = $origVendor && isset($vendorMap[$origVendor]) 
                                 ? $vendorMap[$origVendor] 
                                 : null;
+
+                            // If UI mapping failed, try to auto-match the supplier_code locally
+                            if (!$mappedId && isset($itemData['supplier_code'])) {
+                                $localSupplier = \App\Models\Supplier::where('supplier_code', $itemData['supplier_code'])->first();
+                                if ($localSupplier) {
+                                    $mappedId = $localSupplier->id;
+                                }
+                            }
+                            $itemData['supplier_id'] = $mappedId;
 
                             // Clean up source database keys
                             unset(
@@ -371,6 +378,9 @@ class StockTransferResource extends Resource
                                     'status'      => 'in_stock',
                                     'store_id'    => 1,
                                     'supplier_id' => $itemData['supplier_id'],
+                                    'custom_description' => $itemData['custom_description'] ?? $existing->custom_description,
+                                    'retail_price' => $itemData['retail_price'] ?? $existing->retail_price,
+                                    'cost_price'   => $itemData['cost_price'] ?? $existing->cost_price,
                                 ]);
                                 $skipped[] = $barcode;
                             } else {
@@ -378,9 +388,14 @@ class StockTransferResource extends Resource
                                     ProductItem::withoutEvents(fn() => ProductItem::create($itemData));
                                     $created[] = $barcode;
                                 } catch (\Exception $e) {
-                                    ProductItem::where('barcode', $barcode)
-                                        ->update(['status' => 'in_stock', 'store_id' => 1]);
-                                    $skipped[] = $barcode;
+                                    // 🚀 THE FIX: Stop silently failing! If an item fails to save, halt the transfer and warn the user!
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Database Error on Item: ' . $barcode)
+                                        ->body('Failed to save to destination. Ensure vendor exists. Error: ' . $e->getMessage())
+                                        ->danger()
+                                        ->send();
+                                        
+                                    throw $e; // This cancels the database transaction, preventing the source item from being deleted
                                 }
                             }
                         }
@@ -405,13 +420,11 @@ class StockTransferResource extends Resource
                                         'actioned_at' => now(),
                                     ]);
 
-                                foreach ($snapshot as $snap) {
+                               foreach ($snapshot as $snap) {
                                     if (empty($snap['barcode'])) continue;
-                                    ProductItem::withoutEvents(function () use ($snap) {
-                                        ProductItem::where('barcode', $snap['barcode'])
-                                            ->where('status', 'on_hold')
-                                            ->delete();
-                                    });
+                                    ProductItem::where('barcode', $snap['barcode'])
+                                        ->whereIn('status', ['on_hold', 'in_transit']) // ✅ THE FIX
+                                        ->update(['status' => 'in_stock']);
                                 }
 
                                 $body = "Store [{$currentTenant}] accepted transfer #{$record->transfer_number}.";
@@ -478,11 +491,11 @@ class StockTransferResource extends Resource
                                     ]);
 
                                 foreach ($snapshot as $snap) {
-                                    if (empty($snap['barcode'])) continue;
-                                    ProductItem::where('barcode', $snap['barcode'])
-                                        ->where('status', 'on_hold')
-                                        ->update(['status' => 'in_stock']);
-                                }
+                            if (empty($snap['barcode'])) continue;
+                            ProductItem::where('barcode', $snap['barcode'])
+                                ->whereIn('status', ['on_hold', 'in_transit']) // ✅ THE FIX
+                                ->update(['status' => 'in_stock']);
+                        }
 
                                 User::all()->each(fn($u) =>
                                     \Filament\Notifications\Notification::make()
@@ -521,8 +534,8 @@ class StockTransferResource extends Resource
 
                         foreach ($snapshot as $snap) {
                             if (empty($snap['barcode'])) continue;
-                            ProductItem::where('barcode', $snap['barcode'])
-                                ->where('status', 'on_hold')
+                           ProductItem::where('barcode', $snap['barcode'])
+                                ->whereIn('status', ['on_hold', 'in_transit']) // ✅ FIXED
                                 ->update(['status' => 'in_stock']);
                         }
 

@@ -41,8 +41,8 @@ class CreateStockTransfer extends CreateRecord
 
             $snapshot[] = $itemArray;
 
-            // Mark item as on_hold in source tenant
-            $product->update(['status' => 'on_hold']);
+            // 🚀 THE FIX: Use 'in_transit' so the Laybuy system ignores this item!
+            $product->update(['status' => 'in_transit']);
         }
 
         // Save snapshot to the transfer record

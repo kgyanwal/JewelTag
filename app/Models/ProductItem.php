@@ -6,7 +6,7 @@ use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-
+use Illuminate\Database\Eloquent\Relations\HasMany;
 class ProductItem extends Model
 {
     use LogsActivity;
@@ -105,6 +105,10 @@ public function wishlists()
     public function memoVendor() {
     return $this->belongsTo(Supplier::class, 'memo_vendor_id');
 }
+public function saleItems(): HasMany
+    {
+        return $this->hasMany(SaleItem::class, 'product_item_id');
+    }
 //     protected static function booted()
 // {
 //     static::saving(function ($item) {

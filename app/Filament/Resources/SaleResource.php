@@ -1326,89 +1326,89 @@ class SaleResource extends Resource
                                     ");
                                     }),
 
-                               \Filament\Forms\Components\Actions::make([
-    FormAction::make('view_payment_log')
-        ->label('📋 Payment Log')
-        ->color('info')
-        ->outlined()
-        ->icon('heroicon-o-banknotes')
-        ->visible(fn(string $operation) => $operation === 'edit')
-        ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
-        ->modalWidth('3xl')
-        ->modalSubmitAction(false)
-        ->modalCancelActionLabel('Close')
-        ->form(function (?Sale $record) {
-            if (!$record) return [];
- 
-            $payments1 = $record->payments()
-                ->orderBy('paid_at')
-                ->get()
-               ->map(fn($p) => [
-    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
-    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
-    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
-    'method'   => strtoupper($p->method ?? '—'),
-    'amount'   => floatval($p->amount),
-    'source'   => 'payments',
-    'id'       => $p->id,
-]);
- 
-            $payments2 = $record->salePayments()
-                ->orderBy('payment_date')
-                ->get()
-               ->map(fn($p) => [
-    'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
-    'time'     => '',
-    'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
-    'method'   => strtoupper($p->payment_method ?? '—'),
-    'amount'   => floatval($p->amount),
-    'source'   => 'sale_payments',
-    'id'       => $p->id,
-]);
- 
-           $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
-            $grandTotal  = floatval($record->final_total);
-            $running     = 0;
-            $customer    = $record->customer;
-            $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
-            $custPhone   = $customer?->phone ?? '—';
-            $invoiceNo   = $record->invoice_number;
- 
+                                \Filament\Forms\Components\Actions::make([
+                                    FormAction::make('view_payment_log')
+                                        ->label('📋 Payment Log')
+                                        ->color('info')
+                                        ->outlined()
+                                        ->icon('heroicon-o-banknotes')
+                                        ->visible(fn(string $operation) => $operation === 'edit')
+                                        ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
+                                        ->modalWidth('3xl')
+                                        ->modalSubmitAction(false)
+                                        ->modalCancelActionLabel('Close')
+                                        ->form(function (?Sale $record) {
+                                            if (!$record) return [];
 
-            $paymentsWithBalance = [];
-$running = 0;
-foreach ($allPayments as $index => $p) {
-    $running += $p['amount'];
-    $balance  = max(0, $grandTotal - $running);
-    $paymentsWithBalance[] = array_merge($p, [
-        'running' => $running,
-        'balance' => $balance,
-        'num'     => $index + 1,
-    ]);
-}
-           $rows = '';
-foreach (array_reverse($paymentsWithBalance) as $p) {
-    $num        = $p['num'];
-    $balance    = $p['balance'];
-    $running    = $p['running'];
-    $balColor   = $balance <= 0 ? '#16a34a' : '#dc2626';
-    $balLabel   = $balance <= 0 ? '✅ Paid in Full' : '$' . number_format($balance, 2) . ' remaining';
-    $amountFmt  = number_format($p['amount'], 2);
-    $runningFmt = number_format($running, 2);
-    $timeHtml   = !empty($p['time'])
-        ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>"
-        : '';
-    $sourceLabel = ucfirst(str_replace('_', ' ', $p['source']));
-    $method      = $p['method'];
-    $date        = $p['date'];
+                                            $payments1 = $record->payments()
+                                                ->orderBy('paid_at')
+                                                ->get()
+                                                ->map(fn($p) => [
+                                                    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+                                                    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+                                                    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+                                                    'method'   => strtoupper($p->method ?? '—'),
+                                                    'amount'   => floatval($p->amount),
+                                                    'source'   => 'payments',
+                                                    'id'       => $p->id,
+                                                ]);
 
-    $receiptUrl = route('sales.payment-receipt', [
-        'record'     => $record->id,
-        'source'     => $p['source'],
-        'payment_id' => $p['id'],
-    ]);
+                                            $payments2 = $record->salePayments()
+                                                ->orderBy('payment_date')
+                                                ->get()
+                                                ->map(fn($p) => [
+                                                    'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
+                                                    'time'     => '',
+                                                    'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
+                                                    'method'   => strtoupper($p->payment_method ?? '—'),
+                                                    'amount'   => floatval($p->amount),
+                                                    'source'   => 'sale_payments',
+                                                    'id'       => $p->id,
+                                                ]);
 
-    $rows .= "
+                                            $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
+                                            $grandTotal  = floatval($record->final_total);
+                                            $running     = 0;
+                                            $customer    = $record->customer;
+                                            $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
+                                            $custPhone   = $customer?->phone ?? '—';
+                                            $invoiceNo   = $record->invoice_number;
+
+
+                                            $paymentsWithBalance = [];
+                                            $running = 0;
+                                            foreach ($allPayments as $index => $p) {
+                                                $running += $p['amount'];
+                                                $balance  = max(0, $grandTotal - $running);
+                                                $paymentsWithBalance[] = array_merge($p, [
+                                                    'running' => $running,
+                                                    'balance' => $balance,
+                                                    'num'     => $index + 1,
+                                                ]);
+                                            }
+                                            $rows = '';
+                                            foreach (array_reverse($paymentsWithBalance) as $p) {
+                                                $num        = $p['num'];
+                                                $balance    = $p['balance'];
+                                                $running    = $p['running'];
+                                                $balColor   = $balance <= 0 ? '#16a34a' : '#dc2626';
+                                                $balLabel   = $balance <= 0 ? '✅ Paid in Full' : '$' . number_format($balance, 2) . ' remaining';
+                                                $amountFmt  = number_format($p['amount'], 2);
+                                                $runningFmt = number_format($running, 2);
+                                                $timeHtml   = !empty($p['time'])
+                                                    ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>"
+                                                    : '';
+                                                $sourceLabel = ucfirst(str_replace('_', ' ', $p['source']));
+                                                $method      = $p['method'];
+                                                $date        = $p['date'];
+
+                                                $receiptUrl = route('sales.payment-receipt', [
+                                                    'record'     => $record->id,
+                                                    'source'     => $p['source'],
+                                                    'payment_id' => $p['id'],
+                                                ]);
+
+                                                $rows .= "
         <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;
                     margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
             <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
@@ -1449,18 +1449,18 @@ foreach (array_reverse($paymentsWithBalance) as $p) {
                 <div><span style='font-weight:600;color:#374151;'>Running Total Paid:</span> \${$runningFmt}</div>
             </div>
         </div>";
-}
- 
-            $totalPaid    = $allPayments->sum('amount');
-            $finalBal     = max(0, $grandTotal - $totalPaid);
-            $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
-            $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
-            $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
-            $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
-            $grandFmt     = number_format($grandTotal, 2);
-            $paidFmt      = number_format($totalPaid, 2);
- 
-            $summary = "
+                                            }
+
+                                            $totalPaid    = $allPayments->sum('amount');
+                                            $finalBal     = max(0, $grandTotal - $totalPaid);
+                                            $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
+                                            $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
+                                            $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
+                                            $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
+                                            $grandFmt     = number_format($grandTotal, 2);
+                                            $paidFmt      = number_format($totalPaid, 2);
+
+                                            $summary = "
                 <div style='background:{$summBg};border:2px solid {$summBorder};
                             border-radius:10px;padding:14px;margin-bottom:16px;'>
                     <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;'>
@@ -1481,20 +1481,20 @@ foreach (array_reverse($paymentsWithBalance) as $p) {
                         </div>
                     </div>
                 </div>";
- 
-            if ($allPayments->isEmpty()) {
-                $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>
+
+                                            if ($allPayments->isEmpty()) {
+                                                $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>
                     No payments recorded for this sale yet.</div>";
-            }
- 
-            return [
-                Placeholder::make('payment_log_content')
-                    ->label('')
-                    ->content(new HtmlString($summary . $rows)),
-            ];
-        }),
-])->visible(fn(string $operation) => $operation === 'edit'),
-                                    Toggle::make('is_split_payment')
+                                            }
+
+                                            return [
+                                                Placeholder::make('payment_log_content')
+                                                    ->label('')
+                                                    ->content(new HtmlString($summary . $rows)),
+                                            ];
+                                        }),
+                                ])->visible(fn(string $operation) => $operation === 'edit'),
+                                Toggle::make('is_split_payment')
                                     ->label('Enable Split Payment')
                                     ->onColor('warning')
                                     ->live()
@@ -1679,6 +1679,7 @@ foreach (array_reverse($paymentsWithBalance) as $p) {
                                         'completed'  => 'Completed',
                                         'inprogress' => 'In Progress',
                                         'pending'    => 'Pending',
+                                        'cancelled'  => 'Cancelled',
                                     ])
                                     ->default('inprogress')
                                     ->required()
@@ -1842,7 +1843,7 @@ foreach (array_reverse($paymentsWithBalance) as $p) {
                         'completed'          => 'success',
                         'refunded'           => 'danger',
                         'partially_refunded' => 'warning',
-                        'cancelled'          => 'gray',
+                        'cancelled' => 'danger',
                         default              => 'gray',
                     })
                     ->formatStateUsing(fn(string $state) => strtoupper(str_replace('_', ' ', $state))),
@@ -2066,6 +2067,8 @@ foreach (array_reverse($paymentsWithBalance) as $p) {
                     ->color('danger')
                     ->visible(fn(Sale $record) => $record->status === 'completed')
                     ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
+
+                    
             ])
             ->defaultSort('created_at', 'desc');
     }

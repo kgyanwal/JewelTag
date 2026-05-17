@@ -627,6 +627,51 @@ CustomDatePicker::make('date_to')
                         ]),
                     ]),
 
+                    \Filament\Tables\Actions\ActionGroup::make([
+    Action::make('cancel_sale')
+        ->label('Cancel Sale')
+        ->icon('heroicon-o-x-circle')
+        ->color('danger')
+        ->visible(function (Sale $record) {
+            $user = Staff::user();
+            if (!$user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
+            return !in_array($record->status, ['cancelled', 'refunded', 'void']);
+        })
+        ->requiresConfirmation()
+        ->modalHeading('Cancel This Sale?')
+        ->modalDescription('This will mark the sale as cancelled and return items to stock.')
+        ->modalSubmitActionLabel('Yes, Cancel Sale')
+        ->action(function (Sale $record) {
+            foreach ($record->items as $saleItem) {
+                if (!$saleItem->product_item_id) continue;
+                $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
+                if ($productItem) {
+                    $productItem->update([
+                        'status' => 'in_stock',
+                        'qty'    => max(1, $productItem->qty + ($saleItem->qty ?? 1)),
+                    ]);
+                }
+            }
+            $record->update(['status' => 'cancelled', 'balance_due' => 0]);
+            Notification::make()
+                ->title('Sale Cancelled')
+                ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
+                ->success()
+                ->send();
+        }),
+
+    Action::make('refund_sale')
+        ->label('Refund Sale')
+        ->icon('heroicon-o-arrow-uturn-left')
+        ->color('warning')
+        ->visible(fn(Sale $record) => $record->status === 'completed')
+        ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id]))
+        ->openUrlInNewTab(),
+])
+    ->icon('heroicon-m-ellipsis-vertical')
+    ->color('gray')
+    ->button(false)
+    ->extraAttributes(['class' => 'fi-dropdown-trigger flex cursor-pointer']),
                 \Filament\Tables\Actions\ActionGroup::make([
                     \Filament\Tables\Actions\Action::make('printStandard')
                         ->label('Standard Receipt')
@@ -720,6 +765,8 @@ CustomDatePicker::make('date_to')
                     ->color('gray')
                     ->button()
                     ->outlined(),
+
+
             ])
             ->defaultSort('created_at', 'desc')
             ->defaultPaginationPageOption(15)

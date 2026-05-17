@@ -19,12 +19,13 @@ class StockTransfer extends Model
     public function toStore()   { return $this->belongsTo(Store::class, 'to_store_id'); }
     public function items()     { return $this->hasMany(StockTransferItem::class); }
 
-    public function markAsSent()
+   public function markAsSent()
     {
         DB::transaction(function () {
             $this->update(['status' => 'in_transit']);
             foreach ($this->items as $item) {
-                $item->productItem?->update(['status' => 'on_hold']);
+                // 🚀 FIX: Use 'in_transit' so the Laybuy system doesn't trigger false alerts
+                $item->productItem?->update(['status' => 'in_transit']); 
             }
         });
     }
