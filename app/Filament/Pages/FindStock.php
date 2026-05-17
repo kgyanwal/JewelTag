@@ -62,16 +62,19 @@ class FindStock extends Page implements HasForms, HasTable
         $this->form->fill();
     }
 
+    // 🚀 1. Override native table search (Top right search bar)
     public function updatedTableSearch(): void
     {
         $this->resetPage($this->getTablePaginationPageName());
     }
 
+    // 🚀 2. Override native column searches
     public function updatedTableColumnSearches(): void
     {
         $this->resetPage($this->getTablePaginationPageName());
     }
 
+    // 🚀 3. Override your custom form filters
     public function updated($property): void
     {
         if (str_starts_with($property, 'data.')) {
@@ -93,6 +96,7 @@ class FindStock extends Page implements HasForms, HasTable
                 ->color('danger')
                 ->action(function () {
                     $this->form->fill();
+                    // Cleanly deselect records and reset page without destroying table state completely
                     $this->deselectAllTableRecords();
                     $this->resetPage($this->getTablePaginationPageName());
                     Notification::make()->title('Filters Cleared')->success()->send();
@@ -155,10 +159,12 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->placeholder('G10274...')
                                                 ->live()->debounce(500),
 
+                                            // ── JOB NUMBER SEARCH ─────────────────────────────
                                             TextInput::make('job_number')
                                                 ->label('Job # / Deposit No.')
                                                 ->placeholder('9363...')
-                                                ->live()->debounce(500),
+                                                ->live()
+                                                ->debounce(500),
 
                                             TextInput::make('description')
                                                 ->label('Keywords')
@@ -174,28 +180,32 @@ class FindStock extends Page implements HasForms, HasTable
                                                     'memo'     => 'On Memo',
                                                 ])->live(),
 
+                                            // 1. Department Fix
                                             Select::make('department')
                                                 ->options(fn() => collect($settings['departments'] ?? [])
-                                                    ->filter(fn($item) => !empty($item['name']))
+                                                    ->filter(fn($item) => !empty($item['name'])) // 🚀 Strip out nulls
                                                     ->pluck('name', 'name'))
                                                 ->searchable()->live(),
 
+                                            // 2. Sub-Department Fix
                                             Select::make('sub_department')
                                                 ->options(fn() => collect($settings['sub_departments'] ?? [])
-                                                    ->filter()
+                                                    ->filter() // 🚀 Strip out nulls
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
+                                            // 3. Category Fix
                                             Select::make('category')
                                                 ->options(fn() => collect($settings['categories'] ?? [])
-                                                    ->filter()
+                                                    ->filter() // 🚀 Strip out nulls
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
+                                            // 4. Metal Type Fix
                                             Select::make('metal_type')
                                                 ->label('Metal Karat')
                                                 ->options(fn() => collect($settings['metal_types'] ?? [])
-                                                    ->filter()
+                                                    ->filter() // 🚀 Strip out nulls
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
@@ -262,7 +272,7 @@ class FindStock extends Page implements HasForms, HasTable
 
     protected function applyQueryFilters(Builder $query): Builder
     {
-        $f = $this->data ?? [];
+        $f = $this->data;
 
         return $query
             ->when($f['stock_number'] ?? null, fn($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
@@ -285,20 +295,13 @@ class FindStock extends Page implements HasForms, HasTable
             ->when($f['supplier_code'] ?? null, fn($q, $v) => $q->where('supplier_code', 'like', "%{$v}%"))
             ->when($f['serial_number'] ?? null, fn($q, $v) => $q->where('serial_number', 'like', "%{$v}%"))
             ->when($f['rfid_code'] ?? null,     fn($q, $v) => $q->where('rfid_code', 'like', "%{$v}%"))
-            // FIX: use array_key_exists so '0' (false-y) values still apply
-            ->when(
-                array_key_exists('is_memo', $f) && $f['is_memo'] !== null && $f['is_memo'] !== '',
-                fn($q) => $q->where('is_memo', $f['is_memo'])
-            )
-            ->when(
-                array_key_exists('is_trade_in', $f) && $f['is_trade_in'] !== null && $f['is_trade_in'] !== '',
-                fn($q) => $q->where('is_trade_in', $f['is_trade_in'])
-            )
+            ->when($f['is_memo'] !== null && $f['is_memo'] !== '',     fn($q) => $q->where('is_memo', $f['is_memo']))
+            ->when($f['is_trade_in'] !== null && $f['is_trade_in'] !== '', fn($q) => $q->where('is_trade_in', $f['is_trade_in']))
             ->when($f['price_from'] ?? null,    fn($q, $v) => $q->where('retail_price', '>=', $v))
             ->when($f['price_to'] ?? null,      fn($q, $v) => $q->where('retail_price', '<=', $v))
-            ->when(
+         ->when(
                 $f['job_number'] ?? null,
-                fn($q, $v) =>
+                fn($q, $v) => 
                 $q->whereIn('id', function (\Illuminate\Database\Query\Builder $query) use ($v) {
                     $query->select('product_item_id')
                           ->from('sale_items')
@@ -306,209 +309,6 @@ class FindStock extends Page implements HasForms, HasTable
                           ->where('sales.invoice_number', 'like', "%{$v}%");
                 })
             );
-    }
-
-    // ── REUSABLE LAYBUY FORM ─────────────────────────────────────────────────
-    private function getLaybuyReleaseForm(ProductItem $record): array
-    {
-        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-            ->with(['sale.laybuy.customer'])
-            ->latest()
-            ->first();
-
-        $laybuy   = $saleItem?->sale?->laybuy;
-        $laybuyNo = $laybuy?->laybuy_no ?? '—';
-        $customer = $laybuy?->customer;
-        $custName = $customer
-            ? trim($customer->name . ' ' . ($customer->last_name ?? ''))
-            : '—';
-
-        return [
-            \Filament\Forms\Components\Placeholder::make('info_banner')
-                ->hiddenLabel()
-                ->content(new HtmlString("
-                    <div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-sm'>
-                        <div class='font-black text-warning-800 mb-1'>⚠️ Releasing: {$record->barcode}</div>
-                        <div class='text-warning-700'>" . e($record->custom_description) . "</div>
-                        <div class='mt-2 text-xs text-warning-600'>
-                            Laybuy Plan: <strong>{$laybuyNo}</strong> — Customer: <strong>" . e($custName) . "</strong>
-                        </div>
-                    </div>
-                ")),
-
-            // Hidden fields carry laybuy snapshot into the form state
-            \Filament\Forms\Components\Hidden::make('item_price'),
-            \Filament\Forms\Components\Hidden::make('laybuy_no'),
-            \Filament\Forms\Components\Hidden::make('total_amount'),
-            \Filament\Forms\Components\Hidden::make('amount_paid'),
-            \Filament\Forms\Components\Hidden::make('suggested_refund'),
-
-            \Filament\Forms\Components\Placeholder::make('summary')
-                ->hiddenLabel()
-                ->content(function (\Filament\Forms\Get $get) {
-                    $itemPrice   = number_format((float) ($get('item_price') ?? 0), 2);
-                    $totalAmount = number_format((float) ($get('total_amount') ?? 0), 2);
-                    $amountPaid  = number_format((float) ($get('amount_paid') ?? 0), 2);
-                    $suggested   = number_format((float) ($get('suggested_refund') ?? 0), 2);
-
-                    return new HtmlString("
-                        <div class='grid grid-cols-2 gap-3 text-sm'>
-                            <div class='p-2 bg-gray-50 rounded border'>
-                                <div class='text-xs text-gray-400 uppercase font-bold'>Item Price</div>
-                                <div class='font-black text-gray-800'>\${$itemPrice}</div>
-                            </div>
-                            <div class='p-2 bg-gray-50 rounded border'>
-                                <div class='text-xs text-gray-400 uppercase font-bold'>Laybuy Total</div>
-                                <div class='font-black text-gray-800'>\${$totalAmount}</div>
-                            </div>
-                            <div class='p-2 bg-green-50 rounded border border-green-200'>
-                                <div class='text-xs text-green-600 uppercase font-bold'>Total Paid So Far</div>
-                                <div class='font-black text-green-700'>\${$amountPaid}</div>
-                            </div>
-                            <div class='p-2 bg-blue-50 rounded border border-blue-200'>
-                                <div class='text-xs text-blue-600 uppercase font-bold'>Suggested Refund</div>
-                                <div class='font-black text-blue-700'>\${$suggested}</div>
-                            </div>
-                        </div>
-                    ");
-                }),
-
-            \Filament\Forms\Components\TextInput::make('refund_amount')
-                ->label('Amount to Refund / Deduct Today')
-                ->numeric()
-                ->prefix('$')
-                ->required()
-                ->helperText('This amount will be returned to the customer and deducted from the laybuy balance.'),
-
-            \Filament\Forms\Components\Select::make('refund_method')
-                ->label('Refund Method')
-                ->options(function () {
-                    $json    = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
-                    $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
-                    $options = [];
-                    foreach ((array) $methods as $m) {
-                        $clean = strtoupper(trim($m));
-                        if ($clean !== 'LAYBUY') {
-                            $options[$clean] = $clean;
-                        }
-                    }
-                    return $options;
-                })
-                ->default('CASH')
-                ->required(),
-
-            \Filament\Forms\Components\Textarea::make('reason')
-                ->label('Reason for Removal')
-                ->placeholder('e.g. Customer changed mind, keeping R016 only')
-                ->rows(2),
-        ];
-    }
-
-    // ── REUSABLE LAYBUY RELEASE ACTION ───────────────────────────────────────
-    private function executeLaybuyRelease(ProductItem $record, array $data): void
-    {
-        DB::transaction(function () use ($record, $data) {
-            $refundAmount = floatval($data['refund_amount'] ?? 0);
-            $refundMethod = strtoupper(trim($data['refund_method'] ?? 'CASH'));
-            $storeId      = auth()->user()->store_id ?? 1;
-
-            // Reload fresh to avoid stale state
-            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                ->with(['sale.laybuy', 'sale.payments'])
-                ->latest()
-                ->first();
-
-            if (! $saleItem) {
-                Notification::make()
-                    ->title('Error: No sale record found for this item.')
-                    ->warning()
-                    ->send();
-                return;
-            }
-
-            $sale      = $saleItem->sale;
-            $laybuy    = $sale?->laybuy;
-            $itemPrice = floatval($saleItem->sold_price ?? $record->retail_price ?? 0);
-
-            // ── 1. Capture paid total BEFORE creating the refund payment ──
-            $totalPaidBeforeRefund = $sale
-                ? \App\Models\Payment::where('sale_id', $sale->id)->sum('amount')
-                : 0;
-
-            // ── 2. Release the item back to stock ────────────────────────
-            $record->update([
-                'status'          => 'in_stock',
-                'hold_reason'     => null,
-                'held_by_sale_id' => null,
-            ]);
-
-            // ── 3. Remove the sale line ──────────────────────────────────
-            $saleItem->delete();
-
-            // ── 4. Record refund payment (negative amount) ───────────────
-            if ($refundAmount > 0 && $sale) {
-                $lastPayment = \App\Models\Payment::where('sale_id', $sale->id)
-                    ->where('amount', '>', 0)
-                    ->latest('paid_at')
-                    ->first();
-
-                \App\Models\Payment::create([
-                    'sale_id'  => $sale->id,
-                    'amount'   => -abs($refundAmount),
-                    'method'   => $refundMethod,
-                    'paid_at'  => $lastPayment?->paid_at ?? now(),
-                    'store_id' => $storeId,
-                    'notes'    => $data['reason'] ?? 'Released from laybuy',
-                ]);
-            }
-
-            // ── 5. Recalculate sale totals using pre-refund paid amount ──
-            if ($sale) {
-                $newSubtotal   = (float) $sale->items()->sum('sold_price');
-                $newFinalTotal = $newSubtotal;
-
-                // Paid before refund minus refund = effective amount paid toward new total
-                $effectivePaid = max(0, $totalPaidBeforeRefund - $refundAmount);
-                $newBalance    = max(0, $newFinalTotal - $effectivePaid);
-
-                $sale->update([
-                    'subtotal'    => $newSubtotal,
-                    'final_total' => $newFinalTotal,
-                    'amount_paid' => $effectivePaid,
-                    'balance_due' => $newBalance,
-                    'status'      => $newBalance <= 0.01 ? 'completed' : 'pending',
-                ]);
-            }
-
-            // ── 6. Recalculate laybuy totals ─────────────────────────────
-            if ($laybuy) {
-                $newLaybuyTotal = max(0, floatval($laybuy->total_amount) - $itemPrice);
-                $newLaybuyPaid  = max(0, floatval($laybuy->amount_paid) - $refundAmount);
-                $newLaybuyBal   = max(0, $newLaybuyTotal - $newLaybuyPaid);
-
-                // Determine status: only cancel the whole laybuy if nothing remains
-                if ($newLaybuyTotal <= 0.01) {
-                    $laybuyStatus = 'cancelled';
-                } elseif ($newLaybuyBal <= 0.01) {
-                    $laybuyStatus = 'completed';
-                } else {
-                    $laybuyStatus = 'in_progress';
-                }
-
-                $laybuy->update([
-                    'total_amount' => $newLaybuyTotal,
-                    'amount_paid'  => $newLaybuyPaid,
-                    'balance_due'  => $newLaybuyBal,
-                    'status'       => $laybuyStatus,
-                ]);
-            }
-        });
-
-        Notification::make()
-            ->title('Item Released from Laybuy')
-            ->body("{$record->barcode} is now back In Stock. Laybuy totals have been adjusted.")
-            ->success()
-            ->send();
     }
 
     public function table(Table $table): Table
@@ -579,7 +379,9 @@ class FindStock extends Page implements HasForms, HasTable
                             ->get();
 
                         if ($saleItems->isEmpty()) {
-                            return new HtmlString("<span class='text-[10px] text-gray-300 italic'>No sale</span>");
+                            return new HtmlString(
+                                "<span class='text-[10px] text-gray-300 italic'>No sale</span>"
+                            );
                         }
 
                         return new HtmlString(
@@ -589,17 +391,21 @@ class FindStock extends Page implements HasForms, HasTable
                                 $jobNo   = end($parts);
                                 $name    = htmlspecialchars(trim(
                                     ($si->sale?->customer?->name ?? '') . ' ' .
-                                    ($si->sale?->customer?->last_name ?? '')
+                                        ($si->sale?->customer?->last_name ?? '')
                                 ));
                                 $balance = floatval($si->sale?->balance_due ?? 0);
-                                $badge   = $balance > 0.01
+
+                                $badge = $balance > 0.01
                                     ? "<span class='text-[9px] bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full font-bold'>\$" . number_format($balance, 2) . " due</span>"
                                     : "<span class='text-[9px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded-full font-bold'>Paid ✓</span>";
+
                                 $url = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $si->sale_id]);
 
                                 return "
                                     <div class='mb-1.5 last:mb-0'>
-                                        <a href='{$url}' class='font-mono text-xs font-bold text-primary-600 hover:underline'>Job #{$jobNo}</a>
+                                        <a href='{$url}' class='font-mono text-xs font-bold text-primary-600 hover:underline'>
+                                            Job #{$jobNo}
+                                        </a>
                                         {$badge}
                                         <div class='text-[10px] text-gray-500 mt-0.5'>{$name}</div>
                                     </div>
@@ -609,7 +415,6 @@ class FindStock extends Page implements HasForms, HasTable
                     })
                     ->html()
                     ->toggleable(isToggledHiddenByDefault: true),
-
                 TextColumn::make('date_added')
                     ->label('DATE IN')
                     ->getStateUsing(function (ProductItem $record) {
@@ -634,7 +439,6 @@ class FindStock extends Page implements HasForms, HasTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->actions([
-                // ── VIEW ─────────────────────────────────────────────────────
                 ViewAction::make()
                     ->modalHeading('Stock Item Details')
                     ->modalWidth('5xl')
@@ -670,139 +474,93 @@ class FindStock extends Page implements HasForms, HasTable
                             ]),
                         ]),
 
-                        InfoSection::make('🛒 Sales History — Who Bought This')->schema([
-                            \Filament\Infolists\Components\TextEntry::make('sales_history')
-                                ->label('')
-                                ->state(fn() => 'loaded')
-                                ->formatStateUsing(function () use ($record) {
-                                    $saleItems = \App\Models\SaleItem::where('product_item_id', $record->id)
-                                        ->with(['sale.customer', 'sale.payments'])
-                                        ->latest()
-                                        ->get();
+                        // ── WHO BOUGHT THIS ITEM ──────────────────────────────────────
+                        InfoSection::make('🛒 Sales History — Who Bought This')
+                            ->schema([
+                                \Filament\Infolists\Components\TextEntry::make('sales_history')
+                                    ->label('')
+                                    ->state(fn() => 'loaded')
+                                    ->formatStateUsing(function () use ($record) {
+                                        $saleItems = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                            ->with(['sale.customer', 'sale.payments'])
+                                            ->latest()
+                                            ->get();
 
-                                    if ($saleItems->isEmpty()) {
-                                        return new HtmlString("<div class='text-center py-6 text-gray-400 italic text-sm'>No sales recorded for this item.</div>");
-                                    }
+                                        if ($saleItems->isEmpty()) {
+                                            return new HtmlString("
+                                <div class='text-center py-6 text-gray-400 italic text-sm'>
+                                    No sales recorded for this item.
+                                </div>
+                            ");
+                                        }
 
-                                    $rows = $saleItems->map(function ($si) {
-                                        $sale        = $si->sale;
-                                        $customer    = $sale?->customer;
-                                        $name        = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
-                                        $phone       = $customer?->phone ?? '—';
-                                        $invoice     = $sale?->invoice_number ?? '—';
-                                        $date        = $sale?->created_at?->format('M d, Y') ?? '—';
-                                        $total       = '$' . number_format($sale?->final_total ?? 0, 2);
-                                        $paid        = '$' . number_format($sale?->payments?->sum('amount') ?? 0, 2);
-                                        $balance     = floatval($sale?->balance_due ?? 0);
-                                        $status      = $sale?->status ?? 'unknown';
-                                        $method      = strtoupper($sale?->payment_method ?? '—');
-                                        $statusColor = match ($status) {
-                                            'completed' => 'bg-success-100 text-success-700',
-                                            'pending'   => 'bg-warning-100 text-warning-700',
-                                            default     => 'bg-gray-100 text-gray-600',
-                                        };
-                                        $balanceBadge = $balance > 0.01
-                                            ? "<span class='bg-danger-100 text-danger-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>Balance: \${$balance}</span>"
-                                            : "<span class='bg-success-100 text-success-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>✓ Fully Paid</span>";
-                                        $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale?->id]);
+                                        $rows = $saleItems->map(function ($si) {
+                                            $sale     = $si->sale;
+                                            $customer = $sale?->customer;
+                                            $name     = $customer
+                                                ? trim($customer->name . ' ' . ($customer->last_name ?? ''))
+                                                : 'Walk-in';
+                                            $phone    = $customer?->phone ?? '—';
+                                            $invoice  = $sale?->invoice_number ?? '—';
+                                            $date     = $sale?->created_at?->format('M d, Y') ?? '—';
+                                            $total    = '$' . number_format($sale?->final_total ?? 0, 2);
+                                            $paid     = '$' . number_format($sale?->payments?->sum('amount') ?? 0, 2);
+                                            $balance  = floatval($sale?->balance_due ?? 0);
+                                            $status   = $sale?->status ?? 'unknown';
+                                            $method   = strtoupper($sale?->payment_method ?? '—');
 
-                                        return "
-                                            <div class='border border-gray-100 rounded-xl p-4 mb-3 bg-white shadow-sm'>
-                                                <div class='flex justify-between items-start mb-3'>
-                                                    <div>
-                                                        <a href='{$editUrl}' target='_blank' class='font-mono font-black text-primary-600 text-sm hover:underline'>Invoice #{$invoice}</a>
-                                                        <span class='ml-2 text-xs text-gray-400'>{$date}</span>
-                                                    </div>
-                                                    <div class='flex gap-2 items-center'>
-                                                        <span class='{$statusColor} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase'>{$status}</span>
-                                                        {$balanceBadge}
-                                                    </div>
-                                                </div>
-                                                <div class='grid grid-cols-2 gap-3 text-sm'>
-                                                    <div>
-                                                        <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Customer</div>
-                                                        <div class='font-semibold text-gray-800'>{$name}</div>
-                                                        <div class='text-xs text-gray-500'>{$phone}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Payment</div>
-                                                        <div class='font-semibold text-gray-800'>{$total} total</div>
-                                                        <div class='text-xs text-gray-500'>Paid: {$paid} via {$method}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ";
-                                    })->implode('');
+                                            $statusColor = match ($status) {
+                                                'completed' => 'bg-success-100 text-success-700',
+                                                'pending'   => 'bg-warning-100 text-warning-700',
+                                                default     => 'bg-gray-100 text-gray-600',
+                                            };
 
-                                    return new HtmlString("<div class='space-y-1'>{$rows}</div>");
-                                })
-                                ->html(),
-                        ]),
+                                            $balanceBadge = $balance > 0.01
+                                                ? "<span class='bg-danger-100 text-danger-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>Balance: \${$balance}</span>"
+                                                : "<span class='bg-success-100 text-success-700 text-[10px] font-bold px-2 py-0.5 rounded-full'>✓ Fully Paid</span>";
+
+                                            $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale?->id]);
+
+                                            return "
+                                <div class='border border-gray-100 rounded-xl p-4 mb-3 bg-white shadow-sm hover:shadow-md transition'>
+                                    <div class='flex justify-between items-start mb-3'>
+                                        <div>
+                                            <a href='{$editUrl}' target='_blank'
+                                               class='font-mono font-black text-primary-600 text-sm hover:underline'>
+                                                Invoice #{$invoice}
+                                            </a>
+                                            <span class='ml-2 text-xs text-gray-400'>{$date}</span>
+                                        </div>
+                                        <div class='flex gap-2 items-center'>
+                                            <span class='{$statusColor} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase'>{$status}</span>
+                                            {$balanceBadge}
+                                        </div>
+                                    </div>
+                                    <div class='grid grid-cols-2 gap-3 text-sm'>
+                                        <div>
+                                            <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Customer</div>
+                                            <div class='font-semibold text-gray-800'>{$name}</div>
+                                            <div class='text-xs text-gray-500'>{$phone}</div>
+                                        </div>
+                                        <div>
+                                            <div class='text-[10px] text-gray-400 uppercase font-bold mb-0.5'>Payment</div>
+                                            <div class='font-semibold text-gray-800'>{$total} total</div>
+                                            <div class='text-xs text-gray-500'>Paid: {$paid} via {$method}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ";
+                                        })->implode('');
+
+                                        return new HtmlString("<div class='space-y-1'>{$rows}</div>");
+                                    })
+                                    ->html(),
+                            ]),
                     ])),
-
-                // ── RELEASE FROM LAYBUY ───────────────────────────────────────
-                //
-                // KEY FIXES:
-                //   1. Removed ->requiresConfirmation() — it conflicts with ->form()
-                //      in Filament v3 and swallows submitted form data. Confirmation
-                //      is now handled by the info banner inside the form itself.
-                //
-                //   2. mountUsing() uses Form $form (not ComponentContainer) which
-                //      is the correct Filament v3 type-hint.
-                //
-                //   3. executeLaybuyRelease() now captures totalPaid BEFORE recording
-                //      the refund, preventing double-deduction.
-                //
-                TableAction::make('release_from_laybuy')
-                    ->label('Release from Laybuy')
-                    ->icon('heroicon-o-arrow-uturn-left')
-                    ->color('warning')
-                    ->hidden(function (ProductItem $record) {
-                        if ($record->status !== 'on_hold') {
-                            return true;
-                        }
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                            ->with(['sale'])
-                            ->latest()
-                            ->first();
-                        return ! ($saleItem && $saleItem->sale && $saleItem->sale->payment_method === 'laybuy');
-                    })
-                    // FIX: correct type-hint is Form, not ComponentContainer
-                    ->mountUsing(function (Form $form, ProductItem $record) {
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                            ->with(['sale.laybuy'])
-                            ->latest()
-                            ->first();
-
-                        $laybuy          = $saleItem?->sale?->laybuy;
-                        $itemPrice       = floatval($saleItem?->sold_price ?? $record->retail_price ?? 0);
-                        $totalAmount     = floatval($laybuy?->total_amount ?? 0);
-                        $amountPaid      = floatval($laybuy?->amount_paid ?? 0);
-                        $suggestedRefund = $totalAmount > 0
-                            ? round(($itemPrice / $totalAmount) * $amountPaid, 2)
-                            : 0;
-
-                        $form->fill([
-                            'item_price'       => $itemPrice,
-                            'laybuy_no'        => $laybuy?->laybuy_no ?? '—',
-                            'total_amount'     => $totalAmount,
-                            'amount_paid'      => $amountPaid,
-                            'suggested_refund' => $suggestedRefund,
-                            'refund_amount'    => $suggestedRefund,
-                            'refund_method'    => 'CASH',
-                            'reason'           => '',
-                        ]);
-                    })
-                    ->form(fn(ProductItem $record) => $this->getLaybuyReleaseForm($record))
-                    // FIX: NO ->requiresConfirmation() here — it breaks form data submission
-                    ->modalHeading('Release Item from Laybuy')
-                    ->modalDescription('Review the details below, set the refund amount, then confirm.')
-                    ->modalSubmitActionLabel('Release Item & Adjust Laybuy')
-                    ->modalWidth('lg')
-                    ->action(fn(ProductItem $record, array $data) => $this->executeLaybuyRelease($record, $data)),
-
-                // ── ACTION GROUP (Edit, Print, Hold) ─────────────────────────
+             
                 TableActionGroup::make([
+
+
                     EditAction::make()
                         ->url(fn($record) => ProductItemResource::getUrl('edit', ['record' => $record])),
 
@@ -822,6 +580,452 @@ class FindStock extends Page implements HasForms, HasTable
                             $record->update(['status' => 'on_hold']);
                             Notification::make()->title('Item placed on hold')->warning()->send();
                         }),
+   TableAction::make('release_from_laybuy')
+                    ->label('Release from Laybuy')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('warning')
+                    ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
+                    ->mountUsing(function (\Filament\Forms\ComponentContainer $form, ProductItem $record) {
+                        // Pre-fill the form with info about this item's laybuy
+                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->with(['sale.laybuy'])
+                            ->latest()
+                            ->first();
+
+                        $laybuy      = $saleItem?->sale?->laybuy;
+                        $itemPrice   = floatval($saleItem?->sold_price ?? $record->retail_price ?? 0);
+                        $laybuyNo    = $laybuy?->laybuy_no ?? '—';
+                        $totalAmount = floatval($laybuy?->total_amount ?? 0);
+                        $amountPaid  = floatval($laybuy?->amount_paid ?? 0);
+
+                        // Suggested refund: proportional share of what was paid
+                        $suggestedRefund = $totalAmount > 0
+                            ? round(($itemPrice / $totalAmount) * $amountPaid, 2)
+                            : 0;
+
+                        $form->fill([
+                            'item_price'       => $itemPrice,
+                            'laybuy_no'        => $laybuyNo,
+                            'total_amount'     => $totalAmount,
+                            'amount_paid'      => $amountPaid,
+                            'suggested_refund' => $suggestedRefund,
+                            'refund_amount'    => $suggestedRefund,
+                        ]);
+                    })
+                    ->form(function (ProductItem $record) {
+                        // Find laybuy info for display
+                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->with(['sale.laybuy'])
+                            ->latest()
+                            ->first();
+
+                        $laybuy    = $saleItem?->sale?->laybuy;
+                        $laybuyNo  = $laybuy?->laybuy_no ?? '—';
+                        $customer  = $laybuy?->customer;
+                        $custName  = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : '—';
+
+                        return [
+                            // Info banner
+                            \Filament\Forms\Components\Placeholder::make('info_banner')
+                                ->hiddenLabel()
+                                ->content(new \Illuminate\Support\HtmlString("
+                    <div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-sm'>
+                        <div class='font-black text-warning-800 mb-1'>⚠️ Releasing: {$record->barcode}</div>
+                        <div class='text-warning-700'>{$record->custom_description}</div>
+                        <div class='mt-2 text-xs text-warning-600'>
+                            Laybuy Plan: <strong>{$laybuyNo}</strong> — Customer: <strong>{$custName}</strong>
+                        </div>
+                    </div>
+                ")),
+
+                            // Hidden fields for processing
+                            \Filament\Forms\Components\Hidden::make('item_price'),
+                            \Filament\Forms\Components\Hidden::make('laybuy_no'),
+                            \Filament\Forms\Components\Hidden::make('total_amount'),
+                            \Filament\Forms\Components\Hidden::make('amount_paid'),
+                            \Filament\Forms\Components\Hidden::make('suggested_refund'),
+
+                            // Summary display
+                            \Filament\Forms\Components\Placeholder::make('summary')
+                                ->hiddenLabel()
+                                ->content(function (\Filament\Forms\Get $get) {
+                                    $itemPrice     = number_format($get('item_price') ?? 0, 2);
+                                    $totalAmount   = number_format($get('total_amount') ?? 0, 2);
+                                    $amountPaid    = number_format($get('amount_paid') ?? 0, 2);
+                                    $suggested     = number_format($get('suggested_refund') ?? 0, 2);
+                                    return new \Illuminate\Support\HtmlString("
+                        <div class='grid grid-cols-2 gap-3 text-sm'>
+                            <div class='p-2 bg-gray-50 rounded border'>
+                                <div class='text-xs text-gray-400 uppercase font-bold'>Item Price</div>
+                                <div class='font-black text-gray-800'>\${$itemPrice}</div>
+                            </div>
+                            <div class='p-2 bg-gray-50 rounded border'>
+                                <div class='text-xs text-gray-400 uppercase font-bold'>Laybuy Total</div>
+                                <div class='font-black text-gray-800'>\${$totalAmount}</div>
+                            </div>
+                            <div class='p-2 bg-green-50 rounded border border-green-200'>
+                                <div class='text-xs text-green-600 uppercase font-bold'>Total Paid So Far</div>
+                                <div class='font-black text-green-700'>\${$amountPaid}</div>
+                            </div>
+                            <div class='p-2 bg-blue-50 rounded border border-blue-200'>
+                                <div class='text-xs text-blue-600 uppercase font-bold'>Suggested Refund</div>
+                                <div class='font-black text-blue-700'>\${$suggested}</div>
+                            </div>
+                        </div>
+                    ");
+                                }),
+
+                            // Refund amount — editable
+                            \Filament\Forms\Components\TextInput::make('refund_amount')
+                                ->label('Amount to Refund / Deduct Today')
+                                ->numeric()
+                                ->prefix('$')
+                                ->required()
+                                ->helperText('This amount will be deducted from the laybuy balance and removed from today\'s payments.'),
+
+                            // Refund method
+                            \Filament\Forms\Components\Select::make('refund_method')
+                                ->label('Refund Method')
+                                ->options(function () {
+                                    $json    = \Illuminate\Support\Facades\DB::table('site_settings')
+                                        ->where('key', 'payment_methods')->value('value');
+                                    $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                                    $options = [];
+                                    foreach ($methods as $m) {
+                                        $clean = strtoupper(trim($m));
+                                        if ($clean !== 'LAYBUY') $options[$clean] = $clean;
+                                    }
+                                    return $options;
+                                })
+                                ->default('CASH')
+                                ->required(),
+
+                            \Filament\Forms\Components\Textarea::make('reason')
+                                ->label('Reason for Removal')
+                                ->placeholder('e.g. Customer changed mind, keeping R016 only')
+                                ->rows(2),
+                        ];
+                    })
+                    ->requiresConfirmation()
+                    ->modalHeading('Release Item from Laybuy')
+                    ->modalDescription('This will remove the item from the laybuy plan, release it back to in-stock, and adjust the payment balance.')
+                    ->modalSubmitActionLabel('Yes, Release Item')
+                    ->action(function (ProductItem $record, array $data) {
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+
+                            $refundAmount = floatval($data['refund_amount'] ?? 0);
+                            $refundMethod = strtoupper(trim($data['refund_method'] ?? 'CASH'));
+                            $storeId      = auth()->user()->store_id ?? 1;
+
+                            // ── 1. Find the sale item and laybuy ────────────────────
+                            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                ->with(['sale.laybuy'])
+                                ->latest()
+                                ->first();
+
+                            if (!$saleItem) {
+                                Notification::make()->title('No sale record found for this item')->warning()->send();
+                                return;
+                            }
+
+                            $sale   = $saleItem->sale;
+                            $laybuy = $sale?->laybuy;
+
+                            // ── 2. Release the item back to in_stock ─────────────────
+                            $record->update([
+                                'status'          => 'in_stock',
+                                'hold_reason'     => null,
+                                'held_by_sale_id' => null,
+                            ]);
+
+                            // ── 3. Remove the sale item row ───────────────────────────
+                            $saleItem->delete();
+
+                            // ── 4. Record a NEGATIVE payment today to reverse the refund
+                            //       This shows up in EOD as a deduction ───────────────
+                            if ($refundAmount > 0 && $sale) {
+                                $lastPayment = \App\Models\Payment::where('sale_id', $sale->id)
+                                    ->where('amount', '>', 0)
+                                    ->latest('paid_at')
+                                    ->first();
+
+                                \App\Models\Payment::create([
+                                    'sale_id'  => $sale->id,
+                                    'amount'   => -abs($refundAmount),
+                                    'method'   => $refundMethod,
+                                    'paid_at'  => $lastPayment?->paid_at ?? now(), // ← same date as original payment
+                                    'store_id' => $storeId,
+                                ]);
+                            }
+
+                            // ── 5. Recalculate sale totals ───────────────────────────
+                            if ($sale) {
+                                $newSubtotal   = $sale->items()->sum('sold_price');
+                                $newFinalTotal = $newSubtotal; // simplified; tax recalc if needed
+                                $totalPaid     = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                                $newBalance    = max(0, $newFinalTotal - $totalPaid);
+
+                                $sale->update([
+                                    'subtotal'    => $newSubtotal,
+                                    'final_total' => $newFinalTotal,
+                                    'amount_paid' => max(0, $totalPaid),
+                                    'balance_due' => $newBalance,
+                                    'status'      => $newBalance <= 0.01 ? 'completed' : 'pending',
+                                ]);
+                            }
+
+                            // ── 6. Recalculate laybuy totals ─────────────────────────
+                            if ($laybuy) {
+                                $itemPrice       = floatval($saleItem->sold_price ?? 0);
+                                $newLaybuyTotal  = max(0, floatval($laybuy->total_amount) - $itemPrice);
+                                $newLaybuyPaid   = max(0, floatval($laybuy->amount_paid) - $refundAmount);
+                                $newLaybuyBal    = max(0, $newLaybuyTotal - $newLaybuyPaid);
+
+                                $laybuy->update([
+                                    'total_amount' => $newLaybuyTotal,
+                                    'amount_paid'  => $newLaybuyPaid,
+                                    'balance_due'  => $newLaybuyBal,
+                                    'status'       => $newLaybuyBal <= 0.01 && $newLaybuyTotal > 0
+                                        ? 'completed'
+                                        : ($newLaybuyTotal <= 0 ? 'cancelled' : 'in_progress'),
+                                ]);
+                            }
+                        });
+
+                        Notification::make()
+                            ->title('Item Released from Laybuy')
+                            ->body("{$record->barcode} is now back in stock. Laybuy totals have been adjusted.")
+                            ->success()
+                            ->send();
+                    }),
+                 TableAction::make('release_from_laybuy')
+                        ->label('Release from Laybuy')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('warning')
+                        // 🚀 THE FIX: Only show this button if the item is attached to an active Laybuy sale!
+                        ->hidden(function(ProductItem $record) {
+                            if ($record->status !== 'on_hold') return true;
+                            
+                            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                ->with(['sale.laybuy'])
+                                ->latest()
+                                ->first();
+                                
+                            return !($saleItem && $saleItem->sale && $saleItem->sale->payment_method === 'laybuy');
+                        })
+                        ->mountUsing(function (\Filament\Forms\ComponentContainer $form, ProductItem $record) {
+                            // Pre-fill the form with info about this item's laybuy
+                            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                ->with(['sale.laybuy'])
+                                ->latest()
+                                ->first();
+
+                            $laybuy      = $saleItem?->sale?->laybuy;
+                            $itemPrice   = floatval($saleItem?->sold_price ?? $record->retail_price ?? 0);
+                            $laybuyNo    = $laybuy?->laybuy_no ?? '—';
+                            $totalAmount = floatval($laybuy?->total_amount ?? 0);
+                            $amountPaid  = floatval($laybuy?->amount_paid ?? 0);
+
+                            // Suggested refund: proportional share of what was paid
+                            $suggestedRefund = $totalAmount > 0
+                                ? round(($itemPrice / $totalAmount) * $amountPaid, 2)
+                                : 0;
+
+                            $form->fill([
+                                'item_price'       => $itemPrice,
+                                'laybuy_no'        => $laybuyNo,
+                                'total_amount'     => $totalAmount,
+                                'amount_paid'      => $amountPaid,
+                                'suggested_refund' => $suggestedRefund,
+                                'refund_amount'    => $suggestedRefund,
+                            ]);
+                        })
+                        ->form(function (ProductItem $record) {
+                            // Find laybuy info for display
+                            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                ->with(['sale.laybuy'])
+                                ->latest()
+                                ->first();
+
+                            $laybuy    = $saleItem?->sale?->laybuy;
+                            $laybuyNo  = $laybuy?->laybuy_no ?? '—';
+                            $customer  = $laybuy?->customer;
+                            $custName  = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : '—';
+
+                            return [
+                                // Info banner
+                                \Filament\Forms\Components\Placeholder::make('info_banner')
+                                    ->hiddenLabel()
+                                    ->content(new \Illuminate\Support\HtmlString("
+                                        <div class='p-3 bg-warning-50 border border-warning-200 rounded-lg text-sm'>
+                                            <div class='font-black text-warning-800 mb-1'>⚠️ Releasing: {$record->barcode}</div>
+                                            <div class='text-warning-700'>{$record->custom_description}</div>
+                                            <div class='mt-2 text-xs text-warning-600'>
+                                                Laybuy Plan: <strong>{$laybuyNo}</strong> — Customer: <strong>{$custName}</strong>
+                                            </div>
+                                        </div>
+                                    ")),
+
+                                // Hidden fields for processing
+                                \Filament\Forms\Components\Hidden::make('item_price'),
+                                \Filament\Forms\Components\Hidden::make('laybuy_no'),
+                                \Filament\Forms\Components\Hidden::make('total_amount'),
+                                \Filament\Forms\Components\Hidden::make('amount_paid'),
+                                \Filament\Forms\Components\Hidden::make('suggested_refund'),
+
+                                // Summary display
+                                \Filament\Forms\Components\Placeholder::make('summary')
+                                    ->hiddenLabel()
+                                    ->content(function (\Filament\Forms\Get $get) {
+                                        $itemPrice     = number_format($get('item_price') ?? 0, 2);
+                                        $totalAmount   = number_format($get('total_amount') ?? 0, 2);
+                                        $amountPaid    = number_format($get('amount_paid') ?? 0, 2);
+                                        $suggested     = number_format($get('suggested_refund') ?? 0, 2);
+                                        return new \Illuminate\Support\HtmlString("
+                                            <div class='grid grid-cols-2 gap-3 text-sm'>
+                                                <div class='p-2 bg-gray-50 rounded border'>
+                                                    <div class='text-xs text-gray-400 uppercase font-bold'>Item Price</div>
+                                                    <div class='font-black text-gray-800'>\${$itemPrice}</div>
+                                                </div>
+                                                <div class='p-2 bg-gray-50 rounded border'>
+                                                    <div class='text-xs text-gray-400 uppercase font-bold'>Laybuy Total</div>
+                                                    <div class='font-black text-gray-800'>\${$totalAmount}</div>
+                                                </div>
+                                                <div class='p-2 bg-green-50 rounded border border-green-200'>
+                                                    <div class='text-xs text-green-600 uppercase font-bold'>Total Paid So Far</div>
+                                                    <div class='font-black text-green-700'>\${$amountPaid}</div>
+                                                </div>
+                                                <div class='p-2 bg-blue-50 rounded border border-blue-200'>
+                                                    <div class='text-xs text-blue-600 uppercase font-bold'>Suggested Refund</div>
+                                                    <div class='font-black text-blue-700'>\${$suggested}</div>
+                                                </div>
+                                            </div>
+                                        ");
+                                    }),
+
+                                // Refund amount — editable
+                                \Filament\Forms\Components\TextInput::make('refund_amount')
+                                    ->label('Amount to Refund / Deduct Today')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->required()
+                                    ->helperText('This amount will be deducted from the laybuy balance and removed from today\'s payments.'),
+
+                                // Refund method
+                                \Filament\Forms\Components\Select::make('refund_method')
+                                    ->label('Refund Method')
+                                    ->options(function () {
+                                        $json    = \Illuminate\Support\Facades\DB::table('site_settings')
+                                                      ->where('key', 'payment_methods')->value('value');
+                                        $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                                        $options = [];
+                                        foreach ($methods as $m) {
+                                            $clean = strtoupper(trim($m));
+                                            if ($clean !== 'LAYBUY') $options[$clean] = $clean;
+                                        }
+                                        return $options;
+                                    })
+                                    ->default('CASH')
+                                    ->required(),
+
+                                \Filament\Forms\Components\Textarea::make('reason')
+                                    ->label('Reason for Removal')
+                                    ->placeholder('e.g. Customer changed mind, keeping R016 only')
+                                    ->rows(2),
+                            ];
+                        })
+                        ->requiresConfirmation()
+                        ->modalHeading('Release Item from Laybuy')
+                        ->modalDescription('This will remove the item from the laybuy plan, release it back to in-stock, and adjust the payment balance.')
+                        ->modalSubmitActionLabel('Yes, Release Item')
+                        ->action(function (ProductItem $record, array $data) {
+                            \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+
+                                $refundAmount = floatval($data['refund_amount'] ?? 0);
+                                $refundMethod = strtoupper(trim($data['refund_method'] ?? 'CASH'));
+                                $storeId      = auth()->user()->store_id ?? 1;
+
+                                // ── 1. Find the sale item and laybuy ────────────────────
+                                $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                                    ->with(['sale.laybuy'])
+                                    ->latest()
+                                    ->first();
+
+                                if (!$saleItem) {
+                                    Notification::make()->title('No sale record found for this item')->warning()->send();
+                                    return;
+                                }
+
+                                $sale   = $saleItem->sale;
+                                $laybuy = $sale?->laybuy;
+
+                                // ── 2. Release the item back to in_stock ─────────────────
+                                $record->update([
+                                    'status'          => 'in_stock',
+                                    'hold_reason'     => null,
+                                    'held_by_sale_id' => null,
+                                ]);
+
+                                // ── 3. Remove the sale item row ───────────────────────────
+                                $saleItem->delete();
+
+                                // ── 4. Record a NEGATIVE payment today to reverse the refund
+                                //       This shows up in EOD as a deduction ───────────────
+                                if ($refundAmount > 0 && $sale) {
+                                   $lastPayment = \App\Models\Payment::where('sale_id', $sale->id)
+                                        ->where('amount', '>', 0)
+                                        ->latest('paid_at')
+                                        ->first();
+
+                                    \App\Models\Payment::create([
+                                        'sale_id'  => $sale->id,
+                                        'amount'   => -abs($refundAmount),
+                                        'method'   => $refundMethod,
+                                        'paid_at'  => $lastPayment?->paid_at ?? now(), // ← same date as original payment
+                                        'store_id' => $storeId,
+                                    ]);
+                                }
+
+                                // ── 5. Recalculate sale totals ───────────────────────────
+                                if ($sale) {
+                                    $newSubtotal   = $sale->items()->sum('sold_price');
+                                    $newFinalTotal = $newSubtotal; // simplified; tax recalc if needed
+                                    $totalPaid     = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                                    $newBalance    = max(0, $newFinalTotal - $totalPaid);
+
+                                    $sale->update([
+                                        'subtotal'    => $newSubtotal,
+                                        'final_total' => $newFinalTotal,
+                                        'amount_paid' => max(0, $totalPaid),
+                                        'balance_due' => $newBalance,
+                                        'status'      => $newBalance <= 0.01 ? 'completed' : 'pending',
+                                    ]);
+                                }
+
+                                // ── 6. Recalculate laybuy totals ─────────────────────────
+                                if ($laybuy) {
+                                    $itemPrice       = floatval($saleItem->sold_price ?? 0);
+                                    $newLaybuyTotal  = max(0, floatval($laybuy->total_amount) - $itemPrice);
+                                    $newLaybuyPaid   = max(0, floatval($laybuy->amount_paid) - $refundAmount);
+                                    $newLaybuyBal    = max(0, $newLaybuyTotal - $newLaybuyPaid);
+
+                                    $laybuy->update([
+                                        'total_amount' => $newLaybuyTotal,
+                                        'amount_paid'  => $newLaybuyPaid,
+                                        'balance_due'  => $newLaybuyBal,
+                                        'status'       => $newLaybuyBal <= 0.01 && $newLaybuyTotal > 0
+                                                            ? 'completed'
+                                                            : ($newLaybuyTotal <= 0 ? 'cancelled' : 'in_progress'),
+                                    ]);
+                                }
+                            });
+
+                            Notification::make()
+                                ->title('Item Released from Laybuy')
+                                ->body("{$record->barcode} is now back in stock. Laybuy totals have been adjusted.")
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ])
             ->bulkActions([
@@ -829,6 +1033,7 @@ class FindStock extends Page implements HasForms, HasTable
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
+                    // 🚀 THE FIX: Use standard collection processing
                     ->action(function (EloquentCollection $records, BulkAction $action) {
                         $records->each->update(['status' => 'on_hold']);
                         Notification::make()->title('Items placed on hold')->success()->send();
@@ -849,10 +1054,13 @@ class FindStock extends Page implements HasForms, HasTable
                             ->rows(2),
                     ])
                     ->action(function (EloquentCollection $records, array $data, BulkAction $action) {
+
                         $sourceTenantId = tenant('id');
                         $targetTenantId = $data['target_tenant_id'];
                         $transferNumber = 'TRF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
                         $staffName      = auth()->user()->name;
+
+                        // Fresh models to avoid stale state
                         $processRecords = ProductItem::whereIn('id', $records->pluck('id'))->get();
 
                         if ($processRecords->isEmpty()) {
@@ -861,6 +1069,8 @@ class FindStock extends Page implements HasForms, HasTable
                         }
 
                         $snapshot = [];
+
+                        // ── 1. Build snapshot + mark on_hold in SOURCE ────────────────
                         foreach ($processRecords as $record) {
                             $itemArray = $record->toArray();
                             $itemArray['supplier_company_name'] = $record->supplier?->company_name;
@@ -868,6 +1078,7 @@ class FindStock extends Page implements HasForms, HasTable
                             $record->update(['status' => 'in_transit']);
                         }
 
+                        // ── 2. Create ONE transfer record in SOURCE ────────────────────
                         $transfer = \App\Models\StockTransfer::create([
                             'transfer_number' => $transferNumber,
                             'from_store_id'   => auth()->user()->store_id ?? 1,
@@ -881,6 +1092,7 @@ class FindStock extends Page implements HasForms, HasTable
                             'transfer_date'   => now(),
                         ]);
 
+                        // ── 3. Link each item to the transfer ─────────────────────────
                         foreach ($processRecords as $record) {
                             \App\Models\StockTransferItem::create([
                                 'stock_transfer_id' => $transfer->id,
@@ -888,35 +1100,47 @@ class FindStock extends Page implements HasForms, HasTable
                             ]);
                         }
 
+                        // ── 4. Create ONE mirror record in DESTINATION (safe upsert) ──
                         $destTenant = Tenant::find($targetTenantId);
                         if ($destTenant) {
                             tenancy()->initialize($destTenant);
+
                             \App\Models\StockTransfer::firstOrCreate(
                                 ['transfer_number' => $transferNumber],
                                 [
-                                    'from_store_id'  => 1, 'to_store_id' => 1,
-                                    'from_tenant'    => $sourceTenantId, 'to_tenant' => $targetTenantId,
-                                    'status'         => 'pending', 'item_snapshot' => $snapshot,
-                                    'transferred_by' => $staffName, 'notes' => $data['notes'] ?? null,
+                                    'from_store_id'  => 1,
+                                    'to_store_id'    => 1,
+                                    'from_tenant'    => $sourceTenantId,
+                                    'to_tenant'      => $targetTenantId,
+                                    'status'         => 'pending',
+                                    'item_snapshot'  => $snapshot,
+                                    'transferred_by' => $staffName,
+                                    'notes'          => $data['notes'] ?? null,
                                     'transfer_date'  => now(),
                                 ]
                             );
+
                             $count = count($snapshot);
                             User::all()->each(
                                 fn($u) =>
                                 \Filament\Notifications\Notification::make()
                                     ->title('📦 Incoming Batch Transfer')
-                                    ->body("{$count} item(s) being sent from [{$sourceTenantId}]. Transfer #: {$transferNumber}.")
+                                    ->body("{$count} item(s) being sent from [{$sourceTenantId}]. Transfer #: {$transferNumber}. Go to Stock Transfers to Accept or Deny.")
                                     ->warning()
                                     ->sendToDatabase($u)
                             );
+
                             tenancy()->initialize(Tenant::find($sourceTenantId));
                         }
 
-                        Notification::make()->title('✅ Batch Transfer Sent')->body(count($snapshot) . ' item(s) pending acceptance.')->success()->send();
+                        Notification::make()
+                            ->title('✅ Batch Transfer Sent')
+                            ->body(count($snapshot) . ' item(s) pending acceptance by [' . $targetTenantId . '].')
+                            ->success()
+                            ->send();
+
                         $action->deselectRecordsAfterCompletion();
                     }),
-
                 BulkAction::make('bulk_print_tags')
                     ->label('Print Selected Tags')
                     ->icon('heroicon-o-printer')
@@ -927,9 +1151,11 @@ class FindStock extends Page implements HasForms, HasTable
                     ->action(function (EloquentCollection $records, BulkAction $action) {
                         $service     = new ZebraPrinterService();
                         $combinedZpl = "";
+
                         foreach ($records as $record) {
                             $combinedZpl .= $service->getZplCode($record);
                         }
+
                         $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
                         $action->deselectRecordsAfterCompletion();
                     }),
@@ -947,10 +1173,13 @@ class FindStock extends Page implements HasForms, HasTable
 
         try {
             DB::transaction(function () use ($itemData, $targetId, $vendorName, $record, $sourceId, $barcode) {
-                $targetTenant   = Tenant::find($targetId);
+                $targetTenant = Tenant::find($targetId);
                 tenancy()->initialize($targetTenant);
+
+                // Auto-create vendor in destination if not found
                 $targetSupplier = Supplier::where('company_name', $vendorName)->first();
-                if (! $targetSupplier) {
+                if (!$targetSupplier) {
+                    // Use updateOrCreate without triggering LogsActivity observer
                     $targetSupplier = Supplier::withoutEvents(function () use ($vendorName, $record) {
                         return Supplier::create([
                             'company_name'  => $vendorName ?? 'Unknown Vendor',
@@ -963,17 +1192,23 @@ class FindStock extends Page implements HasForms, HasTable
                 $itemData['status']      = 'in_stock';
                 $itemData['store_id']    = 1;
 
-                if (ProductItem::where('barcode', $barcode)->exists()) {
+                // Check if barcode already exists in destination — skip if so
+                $existsInDestination = ProductItem::where('barcode', $barcode)->exists();
+                if ($existsInDestination) {
                     tenancy()->initialize(Tenant::find($sourceId));
-                    return;
+                    return; // silently skip — bulk action will count this
                 }
 
-                ProductItem::withoutEvents(fn() => ProductItem::create($itemData));
+                ProductItem::withoutEvents(function () use ($itemData) {
+                    ProductItem::create($itemData);
+                });
+                $recipients = User::all();
                 Notification::make()
                     ->title('Incoming Stock Transfer')
                     ->body("Item #{$barcode} arrived from Store {$sourceId}.")
                     ->success()
-                    ->sendToDatabase(User::all());
+                    ->sendToDatabase($recipients);
+
                 tenancy()->initialize(Tenant::find($sourceId));
                 $record->delete();
             });
