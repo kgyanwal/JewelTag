@@ -306,12 +306,17 @@ class FindStock extends Page implements HasForms, HasTable
                     $query->select('product_item_id')
                           ->from('sale_items')
                           ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-                          ->where('sales.invoice_number', 'like', "%{$v}%");
+                          ->where('sales.invoice_number', 'like', "%{$v}%")
+                          // 🚀 FIX: Prevent finding ghost items that were already released/deleted
+                          ->whereNull('sale_items.deleted_at'); 
                 })
             );
     }
 
-    // ── Shared helper: build the release_from_laybuy form fields ──────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Shared helpers for "Release from Laybuy"
+    // ─────────────────────────────────────────────────────────────────────────
+
     private function buildReleaseFromLaybuyForm(ProductItem $record): array
     {
         $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
@@ -325,6 +330,7 @@ class FindStock extends Page implements HasForms, HasTable
         $custName = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : '—';
 
         return [
+            // Warning banner — doubles as the confirmation message
             \Filament\Forms\Components\Placeholder::make('info_banner')
                 ->hiddenLabel()
                 ->content(new \Illuminate\Support\HtmlString("
@@ -333,6 +339,9 @@ class FindStock extends Page implements HasForms, HasTable
                         <div class='text-warning-700'>{$record->custom_description}</div>
                         <div class='mt-2 text-xs text-warning-600'>
                             Laybuy Plan: <strong>{$laybuyNo}</strong> — Customer: <strong>{$custName}</strong>
+                        </div>
+                        <div class='mt-2 text-xs text-danger-700 font-bold'>
+                            This will release the item back to in-stock and adjust the payment balance.
                         </div>
                     </div>
                 ")),
@@ -402,7 +411,6 @@ class FindStock extends Page implements HasForms, HasTable
         ];
     }
 
-    // ── Shared helper: mountUsing logic for release_from_laybuy ──────────────
     private function mountReleaseFromLaybuy(\Filament\Forms\ComponentContainer $form, ProductItem $record): void
     {
         $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
@@ -430,7 +438,6 @@ class FindStock extends Page implements HasForms, HasTable
         ]);
     }
 
-    // ── Shared helper: action logic for release_from_laybuy ──────────────────
     private function executeReleaseFromLaybuy(ProductItem $record, array $data): void
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
@@ -439,32 +446,32 @@ class FindStock extends Page implements HasForms, HasTable
             $refundMethod = strtoupper(trim($data['refund_method'] ?? 'CASH'));
             $storeId      = auth()->user()->store_id ?? 1;
 
-            // ── 1. Find the sale item and laybuy ────────────────────
-            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                ->with(['sale.laybuy'])
-                ->latest()
-                ->first();
-
-            if (!$saleItem) {
-                Notification::make()->title('No sale record found for this item')->warning()->send();
-                return;
-            }
-
-            $sale   = $saleItem->sale;
-            $laybuy = $sale?->laybuy;
-
-            // ── 2. Release the item back to in_stock ─────────────────
+            // ── 1. ALWAYS release the item back to in_stock immediately ─────────
             $record->update([
                 'status'          => 'in_stock',
                 'hold_reason'     => null,
                 'held_by_sale_id' => null,
             ]);
 
+            // ── 2. Find the sale item and laybuy ─────────────────────────────────
+            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                ->with(['sale.laybuy'])
+                ->latest()
+                ->first();
+
+            // 🚀 FIX: If this was just a "manual hold" (no active sale record), exit safely here
+            // This prevents the system from crashing while still putting the item back in stock
+            if (!$saleItem) {
+                return; 
+            }
+
+            $sale   = $saleItem->sale;
+            $laybuy = $sale?->laybuy;
+
             // ── 3. Remove the sale item row ───────────────────────────
             $saleItem->delete();
 
-            // ── 4. Record a NEGATIVE payment today to reverse the refund
-            //       This shows up in EOD as a deduction ───────────────
+            // ── 4. Record a NEGATIVE payment to reverse the refund ───
             if ($refundAmount > 0 && $sale) {
                 $lastPayment = \App\Models\Payment::where('sale_id', $sale->id)
                     ->where('amount', '>', 0)
@@ -475,15 +482,15 @@ class FindStock extends Page implements HasForms, HasTable
                     'sale_id'  => $sale->id,
                     'amount'   => -abs($refundAmount),
                     'method'   => $refundMethod,
-                    'paid_at'  => $lastPayment?->paid_at ?? now(), // ← same date as original payment
+                    'paid_at'  => $lastPayment?->paid_at ?? now(),
                     'store_id' => $storeId,
                 ]);
             }
 
             // ── 5. Recalculate sale totals ───────────────────────────
             if ($sale) {
-                $newSubtotal   = $sale->items()->sum('sold_price');
-                $newFinalTotal = $newSubtotal; // simplified; tax recalc if needed
+                $newSubtotal   = \App\Models\SaleItem::where('sale_id', $sale->id)->sum('sold_price');
+                $newFinalTotal = $newSubtotal;
                 $totalPaid     = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
                 $newBalance    = max(0, $newFinalTotal - $totalPaid);
 
@@ -515,8 +522,8 @@ class FindStock extends Page implements HasForms, HasTable
         });
 
         Notification::make()
-            ->title('Item Released from Laybuy')
-            ->body("{$record->barcode} is now back in stock. Laybuy totals have been adjusted.")
+            ->title('Item Released Successfully')
+            ->body("{$record->barcode} is now back in stock.")
             ->success()
             ->send();
     }
@@ -685,7 +692,6 @@ class FindStock extends Page implements HasForms, HasTable
                             ]),
                         ]),
 
-                        // ── WHO BOUGHT THIS ITEM ──────────────────────────────────────
                         InfoSection::make('🛒 Sales History — Who Bought This')
                             ->schema([
                                 \Filament\Infolists\Components\TextEntry::make('sales_history')
@@ -770,17 +776,16 @@ class FindStock extends Page implements HasForms, HasTable
                     ])),
 
                 // ── STANDALONE release_from_laybuy (outside the group) ────────
+                // 🚀 FIX: Will ALWAYS show as long as the item is manually or systemically "on_hold"
                 TableAction::make('release_from_laybuy')
-                    ->label('Release from Laybuy')
+                    ->label('Release from Hold/Laybuy')
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('warning')
                     ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
                     ->mountUsing(fn(\Filament\Forms\ComponentContainer $form, ProductItem $record) =>
                         $this->mountReleaseFromLaybuy($form, $record))
                     ->form(fn(ProductItem $record) => $this->buildReleaseFromLaybuyForm($record))
-                    ->requiresConfirmation()
                     ->modalHeading('Release Item from Laybuy')
-                    ->modalDescription('This will remove the item from the laybuy plan, release it back to in-stock, and adjust the payment balance.')
                     ->modalSubmitActionLabel('Yes, Release Item')
                     ->action(fn(ProductItem $record, array $data) =>
                         $this->executeReleaseFromLaybuy($record, $data)),
@@ -809,25 +814,15 @@ class FindStock extends Page implements HasForms, HasTable
 
                     // ── GROUPED release_from_laybuy — MUST use a different name ──
                     TableAction::make('release_from_laybuy_group')
-                        ->label('Release from Laybuy')
+                        ->label('Release from Hold/Laybuy')
                         ->icon('heroicon-o-arrow-uturn-left')
                         ->color('warning')
-                        ->hidden(function (ProductItem $record) {
-                            if ($record->status !== 'on_hold') return true;
-
-                            $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                                ->with(['sale.laybuy'])
-                                ->latest()
-                                ->first();
-
-                            return !($saleItem && $saleItem->sale && $saleItem->sale->payment_method === 'laybuy');
-                        })
+                        // 🚀 FIX: Will ALWAYS show as long as the item is manually or systemically "on_hold"
+                        ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
                         ->mountUsing(fn(\Filament\Forms\ComponentContainer $form, ProductItem $record) =>
                             $this->mountReleaseFromLaybuy($form, $record))
                         ->form(fn(ProductItem $record) => $this->buildReleaseFromLaybuyForm($record))
-                        ->requiresConfirmation()
                         ->modalHeading('Release Item from Laybuy')
-                        ->modalDescription('This will remove the item from the laybuy plan, release it back to in-stock, and adjust the payment balance.')
                         ->modalSubmitActionLabel('Yes, Release Item')
                         ->action(fn(ProductItem $record, array $data) =>
                             $this->executeReleaseFromLaybuy($record, $data)),
@@ -838,7 +833,6 @@ class FindStock extends Page implements HasForms, HasTable
                     ->label('Batch Hold')
                     ->icon('heroicon-o-hand-raised')
                     ->color('warning')
-                    // 🚀 THE FIX: Use standard collection processing
                     ->action(function (EloquentCollection $records, BulkAction $action) {
                         $records->each->update(['status' => 'on_hold']);
                         Notification::make()->title('Items placed on hold')->success()->send();
@@ -865,7 +859,6 @@ class FindStock extends Page implements HasForms, HasTable
                         $transferNumber = 'TRF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
                         $staffName      = auth()->user()->name;
 
-                        // Fresh models to avoid stale state
                         $processRecords = ProductItem::whereIn('id', $records->pluck('id'))->get();
 
                         if ($processRecords->isEmpty()) {
@@ -875,7 +868,6 @@ class FindStock extends Page implements HasForms, HasTable
 
                         $snapshot = [];
 
-                        // ── 1. Build snapshot + mark on_hold in SOURCE ────────────────
                         foreach ($processRecords as $record) {
                             $itemArray = $record->toArray();
                             $itemArray['supplier_company_name'] = $record->supplier?->company_name;
@@ -883,7 +875,6 @@ class FindStock extends Page implements HasForms, HasTable
                             $record->update(['status' => 'in_transit']);
                         }
 
-                        // ── 2. Create ONE transfer record in SOURCE ────────────────────
                         $transfer = \App\Models\StockTransfer::create([
                             'transfer_number' => $transferNumber,
                             'from_store_id'   => auth()->user()->store_id ?? 1,
@@ -897,7 +888,6 @@ class FindStock extends Page implements HasForms, HasTable
                             'transfer_date'   => now(),
                         ]);
 
-                        // ── 3. Link each item to the transfer ─────────────────────────
                         foreach ($processRecords as $record) {
                             \App\Models\StockTransferItem::create([
                                 'stock_transfer_id' => $transfer->id,
@@ -905,7 +895,6 @@ class FindStock extends Page implements HasForms, HasTable
                             ]);
                         }
 
-                        // ── 4. Create ONE mirror record in DESTINATION (safe upsert) ──
                         $destTenant = Tenant::find($targetTenantId);
                         if ($destTenant) {
                             tenancy()->initialize($destTenant);
@@ -982,10 +971,8 @@ class FindStock extends Page implements HasForms, HasTable
                 $targetTenant = Tenant::find($targetId);
                 tenancy()->initialize($targetTenant);
 
-                // Auto-create vendor in destination if not found
                 $targetSupplier = Supplier::where('company_name', $vendorName)->first();
                 if (!$targetSupplier) {
-                    // Use updateOrCreate without triggering LogsActivity observer
                     $targetSupplier = Supplier::withoutEvents(function () use ($vendorName, $record) {
                         return Supplier::create([
                             'company_name'  => $vendorName ?? 'Unknown Vendor',
@@ -998,11 +985,10 @@ class FindStock extends Page implements HasForms, HasTable
                 $itemData['status']      = 'in_stock';
                 $itemData['store_id']    = 1;
 
-                // Check if barcode already exists in destination — skip if so
                 $existsInDestination = ProductItem::where('barcode', $barcode)->exists();
                 if ($existsInDestination) {
                     tenancy()->initialize(Tenant::find($sourceId));
-                    return; // silently skip — bulk action will count this
+                    return;
                 }
 
                 ProductItem::withoutEvents(function () use ($itemData) {
