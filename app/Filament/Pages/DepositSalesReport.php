@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\DepositSale;
 use App\Models\Payment;
+use App\Models\Sale;
 use App\Models\User;
 use Filament\Pages\Page;
 use Filament\Tables;
@@ -17,13 +18,14 @@ use App\Forms\Components\CustomDatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\ActionGroup;
 use Filament\Support\Enums\FontWeight;
 use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
-use App\Helpers\Staff; // 🚀 ADDED: To check roles
+use App\Helpers\Staff;
 
 class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 {
@@ -35,7 +37,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
     protected static ?int    $navigationSort  = 3;
     protected static string  $view            = 'filament.pages.deposit-sales-report';
 
-    // 🚀 THE FIX: Restrict access to the entire page
     public static function canAccess(): bool
     {
         $user = Staff::user();
@@ -90,7 +91,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         $items = $record->sale?->items ?? collect();
 
                         if ($items->isEmpty()) {
-                            // Show notes as fallback
                             $notes = $record->notes
                                 ? strip_tags($record->notes)
                                 : 'No items linked';
@@ -232,7 +232,40 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
             // ── Filters ───────────────────────────────────────────────
             ->filters([
-                
+
+                // ── 🔍 Item / Keyword Search ──────────────────────────
+                Filter::make('item_keyword_search')
+                    ->form([
+                        TextInput::make('search_item')
+                            ->label('🔍 Item / Keyword Search')
+                            ->placeholder('Barcode, stock #, description, cert #, SKU...'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query->when(
+                            $data['search_item'] ?? null,
+                            fn(Builder $query, string $search) => $query->where(function ($q) use ($search) {
+                                $q->where('notes', 'like', "%{$search}%")
+                                  ->orWhereHas('sale.items.productItem', fn($qi) =>
+                                      $qi->where('barcode', 'like', "%{$search}%")
+                                         ->orWhere('custom_description', 'like', "%{$search}%")
+                                         ->orWhere('certificate_number', 'like', "%{$search}%")
+                                         ->orWhere('supplier_code', 'like', "%{$search}%")
+                                         ->orWhere('serial_number', 'like', "%{$search}%")
+                                         ->orWhere('rfid_code', 'like', "%{$search}%")
+                                  )
+                                  ->orWhereHas('sale.items', fn($qi) =>
+                                      $qi->where('custom_description', 'like', "%{$search}%")
+                                  );
+                            })
+                        );
+                    })
+                    ->indicateUsing(fn(array $data) =>
+                        filled($data['search_item'] ?? null)
+                            ? '🔍 Item: ' . $data['search_item']
+                            : null
+                    ),
+
+                // ── Customer Search ───────────────────────────────────
                 Filter::make('customer_search')
                     ->form([
                         TextInput::make('search_customer')
@@ -258,7 +291,6 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         'cancelled' => 'Cancelled',
                     ]),
 
-                // 🚀 USING CUSTOM DATE PICKER
                 Filter::make('date_range')
                     ->form([
                         CustomDatePicker::make('from')->label('From')->default(now()->startOfMonth()),
@@ -331,11 +363,13 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
 
             // ── Row Actions ───────────────────────────────────────────
             ->actions([
+
+                // ── ADD PAYMENT (linked sales only) ───────────────────
                 Action::make('add_payment')
                     ->label('Add Payment')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
-                    ->visible(fn(DepositSale $record) => $record->balance_due > 0)
+                    ->visible(fn(DepositSale $record) => $record->balance_due > 0 && $record->sale_id !== null)
                     ->form([
                         TextInput::make('amount')
                             ->label('Payment Amount')
@@ -346,24 +380,18 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                         Select::make('method')
                             ->label('Payment Method')
                             ->options(function () {
-                                // Fetch the dynamic list from your site settings
                                 $methodsJson = DB::table('site_settings')
                                     ->where('key', 'payment_methods')
                                     ->value('value');
-                                
-                                // Fallback array just in case the setting is missing
                                 $activeMethods = $methodsJson ? json_decode($methodsJson, true) : [
                                     'CASH', 'VISA', 'MASTERCARD', 'AMERICAN EXPRESS', 'DEBIT CARD'
                                 ];
-
-                                // Format it beautifully for the dropdown: ['CASH' => 'Cash']
                                 $options = [];
                                 if (is_array($activeMethods)) {
                                     foreach ($activeMethods as $method) {
                                         $options[strtoupper($method)] = ucwords(strtolower($method));
                                     }
                                 }
-
                                 return $options;
                             })
                             ->required(),
@@ -393,7 +421,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             ]);
 
                             if ($newBalance <= 0 && $record->sale_id) {
-                                \App\Models\Sale::where('id', $record->sale_id)->update([
+                                Sale::where('id', $record->sale_id)->update([
                                     'status'       => 'completed',
                                     'amount_paid'  => $newPaid,
                                     'balance_due'  => 0,
@@ -409,6 +437,7 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                             ->send();
                     }),
 
+                // ── VIEW SALE (linked sales only) ─────────────────────
                 Action::make('view_sale')
                     ->label('View Sale')
                     ->icon('heroicon-o-eye')
@@ -417,6 +446,140 @@ class DepositSalesReport extends Page implements Tables\Contracts\HasTable
                     ->url(fn(DepositSale $record) =>
                         \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id])
                     ),
+
+                // ── UNLINKED DEPOSIT ACTIONS (sale_id is NULL) ────────
+                // Grouped so the row stays clean; only shows when no sale linked
+                ActionGroup::make([
+
+                    // ── 1. LINK TO EXISTING SALE ──────────────────────
+                    // Lets you pick any existing sale for this customer
+                    // and attach it to the deposit record.
+                    Action::make('link_existing_sale')
+                        ->label('Link to Existing Sale')
+                        ->icon('heroicon-o-link')
+                        ->color('info')
+                        ->form(function (DepositSale $record) {
+                            // Load this customer's sales that are not yet linked to any deposit
+                            $linkedSaleIds = DepositSale::whereNotNull('sale_id')
+                                ->pluck('sale_id')
+                                ->toArray();
+
+                            $sales = Sale::where('customer_id', $record->customer_id)
+                                ->whereNotIn('id', $linkedSaleIds)
+                                ->latest()
+                                ->get()
+                                ->mapWithKeys(fn($s) =>
+                                    [$s->id => "#{$s->invoice_number} — $" . number_format($s->final_total, 2) . " — " . $s->created_at?->format('M d, Y')]
+                                );
+
+                            return [
+                                // Info banner showing the deposit details
+                                \Filament\Forms\Components\Placeholder::make('deposit_info')
+                                    ->hiddenLabel()
+                                    ->content(function () use ($record) {
+                                        $name = trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? ''));
+                                        return new HtmlString("
+                                            <div class='p-3 bg-info-50 border border-info-200 rounded-lg text-sm mb-2'>
+                                                <div class='font-black text-info-800 mb-1'>🔗 Linking Deposit: {$record->deposit_no}</div>
+                                                <div class='text-info-700'>Customer: <strong>{$name}</strong></div>
+                                                <div class='text-info-700'>Deposit Total: <strong>$" . number_format($record->total_amount, 2) . "</strong></div>
+                                                <div class='mt-1 text-xs text-info-600'>
+                                                    Only this customer's unlinked sales are shown below.
+                                                </div>
+                                            </div>
+                                        ");
+                                    }),
+
+                                Select::make('sale_id')
+                                    ->label('Select Sale to Link')
+                                    ->options($sales)
+                                    ->searchable()
+                                    ->required()
+                                    ->helperText($sales->isEmpty()
+                                        ? '⚠️ No unlinked sales found for this customer. Use "Create New Sale" instead.'
+                                        : 'Select the sale invoice to attach to this deposit.'
+                                    )
+                                    ->disabled($sales->isEmpty()),
+                            ];
+                        })
+                        ->modalHeading('Link Deposit to Existing Sale')
+                        ->modalSubmitActionLabel('Link Sale')
+                        ->action(function (DepositSale $record, array $data) {
+                            if (empty($data['sale_id'])) {
+                                Notification::make()->title('No sale selected')->warning()->send();
+                                return;
+                            }
+
+                            $sale = Sale::find($data['sale_id']);
+                            if (!$sale) {
+                                Notification::make()->title('Sale not found')->danger()->send();
+                                return;
+                            }
+
+                            // Link the sale to this deposit
+                            $record->update([
+                                'sale_id'      => $sale->id,
+                                'total_amount' => $sale->final_total,
+                                'amount_paid'  => $sale->amount_paid,
+                                'balance_due'  => $sale->balance_due,
+                                'status'       => $sale->balance_due <= 0 ? 'completed' : 'active',
+                            ]);
+
+                            Notification::make()
+                                ->title('Sale Linked!')
+                                ->body("Deposit {$record->deposit_no} is now linked to invoice #{$sale->invoice_number}.")
+                                ->success()
+                                ->send();
+                        }),
+
+                    // ── 2. CREATE NEW SALE ────────────────────────────
+                    // Redirects to SaleResource create page pre-filled
+                    // with this customer. The deposit can be manually
+                    // linked back after the sale is created.
+                    Action::make('create_new_sale')
+                        ->label('Create New Sale')
+                        ->icon('heroicon-o-plus-circle')
+                        ->color('success')
+                        ->form(function (DepositSale $record) {
+                            $name = trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? ''));
+                            return [
+                                \Filament\Forms\Components\Placeholder::make('create_info')
+                                    ->hiddenLabel()
+                                    ->content(new HtmlString("
+                                        <div class='p-3 bg-success-50 border border-success-200 rounded-lg text-sm'>
+                                            <div class='font-black text-success-800 mb-1'>✅ Creating Sale for: {$name}</div>
+                                            <div class='text-success-700'>Deposit: <strong>{$record->deposit_no}</strong></div>
+                                            <div class='text-success-700'>Deposit Amount: <strong>$" . number_format($record->total_amount, 2) . "</strong></div>
+                                            <div class='mt-2 text-xs text-success-600 bg-success-100 rounded p-2'>
+                                                You will be redirected to the Quick Sale page with this customer pre-selected.
+                                                After completing the sale, come back here and use <strong>\"Link to Existing Sale\"</strong>
+                                                to connect this deposit to that new invoice.
+                                            </div>
+                                        </div>
+                                    ")),
+                            ];
+                        })
+                        ->modalHeading('Create New Sale for This Customer')
+                        ->modalSubmitActionLabel('Go to Quick Sale →')
+                        ->action(function (DepositSale $record) {
+                            // Redirect to SaleResource create with customer pre-filled
+                            $url = \App\Filament\Resources\SaleResource::getUrl('create', [
+                                'customer_id' => $record->customer_id,
+                            ]);
+
+                            // Store the deposit ID in session so the sale create page
+                            // can optionally auto-link back (if you add that later)
+                            session(['pending_deposit_link' => $record->id]);
+
+                            return redirect($url);
+                        }),
+
+                ])
+                ->label('Link / Create Sale')
+                ->icon('heroicon-o-arrow-path-rounded-square')
+                ->color('warning')
+                ->button()
+                ->visible(fn(DepositSale $record) => $record->sale_id === null),
             ])
             ->persistFiltersInSession()
             ->defaultSort('start_date', 'desc')

@@ -272,7 +272,7 @@
         {{-- ── CUSTOMER + PAYMENT SUMMARY ── --}}
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
             <tr>
-                <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $receiptColor }};">
+               <td width="48%" valign="top" style="background:#f9fbfc;border-radius:6px;padding:15px;border:1px solid #e0e7ee;border-left:3px solid {{ $receiptColor }};">
     <div style="font-size:9px;color:{{ $receiptColor }};text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:.5px;">
         <i class="fas fa-user-circle"></i> Customer Information
     </div>
@@ -283,9 +283,17 @@
         <div><i class="fas fa-phone"></i> {{ $sale->customer->phone ?? 'N/A' }}</div>
         <div><i class="fas fa-envelope"></i> {{ $sale->customer->email ?? 'N/A' }}</div>
         
-        {{-- Show Birthday if it exists in the database --}}
+        {{-- 🚀 FIXED ADDRESS BLOCK --}}
+        @if($sale->customer && ($sale->customer->address_line_1 || $sale->customer->city))
+            <div style="margin-top:5px; padding-top:5px; border-top:1px solid #e2e8f0;">
+                <i class="fas fa-map-marker-alt"></i>
+                {{ trim($sale->customer->address_line_1 . ' ' . ($sale->customer->address_line_2 ?? '')) }}<br>
+                {{ trim($sale->customer->city . ($sale->customer->state ? ', ' . $sale->customer->state : '') . ' ' . $sale->customer->postcode) }}
+            </div>
+        @endif
+        
         @if(optional($sale->customer)->dob)
-            <div style="margin-top:2px;">
+            <div style="margin-top:5px;">
                 <i class="fas fa-gift" style="color:{{ $receiptColor }};"></i> 
                 <b>Birthday:</b> {{ \Carbon\Carbon::parse($sale->customer->dob)->format('M d, Y') }}
             </div>
