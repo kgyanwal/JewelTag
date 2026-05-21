@@ -642,17 +642,23 @@ CustomDatePicker::make('date_to')
         ->modalDescription('This will mark the sale as cancelled and return items to stock.')
         ->modalSubmitActionLabel('Yes, Cancel Sale')
         ->action(function (Sale $record) {
-            foreach ($record->items as $saleItem) {
-                if (!$saleItem->product_item_id) continue;
-                $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
-                if ($productItem) {
-                    $productItem->update([
-                        'status' => 'in_stock',
-                        'qty'    => max(1, $productItem->qty + ($saleItem->qty ?? 1)),
-                    ]);
-                }
-            }
-            $record->update(['status' => 'cancelled', 'balance_due' => 0]);
+    foreach ($record->items as $saleItem) {
+        if (!$saleItem->product_item_id) continue;
+        $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
+        if ($productItem) {
+            $productItem->update([
+                'status'          => 'in_stock',
+                'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
+                'hold_reason'     => null,
+                'held_by_sale_id' => null,
+            ]);
+        }
+    }
+    $record->update([
+        'status'       => 'cancelled',
+        'balance_due'  => 0,
+        'completed_at' => null,
+    ]);
             Notification::make()
                 ->title('Sale Cancelled')
                 ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")

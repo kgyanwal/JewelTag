@@ -1270,493 +1270,517 @@ class SaleResource extends Resource
                                 ]),
 
                             Section::make('Payment & Status')->schema([
-                                Placeholder::make('custom_order_payment_logs')
-                                    ->label('PREVIOUS DEPOSITS LOG')
-                                    ->visible(function (Get $get) {
-                                        $items = $get('items') ?? [];
-                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
-                                            || request()->has('custom_order_id');
-                                    })
-                                    ->content(function (Get $get) {
-                                        $items         = $get('items') ?? [];
-                                        $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
-                                            ?? request()->get('custom_order_id');
-
-                                        if (!$customOrderId) return null;
-
-                                        $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
-                                            ->orderBy('paid_at', 'asc')
-                                            ->get();
-
-                                        if ($payments->isEmpty()) {
-                                            return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
-                                        }
-
-                                        $rows = "";
-                                        foreach ($payments as $payment) {
-                                            $date   = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
-                                            $method = strtoupper($payment->method);
-                                            $amount = number_format($payment->amount, 2);
-
-                                            $rows .= "
-                                        <div style='display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9;'>
-                                            <div style='display:flex; flex-direction:column;'>
-                                                <span style='font-size:10px; font-weight:700; color:#334155;'>{$method}</span>
-                                                <span style='font-size:9px; color:#94a3b8;'>{$date}</span>
-                                            </div>
-                                            <span style='font-size:11px; font-weight:700; color:#10b981;'>+\${$amount}</span>
-                                        </div>";
-                                        }
-
-                                        $totalDeposited = $payments->sum('amount');
-
-                                        return new HtmlString("
-                                    <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 15px;'>
-                                        <div style='font-size:10px; font-weight:900; color:#0369a1; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;'>
-                                            Custom Order Payment Trail
-                                        </div>
-                                        <div style='max-height: 150px; overflow-y: auto; padding-right: 5px;'>
-                                            {$rows}
-                                        </div>
-                                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px; border-top: 1px solid #bae6fd; padding-top:8px;'>
-                                            <span style='font-size:10px; font-weight:700; color:#0369a1;'>TOTAL APPLIED CREDIT</span>
-                                            <span style='font-size:14px; font-weight:900; color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
-                                        </div>
-                                    </div>
-                                    ");
-                                    }),
-
-                                \Filament\Forms\Components\Actions::make([
-                                    FormAction::make('view_payment_log')
-                                        ->label('📋 Payment Log')
-                                        ->color('info')
-                                        ->outlined()
-                                        ->icon('heroicon-o-banknotes')
-                                        ->visible(fn(string $operation) => $operation === 'edit')
-                                        ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
-                                        ->modalWidth('3xl')
-                                        ->modalSubmitAction(false)
-                                        ->modalCancelActionLabel('Close')
-                                        ->form(function (?Sale $record) {
-                                            if (!$record) return [];
-
-                                            $payments1 = $record->payments()
-                                                ->orderBy('paid_at')
-                                                ->get()
-                                                ->map(fn($p) => [
-                                                    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
-                                                    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
-                                                    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
-                                                    'method'   => strtoupper($p->method ?? '—'),
-                                                    'amount'   => floatval($p->amount),
-                                                    'source'   => 'payments',
-                                                    'id'       => $p->id,
-                                                ]);
-
-                                            $payments2 = $record->salePayments()
-                                                ->orderBy('payment_date')
-                                                ->get()
-                                                ->map(fn($p) => [
-                                                    'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
-                                                    'time'     => '',
-                                                    'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
-                                                    'method'   => strtoupper($p->payment_method ?? '—'),
-                                                    'amount'   => floatval($p->amount),
-                                                    'source'   => 'sale_payments',
-                                                    'id'       => $p->id,
-                                                ]);
-
-                                            $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
-                                            $grandTotal  = floatval($record->final_total);
-                                            $running     = 0;
-                                            $customer    = $record->customer;
-                                            $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
-                                            $custPhone   = $customer?->phone ?? '—';
-                                            $invoiceNo   = $record->invoice_number;
-
-
-                                            $paymentsWithBalance = [];
-                                            $running = 0;
-                                            foreach ($allPayments as $index => $p) {
-                                                $running += $p['amount'];
-                                                $balance  = max(0, $grandTotal - $running);
-                                                $paymentsWithBalance[] = array_merge($p, [
-                                                    'running' => $running,
-                                                    'balance' => $balance,
-                                                    'num'     => $index + 1,
-                                                ]);
-                                            }
-                                            $rows = '';
-                                            foreach (array_reverse($paymentsWithBalance) as $p) {
-                                                $num        = $p['num'];
-                                                $balance    = $p['balance'];
-                                                $running    = $p['running'];
-                                                $balColor   = $balance <= 0 ? '#16a34a' : '#dc2626';
-                                                $balLabel   = $balance <= 0 ? '✅ Paid in Full' : '$' . number_format($balance, 2) . ' remaining';
-                                                $amountFmt  = number_format($p['amount'], 2);
-                                                $runningFmt = number_format($running, 2);
-                                                $timeHtml   = !empty($p['time'])
-                                                    ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>"
-                                                    : '';
-                                                $sourceLabel = ucfirst(str_replace('_', ' ', $p['source']));
-                                                $method      = $p['method'];
-                                                $date        = $p['date'];
-
-                                                $receiptUrl = route('sales.payment-receipt', [
-                                                    'record'     => $record->id,
-                                                    'source'     => $p['source'],
-                                                    'payment_id' => $p['id'],
-                                                ]);
-
-                                                $rows .= "
-        <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;
-                    margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
-            <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
-                <div>
-                    <div style='font-size:13px;font-weight:800;color:#1e293b;'>
-                        #{$num} — {$date} {$timeHtml}
+ 
+    // ── PREVIOUS DEPOSITS LOG (custom orders only) ────────────────
+    Placeholder::make('custom_order_payment_logs')
+        ->label('PREVIOUS DEPOSITS LOG')
+        ->visible(function (Get $get) {
+            $items = $get('items') ?? [];
+            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
+                || request()->has('custom_order_id');
+        })
+        ->content(function (Get $get) {
+            $items         = $get('items') ?? [];
+            $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
+                ?? request()->get('custom_order_id');
+ 
+            if (!$customOrderId) return null;
+ 
+            $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
+                ->orderBy('paid_at', 'asc')->get();
+ 
+            if ($payments->isEmpty()) {
+                return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
+            }
+ 
+            $rows = "";
+            foreach ($payments as $payment) {
+                $date   = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
+                $method = strtoupper($payment->method);
+                $amount = number_format($payment->amount, 2);
+                $rows  .= "<div style='display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;'>
+                    <div style='display:flex;flex-direction:column;'>
+                        <span style='font-size:10px;font-weight:700;color:#334155;'>{$method}</span>
+                        <span style='font-size:9px;color:#94a3b8;'>{$date}</span>
                     </div>
-                    <div style='margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
-                        <span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;
-                                     border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;'>
-                            {$method}
-                        </span>
-                        <span style='font-size:12px;color:#64748b;'>via {$sourceLabel}</span>
-                    </div>
-                    <div style='margin-top:6px;font-size:11px;color:{$balColor};font-weight:600;'>
-                        {$balLabel}
+                    <span style='font-size:11px;font-weight:700;color:#10b981;'>+\${$amount}</span>
+                </div>";
+            }
+ 
+            $totalDeposited = $payments->sum('amount');
+            return new HtmlString("
+                <div style='background-color:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:15px;'>
+                    <div style='font-size:10px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;'>Custom Order Payment Trail</div>
+                    <div style='max-height:150px;overflow-y:auto;padding-right:5px;'>{$rows}</div>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-top:10px;border-top:1px solid #bae6fd;padding-top:8px;'>
+                        <span style='font-size:10px;font-weight:700;color:#0369a1;'>TOTAL APPLIED CREDIT</span>
+                        <span style='font-size:14px;font-weight:900;color:#0369a1;'>$" . number_format($totalDeposited, 2) . "</span>
                     </div>
                 </div>
-                <div style='text-align:right;'>
-                    <div style='font-size:20px;font-weight:900;color:#10b981;'>
-                        +\${$amountFmt}
-                    </div>
-                    <div style='margin-top:6px;'>
-                        <a href='{$receiptUrl}' target='_blank'
-                           style='display:inline-block;background:#0ea5e9;color:#fff;
-                                  border-radius:6px;padding:4px 12px;font-size:11px;
-                                  font-weight:700;text-decoration:none;'>
-                            🖨️ Print Receipt
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div style='margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb;
-                        display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:#64748b;'>
-                <div><span style='font-weight:600;color:#374151;'>Customer:</span> {$custName}</div>
-                <div><span style='font-weight:600;color:#374151;'>Phone:</span> {$custPhone}</div>
-                <div><span style='font-weight:600;color:#374151;'>Invoice:</span> {$invoiceNo}</div>
-                <div><span style='font-weight:600;color:#374151;'>Running Total Paid:</span> \${$runningFmt}</div>
-            </div>
-        </div>";
-                                            }
-
-                                            $totalPaid    = $allPayments->sum('amount');
-                                            $finalBal     = max(0, $grandTotal - $totalPaid);
-                                            $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
-                                            $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
-                                            $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
-                                            $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
-                                            $grandFmt     = number_format($grandTotal, 2);
-                                            $paidFmt      = number_format($totalPaid, 2);
-
-                                            $summary = "
-                <div style='background:{$summBg};border:2px solid {$summBorder};
-                            border-radius:10px;padding:14px;margin-bottom:16px;'>
+            ");
+        }),
+ 
+    // ── PAYMENT LOG BUTTON ────────────────────────────────────────
+    \Filament\Forms\Components\Actions::make([
+        FormAction::make('view_payment_log')
+            ->label('📋 Payment Log')
+            ->color('info')
+            ->outlined()
+            ->icon('heroicon-o-banknotes')
+            ->visible(fn(string $operation) => $operation === 'edit')
+            ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
+            ->modalWidth('3xl')
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close')
+            ->form(function (?Sale $record) {
+                if (!$record) return [];
+ 
+                $payments1 = $record->payments()->orderBy('paid_at')->get()
+                    ->map(fn($p) => [
+                        'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+                        'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+                        'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+                        'method'   => strtoupper($p->method ?? '—'),
+                        'amount'   => floatval($p->amount),
+                        'source'   => 'payments',
+                        'id'       => $p->id,
+                    ]);
+ 
+                $payments2 = $record->salePayments()->orderBy('payment_date')->get()
+                    ->map(fn($p) => [
+                        'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
+                        'time'     => '',
+                        'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
+                        'method'   => strtoupper($p->payment_method ?? '—'),
+                        'amount'   => floatval($p->amount),
+                        'source'   => 'sale_payments',
+                        'id'       => $p->id,
+                    ]);
+ 
+                $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
+                $grandTotal  = floatval($record->final_total);
+                $customer    = $record->customer;
+                $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
+                $custPhone   = $customer?->phone ?? '—';
+                $invoiceNo   = $record->invoice_number;
+ 
+                $paymentsWithBalance = [];
+                $running = 0;
+                foreach ($allPayments as $index => $p) {
+                    $running += $p['amount'];
+                    $balance  = max(0, $grandTotal - $running);
+                    $paymentsWithBalance[] = array_merge($p, [
+                        'running' => $running,
+                        'balance' => $balance,
+                        'num'     => $index + 1,
+                    ]);
+                }
+ 
+                $rows = '';
+                foreach (array_reverse($paymentsWithBalance) as $p) {
+                    $balColor   = $p['balance'] <= 0 ? '#16a34a' : '#dc2626';
+                    $balLabel   = $p['balance'] <= 0 ? '✅ Paid in Full' : '$' . number_format($p['balance'], 2) . ' remaining';
+                    $timeHtml   = !empty($p['time']) ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>" : '';
+                    $receiptUrl = route('sales.payment-receipt', ['record' => $record->id, 'source' => $p['source'], 'payment_id' => $p['id']]);
+ 
+                    $rows .= "
+                    <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
+                        <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                            <div>
+                                <div style='font-size:13px;font-weight:800;color:#1e293b;'>#{$p['num']} — {$p['date']} {$timeHtml}</div>
+                                <div style='margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
+                                    <span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;'>{$p['method']}</span>
+                                    <span style='font-size:12px;color:#64748b;'>via " . ucfirst(str_replace('_', ' ', $p['source'])) . "</span>
+                                </div>
+                                <div style='margin-top:6px;font-size:11px;color:{$balColor};font-weight:600;'>{$balLabel}</div>
+                            </div>
+                            <div style='text-align:right;'>
+                                <div style='font-size:20px;font-weight:900;color:#10b981;'>+\$" . number_format($p['amount'], 2) . "</div>
+                                <div style='margin-top:6px;'>
+                                    <a href='{$receiptUrl}' target='_blank' style='display:inline-block;background:#0ea5e9;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none;'>🖨️ Print Receipt</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div style='margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;color:#64748b;'>
+                            <div><span style='font-weight:600;color:#374151;'>Customer:</span> {$custName}</div>
+                            <div><span style='font-weight:600;color:#374151;'>Phone:</span> {$custPhone}</div>
+                            <div><span style='font-weight:600;color:#374151;'>Invoice:</span> {$invoiceNo}</div>
+                            <div><span style='font-weight:600;color:#374151;'>Running Total:</span> \$" . number_format($p['running'], 2) . "</div>
+                        </div>
+                    </div>";
+                }
+ 
+                $totalPaid    = $allPayments->sum('amount');
+                $finalBal     = max(0, $grandTotal - $totalPaid);
+                $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
+                $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
+                $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
+                $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
+ 
+                $summary = "<div style='background:{$summBg};border:2px solid {$summBorder};border-radius:10px;padding:14px;margin-bottom:16px;'>
                     <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;'>
                         <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;
-                                        text-transform:uppercase;letter-spacing:.05em;'>Invoice Total</div>
-                            <div style='font-size:18px;font-weight:900;color:#1e293b;'>\${$grandFmt}</div>
+                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Invoice Total</div>
+                            <div style='font-size:18px;font-weight:900;color:#1e293b;'>\$" . number_format($grandTotal, 2) . "</div>
                         </div>
                         <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;
-                                        text-transform:uppercase;letter-spacing:.05em;'>Total Paid</div>
-                            <div style='font-size:18px;font-weight:900;color:#10b981;'>\${$paidFmt}</div>
+                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Total Paid</div>
+                            <div style='font-size:18px;font-weight:900;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
                         </div>
                         <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;
-                                        text-transform:uppercase;letter-spacing:.05em;'>Balance</div>
+                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Balance</div>
                             <div style='font-size:18px;font-weight:900;color:{$summBalColor};'>{$summBalLabel}</div>
                         </div>
                     </div>
                 </div>";
-
-                                            if ($allPayments->isEmpty()) {
-                                                $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>
-                    No payments recorded for this sale yet.</div>";
-                                            }
-
-                                            return [
-                                                Placeholder::make('payment_log_content')
-                                                    ->label('')
-                                                    ->content(new HtmlString($summary . $rows)),
-                                            ];
-                                        }),
-                                ])->visible(fn(string $operation) => $operation === 'edit'),
-                                Toggle::make('is_split_payment')
-                                    ->label('Enable Split Payment')
-                                    ->onColor('warning')
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        if ($state) {
-                                            $existingAmount = floatval($get('amount_paid') ?? 0);
-                                            $existingMethod = $get('payment_method') ?? 'VISA';
-                                            $currentSplits  = $get('split_payments') ?? [];
-
-                                            if ($existingAmount > 0 && empty($currentSplits)) {
-                                                $set('split_payments', [
-                                                    (string) \Illuminate\Support\Str::uuid() => [
-                                                        'method' => $existingMethod,
-                                                        'amount' => $existingAmount,
-                                                    ]
-                                                ]);
-                                            }
-                                        } else {
-                                            $currentSplits = $get('split_payments') ?? [];
-                                            if (!empty($currentSplits)) {
-                                                $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                                                $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
-                                                $set('amount_paid', number_format($totalSplit, 2, '.', ''));
-                                                $set('payment_method', $firstMethod);
-                                            }
-                                        }
-                                        self::updateTotals($get, $set);
-                                    })
-                                    ->columnSpanFull(),
-
-                                Select::make('payment_method')
-                                    ->label('Payment Method')
-                                    ->options(self::getPaymentOptions())
-                                    ->placeholder('Select Payment Method')
-                                    ->required(fn(Get $get) => !$get('is_split_payment'))
-                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-
-                                Select::make('payment_target')
-                                    ->label('Apply To')
-                                    ->options([
-                                        'regular' => 'Regular Sales',
-                                        'custom'  => 'Custom Deposit',
-                                    ])
-                                    ->default('regular')
-                                    ->required(function (Get $get) {
-                                        if ($get('is_split_payment')) return false;
-                                        $items = $get('items') ?? [];
-                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                                            || request()->has('custom_order_id');
-                                    })
-                                    ->visible(function (Get $get) {
-                                        if ($get('is_split_payment')) return false;
-                                        $items = $get('items') ?? [];
-                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                                            || request()->has('custom_order_id');
-                                    })
-                                    ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                TextInput::make('display_total_due')
-                                    ->label('Total Amount to Collect')
-                                    ->prefix('$')
-                                    ->readOnly()
-                                    ->extraInputAttributes(['style' => 'font-size: 1.5rem; font-weight: 900; color: #0284c7; background-color: #f0f9ff;'])
-                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                    ->dehydrated(false),
-
-                                TextInput::make('amount_paid')
-                                    ->label('Amount Received')
-                                    ->numeric()
-                                    ->prefix('$')
-                                    ->default(0)
-                                    ->live(onBlur: true)
-                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
-                                        self::updateTotals($get, $set);
-                                        self::syncStatus($get, $set);
-                                    })
-                                    ->helperText('What the customer physically handed over')
-                                    ->hintAction(
-                                        FormAction::make('fill_full_amount')
-                                            ->label('Collect Full Amount')
-                                            ->icon('heroicon-o-banknotes')
-                                            ->color('success')
-                                            ->action(function (Get $get, Set $set) {
-                                                $total = floatval($get('final_total') ?? 0);
-                                                $set('amount_paid', number_format($total, 2, '.', ''));
-                                                self::updateTotals($get, $set);
-                                                self::syncStatus($get, $set);
-                                            })
-                                    ),
-
-                                TextInput::make('change_given')
-                                    ->label('Change Given')
-                                    ->prefix('$')
-                                    ->readOnly()
-                                    ->default('0.00')
-                                    ->dehydrated(false)
-                                    ->live()
-                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                    ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
-
-                                Repeater::make('split_payments')
-                                    ->label('Payment Breakdown')
-                                    ->schema([
-                                        Grid::make(6)->schema([
-                                            Select::make('method')
-                                                ->options(self::getPaymentOptions())
-                                                ->required()
-                                                ->label('Method')
-                                                ->columnSpan(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $hasCustom = collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
-                                                    return $hasCustom ? 2 : 3;
-                                                }),
-
-                                            TextInput::make('amount')
-                                                ->numeric()
-                                                ->prefix('$')
-                                                ->required()
-                                                ->label('Amount')
-                                                ->live(onBlur: true)
-                                                ->columnSpan(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $hasCustom = collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
-                                                    return $hasCustom ? 2 : 3;
-                                                }),
-
-                                            Select::make('payment_target')
-                                                ->label('Apply To')
-                                                ->options([
-                                                    'regular' => 'Regular Sales',
-                                                    'custom'  => 'Custom Deposit',
-                                                ])
-                                                ->default('regular')
-                                                ->columnSpan(2)
-                                                ->visible(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    return collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
-                                                })
-                                                ->live()
-                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                        ]),
-                                    ])
-                                    ->visible(fn(Get $get) => $get('is_split_payment'))
-                                    ->defaultItems(2)
-                                    ->maxItems(6)
-                                    ->addActionLabel('Add Another Payment Method')
-                                    ->reorderable(false)
-                                    ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
-                                        self::updateTotals($get, $set);
-                                        self::syncStatus($get, $set);
-                                    }),
-
-                                Placeholder::make('split_calc')
-                                    ->label('Remaining Balance')
-                                    ->content(function (Get $get) {
-                                        $total     = (float) $get('final_total');
-                                        $payments  = $get('split_payments') ?? [];
-                                        $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                                        $remaining = $total - $sum;
-
-                                        if ($remaining < 0) {
-                                            return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
-                                        }
-                                        $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
-                                        return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
-                                    })
-                                    ->visible(fn(Get $get) => $get('is_split_payment')),
-
-                                Select::make('status')
-                                    ->label('Sale Status')
-                                    ->options([
-                                        'completed'  => 'Completed',
-                                        'inprogress' => 'In Progress',
-                                        'pending'    => 'Pending',
-                                        'cancelled'  => 'Cancelled',
-                                    ])
-                                    ->default('inprogress')
-                                    ->required()
-                                    ->live(),
-                            ]),
-
-                            Section::make('Financial Summary')->schema([
-                                self::totalRow('TAX TOTAL', 'tax_amount'),
-                                TextInput::make('tax_amount_warranty')
-                                    ->label('WARRANTY TAX')
-                                    ->prefix('$')
-                                    ->readOnly()
-                                    ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
-                                self::totalRow('SUBTOTAL', 'subtotal'),
-
-                                Placeholder::make('balance_due_display')
-                                    ->label('INVOICE TOTALS')
-                                    ->content(function (Get $get) {
-                                        $total  = floatval($get('final_total') ?? 0);
-
-                                        $isSplit = $get('is_split_payment');
-                                        $customPaid = 0;
-                                        $regularPaid = 0;
-
-                                        if ($isSplit) {
-                                            $payments = $get('split_payments') ?? [];
-                                            foreach ($payments as $p) {
-                                                $amt = (float)($p['amount'] ?? 0);
-                                                if (($p['payment_target'] ?? 'regular') === 'custom') {
-                                                    $customPaid += $amt;
-                                                } else {
-                                                    $regularPaid += $amt;
-                                                }
-                                            }
-                                        } else {
-                                            $amt = floatval($get('amount_paid') ?? 0);
-                                            if (($get('payment_target') ?? 'regular') === 'custom') {
-                                                $customPaid += $amt;
-                                            } else {
-                                                $regularPaid += $amt;
-                                            }
-                                        }
-
-                                        $totalPaid = $customPaid + $regularPaid;
-                                        $remaining = $total - $totalPaid;
-
-                                        $html = "
-        <div style='display:flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
-            <span style='font-size: 0.875rem; color: #64748b;'>Invoice Total:</span>
-            <span style='font-size: 0.875rem; font-weight: bold; color: #334155;'>$" . number_format($total, 2) . "</span>
-        </div>";
-
-                                        if ($customPaid > 0) {
-                                            $html .= "
-            <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
-                <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
-                <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($customPaid, 2) . "</span>
+ 
+                if ($allPayments->isEmpty()) {
+                    $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>No payments recorded yet.</div>";
+                }
+ 
+                return [
+                    Placeholder::make('payment_log_content')->label('')->content(new HtmlString($summary . $rows)),
+                ];
+            }),
+    ])->visible(fn(string $operation) => $operation === 'edit'),
+ 
+    // ── SPLIT TOGGLE ─────────────────────────────────────────────
+    Toggle::make('is_split_payment')
+        ->label('Enable Split Payment')
+        ->onColor('warning')
+        ->live()
+        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+            if ($state) {
+                $existingAmount = floatval($get('amount_paid') ?? 0);
+                $existingMethod = $get('payment_method') ?? 'VISA';
+                $currentSplits  = $get('split_payments') ?? [];
+                if ($existingAmount > 0 && empty($currentSplits)) {
+                    $set('split_payments', [
+                        (string) \Illuminate\Support\Str::uuid() => [
+                            'method' => $existingMethod,
+                            'amount' => $existingAmount,
+                        ]
+                    ]);
+                }
+            } else {
+                $currentSplits = $get('split_payments') ?? [];
+                if (!empty($currentSplits)) {
+                    $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                    $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
+                    $set('amount_paid', number_format($totalSplit, 2, '.', ''));
+                    $set('payment_method', $firstMethod);
+                }
+            }
+            self::updateTotals($get, $set);
+        })
+        ->columnSpanFull(),
+ 
+    // ── NON-SPLIT: METHOD ────────────────────────────────────────
+    Select::make('payment_method')
+        ->label('Payment Method')
+        ->options(self::getPaymentOptions())
+        ->placeholder('Select Payment Method')
+        ->required(fn(Get $get) => !$get('is_split_payment'))
+        ->visible(fn(Get $get) => !$get('is_split_payment'))
+        ->live()
+        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+ 
+    Select::make('payment_target')
+        ->label('Apply To')
+        ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+        ->default('regular')
+        ->required(function (Get $get) {
+            if ($get('is_split_payment')) return false;
+            $items = $get('items') ?? [];
+            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                || request()->has('custom_order_id');
+        })
+        ->visible(function (Get $get) {
+            if ($get('is_split_payment')) return false;
+            $items = $get('items') ?? [];
+            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                || request()->has('custom_order_id');
+        })
+        ->live()
+        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+ 
+    // ── TOTAL AMOUNT TO COLLECT (remaining after DB payments) ────
+    Placeholder::make('display_total_due')
+        ->label('Total Amount to Collect')
+        ->visible(fn(Get $get) => !$get('is_split_payment'))
+        ->content(function (Get $get, ?Sale $record) {
+            $total     = floatval($get('final_total') ?? 0);
+            $dbPaid    = $record
+                ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount'))
+                : 0;
+            $remaining = max(0, $total - $dbPaid);
+            $method    = strtoupper($get('payment_method') ?? '');
+            $badge     = $method
+                ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
+                : '';
+            $note = $dbPaid > 0
+                ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Invoice total: \$" . number_format($total, 2) . "</div>"
+                : '';
+            return new HtmlString("
+                <div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
+                    <div style='display:flex;align-items:center;'>
+                        <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($remaining, 2) . "</span>
+                        {$badge}
+                    </div>
+                    {$note}
+                </div>
+            ");
+        })
+        ->live(),
+ 
+    // ── AMOUNT RECEIVED (new money only) ────────────────────────
+    TextInput::make('amount_paid')
+        ->label('Amount Received')
+        ->numeric()
+        ->prefix('$')
+        ->default(0)
+        ->live(onBlur: true)
+        ->visible(fn(Get $get) => !$get('is_split_payment'))
+        ->afterStateUpdated(function (Get $get, Set $set) {
+            self::updateTotals($get, $set);
+            self::syncStatus($get, $set);
+        })
+        ->helperText(function (Get $get, ?Sale $record) {
+            if (!$record) return 'What the customer is paying right now';
+            if ($record->status === 'cancelled') {
+                return new HtmlString("<strong style='color:#6b7280;'>This sale has been cancelled.</strong>");
+            }
+            $dbPaid    = $record->payments()->sum('amount') + $record->salePayments()->sum('amount');
+            $total     = floatval($get('final_total') ?? 0);
+            $remaining = max(0, $total - $dbPaid);
+            $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
+            $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
+            return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
+        })
+        ->hintAction(
+            FormAction::make('fill_full_amount')
+                ->label('Collect Remaining Balance')
+                ->icon('heroicon-o-banknotes')
+                ->color('success')
+                ->action(function (Get $get, Set $set, ?Sale $record) {
+                    $total         = floatval($get('final_total') ?? 0);
+                    $priorDeposits = $record
+                        ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount'))
+                        : 0;
+                    $remaining = max(0, $total - $priorDeposits);
+                    $set('amount_paid', number_format($remaining, 2, '.', ''));
+                    self::updateTotals($get, $set);
+                    self::syncStatus($get, $set);
+                })
+        ),
+ 
+    // ── CHANGE GIVEN ─────────────────────────────────────────────
+    TextInput::make('change_given')
+        ->label('Change Given')
+        ->prefix('$')
+        ->readOnly()
+        ->default('0.00')
+        ->dehydrated(false)
+        ->live()
+        ->visible(fn(Get $get) => !$get('is_split_payment'))
+        ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
+ 
+    // ── SPLIT PAYMENTS REPEATER ──────────────────────────────────
+    Repeater::make('split_payments')
+        ->label('Payment Breakdown')
+        ->schema([
+            Grid::make(6)->schema([
+                Select::make('method')
+                    ->label('Method')
+                    ->options(function (?Sale $record) {
+                        $options = SaleResource::getPaymentOptions();
+                        // Merge any DB methods not in site_settings (e.g. KATAPULT)
+                        if ($record) {
+                            $record->payments()->pluck('method')
+                                ->merge($record->salePayments()->pluck('payment_method'))
+                                ->filter()
+                                ->map(fn($m) => strtoupper(trim($m)))
+                                ->unique()
+                                ->each(function ($m) use (&$options) {
+                                    if (!array_key_exists($m, $options)) {
+                                        $options[$m] = $m;
+                                    }
+                                });
+                        }
+                        return $options;
+                    })
+                    ->required()
+                    ->columnSpan(function (Get $get) {
+                        $items = $get('../../items') ?? [];
+                        $hasCustom = collect($items)->contains(
+                            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                        ) || request()->has('custom_order_id');
+                        return $hasCustom ? 2 : 3;
+                    }),
+ 
+                TextInput::make('amount')
+    ->numeric()
+    ->prefix('$')
+    ->required()
+    ->label('Amount')
+    ->live(onBlur: true)
+   ->hintAction(
+    FormAction::make('fill_split_remaining')
+        ->label('Collect Remaining Balance')
+        ->icon('heroicon-o-banknotes')
+        ->color('success')
+        ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
+        ->action(function (Get $get, Set $set) {
+            $total     = (float) $get('../../final_total');
+            $payments  = $get('../../split_payments') ?? [];
+            $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            $remaining = max(0, $total - $sum);
+            $set('amount', number_format($remaining, 2, '.', ''));
+        })
+)
+    ->columnSpan(function (Get $get) {
+        $items = $get('../../items') ?? [];
+        $hasCustom = collect($items)->contains(
+            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+        ) || request()->has('custom_order_id');
+        return $hasCustom ? 2 : 3;
+    }),
+ 
+                Select::make('payment_target')
+                    ->label('Apply To')
+                    ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                    ->default('regular')
+                    ->columnSpan(2)
+                    ->visible(function (Get $get) {
+                        $items = $get('../../items') ?? [];
+                        return collect($items)->contains(
+                            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                        ) || request()->has('custom_order_id');
+                    })
+                    ->live()
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+            ]),
+        ])
+        ->visible(fn(Get $get) => $get('is_split_payment'))
+        ->defaultItems(1)
+        ->maxItems(6)
+        ->addActionLabel('Add Another Payment Method')
+        ->reorderable(false)
+        ->live()
+        ->afterStateUpdated(function (Get $get, Set $set) {
+            self::updateTotals($get, $set);
+            self::syncStatus($get, $set);
+        }),
+ 
+    // ── REMAINING BALANCE (split mode) ───────────────────────────
+    // Form pre-fills existing DB payments into split_payments rows.
+    // So remaining = total - formSum directly (no extra DB lookup).
+    Placeholder::make('split_calc')
+        ->label('Remaining Balance')
+        ->content(function (Get $get) {
+            $total     = (float) $get('final_total');
+            $payments  = $get('split_payments') ?? [];
+            $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+            $remaining = $total - $sum;
+ 
+            if ($remaining < 0) {
+                return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
+            }
+            $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
+            return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
+        })
+        ->visible(fn(Get $get) => $get('is_split_payment')),
+ 
+    // ── STATUS ───────────────────────────────────────────────────
+    Select::make('status')
+        ->label('Sale Status')
+        ->options([
+            'completed'  => 'Completed',
+            'inprogress' => 'In Progress',
+            'pending'    => 'Pending',
+            'cancelled'  => 'Cancelled',
+        ])
+        ->default('inprogress')
+        ->required()
+        ->live(),
+]),
+ 
+// ── FINANCIAL SUMMARY ─────────────────────────────────────────────
+Section::make('Financial Summary')->schema([
+    self::totalRow('TAX TOTAL', 'tax_amount'),
+    TextInput::make('tax_amount_warranty')
+        ->label('WARRANTY TAX')
+        ->prefix('$')
+        ->readOnly()
+        ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
+    self::totalRow('SUBTOTAL', 'subtotal'),
+ 
+    // Form pre-fills DB payments into split_payments.
+    // Just use form values — do NOT add $dbPaid separately.
+    Placeholder::make('balance_due_display')
+        ->label('INVOICE TOTALS')
+        ->content(function (Get $get) {
+            $total       = floatval($get('final_total') ?? 0);
+            $isSplit     = $get('is_split_payment');
+            $customPaid  = 0;
+            $regularPaid = 0;
+ 
+            if ($isSplit) {
+                foreach ($get('split_payments') ?? [] as $p) {
+                    $amt = (float)($p['amount'] ?? 0);
+                    if (($p['payment_target'] ?? 'regular') === 'custom') {
+                        $customPaid += $amt;
+                    } else {
+                        $regularPaid += $amt;
+                    }
+                }
+            } else {
+                $amt = floatval($get('amount_paid') ?? 0);
+                if (($get('payment_target') ?? 'regular') === 'custom') {
+                    $customPaid += $amt;
+                } else {
+                    $regularPaid += $amt;
+                }
+            }
+ 
+            $totalPaid = $customPaid + $regularPaid;
+            $remaining = $total - $totalPaid;
+ 
+            $html = "<div style='display:flex;justify-content:space-between;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                <span style='font-size:0.875rem;color:#64748b;'>Invoice Total:</span>
+                <span style='font-size:0.875rem;font-weight:bold;color:#334155;'>$" . number_format($total, 2) . "</span>
             </div>";
-                                        }
-
-                                        if ($regularPaid > 0) {
-                                            $html .= "
-            <div style='display:flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;'>
-                <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
-                <span style='font-size: 0.875rem; font-weight: bold; color: #10b981;'>+$" . number_format($regularPaid, 2) . "</span>
-            </div>";
-                                        }
-
-                                        if (round($remaining, 2) <= 0) {
-                                            $overpaid = abs($remaining);
-                                            return new HtmlString($html . "<div style='text-align: right;'><span style='color:#16a34a; font-weight:900; font-size:1.875rem;'>\$0.00</span><div style='color:#16a34a; font-size:0.75rem; font-weight:700;'>✅ FULLY PAID</div>" . ($overpaid > 0 ? "<div style='color:#2563eb; font-size:0.875rem; font-weight:700; margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "") . "</div>");
-                                        }
-
-                                        return new HtmlString($html . "<div style='text-align: right;'><span style='color:#dc2626; font-weight:900; font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span><div style='color:#dc2626; font-size:0.75rem; font-weight:700;'>BALANCE DUE</div></div>");
-                                    })
-                                    ->live(),
-                            ]),
+ 
+            if ($customPaid > 0) {
+                $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                    <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
+                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($customPaid, 2) . "</span>
+                </div>";
+            }
+ 
+            if ($regularPaid > 0) {
+                $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                    <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
+                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($regularPaid, 2) . "</span>
+                </div>";
+            }
+ 
+            if (round($remaining, 2) <= 0) {
+                $overpaid = abs($remaining);
+                return new HtmlString($html . "<div style='text-align:right;'>
+                    <span style='color:#16a34a;font-weight:900;font-size:1.875rem;'>\$0.00</span>
+                    <div style='color:#16a34a;font-size:0.75rem;font-weight:700;'>✅ FULLY PAID</div>"
+                    . ($overpaid > 0.01 ? "<div style='color:#2563eb;font-size:0.875rem;font-weight:700;margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "")
+                    . "</div>");
+            }
+ 
+            return new HtmlString($html . "<div style='text-align:right;'>
+                <span style='color:#dc2626;font-weight:900;font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
+                <div style='color:#dc2626;font-size:0.75rem;font-weight:700;'>BALANCE DUE</div>
+            </div>");
+        })
+        ->live(),
+]),
                         ]),
                 ]),
 
@@ -2062,11 +2086,48 @@ class SaleResource extends Resource
                     ->outlined(),
 
                 Tables\Actions\Action::make('refund')
-                    ->label('Refund')
-                    ->icon('heroicon-o-arrow-uturn-left')
-                    ->color('danger')
-                    ->visible(fn(Sale $record) => $record->status === 'completed')
-                    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
+    ->label('Refund')
+    ->icon('heroicon-o-arrow-uturn-left')
+    ->color('danger')
+    ->visible(fn(Sale $record) => $record->status === 'completed')
+    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
+
+Tables\Actions\Action::make('cancel_sale')
+    ->label('Cancel Sale')
+    ->icon('heroicon-o-x-circle')
+    ->color('danger')
+    ->visible(fn(Sale $record) =>
+        !in_array($record->status, ['cancelled', 'refunded', 'void']) &&
+        auth()->user()->hasAnyRole(['Superadmin', 'Administration'])
+    )
+    ->requiresConfirmation()
+    ->modalHeading('Cancel This Sale?')
+    ->modalDescription('This will mark the sale as cancelled and return all items back to stock.')
+    ->modalSubmitActionLabel('Yes, Cancel Sale')
+    ->action(function (Sale $record) {
+        foreach ($record->items as $saleItem) {
+            if (!$saleItem->product_item_id) continue;
+            $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
+            if ($productItem) {
+                $productItem->update([
+                    'status'          => 'in_stock',
+                    'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
+                    'hold_reason'     => null,
+                    'held_by_sale_id' => null,
+                ]);
+            }
+        }
+        $record->update([
+            'status'       => 'cancelled',
+            'balance_due'  => 0,
+            'completed_at' => null,
+        ]);
+        Notification::make()
+            ->title('Sale Cancelled')
+            ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
+            ->success()
+            ->send();
+    }),
 
                     
             ])
