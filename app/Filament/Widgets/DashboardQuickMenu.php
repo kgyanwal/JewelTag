@@ -21,9 +21,10 @@ class DashboardQuickMenu extends Widget
         $store = \App\Helpers\Staff::user()?->store ?? Store::first();
 
         // Timezone-aware today window (matches EOD closing logic)
-        $tz = $store?->timezone ?? config('app.timezone', 'UTC');
-        $startUtc = Carbon::now($tz)->startOfDay()->utc();
-        $endUtc   = Carbon::now($tz)->endOfDay()->utc();
+    $tz = $store?->timezone ?? 'UTC';
+$todayLocal = Carbon::now($tz)->format('Y-m-d');
+$startUtc = Carbon::createFromFormat('Y-m-d H:i:s', $todayLocal . ' 00:00:00', $tz)->utc();
+$endUtc   = Carbon::createFromFormat('Y-m-d H:i:s', $todayLocal . ' 23:59:59', $tz)->utc();
 
         $pendingLaybuys = \App\Models\Laybuy::where('status', 'active')->count();
         $pendingCustomOrders = \App\Models\CustomOrder::whereIn('status', ['pending', 'in_progress'])->count();
