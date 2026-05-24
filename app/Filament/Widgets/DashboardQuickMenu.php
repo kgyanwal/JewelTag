@@ -51,7 +51,9 @@ $endUtc   = Carbon::createFromFormat('Y-m-d H:i:s', $todayLocal . ' 23:59:59', $
         return [
             'store'              => $store,
             'recentSales'        => Sale::latest()->limit(5)->get(),
-            'todaySales'         => Payment::whereBetween('paid_at', [$startUtc, $endUtc])->sum('amount'),
+            'todaySales' => Payment::whereBetween('paid_at', [$startUtc, $endUtc])
+                    ->whereNotNull('sale_id')
+                    ->sum('amount'),
             'pendingLaybuys'     => $pendingLaybuys,
             'pendingCustomOrders'=> $pendingCustomOrders,
             'pendingFollowUps'   => $pendingFollowUps,
