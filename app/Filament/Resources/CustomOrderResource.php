@@ -1106,7 +1106,70 @@ class CustomOrderResource extends Resource
                     ])
                     ->selectablePlaceholder(false)
                     ->grow(false),
+Tables\Columns\TextColumn::make('workflow_hint')
+    ->label('NEXT ACTION')
+    ->getStateUsing(function (CustomOrder $record) {
+        return match($record->status) {
+            'draft'         => 'approve|Approve & Send to Production',
+            'quoted'        => 'approve|Approve & Send to Production',
+            'approved'      => 'production|Mark In Production',
+            'in_production' => 'ready|Mark Ready for Pickup',
+            'received'      => 'sale|Convert to Sale →',
+            'completed'     => 'done|Fully Completed ✅',
+            default         => 'none|—',
+        };
+    })
+    ->formatStateUsing(function ($state, CustomOrder $record) {
+        [$type, $label] = explode('|', $state, 2);
 
+        $configs = [
+            'approve'    => ['#7c3aed', '#f5f3ff', '#ddd6fe', '⚡'],
+            'production' => ['#b45309', '#fffbeb', '#fde68a', '🔧'],
+            'ready'      => ['#0369a1', '#f0f9ff', '#bae6fd', '📦'],
+            'sale'       => ['#15803d', '#f0fdf4', '#bbf7d0', '🛒'],
+            'done'       => ['#6b7280', '#f9fafb', '#e5e7eb', '✅'],
+            'none'       => ['#9ca3af', '#f9fafb', '#e5e7eb', '—'],
+        ];
+
+        [$color, $bg, $border, $icon] = $configs[$type] ?? $configs['none'];
+
+        $convertUrl = $type === 'sale'
+            ? \App\Filament\Resources\SaleResource::getUrl('create', [
+                'customer_id'     => $record->customer_id,
+                'custom_order_id' => $record->id,
+            ])
+            : null;
+
+        if ($convertUrl) {
+            return new \Illuminate\Support\HtmlString("
+                <a href='{$convertUrl}'
+                   style='display:inline-flex;align-items:center;gap:5px;
+                          background:{$bg};color:{$color};
+                          border:1px solid {$border};
+                          border-radius:20px;padding:3px 10px;
+                          font-size:10px;font-weight:800;
+                          white-space:nowrap;text-decoration:none;
+                          cursor:pointer;'
+                   onmouseover=\"this.style.opacity='0.8'\"
+                   onmouseout=\"this.style.opacity='1'\">
+                    {$icon} {$label}
+                </a>
+            ");
+        }
+
+        return new \Illuminate\Support\HtmlString("
+            <span style='display:inline-flex;align-items:center;gap:5px;
+                         background:{$bg};color:{$color};
+                         border:1px solid {$border};
+                         border-radius:20px;padding:3px 10px;
+                         font-size:10px;font-weight:700;
+                         white-space:nowrap;'>
+                {$icon} {$label}
+            </span>
+        ");
+    })
+    ->html()
+    ->grow(false),
                 Tables\Columns\TextColumn::make('notified_at')
                     ->label('NOTIFIED')
                     ->getStateUsing(

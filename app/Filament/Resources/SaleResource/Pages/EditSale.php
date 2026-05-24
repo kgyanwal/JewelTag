@@ -81,18 +81,20 @@ class EditSale extends EditRecord
     {
         return [
             Actions\DeleteAction::make()
-                ->visible(fn() =>
+                ->visible(
+                    fn() =>
                     Staff::user()?->hasRole('Superadmin') ||
-                    $this->record->status !== 'completed'
+                        $this->record->status !== 'completed'
                 ),
 
             Actions\Action::make('complete_sale')
                 ->label('Finalize Sale (Today)')
                 ->color('success')
                 ->icon('heroicon-o-check')
-                ->visible(fn() =>
+                ->visible(
+                    fn() =>
                     $this->record->status !== 'completed' &&
-                    Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                        Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
                 )
                 ->requiresConfirmation()
                 ->action(function () {
@@ -117,7 +119,7 @@ class EditSale extends EditRecord
         ];
     }
 
-    protected function mutateFormDataBeforeFill(array $data): array
+  protected function mutateFormDataBeforeFill(array $data): array
     {
         $record = $this->record;
 
@@ -130,9 +132,6 @@ class EditSale extends EditRecord
         $data['payment_method'] = strtoupper($first?->method ?? ($record->payment_method ?: 'CASH'));
         $data['payment_target'] = ($first && $first->custom_order_id) ? 'custom' : 'regular';
 
-        // Pre-fill ALL existing payments into split_payments so staff sees full history.
-        // split_calc uses: remaining = total - formSum (formSum includes existing + new)
-        // afterSave uses delta = formTotal - totalAlreadyInDb to only insert NEW money.
         if ($allDbPayments->count() > 0 || $salePayments->count() > 0) {
             $splits = [];
 
@@ -176,7 +175,13 @@ class EditSale extends EditRecord
                         $data['items'][$key]['sold_price']          = $customOrder->quoted_price;
                         $data['items'][$key]['sale_price_override'] = $item['sale_price_override'] ?? $customOrder->quoted_price;
                         $data['items'][$key]['qty']                 = 1;
-                        $data['items'][$key]['is_tax_free']         = (bool) $customOrder->is_tax_free;
+                        
+                        // 🚀 SYSTEM PERSISTENCE FIX
+                        $data['items'][$key]['is_tax_free'] = (bool) $customOrder->is_tax_free;
+                        
+                        if ((bool) $customOrder->is_tax_free) {
+                            $data['items'][$key]['tax_amount'] = 0;
+                        }
                     }
                 } elseif (!empty($item['product_item_id'])) {
                     $productItem = \App\Models\ProductItem::find($item['product_item_id']);
@@ -198,6 +203,12 @@ class EditSale extends EditRecord
             }
         }
 
+        // 🚀 CRITICAL FIX: Explicitly lock final values out of the original parent parameters on load
+        $data['final_total']   = number_format(floatval($record->final_total), 2, '.', '');
+        $data['subtotal']      = number_format(floatval($record->subtotal), 2, '.', '');
+        $data['tax_amount']    = number_format(floatval($record->tax_amount), 2, '.', '');
+        $data['balance_due']   = number_format(floatval($record->balance_due), 2, '.', '');
+
         return $data;
     }
 
@@ -210,31 +221,44 @@ class EditSale extends EditRecord
 
         $record = $this->record;
 
-        // What's already in DB across both payment tables
-        $allDbPaid = $record->payments()->sum('amount') + $record->salePayments()->sum('amount');
+        // Filter payments correctly by target to prevent layout inversion loops
+        $allDbPaid = $record->payments()->whereNull('custom_order_id')->sum('amount')
+            + $record->salePayments()->sum('amount');
 
         if (!empty($data['is_split_payment'])) {
-            // formTotal includes existing DB rows + any NEW rows staff added
-            $formTotal   = collect($data['split_payments'] ?? [])->sum(fn($p) => (float) ($p['amount'] ?? 0));
-            // newIntended = only delta beyond what DB already has
+            $formTotal = collect($data['split_payments'] ?? [])
+                ->where('payment_target', '!=', 'custom') // 🚀 CRITICAL FIX: Ignore custom order deposits
+                ->sum(fn($p) => (float) ($p['amount'] ?? 0));
             $newIntended = max(0, round($formTotal - $allDbPaid, 2));
         } else {
-            // Non-split: amount_paid is always new money (starts at 0 on load)
             $newIntended = floatval($data['amount_paid'] ?? 0);
+        }
+
+        // Explicitly mapping inline columns to prevent front-end form wipe outs
+        $customDeposit = collect($data['split_payments'] ?? [])->firstWhere('payment_target', 'custom');
+        if ($customDeposit) {
+            $data['payment_method_1'] = $customDeposit['method'] ?? 'CASH';
+            $data['payment_amount_1'] = floatval($customDeposit['amount'] ?? 0);
         }
 
         $totalPaid  = round($allDbPaid + $newIntended, 2);
         $finalTotal = floatval($record->final_total);
-        $balance    = round($finalTotal - $totalPaid, 2);
+
+        // Add custom deposit values back into base validations
+        $baseDeposit = collect($data['split_payments'] ?? [])
+            ->where('payment_target', 'custom')
+            ->sum(fn($p) => (float)($p['amount'] ?? 0));
+
+        $balance = round($finalTotal - ($totalPaid + $baseDeposit), 2);
 
         if ($balance <= 0) {
             $data['status']      = 'completed';
+            $data['amount_paid'] = $totalPaid + $baseDeposit;
             $data['balance_due'] = 0;
-            if (!$record->completed_at) $data['completed_at'] = now();
         } else {
             $data['status']       = 'pending';
+            $data['amount_paid']  = $totalPaid + $baseDeposit;
             $data['balance_due']  = max(0, $balance);
-            $data['completed_at'] = null;
         }
 
         return $data;
@@ -315,7 +339,6 @@ class EditSale extends EditRecord
                         'store_id'        => $sale->store_id,
                     ]);
                 }
-
             } elseif ($delta < 0) {
                 $sale->payments()
                     ->where('paid_at', '>=', $sale->created_at)

@@ -1322,7 +1322,7 @@ class SaleResource extends Resource
  
     // ── PAYMENT LOG BUTTON ────────────────────────────────────────
     \Filament\Forms\Components\Actions::make([
-        FormAction::make('view_payment_log')
+    FormAction::make('view_payment_log')
             ->label('📋 Payment Log')
             ->color('info')
             ->outlined()
@@ -1335,6 +1335,7 @@ class SaleResource extends Resource
             ->form(function (?Sale $record) {
                 if (!$record) return [];
  
+                // 1. Fetch POS payments directly attached to this sale record
                 $payments1 = $record->payments()->orderBy('paid_at')->get()
                     ->map(fn($p) => [
                         'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
@@ -1346,6 +1347,7 @@ class SaleResource extends Resource
                         'id'       => $p->id,
                     ]);
  
+                // 2. Fetch historical or split layout sale_payments ledger records
                 $payments2 = $record->salePayments()->orderBy('payment_date')->get()
                     ->map(fn($p) => [
                         'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
@@ -1356,8 +1358,29 @@ class SaleResource extends Resource
                         'source'   => 'sale_payments',
                         'id'       => $p->id,
                     ]);
+
+                // 🚀 CRITICAL FIX: Automatically find and merge deposits attached via the Custom Order milestone
+                $customOrderIds = $record->items()->whereNotNull('custom_order_id')->pluck('custom_order_id')->unique();
+                
+                $payments3 = \App\Models\Payment::whereIn('custom_order_id', $customOrderIds)
+                    ->where(function($query) use ($record) {
+                        $query->whereNull('sale_id')
+                              ->orWhere('sale_id', '!=', $record->id);
+                    })
+                    ->orderBy('paid_at')
+                    ->get()
+                    ->map(fn($p) => [
+                        'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+                        'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+                        'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+                        'method'   => strtoupper($p->method ?? '—'),
+                        'amount'   => floatval($p->amount),
+                        'source'   => 'custom_order_deposits',
+                        'id'       => $p->id,
+                    ]);
  
-                $allPayments = $payments1->concat($payments2)->sortBy('raw_date')->values();
+                // Merge all arrays safely and sort chronologically by true UNIX timestamp status
+                $allPayments = $payments1->concat($payments2)->concat($payments3)->sortBy('raw_date')->values();
                 $grandTotal  = floatval($record->final_total);
                 $customer    = $record->customer;
                 $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
@@ -1381,7 +1404,13 @@ class SaleResource extends Resource
                     $balColor   = $p['balance'] <= 0 ? '#16a34a' : '#dc2626';
                     $balLabel   = $p['balance'] <= 0 ? '✅ Paid in Full' : '$' . number_format($p['balance'], 2) . ' remaining';
                     $timeHtml   = !empty($p['time']) ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>" : '';
-                    $receiptUrl = route('sales.payment-receipt', ['record' => $record->id, 'source' => $p['source'], 'payment_id' => $p['id']]);
+                    
+                    // Route calculation logic matching our alternative dynamic sources mapping tracker
+                    $receiptUrl = route('sales.payment-receipt', [
+                        'record'     => $record->id, 
+                        'source'     => $p['source'] === 'custom_order_deposits' ? 'payments' : $p['source'], 
+                        'payment_id' => $p['id']
+                    ]);
  
                     $rows .= "
                     <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
@@ -1443,7 +1472,6 @@ class SaleResource extends Resource
                 ];
             }),
     ])->visible(fn(string $operation) => $operation === 'edit'),
- 
     // ── SPLIT TOGGLE ─────────────────────────────────────────────
     Toggle::make('is_split_payment')
         ->label('Enable Split Payment')
@@ -2152,14 +2180,21 @@ Tables\Actions\Action::make('cancel_sale')
         $itemsSubtotal = 0;
         $taxableItemsBasis = 0;
 
-        foreach ($items as $item) {
+       foreach ($items as $item) {
             $qty = intval($item['qty'] ?? 1);
             $rowTotal = !empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0
                 ? floatval($item['sale_price_override'])
                 : (floatval($item['sold_price'] ?? 0) * $qty) - floatval($item['discount_amount'] ?? 0);
 
             $itemsSubtotal += $rowTotal;
-            if (!($item['is_tax_free'] ?? false)) {
+            
+            // 🚀 DATABASE CHECK FALLBACK CRITICAL REPAIR
+            $isRowTaxFree = $item['is_tax_free'] ?? false;
+            if (!$isRowTaxFree && !empty($item['custom_order_id'])) {
+                $isRowTaxFree = (bool) \App\Models\CustomOrder::where('id', $item['custom_order_id'])->value('is_tax_free');
+            }
+
+            if (!$isRowTaxFree) {
                 $taxableItemsBasis += $rowTotal;
             }
         }
