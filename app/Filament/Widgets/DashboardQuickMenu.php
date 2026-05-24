@@ -21,9 +21,11 @@ class DashboardQuickMenu extends Widget
     $store = \App\Helpers\Staff::user()?->store ?? Store::first();
 
     $tz       = $store?->timezone ?? config('app.timezone', 'UTC');
-    $today    = Carbon::now($tz)->format('Y-m-d');
-    $startUtc = Carbon::parse($today, $tz)->startOfDay()->setTimezone('UTC');
-    $endUtc   = Carbon::parse($today, $tz)->endOfDay()->setTimezone('UTC');
+$today    = Carbon::now($tz)->format('Y-m-d');
+$startUtc = Carbon::parse($today, $tz)->startOfDay()->setTimezone('UTC');
+$endUtc   = Carbon::parse($today, $tz)->endOfDay()->setTimezone('UTC');
+
+
 
     // ── PULL FROM EOD IF ALREADY CLOSED, OTHERWISE CALCULATE LIVE ──
     $todayEod = \App\Models\DailyClosing::whereDate('closing_date', $today)->first();
@@ -73,7 +75,11 @@ class DashboardQuickMenu extends Widget
     return [
         'store'               => $store,
         'recentSales'         => Sale::latest()->limit(5)->get(),
-        'todaySales'          => $todaySales,
+        'todaySales' => Payment::whereBetween('paid_at', [$startUtc, $endUtc])
+    ->whereHas('sale', function ($q) use ($startUtc, $endUtc) {
+        $q->whereBetween('created_at', [$startUtc, $endUtc]);
+    })
+    ->sum('amount'),
         'pendingLaybuys'      => $pendingLaybuys,
         'pendingCustomOrders' => $pendingCustomOrders,
         'pendingFollowUps'    => $pendingFollowUps,
