@@ -75,11 +75,7 @@ $endUtc   = Carbon::parse($today, $tz)->endOfDay()->setTimezone('UTC');
     return [
         'store'               => $store,
         'recentSales'         => Sale::latest()->limit(5)->get(),
-        'todaySales' => Payment::whereBetween('paid_at', [$startUtc, $endUtc])
-    ->whereHas('sale', function ($q) use ($startUtc, $endUtc) {
-        $q->whereBetween('created_at', [$startUtc, $endUtc]);
-    })
-    ->sum('amount'),
+      'todaySales' => $todaySales,
         'pendingLaybuys'      => $pendingLaybuys,
         'pendingCustomOrders' => $pendingCustomOrders,
         'pendingFollowUps'    => $pendingFollowUps,
