@@ -51,8 +51,10 @@ class SoldStockReport extends Page implements HasTable
                 TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-    ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
+                      $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+    ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded'])
+        ->whereNotNull('customer_id'))
+    ->with('sale.customer')
     ->latest()
     ->first();
                         $sale     = $saleItem ? $saleItem->sale : null;
