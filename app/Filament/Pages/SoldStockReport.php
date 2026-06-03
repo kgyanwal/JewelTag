@@ -51,7 +51,7 @@ class SoldStockReport extends Page implements HasTable
                 TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        // 🚀 THE FIX: Check both the specific ID and the text Barcode as a fallback
+                        // 🚀 Check both the specific ID and the text Barcode as a fallback
                         $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
                                 $query->where('product_item_id', $record->id)
                                       ->orWhere('stock_no_display', $record->barcode);
@@ -128,7 +128,10 @@ class SoldStockReport extends Page implements HasTable
                     ->icon('heroicon-o-shopping-bag')
                     ->color('info')
                     ->url(function ($record) {
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)->first();
+                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->orWhere('stock_no_display', $record->barcode)
+                            ->first();
+                            
                         return $saleItem
                             ? \App\Filament\Resources\SaleResource::getUrl('view', ['record' => $saleItem->sale_id])
                             : null;
@@ -166,10 +169,10 @@ class SoldStockReport extends Page implements HasTable
                     ->modalSubmitActionLabel('Confirm Restock')
                     ->action(function ($record, array $data) {
                         // Update product status back to in_stock
-                      $record->update([
-        'status' => 'in_stock',
-        'qty'    => 1,
-    ]);
+                        $record->update([
+                            'status' => 'in_stock',
+                            'qty'    => 1,
+                        ]);
 
                         // Log using DB directly — avoids activity() helper namespace issue
                         try {
