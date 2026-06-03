@@ -51,8 +51,7 @@ class SoldStockReport extends Page implements HasTable
                TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        // 🚀 THE FIX: Aggressive fallback search.
-                        // Checks ID, exact barcode, barcode with extra text, and the description column.
+                        // 🚀 THE FIX: Aggressive fallback search using LIKE wildcards
                         $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
                                 $query->where('product_item_id', $record->id)
                                       ->orWhere('stock_no_display', $record->barcode)
@@ -66,7 +65,7 @@ class SoldStockReport extends Page implements HasTable
 
                         // No sale attached at all
                         if (!$saleItem || !$saleItem->sale) {
-                            return new HtmlString("
+                            return new \Illuminate\Support\HtmlString("
                                 <div class='flex flex-col'>
                                     <span class='font-semibold text-gray-400 italic'>No Sale Record</span>
                                     <span class='text-[10px] text-gray-400'>Manual status change / Import</span>
@@ -79,7 +78,7 @@ class SoldStockReport extends Page implements HasTable
 
                         // Walk-in (Sale exists, but no customer attached)
                         if (!$customer) {
-                            return new HtmlString("
+                            return new \Illuminate\Support\HtmlString("
                                 <div class='flex flex-col'>
                                     <span class='font-semibold text-gray-600'>Walk-in Customer</span>
                                     <span class='text-[10px] bg-gray-100 px-1 rounded w-fit mt-1'>Inv: {$sale->invoice_number}</span>
@@ -88,7 +87,7 @@ class SoldStockReport extends Page implements HasTable
                         }
 
                         // Perfect Sale
-                        return new HtmlString("
+                        return new \Illuminate\Support\HtmlString("
                             <div class='flex flex-col'>
                                 <span class='font-semibold text-primary-600'>{$customer->name} {$customer->last_name}</span>
                                 <span class='text-xs text-gray-500'>{$customer->phone}</span>
