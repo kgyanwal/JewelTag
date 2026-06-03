@@ -51,13 +51,17 @@ class SoldStockReport extends Page implements HasTable
                 TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                        // 🚀 THE FIX: Check both the specific ID and the text Barcode as a fallback
+                        $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
+                                $query->where('product_item_id', $record->id)
+                                      ->orWhere('stock_no_display', $record->barcode);
+                            })
                             ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
                             ->with('sale.customer')
                             ->latest()
                             ->first();
 
-                        // If there is no sale record at all (like your 2,625 items)
+                        // No sale attached at all
                         if (!$saleItem || !$saleItem->sale) {
                             return new HtmlString("
                                 <div class='flex flex-col'>
@@ -70,7 +74,7 @@ class SoldStockReport extends Page implements HasTable
                         $sale     = $saleItem->sale;
                         $customer = $sale->customer;
 
-                        // If there is a sale, but it was a walk-in (no customer attached)
+                        // Walk-in (Sale exists, but no customer attached)
                         if (!$customer) {
                             return new HtmlString("
                                 <div class='flex flex-col'>
@@ -80,7 +84,7 @@ class SoldStockReport extends Page implements HasTable
                             ");
                         }
 
-                        // Normal, healthy sale
+                        // Perfect Sale
                         return new HtmlString("
                             <div class='flex flex-col'>
                                 <span class='font-semibold text-primary-600'>{$customer->name} {$customer->last_name}</span>
