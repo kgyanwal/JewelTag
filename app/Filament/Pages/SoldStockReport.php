@@ -51,17 +51,36 @@ class SoldStockReport extends Page implements HasTable
                 TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                      $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-    ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded'])
-        ->whereNotNull('customer_id'))
-    ->with('sale.customer')
-    ->latest()
-    ->first();
-                        $sale     = $saleItem ? $saleItem->sale : null;
-                        $customer = $sale ? $sale->customer : null;
+                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
+                            ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
+                            ->with('sale.customer')
+                            ->latest()
+                            ->first();
 
-                        if (!$customer) return 'No Customer Data';
+                        // If there is no sale record at all (like your 2,625 items)
+                        if (!$saleItem || !$saleItem->sale) {
+                            return new HtmlString("
+                                <div class='flex flex-col'>
+                                    <span class='font-semibold text-gray-400 italic'>No Sale Record</span>
+                                    <span class='text-[10px] text-gray-400'>Manual status change / Import</span>
+                                </div>
+                            ");
+                        }
 
+                        $sale     = $saleItem->sale;
+                        $customer = $sale->customer;
+
+                        // If there is a sale, but it was a walk-in (no customer attached)
+                        if (!$customer) {
+                            return new HtmlString("
+                                <div class='flex flex-col'>
+                                    <span class='font-semibold text-gray-600'>Walk-in Customer</span>
+                                    <span class='text-[10px] bg-gray-100 px-1 rounded w-fit mt-1'>Inv: {$sale->invoice_number}</span>
+                                </div>
+                            ");
+                        }
+
+                        // Normal, healthy sale
                         return new HtmlString("
                             <div class='flex flex-col'>
                                 <span class='font-semibold text-primary-600'>{$customer->name} {$customer->last_name}</span>
