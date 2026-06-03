@@ -48,13 +48,16 @@ class SoldStockReport extends Page implements HasTable
                     ->limit(50)
                     ->searchable(),
 
-                TextColumn::make('buyer_info')
+               TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        // 🚀 Check both the specific ID and the text Barcode as a fallback
+                        // 🚀 THE FIX: Aggressive fallback search.
+                        // Checks ID, exact barcode, barcode with extra text, and the description column.
                         $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
                                 $query->where('product_item_id', $record->id)
-                                      ->orWhere('stock_no_display', $record->barcode);
+                                      ->orWhere('stock_no_display', $record->barcode)
+                                      ->orWhere('stock_no_display', 'LIKE', "{$record->barcode}%")
+                                      ->orWhere('custom_description', 'LIKE', "%{$record->barcode}%");
                             })
                             ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
                             ->with('sale.customer')
@@ -93,7 +96,6 @@ class SoldStockReport extends Page implements HasTable
                             </div>
                         ");
                     }),
-
                 TextColumn::make('retail_price')
                     ->label('Sold Price')
                     ->money('USD')
