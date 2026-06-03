@@ -51,12 +51,17 @@ class SoldStockReport extends Page implements HasTable
                TextColumn::make('buyer_info')
                     ->label('Purchased By')
                     ->getStateUsing(function ($record) {
-                        // 🚀 THE FIX: Aggressive fallback search using LIKE wildcards
+                        // 🚀 THE FIX: Match by ID, Barcode, OR Exact Custom Description (to catch lazy NON-TAG entries)
                         $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
                                 $query->where('product_item_id', $record->id)
                                       ->orWhere('stock_no_display', $record->barcode)
                                       ->orWhere('stock_no_display', 'LIKE', "{$record->barcode}%")
                                       ->orWhere('custom_description', 'LIKE', "%{$record->barcode}%");
+
+                                // Catch NON-TAG items that share the exact same description
+                                if (!empty($record->custom_description)) {
+                                    $query->orWhere('custom_description', trim($record->custom_description));
+                                }
                             })
                             ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
                             ->with('sale.customer')
@@ -65,7 +70,7 @@ class SoldStockReport extends Page implements HasTable
 
                         // No sale attached at all
                         if (!$saleItem || !$saleItem->sale) {
-                            return new \Illuminate\Support\HtmlString("
+                            return new HtmlString("
                                 <div class='flex flex-col'>
                                     <span class='font-semibold text-gray-400 italic'>No Sale Record</span>
                                     <span class='text-[10px] text-gray-400'>Manual status change / Import</span>
@@ -78,7 +83,7 @@ class SoldStockReport extends Page implements HasTable
 
                         // Walk-in (Sale exists, but no customer attached)
                         if (!$customer) {
-                            return new \Illuminate\Support\HtmlString("
+                            return new HtmlString("
                                 <div class='flex flex-col'>
                                     <span class='font-semibold text-gray-600'>Walk-in Customer</span>
                                     <span class='text-[10px] bg-gray-100 px-1 rounded w-fit mt-1'>Inv: {$sale->invoice_number}</span>
@@ -87,7 +92,7 @@ class SoldStockReport extends Page implements HasTable
                         }
 
                         // Perfect Sale
-                        return new \Illuminate\Support\HtmlString("
+                        return new HtmlString("
                             <div class='flex flex-col'>
                                 <span class='font-semibold text-primary-600'>{$customer->name} {$customer->last_name}</span>
                                 <span class='text-xs text-gray-500'>{$customer->phone}</span>
@@ -124,13 +129,24 @@ class SoldStockReport extends Page implements HasTable
                         ->toArray()),
             ])
             ->actions([
-                \Filament\Tables\Actions\Action::make('view_sale')
+               \Filament\Tables\Actions\Action::make('view_sale')
                     ->label('View Sale')
                     ->icon('heroicon-o-shopping-bag')
                     ->color('info')
                     ->url(function ($record) {
-                        $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
-                            ->orWhere('stock_no_display', $record->barcode)
+                        // 🚀 Mirror the same aggressive search logic here so the button links correctly
+                        $saleItem = \App\Models\SaleItem::where(function($query) use ($record) {
+                                $query->where('product_item_id', $record->id)
+                                      ->orWhere('stock_no_display', $record->barcode)
+                                      ->orWhere('stock_no_display', 'LIKE', "{$record->barcode}%")
+                                      ->orWhere('custom_description', 'LIKE', "%{$record->barcode}%");
+                                      
+                                if (!empty($record->custom_description)) {
+                                    $query->orWhere('custom_description', trim($record->custom_description));
+                                }
+                            })
+                            ->whereHas('sale', fn($q) => $q->whereNotIn('status', ['cancelled', 'void', 'refunded']))
+                            ->latest()
                             ->first();
                             
                         return $saleItem
