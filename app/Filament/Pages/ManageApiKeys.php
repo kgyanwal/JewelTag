@@ -27,7 +27,7 @@ use Laravel\Sanctum\PersonalAccessToken;
  * after creation. It is never retrievable again.
  *
  * ────────────────────────────────────────────────────────────
- * HOW IT WORKS
+ * Docs
  * ────────────────────────────────────────────────────────────
  * 1. User clicks "Generate New API Key"
  * 2. Enters an integration name (e.g. "HubSpot CRM")

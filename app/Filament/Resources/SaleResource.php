@@ -1586,20 +1586,97 @@ class SaleResource extends Resource
             return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
         })
         ->hintAction(
-            FormAction::make('fill_full_amount')
-                ->label('Collect Remaining Balance')
-                ->icon('heroicon-o-banknotes')
-                ->color('success')
-                ->action(function (Get $get, Set $set, ?Sale $record) {
-                    $total         = floatval($get('final_total') ?? 0);
-                    $priorDeposits = $record
-                        ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount'))
-                        : 0;
-                    $remaining = max(0, $total - $priorDeposits);
-                    $set('amount_paid', number_format($remaining, 2, '.', ''));
-                    self::updateTotals($get, $set);
-                    self::syncStatus($get, $set);
-                })
+       FormAction::make('fill_full_amount')
+    ->label('Collect Remaining Balance')
+    ->icon('heroicon-o-banknotes')
+    ->color('success')
+  ->action(function (Get $get, Set $set, ?Sale $record) {
+
+    $items     = $get('items') ?? [];
+    $hasCustom = collect($items)->contains(
+        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+    ) || request()->has('custom_order_id');
+
+    $saleTotal = floatval($get('final_total') ?? 0);
+
+    if (!$hasCustom) {
+        // ── Simple sale: remaining = invoice total minus what's in DB ──
+        $dbPaid = $record
+            ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
+               + $record->salePayments()->sum('amount'))
+            : 0;
+        $remaining = max(0, round($saleTotal - $dbPaid, 2));
+        $set('amount_paid', number_format($remaining, 2, '.', ''));
+        self::updateTotals($get, $set);
+        self::syncStatus($get, $set);
+        return;
+    }
+
+    // ── Mixed sale: split into custom portion + regular portion ──
+
+    // 1. Find the custom order
+    $customOrderId = collect($items)
+        ->filter(fn($i) => !empty($i['custom_order_id']))
+        ->pluck('custom_order_id')
+        ->first()
+        ?? request()->get('custom_order_id');
+
+    $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
+
+    // 2. Custom order grand total (quoted price + tax - discount)
+    $coGrandTotal = 0;
+    if ($customOrder) {
+        $isTaxFree    = (bool) $customOrder->is_tax_free;
+        $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
+            ->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+        $discAmt      = floatval($customOrder->discount_amount ?? 0);
+        $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
+        $coGrandTotal = $afterDisc * (1 + $taxRate);
+    }
+
+    // 3. What has already been paid toward the custom order in DB
+    $customDbPaid = $customOrder
+        ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
+        : 0;
+
+    $customRemaining = max(0, round($coGrandTotal - $customDbPaid, 2));
+
+    // 4. Regular portion: total sale minus custom order total
+    $regularTotal = max(0, round($saleTotal - $coGrandTotal, 2));
+
+    // What's already paid toward regular (sale payments excluding custom order payments)
+    $regularDbPaid = $record
+        ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
+           + $record->salePayments()->sum('amount'))
+        : 0;
+
+    $regularRemaining = max(0, round($regularTotal - $regularDbPaid, 2));
+
+    // 5. Build split rows
+    $set('is_split_payment', true);
+    $existingSplits = $get('split_payments') ?? [];
+
+    if ($regularRemaining > 0.01) {
+        $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+            'method'         => $get('payment_method') ?? 'CASH',
+            'amount'         => number_format($regularRemaining, 2, '.', ''),
+            'payment_target' => 'regular',
+        ];
+    }
+
+    if ($customRemaining > 0.01) {
+        $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+            'method'         => $get('payment_method') ?? 'CASH',
+            'amount'         => number_format($customRemaining, 2, '.', ''),
+            'payment_target' => 'custom',
+        ];
+    }
+
+    $set('split_payments', $existingSplits);
+    self::updateTotals($get, $set);
+    self::syncStatus($get, $set);
+})
         ),
  
     // ── CHANGE GIVEN ─────────────────────────────────────────────
@@ -1691,7 +1768,7 @@ class SaleResource extends Resource
         ])
         ->visible(fn(Get $get) => $get('is_split_payment'))
         ->defaultItems(1)
-        ->maxItems(6)
+        ->maxItems(20)
         ->addActionLabel('Add Another Payment Method')
         ->reorderable(false)
         ->live()
@@ -1699,7 +1776,112 @@ class SaleResource extends Resource
             self::updateTotals($get, $set);
             self::syncStatus($get, $set);
         }),
- 
+  \Filament\Forms\Components\Actions::make([
+        FormAction::make('smart_collect_remaining')
+            ->label('+ Collect Remaining Balance')
+            ->icon('heroicon-o-banknotes')
+            ->color('success')
+            ->outlined()
+            ->visible(function (Get $get) {
+                $total    = floatval($get('final_total') ?? 0);
+                $payments = $get('split_payments') ?? [];
+                $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                return round($total - $sum, 2) > 0.01;
+            })
+            ->action(function (Get $get, Set $set, ?Sale $record) {
+
+                $items     = $get('items') ?? [];
+                $hasCustom = collect($items)->contains(
+                    fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                ) || request()->has('custom_order_id');
+
+                // Best default method — from existing split rows or fallback CASH
+                $defaultMethod = collect($get('split_payments') ?? [])
+                    ->filter(fn($p) => !empty($p['method']))
+                    ->pluck('method')
+                    ->first()
+                    ?? $get('payment_method')
+                    ?? 'CASH';
+
+                $existingSplits = $get('split_payments') ?? [];
+                $currentSum     = collect($existingSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                $saleTotal      = floatval($get('final_total') ?? 0);
+                $totalRemaining = max(0, round($saleTotal - $currentSum, 2));
+
+                if (!$hasCustom) {
+                    // Simple sale — one regular row
+                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                        'method'         => $defaultMethod,
+                        'amount'         => number_format($totalRemaining, 2, '.', ''),
+                        'payment_target' => 'regular',
+                    ];
+                    $set('split_payments', $existingSplits);
+                    self::updateTotals($get, $set);
+                    return;
+                }
+
+                // Mixed — calculate custom order remaining separately
+                $customOrderId = collect($items)
+                    ->filter(fn($i) => !empty($i['custom_order_id']))
+                    ->pluck('custom_order_id')
+                    ->first()
+                    ?? request()->get('custom_order_id');
+
+                $customOrder = $customOrderId
+                    ? \App\Models\CustomOrder::find($customOrderId)
+                    : null;
+
+                // What's already paid on custom order in DB
+                $customAlreadyPaid = $customOrder
+                    ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
+                    : 0;
+
+                // What's already in the form split rows as custom
+  $customInForm = collect($existingSplits)
+    ->where('payment_target', 'custom')
+    ->filter(fn($p) => empty($p['is_prior_deposit']))
+    ->sum(fn($p) => (float)($p['amount'] ?? 0));
+
+                // Custom order grand total
+                $coGrandTotal = 0;
+                if ($customOrder) {
+                    $isTaxFree    = (bool) $customOrder->is_tax_free;
+                    $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
+                        ->where('key', 'tax_rate')->value('value') ?? 7.63;
+                    $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+                    $discAmt      = floatval($customOrder->discount_amount ?? 0);
+                    $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
+                    $warranty     = $customOrder->has_warranty
+                        ? floatval($customOrder->warranty_charge ?? 0) : 0;
+                    $coGrandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
+                }
+
+                // How much custom order still needs
+                $customRemaining  = max(0, round($coGrandTotal - $customAlreadyPaid - $customInForm, 2));
+                $regularRemaining = max(0, round($totalRemaining - $customRemaining, 2));
+
+                // Add regular row
+                if ($regularRemaining > 0.01) {
+                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                        'method'         => $defaultMethod,
+                        'amount'         => number_format($regularRemaining, 2, '.', ''),
+                        'payment_target' => 'regular',
+                    ];
+                }
+
+                // Add custom deposit row
+                if ($customRemaining > 0.01) {
+                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                        'method'         => $defaultMethod,
+                        'amount'         => number_format($customRemaining, 2, '.', ''),
+                        'payment_target' => 'custom',
+                    ];
+                }
+
+                $set('split_payments', $existingSplits);
+                self::updateTotals($get, $set);
+            }),
+    ])->visible(fn(Get $get) => $get('is_split_payment')),
     // ── REMAINING BALANCE (split mode) ───────────────────────────
     // Form pre-fills existing DB payments into split_payments rows.
     // So remaining = total - formSum directly (no extra DB lookup).

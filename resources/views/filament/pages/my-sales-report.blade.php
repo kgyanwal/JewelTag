@@ -12,8 +12,10 @@
                 <p class="text-base font-black text-gray-900 dark:text-white mt-0.5">
                     @if(!$stats['is_privileged'])
                         👤 {{ $stats['user_name'] }}
-                    @elseif($stats['filtered_assoc'])
-                        👤 {{ $stats['filtered_assoc'] }}
+                    @elseif(count($stats['filtered_assocs']) === 1)
+                        👤 {{ $stats['filtered_assocs'][0] }}
+                    @elseif(count($stats['filtered_assocs']) > 1)
+                        👥 {{ count($stats['filtered_assocs']) }} Associates
                     @else
                         📊 All Staff
                     @endif
@@ -21,8 +23,8 @@
                 <p class="text-[11px] text-gray-400 mt-0.5">
                     @if(!$stats['is_privileged'])
                         Your sales only
-                    @elseif($stats['filtered_assoc'])
-                        Filtered by associate
+                    @elseif(count($stats['filtered_assocs']) > 0)
+                        {{ implode(', ', $stats['filtered_assocs']) }}
                     @else
                         Use filter to drill down
                     @endif
@@ -46,7 +48,13 @@
             {{-- My / Associate Share --}}
             <div class="flex flex-col justify-center px-4 py-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm flex-1 min-w-[160px]">
                 <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
-                    {{ $stats['filtered_assoc'] ? $stats['filtered_assoc'] . "'s Share" : 'My Sales Share' }}
+                    @if(count($stats['filtered_assocs']) === 1)
+                        {{ $stats['filtered_assocs'][0] }}'s Share
+                    @elseif(count($stats['filtered_assocs']) > 1)
+                        Combined Share
+                    @else
+                        My Sales Share
+                    @endif
                 </p>
                 <p class="text-3xl font-black text-success-600 mt-0.5">${{ number_format($stats['net_share'], 2) }}</p>
                 <p class="text-[11px] text-gray-400">Subtotal, split adjusted</p>
@@ -57,7 +65,11 @@
                 <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Tax Collected</p>
                 <p class="text-3xl font-black text-warning-600 mt-0.5">${{ number_format($stats['tax'], 2) }}</p>
                 <p class="text-[11px] text-gray-400">
-                    {{ $stats['filtered_assoc'] ? "On {$stats['filtered_assoc']}'s sales" : 'On your sales' }}
+                    @if(count($stats['filtered_assocs']) > 0)
+                        On filtered sales
+                    @else
+                        On your sales
+                    @endif
                 </p>
             </div>
 
@@ -94,15 +106,12 @@
                 @endphp
                 @foreach($stats['staff_breakdown'] as $staffName => $amount)
                 @php
-                    $pct   = $maxAmount > 0 ? round(($amount / $maxAmount) * 100) : 0;
-                    $medal = $medals[$rank - 1] ?? "#{$rank}";
-                    $isViewing = $staffName === $stats['filtered_assoc'];
+                    $pct       = $maxAmount > 0 ? round(($amount / $maxAmount) * 100) : 0;
+                    $medal     = $medals[$rank - 1] ?? "#{$rank}";
+                    $isViewing = in_array($staffName, $stats['filtered_assocs']);
                 @endphp
                 <div class="flex items-center gap-3 px-4 py-3 {{ $isViewing ? 'bg-primary-50 dark:bg-primary-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30' }} transition-colors">
-                    {{-- Rank --}}
                     <span class="text-lg w-8 text-center flex-shrink-0">{{ $medal }}</span>
-
-                    {{-- Name + bar --}}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between mb-1">
                             <span class="text-sm font-bold text-gray-900 dark:text-white truncate {{ $isViewing ? 'text-primary-700' : '' }}">

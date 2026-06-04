@@ -167,19 +167,14 @@ body, .fi-body {
 .fi-logo { padding: 0.25rem; }
 
 /* ── NAV — no wrap ────────────────────────── */
-/* ONLY navigation menu items */
 .fi-topbar nav > ul {
     display: flex !important;
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     scrollbar-width: none !important;
 }
+.fi-topbar nav > ul::-webkit-scrollbar { display: none !important; }
 
-.fi-topbar nav > ul::-webkit-scrollbar {
-    display: none !important;
-}
-
-/* ONLY top menu links/buttons */
 .fi-topbar nav > ul > li > a,
 .fi-topbar nav > ul > li > button {
     white-space: nowrap !important;
@@ -188,7 +183,6 @@ body, .fi-body {
     border-radius: 6px !important;
     transition: background 0.15s !important;
 }
-
 .fi-topbar nav > ul > li > a:hover,
 .fi-topbar nav > ul > li > button:hover {
     background: rgba(13,148,136,0.1) !important;
@@ -205,10 +199,9 @@ body, .fi-body {
     min-width: 540px !important;
 }
 
-/* 🚀 FORCE ICONS TO SHOW IN TOP NAV DROPDOWNS */
 .fi-topbar-nav-dropdown .fi-dropdown-list-item-icon,
 .fi-dropdown-list-item-icon {
-    display: flex !important; /* Overrides Filament default hidden state */
+    display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     color: rgba(255,255,255,0.9) !important;
@@ -216,22 +209,18 @@ body, .fi-body {
     height: 20px !important;
     margin-right: 4px !important;
 }
-
 .fi-dropdown-list-item-icon svg {
     width: 20px !important;
     height: 20px !important;
     stroke-width: 2 !important;
 }
 
-/* 2-column grid setup */
 .fi-dropdown-list {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 4px 10px !important;
     position: relative !important;
 }
-
-/* Center divider */
 .fi-dropdown-list::after {
     content: '' !important;
     position: absolute !important;
@@ -242,41 +231,26 @@ body, .fi-body {
     background: rgba(255,255,255,0.15) !important;
     pointer-events: none !important;
 }
-
-/* Item Styling */
 .fi-dropdown-list-item {
     border-radius: 8px !important;
     transition: all 0.2s !important;
 }
-
-.fi-dropdown-list-item:hover {
-    background: rgba(255,255,255,0.1) !important;
-}
-
-/* Ensure text doesn't overlap icons */
-.fi-dropdown-list-item > a, 
+.fi-dropdown-list-item:hover { background: rgba(255,255,255,0.1) !important; }
+.fi-dropdown-list-item > a,
 .fi-dropdown-list-item > button {
     display: flex !important;
     align-items: center !important;
     padding: 10px 12px !important;
     gap: 12px !important;
 }
-
 .fi-dropdown-list-item-label {
     color: #ffffff !important;
     font-size: 0.88rem !important;
     font-weight: 500 !important;
 }
-
-.fi-dropdown-list-item:hover {
-    background: rgba(255,255,255,0.15) !important;
-}
-.fi-dropdown-list-item:hover .fi-dropdown-list-item-label {
-    color: #ffffff !important;
-}
-.fi-dropdown-list-item:hover .fi-dropdown-list-item-icon {
-    color: #ffffff !important;
-}
+.fi-dropdown-list-item:hover { background: rgba(255,255,255,0.15) !important; }
+.fi-dropdown-list-item:hover .fi-dropdown-list-item-label { color: #ffffff !important; }
+.fi-dropdown-list-item:hover .fi-dropdown-list-item-icon { color: #ffffff !important; }
 
 /* ── TABLES ───────────────────────────────── */
 .fi-ta-ctn {
@@ -343,6 +317,23 @@ section.fi-section {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0e7490; }
 ::-webkit-scrollbar-thumb { background: #0d9488; border-radius: 10px; }
+
+/* ── DOCS BUTTON only — target via extraAttributes class ── */
+.docs-manual-btn {
+    background: rgba(255,255,255,0.12) !important;
+    border: 1.5px solid rgba(255,255,255,0.6) !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+}
+.docs-manual-btn:hover {
+    background: rgba(255,255,255,0.22) !important;
+    border-color: #ffffff !important;
+}
+.docs-manual-btn svg,
+.docs-manual-btn span {
+    color: #ffffff !important;
+    stroke: currentColor !important;
+}
 </style>
 HTML
             )
@@ -397,8 +388,10 @@ HTML
                 \App\Filament\Pages\ManageApiKeys::class,
                 \App\Filament\Pages\SalesReport::class,
                 \App\Filament\Pages\RestockLogs::class,
+                \App\Filament\Pages\WarrantyReport::class,
             ])
             ->widgets([
+                 \App\Filament\Widgets\AdminAttentionWidget::class,
                 \App\Filament\Widgets\DashboardQuickMenu::class,
                 \App\Filament\Widgets\ScrapGoldCalculator::class,
             ])
@@ -485,36 +478,78 @@ HTML
 
     public function boot(): void
     {
-        FilamentView::registerRenderHook(
-            'panels::content.start',
-            fn(): string => Blade::render('
-                @php
-                    try {
-                        $announcement = \Illuminate\Support\Facades\DB::connection("mysql")
-                            ->table("announcements")
-                            ->where("is_active", true)
-                            ->where(function($q) {
-                                $q->whereNull("expires_at")->orWhere("expires_at", ">", now());
-                            })
-                            ->latest()
-                            ->first();
-                    } catch (\Exception $e) {
-                        $announcement = null;
-                    }
-                @endphp
+       FilamentView::registerRenderHook(
+    'panels::content.start',
+    function (): string {
+        try {
+            $announcement = \Illuminate\Support\Facades\DB::connection('mysql')
+                ->table('announcements')
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->latest()
+                ->first();
+        } catch (\Exception $e) {
+            $announcement = null;
+        }
 
-                @if($announcement)
-                    <div class="p-4 mb-4 text-sm rounded-lg bg-{{ $announcement->color }}-500 text-white shadow-md border-l-4 border-white/20">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-                            </svg>
-                            <span><strong>{{ $announcement->title }}:</strong> {{ $announcement->message }}</span>
-                        </div>
-                    </div>
-                @endif
-            '),
-        );
+        if (!$announcement) return '';
+
+        $styles = [
+            'info'    => ['bg' => '#eff6ff', 'border' => '#3b82f6', 'icon' => '#3b82f6', 'text' => '#1e40af', 'sub' => '#3b5fc0'],
+            'success' => ['bg' => '#f0fdf4', 'border' => '#22c55e', 'icon' => '#22c55e', 'text' => '#166534', 'sub' => '#15803d'],
+            'warning' => ['bg' => '#fffbeb', 'border' => '#f59e0b', 'icon' => '#f59e0b', 'text' => '#92400e', 'sub' => '#b45309'],
+            'danger'  => ['bg' => '#fef2f2', 'border' => '#ef4444', 'icon' => '#ef4444', 'text' => '#991b1b', 'sub' => '#b91c1c'],
+        ];
+        $s       = $styles[$announcement->color ?? 'info'] ?? $styles['info'];
+        $key     = 'announcement_dismissed_' . $announcement->id;
+        $expires = $announcement->expires_at
+            ? '<div style="font-size:10px;color:' . $s['text'] . ';opacity:0.5;white-space:nowrap;flex-shrink:0;margin-top:3px;font-weight:600;">Expires ' . \Carbon\Carbon::parse($announcement->expires_at)->diffForHumans() . '</div>'
+            : '';
+
+        return '
+        <div id="jeweltag-announcement" style="background:' . $s['bg'] . ';border-left:4px solid ' . $s['border'] . ';border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="background:' . $s['icon'] . ';border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
+                <svg xmlns="http://www.w3.org/2000/svg" style="width:15px;height:15px;" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                </svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:800;color:' . $s['text'] . ';margin-bottom:3px;">
+                    📢 ' . e($announcement->title) . '
+                </div>
+                <div style="font-size:13px;color:' . $s['sub'] . ';line-height:1.6;">
+                    ' . e($announcement->message) . '
+                </div>
+            </div>
+            ' . $expires . '
+            <button
+                onclick="
+                    document.getElementById(\'jeweltag-announcement\').style.display=\'none\';
+                    localStorage.setItem(\'' . $key . '\', \'1\');
+                "
+                title="Dismiss"
+                style="background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0.4;transition:opacity 0.2s;"
+                onmouseover="this.style.opacity=\'1\'"
+                onmouseout="this.style.opacity=\'0.4\'"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;" fill="none" viewBox="0 0 24 24" stroke="' . $s['text'] . '" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <script>
+            (function() {
+                var key = \'' . $key . '\';
+                if (localStorage.getItem(key) === \'1\') {
+                    var el = document.getElementById(\'jeweltag-announcement\');
+                    if (el) el.style.display = \'none\';
+                }
+            })();
+        </script>';
+    }
+);
 
         \Filament\Tables\Columns\TextColumn::configureUsing(function (\Filament\Tables\Columns\TextColumn $column): void {
             $column->timezone(fn() => config('app.timezone'));

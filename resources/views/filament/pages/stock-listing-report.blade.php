@@ -128,7 +128,7 @@
         </div>
     </div>
 
-    {{-- ── HOW IT WORKS ──────────────────────────────────────────────────────── --}}
+    {{-- ── Docs ──────────────────────────────────────────────────────── --}}
     <div style="background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:14px;">
         <div style="background:linear-gradient(135deg,#3b82f6,#0ea5e9);border-radius:10px;padding:9px;flex-shrink:0;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="white" style="width:17px;height:17px;">

@@ -143,7 +143,7 @@
         </div>
     </div>
 
-    {{-- ── HOW IT WORKS ──────────────────────────────────────────────────────── --}}
+    {{-- ── Docs ──────────────────────────────────────────────────────── --}}
     <div style="background:linear-gradient(135deg,#faf5ff,#f0f9ff);border:1px solid #ddd6fe;border-radius:14px;padding:16px 22px;display:flex;align-items:flex-start;gap:16px;">
         <div style="background:linear-gradient(135deg,#8b5cf6,#6366f1);border-radius:10px;padding:10px;flex-shrink:0;box-shadow:0 4px 12px rgba(139,92,246,0.3);">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="white" style="width:18px;height:18px;">

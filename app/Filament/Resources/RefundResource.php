@@ -84,12 +84,12 @@ class RefundResource extends Resource
                                 ->flatten()
                                 ->toArray();
 
-                            return $sale->items
+                           return $sale->items
                                 ->whereNotIn('id', $alreadyRefundedIds)
                                 ->mapWithKeys(fn($item) => [
-                                    $item->id => ($item->productItem->barcode ?? 'Stock')
-                                        . " | " . $item->custom_description
-                                        . " ($" . number_format($item->sold_price, 2) . ")"
+                                    $item->id => ($item->productItem->barcode ?? ($item->custom_description ? 'NON-TAG' : 'Stock'))
+                                        . " | " . \Illuminate\Support\Str::limit(strip_tags($item->custom_description ?? '—'), 50)
+                                        . " — $" . number_format($item->sold_price, 2)
                                 ]);
                         })
                         ->visible(fn(Get $get) => $get('sale_id'))
@@ -112,8 +112,15 @@ class RefundResource extends Resource
 
                     Forms\Components\Textarea::make('remarks')->columnSpanFull(),
 
-                    Forms\Components\Hidden::make('processed_by')->default(auth()->id()),
-                    Forms\Components\Hidden::make('customer_id'),
+                Forms\Components\Hidden::make('processed_by')->default(auth()->id()),
+                    Forms\Components\Hidden::make('customer_id')
+                        ->default(function () {
+                            $saleId = request('sale_id');
+                            if ($saleId) {
+                                return Sale::find($saleId)?->customer_id;
+                            }
+                            return null;
+                        }),
                 ])->columns(2),
         ]);
     }
@@ -144,8 +151,11 @@ class RefundResource extends Resource
                             if ($record->should_restock && !empty($record->refunded_items)) {
                                 $items = SaleItem::whereIn('id', $record->refunded_items)->get();
                                 foreach ($items as $item) {
-                                    if ($item->productItem) {
-                                        $item->productItem->update(['status' => 'in_stock']);
+                                   if ($item->productItem) {
+                                        $item->productItem->update([
+                                            'status' => 'in_stock',
+                                            'qty'    => max(1, $item->productItem->qty + intval($item->qty ?? 1)),
+                                        ]);
 
                                         Restock::create([
                                             'refund_id'       => $record->id,

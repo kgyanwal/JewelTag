@@ -1106,7 +1106,40 @@ class CustomOrderResource extends Resource
                     ])
                     ->selectablePlaceholder(false)
                     ->grow(false),
-Tables\Columns\TextColumn::make('workflow_hint')
+                    Tables\Columns\TextColumn::make('sale_link')
+    ->label('SALE')
+    ->getStateUsing(fn(CustomOrder $record) => $record->sale_id)
+    ->formatStateUsing(function ($state, CustomOrder $record) {
+        if (!$record->sale_id) {
+            return new \Illuminate\Support\HtmlString(
+                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
+            );
+        }
+        $sale = \App\Models\Sale::find($record->sale_id);
+        if (!$sale) {
+            return new \Illuminate\Support\HtmlString(
+                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
+            );
+        }
+        $url = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
+        return new \Illuminate\Support\HtmlString("
+            <a href='{$url}'
+               style='display:inline-flex;align-items:center;gap:4px;
+                      font-size:10px;font-weight:700;color:#0369a1;
+                      background:#f0f9ff;border:1px solid #bae6fd;
+                      border-radius:6px;padding:2px 8px;text-decoration:none;
+                      white-space:nowrap;'
+               onmouseover=\"this.style.opacity='0.75'\"
+               onmouseout=\"this.style.opacity='1'\">
+                🧾 {$sale->invoice_number}
+            </a>
+        ");
+    })
+    ->html()
+    ->grow(false),
+
+
+  Tables\Columns\TextColumn::make('workflow_hint')
     ->label('NEXT ACTION')
     ->getStateUsing(function (CustomOrder $record) {
         return match($record->status) {
@@ -1121,6 +1154,33 @@ Tables\Columns\TextColumn::make('workflow_hint')
     })
     ->formatStateUsing(function ($state, CustomOrder $record) {
         [$type, $label] = explode('|', $state, 2);
+
+        // ── If completed AND already has a linked sale, show "Converted" pill ──
+        if ($type === 'done' && $record->sale_id) {
+            $sale = \App\Models\Sale::find($record->sale_id);
+            $url  = $sale
+                ? \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id])
+                : null;
+
+            $inner = $url
+                ? "<a href='{$url}' style='color:#15803d;text-decoration:none;font-size:10px;font-weight:700;'>
+                       ✅ Converted to Sale
+                       <span style='font-size:9px;font-weight:600;display:block;margin-top:1px;color:#16a34a;'>
+                           {$sale->invoice_number}
+                       </span>
+                   </a>"
+                : "<span style='font-size:10px;font-weight:700;color:#15803d;'>✅ Converted to Sale</span>";
+
+            return new \Illuminate\Support\HtmlString("
+                <span style='display:inline-flex;flex-direction:column;
+                             background:#f0fdf4;color:#15803d;
+                             border:1px solid #bbf7d0;
+                             border-radius:6px;padding:3px 10px;
+                             white-space:nowrap;line-height:1.4;'>
+                    {$inner}
+                </span>
+            ");
+        }
 
         $configs = [
             'approve'    => ['#7c3aed', '#f5f3ff', '#ddd6fe', '⚡'],

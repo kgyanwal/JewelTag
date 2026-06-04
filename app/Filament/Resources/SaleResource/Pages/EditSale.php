@@ -136,12 +136,13 @@ class EditSale extends EditRecord
             $splits = [];
 
             foreach ($allDbPayments as $p) {
-                $splits[] = [
-                    'method'         => strtoupper(trim($p->method)),
-                    'amount'         => floatval($p->amount),
-                    'payment_target' => $p->custom_order_id ? 'custom' : 'regular',
-                ];
-            }
+    $splits[] = [
+        'method'           => strtoupper(trim($p->method)),
+        'amount'           => floatval($p->amount),
+        'payment_target'   => $p->custom_order_id ? 'custom' : 'regular',
+        'is_prior_deposit' => (bool) $p->custom_order_id,
+    ];
+}
 
             foreach ($salePayments as $p) {
                 $splits[] = [
@@ -246,8 +247,9 @@ class EditSale extends EditRecord
 
         // Add custom deposit values back into base validations
         $baseDeposit = collect($data['split_payments'] ?? [])
-            ->where('payment_target', 'custom')
-            ->sum(fn($p) => (float)($p['amount'] ?? 0));
+    ->where('payment_target', 'custom')
+    ->filter(fn($p) => empty($p['is_prior_deposit']))
+    ->sum(fn($p) => (float)($p['amount'] ?? 0));
 
         $balance = round($finalTotal - ($totalPaid + $baseDeposit), 2);
 
@@ -264,7 +266,7 @@ class EditSale extends EditRecord
         return $data;
     }
 
-    protected function afterSave(): void
+  protected function afterSave(): void
     {
         $sale = $this->record->fresh();
 
@@ -276,16 +278,15 @@ class EditSale extends EditRecord
             $customOrder   = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
             // 1. Existing POS payments in DB
-            $existingPayments  = $sale->payments()->where('paid_at', '>=', $sale->created_at)->get();
-            $existingTotal     = round($existingPayments->sum('amount'), 2);
+            // 🚀 CRITICAL FIX: Removed `where('paid_at', '>=')` clause. 
+            // We MUST fetch historical custom deposits so we don't accidentally duplicate them!
+            $existingDirectPayments = $sale->payments()->get();
+            $existingSalePayments   = $sale->salePayments()->get();
 
-            // 2. Historical/imported payments
-            $salePaymentsTotal = round($sale->salePayments()->sum('amount'), 2);
+            // Total already in DB across both tables
+            $totalAlreadyInDb = round($existingDirectPayments->sum('amount') + $existingSalePayments->sum('amount'), 2);
 
-            // 3. Total already in DB across both tables
-            $totalAlreadyInDb = $existingTotal + $salePaymentsTotal;
-
-            // 4. Form total — includes existing rows + NEW rows staff added
+            // 2. Form total — includes existing rows + NEW rows staff added
             $formPayments = !empty($data['is_split_payment'])
                 ? ($data['split_payments'] ?? [])
                 : [[
@@ -296,17 +297,17 @@ class EditSale extends EditRecord
 
             $formTotal = round(collect($formPayments)->sum(fn($p) => floatval($p['amount'] ?? 0)), 2);
 
-            // 5. Delta = truly NEW money only
+            // 3. Delta = truly NEW money only
             $delta = round($formTotal - $totalAlreadyInDb, 2);
 
             if ($delta > 0) {
                 // Build lookup of ALL existing payments (both tables)
                 $existingByMethod = [];
-                foreach ($existingPayments as $ep) {
+                foreach ($existingDirectPayments as $ep) {
                     $key = strtoupper(trim($ep->method));
                     $existingByMethod[$key] = ($existingByMethod[$key] ?? 0) + floatval($ep->amount);
                 }
-                foreach ($sale->salePayments()->get() as $sp) {
+                foreach ($existingSalePayments as $sp) {
                     $key = strtoupper(trim($sp->payment_method ?? 'CASH'));
                     $existingByMethod[$key] = ($existingByMethod[$key] ?? 0) + floatval($sp->amount);
                 }
@@ -339,28 +340,76 @@ class EditSale extends EditRecord
                         'store_id'        => $sale->store_id,
                     ]);
                 }
+
             } elseif ($delta < 0) {
+                // Deletes the most recent payment if they reduced the overall total
                 $sale->payments()
-                    ->where('paid_at', '>=', $sale->created_at)
                     ->latest('paid_at')
                     ->first()
                     ?->delete();
             }
-            // delta == 0 → nothing to do
 
+            // Sync the databases with correct sums
             if ($customOrder) {
                 $allCustomPaid = Payment::where('custom_order_id', $customOrder->id)->sum('amount');
                 $dbTax         = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                 $taxRate       = $customOrder->is_tax_free ? 0 : floatval($dbTax) / 100;
                 $orderTotal    = floatval($customOrder->quoted_price) * (1 + $taxRate);
 
-                $customOrder->update([
-                    'amount_paid' => round($allCustomPaid, 2),
-                    'balance_due' => round(max(0, $orderTotal - $allCustomPaid), 2),
-                ]);
+               $newCoBal = round(max(0, $orderTotal - $allCustomPaid), 2);
+
+$customOrder->update([
+    'amount_paid' => round($allCustomPaid, 2),
+    'balance_due' => $newCoBal,
+    'status'      => $newCoBal <= 0.01 ? 'completed' : $customOrder->status,
+    'sale_id'     => $sale->id,
+]);
+
+if ($newCoBal <= 0.01 && $customOrder->status !== 'completed') {
+    Notification::make()
+        ->title('Custom Order Completed')
+        ->body("Order #{$customOrder->order_no} is now fully paid.")
+        ->success()
+        ->send();
+}
             }
 
             $finalTotalPaid = $sale->payments()->sum('amount');
+            // ── Sync linked Laybuy if exists ──────────────────────────────────
+$laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
+if ($laybuy) {
+    $totalSalePaid = Payment::where('sale_id', $sale->id)->sum('amount');
+    $laybuyBal     = round(max(0, floatval($laybuy->total_amount) - $totalSalePaid), 2);
+
+    $laybuy->update([
+        'amount_paid'    => round($totalSalePaid, 2),
+        'balance_due'    => $laybuyBal,
+        'status'         => $laybuyBal <= 0.01 ? 'completed' : 'in_progress',
+        'last_paid_date' => now(),
+    ]);
+
+    // Also create a LaybuyPayment ledger entry for the new payment
+    $newPayments = Payment::where('sale_id', $sale->id)
+        ->where('paid_at', '>=', now()->subSeconds(30))
+        ->get();
+
+    foreach ($newPayments as $np) {
+        $alreadyLogged = \App\Models\LaybuyPayment::where('laybuy_id', $laybuy->id)
+            ->where('amount', $np->amount)
+            ->where('created_at', '>=', now()->subSeconds(30))
+            ->exists();
+
+        if (!$alreadyLogged) {
+            \App\Models\LaybuyPayment::create([
+                'laybuy_id'      => $laybuy->id,
+                'amount'         => $np->amount,
+                'payment_method' => $np->method,
+                'created_at'     => $np->paid_at,
+                'updated_at'     => $np->paid_at,
+            ]);
+        }
+    }
+}
             $sale->update(['amount_paid' => $finalTotalPaid]);
 
             Notification::make()

@@ -893,7 +893,7 @@
         </div>
     </section>
 
-    <!-- How It Works -->
+    <!-- Docs -->
     <section id="solutions" class="py-20 bg-white">
         <div class="container mx-auto px-6 lg:px-8">
             <div class="text-center mb-12">

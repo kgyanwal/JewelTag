@@ -324,8 +324,6 @@ protected function mutateFormDataBeforeCreate(array $data): array
     {
         DB::transaction(function () {
             $sale     = $this->record;
-            
-            // 🚀 CRITICAL FIX: Reload the relationship immediately so Filament can see the Custom Order it just saved!
             $sale->load('items'); 
             
             $isLaybuy = $sale->payment_method === 'laybuy';
@@ -334,11 +332,20 @@ protected function mutateFormDataBeforeCreate(array $data): array
             $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
             $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
-            // 1. Gather payments safely directly from $this->data to read the "Apply To" target
+            // 🚀 CRITICAL FIX 1: Link historical Custom Order payments to this new Sale record immediately
+            if ($customOrder) {
+                \App\Models\Payment::where('custom_order_id', $customOrder->id)
+                    ->update(['sale_id' => $sale->id]);
+            }
+
+            // Gather payments safely
             $paymentsToProcess = [];
-            
             if ($this->data['is_split_payment'] ?? false) {
                 foreach ($this->data['split_payments'] ?? [] as $p) {
+                    // 🚀 CRITICAL FIX 2: Do NOT create new payment records for prior custom deposits!
+                    if (!empty($p['is_prior_deposit'])) {
+                        continue;
+                    }
                     $paymentsToProcess[] = [
                         'amount' => round((float) ($p['amount'] ?? 0), 2),
                         'method' => strtoupper(trim($p['method'] ?? 'CASH')),
@@ -353,14 +360,12 @@ protected function mutateFormDataBeforeCreate(array $data): array
                 ];
             }
 
-            $totalSalePaid = 0;
-            $totalCustomPaid = 0;
-
-            // 2. Loop and route money to the correct table based on the dropdown
+            // Loop and insert only TRULY NEW money collected today
             foreach ($paymentsToProcess as $p) {
                 if ($p['amount'] <= 0) continue;
 
-                $isCustom = ($p['target'] === 'custom' && $customOrder);
+                $target = $p['target'] ?? 'regular';
+                $isCustom = ($target === 'custom' && $customOrder);
                 
                 \App\Models\Payment::create([
                     'sale_id'         => $sale->id,
@@ -370,35 +375,31 @@ protected function mutateFormDataBeforeCreate(array $data): array
                     'paid_at'         => now(),
                     'store_id'        => $sale->store_id ?? 1,
                 ]);
-
-                if ($isCustom) {
-                    $totalCustomPaid += $p['amount'];
-                } else {
-                    $totalSalePaid += $p['amount'];
-                }
             }
 
-            // 3. Update the umbrella Sale (This ensures the main receipt shows the sum of ALL money collected)
+            // 🚀 Update Sale total directly from DB so it accounts for old AND new money
+            $totalSalePaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
             $sale->update([
-                'amount_paid' => round($totalSalePaid + $totalCustomPaid, 2)
+                'amount_paid' => round($totalSalePaid, 2)
             ]);
 
-            // 4. Update the nested Custom Order parameters instantly
+            // Update the nested Custom Order parameters instantly
             if ($customOrder) {
+                $allCustomPaid = \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount');
                 $isTaxFree   = (bool)($customOrder->is_tax_free);
                 $dbTax       = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                 $taxRate     = $isTaxFree ? 0 : floatval($dbTax) / 100;
                 $grandTotal  = floatval($customOrder->quoted_price) * (1 + $taxRate);
 
                 $customOrder->update([
-                    'amount_paid' => round($totalCustomPaid, 2),
-                    'balance_due' => round(max(0, $grandTotal - $totalCustomPaid), 2),
+                    'amount_paid' => round($allCustomPaid, 2),
+                    'balance_due' => round(max(0, $grandTotal - $allCustomPaid), 2),
                     'sale_id'     => $sale->id,
                     'status'      => 'in_production',
                 ]);
             }
 
-            // 5. Update Inventory (Items block)
+            // Update Inventory
             foreach ($sale->items as $saleItem) {
                 if (!$saleItem->product_item_id) continue;
 
@@ -416,7 +417,7 @@ protected function mutateFormDataBeforeCreate(array $data): array
                 ]);
             }
 
-            // 6. Handle Laybuy logic
+            // Handle Laybuy logic
             if ($isLaybuy) {
                 $salesPersonString = is_array($sale->sales_person_list)
                     ? implode(', ', $sale->sales_person_list)

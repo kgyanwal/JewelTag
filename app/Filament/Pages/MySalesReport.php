@@ -106,15 +106,14 @@ class MySalesReport extends Page implements HasTable
                         ($record->is_split_payment ? 'info' : 'gray')
                     ),
 
-                // 🚀 THE FIX: Calculate Pre-Tax Total including Trade-Ins
                 TextColumn::make('pre_tax_total')
                     ->label('Pre-Tax Total (My Sale)')
                     ->alignRight()
                     ->getStateUsing(function ($record) {
-                        return floatval($record->subtotal) 
-                             + floatval($record->warranty_charge ?? 0) 
+                        return floatval($record->subtotal)
+                             + floatval($record->warranty_charge ?? 0)
                              + floatval($record->shipping_charges ?? 0)
-                             - floatval($record->trade_in_value ?? 0); // 👈 Deduct Trade-In
+                             - floatval($record->trade_in_value ?? 0);
                     })
                     ->formatStateUsing(function ($state, $record) {
                         $staffList = is_string($record->sales_person_list)
@@ -141,16 +140,15 @@ class MySalesReport extends Page implements HasTable
                         Summarizer::make()
                             ->label('')
                             ->using(function ($query) {
-                                // 🚀 Added trade_in_value to DB fetch
                                 $sales = $query->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'sales_person_list']);
 
                                 $splitTotal = $splitTotalFull = $soloTotal = $myTotal = 0;
 
                                 foreach ($sales as $sale) {
-                                    $saleVolume = floatval($sale->subtotal) 
-                                                + floatval($sale->warranty_charge ?? 0) 
+                                    $saleVolume = floatval($sale->subtotal)
+                                                + floatval($sale->warranty_charge ?? 0)
                                                 + floatval($sale->shipping_charges ?? 0)
-                                                - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+                                                - floatval($sale->trade_in_value ?? 0);
 
                                     $staffList = is_string($sale->sales_person_list)
                                         ? json_decode($sale->sales_person_list, true)
@@ -211,32 +209,44 @@ class MySalesReport extends Page implements HasTable
                         return $indicators;
                     }),
 
+                // ── STAFF FILTER: now supports selecting MULTIPLE associates ──
                 Filter::make('staff_filter')
                     ->label('Associate')
                     ->form([
-                        Select::make('associate')
-                            ->label('Sales Associate')
+                        Select::make('associates')
+                            ->label('Sales Associates')
                             ->options(
                                 $isPrivileged
                                     ? User::orderBy('name')->pluck('name', 'name')
                                     : []
                             )
                             ->placeholder('All Associates')
-                            ->searchable(),
+                            ->searchable()
+                            ->multiple()   // ← allows selecting 2+ people
+                            ->preload(),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (!auth()->user()->hasAnyRole(['Superadmin', 'Administration'])) {
                             return $query;
                         }
-                        return $query->when(
-                            $data['associate'] ?? null,
-                            fn(Builder $q, $name) =>
-                                $q->whereJsonContains('sales_person_list', $name)
-                        );
+
+                        $names = $data['associates'] ?? [];
+                        if (empty($names)) return $query;
+
+                        // Match sales where ANY of the selected names appears in sales_person_list
+                        // For a single name: whereJsonContains
+                        // For multiple names: wrap in where() with orWhereJsonContains for each
+                        return $query->where(function (Builder $q) use ($names) {
+                            foreach ($names as $name) {
+                                $q->orWhereJsonContains('sales_person_list', $name);
+                            }
+                        });
                     })
-                    ->indicateUsing(fn(array $data) =>
-                        !empty($data['associate']) ? ["Associate: {$data['associate']}"] : []
-                    )
+                    ->indicateUsing(function (array $data): array {
+                        $names = $data['associates'] ?? [];
+                        if (empty($names)) return [];
+                        return ['Associates: ' . implode(', ', $names)];
+                    })
                     ->hidden(!$isPrivileged),
             ])
             ->defaultSort(
@@ -255,9 +265,29 @@ class MySalesReport extends Page implements HasTable
         $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
         $currentUser  = auth()->user()->name;
 
-        $filters       = $this->tableFilters ?? [];
-        $filteredAssoc = $isPrivileged ? ($filters['staff_filter']['associate'] ?? null) : null;
-        $viewingUser   = $filteredAssoc ?? $currentUser;
+        $filters = $this->tableFilters ?? [];
+
+        // ── Resolve which names are being filtered ────────────────────────────
+        // New: 'associates' is an array (multi-select). Fall back to single
+        // 'associate' key for backwards compat if someone had the old filter cached.
+        $filteredAssocs = [];
+        if ($isPrivileged) {
+            $raw = $filters['staff_filter']['associates'] ?? $filters['staff_filter']['associate'] ?? null;
+            if (is_array($raw) && !empty($raw)) {
+                $filteredAssocs = array_values(array_filter($raw));
+            } elseif (is_string($raw) && $raw !== '') {
+                $filteredAssocs = [$raw];
+            }
+        }
+
+        // For stat cards: if exactly one person is selected show their name,
+        // if multiple show "X Associates", if none show current user (non-privileged) or "All Staff"
+        $viewingLabel = match(true) {
+            !$isPrivileged         => $currentUser,
+            count($filteredAssocs) === 1 => $filteredAssocs[0],
+            count($filteredAssocs) > 1   => count($filteredAssocs) . ' Associates',
+            default                => null,   // All Staff
+        };
 
         $from  = !empty($filters['date_range']['from'])
             ? Carbon::parse($filters['date_range']['from'], $tz)->startOfDay()->utc()->toDateTimeString()
@@ -269,41 +299,72 @@ class MySalesReport extends Page implements HasTable
 
         $expr = self::effectiveDateExpr();
 
-        // ── PERSONAL STATS ────────────────────────────────────────────────────
-        $sales = Sale::query()
+        // ── BUILD BASE QUERY for personal/filtered stats ──────────────────────
+        $statsQuery = Sale::query()
             ->where('status', 'completed')
             ->where('balance_due', 0)
-            ->whereJsonContains('sales_person_list', $viewingUser)
             ->whereRaw("$expr >= ?", [$from])
-            ->whereRaw("$expr <= ?", [$until])
-            // 🚀 Added trade_in_value here too
-            ->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'tax_amount', 'sales_person_list', 'payment_method']);
+            ->whereRaw("$expr <= ?", [$until]);
 
+        if (!$isPrivileged) {
+            // Regular staff see only their own sales
+            $statsQuery->whereJsonContains('sales_person_list', $currentUser);
+        } elseif (!empty($filteredAssocs)) {
+            // Privileged + specific people selected: show sales where ANY of them appear
+            $statsQuery->where(function (Builder $q) use ($filteredAssocs) {
+                foreach ($filteredAssocs as $name) {
+                    $q->orWhereJsonContains('sales_person_list', $name);
+                }
+            });
+        }
+        // else: privileged + no filter = all staff, no extra constraint
+
+        $sales = $statsQuery->get([
+            'subtotal', 'warranty_charge', 'shipping_charges',
+            'trade_in_value', 'tax_amount', 'sales_person_list', 'payment_method',
+        ]);
+
+        // ── CALCULATE NET SHARE ───────────────────────────────────────────────
+        // When multiple associates are filtered, we sum each person's individual
+        // share (so if Nabin + Rabin are selected and they both appear on a $1000
+        // sale split 2-ways, each contributed $500 → total shown = $1000).
         $netShare = $laybuyCount = 0;
+        $targetNames = !$isPrivileged ? [$currentUser] : $filteredAssocs;
+
         foreach ($sales as $sale) {
-            $saleVolume = floatval($sale->subtotal) 
-                        + floatval($sale->warranty_charge ?? 0) 
+            $saleVolume = floatval($sale->subtotal)
+                        + floatval($sale->warranty_charge ?? 0)
                         + floatval($sale->shipping_charges ?? 0)
-                        - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+                        - floatval($sale->trade_in_value ?? 0);
 
             $staffList = is_string($sale->sales_person_list)
                 ? json_decode($sale->sales_person_list, true)
                 : ($sale->sales_person_list ?? []);
-            $count     = max(1, is_array($staffList) ? count($staffList) : 1);
-            $netShare += $saleVolume / $count;
+            if (!is_array($staffList)) $staffList = [];
+            $count = max(1, count($staffList));
+            $share = $saleVolume / $count;
+
+            if (!empty($targetNames)) {
+                // Count how many of the filtered names appear on this sale
+                $matchCount = count(array_intersect($targetNames, $staffList));
+                $netShare += $share * $matchCount;
+            } else {
+                // No filter = show per-person share (one slot)
+                $netShare += $share;
+            }
+
             if ($sale->payment_method === 'laybuy') $laybuyCount++;
         }
 
         // ── STORE TOTAL ───────────────────────────────────────────────────────
         $storeTotal = null;
         if ($isSuperadmin) {
-            // 🚀 Update raw SQL to deduct trade-ins
             $storeTotal = Sale::query()
                 ->where('status', 'completed')
                 ->where('balance_due', 0)
                 ->whereRaw("$expr >= ?", [$from])
                 ->whereRaw("$expr <= ?", [$until])
-                ->selectRaw('SUM(subtotal + COALESCE(warranty_charge, 0) + COALESCE(shipping_charges, 0) - COALESCE(trade_in_value, 0)) as total_volume')
+                ->selectRaw('SUM(subtotal + COALESCE(warranty_charge,0) + COALESCE(shipping_charges,0) - COALESCE(trade_in_value,0)) as total_volume')
                 ->value('total_volume');
         }
 
@@ -318,10 +379,10 @@ class MySalesReport extends Page implements HasTable
                 ->get(['subtotal', 'warranty_charge', 'shipping_charges', 'trade_in_value', 'sales_person_list']);
 
             foreach ($allSales as $sale) {
-                $saleVolume = floatval($sale->subtotal) 
-                            + floatval($sale->warranty_charge ?? 0) 
+                $saleVolume = floatval($sale->subtotal)
+                            + floatval($sale->warranty_charge ?? 0)
                             + floatval($sale->shipping_charges ?? 0)
-                            - floatval($sale->trade_in_value ?? 0); // 👈 Deduct Trade-In
+                            - floatval($sale->trade_in_value ?? 0);
 
                 $staffList = is_string($sale->sales_person_list)
                     ? json_decode($sale->sales_person_list, true)
@@ -339,17 +400,20 @@ class MySalesReport extends Page implements HasTable
         }
 
         return [
-            'count'           => $sales->count(),
-            'net_share'       => $netShare,
-            'tax'             => $sales->sum('tax_amount'),
-            'store_total'     => floatval($storeTotal),
-            'laybuy_count'    => $laybuyCount,
-            'is_privileged'   => $isPrivileged,
-            'is_superadmin'   => $isSuperadmin,
-            'user_name'       => $currentUser,
-            'viewing_user'    => $viewingUser,
-            'filtered_assoc'  => $filteredAssoc,
-            'staff_breakdown' => $staffBreakdown,
+            'count'            => $sales->count(),
+            'net_share'        => $netShare,
+            'tax'              => $sales->sum('tax_amount'),
+            'store_total'      => floatval($storeTotal),
+            'laybuy_count'     => $laybuyCount,
+            'is_privileged'    => $isPrivileged,
+            'is_superadmin'    => $isSuperadmin,
+            'user_name'        => $currentUser,
+            'viewing_label'    => $viewingLabel,          // ← replaces old 'viewing_user'
+            'filtered_assocs'  => $filteredAssocs,        // ← array, may be empty
+            // keep old keys for blade compat
+            'viewing_user'     => $viewingLabel,
+            'filtered_assoc'   => count($filteredAssocs) === 1 ? $filteredAssocs[0] : null,
+            'staff_breakdown'  => $staffBreakdown,
         ];
     }
 }
