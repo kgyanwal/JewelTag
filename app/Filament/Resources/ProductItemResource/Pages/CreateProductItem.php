@@ -60,7 +60,7 @@ class CreateProductItem extends CreateRecord
             ->send();
     }
 
- protected function getHeaderActions(): array
+    protected function getHeaderActions(): array
     {
         return [
             Action::make('scanInvoice')
@@ -75,36 +75,35 @@ class CreateProductItem extends CreateRecord
                         ->required()
                 ])
                 // 🚀 2. INJECT THE NEW TEXTRACT SERVICE HERE
-               ->action(function (array $data, TextractInvoiceService $ocrService, \Filament\Forms\Contracts\HasForms $livewire) {
+                ->action(function (array $data, TextractInvoiceService $ocrService, \Filament\Forms\Contracts\HasForms $livewire) {
                     $path = storage_path('app/public/' . $data['invoice_image']);
-                    
+
                     try {
                         // 1. Get the data from AWS
                         $extracted = $ocrService->extractDataFromImage($path);
-                        
+
                         // 2. Safely merge the new data with the existing form data
                         $currentState = $livewire->form->getRawState();
-                        
+
                         // 3. Fill the form with the AWS data + Smart Parsing data
                         $livewire->form->fill([
                             ...$currentState,
-                            'supplier_code'      => $extracted['supplier_code'] ?? $currentState['supplier_code'] ?? null, 
-                            'cost_price'         => $extracted['cost_price'] ?? $currentState['cost_price'] ?? 0, 
-                            'custom_description' => $extracted['custom_description'] ?? $currentState['custom_description'] ?? '', 
+                            'supplier_code'      => $extracted['supplier_code'] ?? $currentState['supplier_code'] ?? null,
+                            'cost_price'         => $extracted['cost_price'] ?? $currentState['cost_price'] ?? 0,
+                            'custom_description' => $extracted['custom_description'] ?? $currentState['custom_description'] ?? '',
                             'qty'                => $extracted['qty'] ?? $currentState['qty'] ?? 1,
-                            
+
                             // 🚀 NEW FIELDS ADDED HERE:
                             'metal_type'         => $extracted['metal_type'] ?? $currentState['metal_type'] ?? null,
                             'diamond_weight'     => $extracted['diamond_weight'] ?? $currentState['diamond_weight'] ?? null,
                             'size'               => $extracted['size'] ?? $currentState['size'] ?? null,
                         ]);
-                        
+
                         Notification::make()
                             ->title('AWS Textract Success!')
                             ->body('Invoice data, Metal Karat, and CTW successfully extracted.')
                             ->success()
                             ->send();
-                            
                     } catch (\Exception $e) {
                         Notification::make()
                             ->title('AWS Error')
@@ -141,24 +140,22 @@ class CreateProductItem extends CreateRecord
                         ->numeric()
                         ->autofocus(),
                 ])
-                ->action(function (array $data) {
-                    $staff = Staff::user() ?? auth()->user();
-                    if (!$staff) {
-                        Notification::make()->title('Error')->body('No active staff session found.')->danger()->send();
-                        return;
-                    }
+               ->action(function (array $data) {
+    $actualStaff = \App\Models\User::where('pin_code', $data['verification_pin'])
+        ->where('is_active', true)
+        ->first();
 
-                    if ($staff->pin_code !== $data['verification_pin']) {
-                        Notification::make()
-                            ->title('Invalid PIN')
-                            ->body('Access Denied. Inventory was not added.')
-                            ->danger()
-                            ->send();
-                        return; 
-                    }
+    if (!$actualStaff) {
+        Notification::make()
+            ->title('Invalid PIN')
+            ->body('Access Denied. Inventory was not added.')
+            ->danger()
+            ->send();
+        return;
+    }
 
-                    $this->create();
-                }),
+    $this->create();
+}),
 
             parent::getCancelFormAction(),
         ];
@@ -170,10 +167,10 @@ class CreateProductItem extends CreateRecord
         $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
         $tradeInNo = $data['original_trade_in_no'] ?? null;
         $department = $data['department'] ?? '';
-        $subDepartment = $data['sub_department'] ?? ''; 
+        $subDepartment = $data['sub_department'] ?? '';
 
         $isRepair = str_contains(strtolower($department), 'repair');
-        
+
         unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
         $dynamicPrefix = ProductItemResource::getPrefixForSubDepartment($subDepartment);

@@ -23,6 +23,7 @@ use Filament\Forms\Components\{
     Select,
     TextInput,
     CheckboxList,
+    FileUpload,
     Hidden,
     Placeholder,
     Textarea,
@@ -571,6 +572,110 @@ class ProductItemResource extends Resource
                     TextInput::make('serial_number')->columnSpan(4),
                     TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
                 ]),
+                Section::make('Item Photos')
+    ->description('Upload photos of this item. The first image is used on receipts, stock transfers, and the customer portal.')
+    ->icon('heroicon-o-camera')
+    ->collapsible()
+    ->schema([
+        Grid::make(2)->schema([
+ 
+            // PRIMARY IMAGE — shown everywhere
+            FileUpload::make('primary_image')
+                ->label('Primary Photo')
+                ->image()
+                ->imageEditor()           // built-in crop/rotate tool
+                ->imageEditorAspectRatios(['1:1', '4:3', '16:9'])
+                ->directory('product-items/primary')
+                ->visibility('public')
+                ->maxSize(5120)           // 5MB
+                ->nullable()
+                ->helperText('Main display photo — shown on receipts, stock cards, and transfers.')
+                ->columnSpan(1),
+ 
+            // GALLERY — up to 6 extra shots
+            FileUpload::make('gallery_images')
+                ->label('Additional Photos (Gallery)')
+                ->image()
+                ->multiple()
+                ->maxFiles(6)
+                ->reorderable()
+                ->directory('product-items/gallery')
+                ->visibility('public')
+                ->maxSize(5120)
+                ->nullable()
+                ->helperText('Extra angles, hallmark shots, certificate photos — up to 6 images.')
+                ->columnSpan(1),
+        ]),
+ 
+        // AI DESCRIBE button — calls Claude API to generate description from primary image
+        \Filament\Forms\Components\Actions::make([
+            \Filament\Forms\Components\Actions\Action::make('ai_describe')
+                ->label('✨ AI Generate Description from Photo')
+                ->icon('heroicon-o-sparkles')
+                ->color('warning')
+                ->outlined()
+                ->visible(fn(\Filament\Forms\Get $get) => !empty($get('primary_image')))
+                ->action(function (\Filament\Forms\Get $get, \Filament\Forms\Set $set) {
+ 
+                    $imagePath = $get('primary_image');
+                    if (!$imagePath) return;
+ 
+                    try {
+                        $fullPath  = \Illuminate\Support\Facades\Storage::path($imagePath);
+                        $imageData = base64_encode(file_get_contents($fullPath));
+                        $mimeType  = mime_content_type($fullPath);
+ 
+                        $response = \Illuminate\Support\Facades\Http::withHeaders([
+                            'x-api-key'         => config('services.anthropic.key'),
+                            'anthropic-version' => '2023-06-01',
+                            'content-type'      => 'application/json',
+                        ])->post('https://api.anthropic.com/v1/messages', [
+                            'model'      => 'claude-haiku-4-5-20251001',
+                            'max_tokens' => 200,
+                            'messages'   => [[
+                                'role'    => 'user',
+                                'content' => [
+                                    [
+                                        'type'   => 'image',
+                                        'source' => [
+                                            'type'       => 'base64',
+                                            'media_type' => $mimeType,
+                                            'data'       => $imageData,
+                                        ],
+                                    ],
+                                    [
+                                        'type' => 'text',
+                                        'text' => 'You are a jewelry store assistant. Look at this jewelry photo and write a short, professional product description in 1-2 sentences. Focus on the visible metal type, style, and key features. Be concise and factual. Output only the description, no preamble.',
+                                    ],
+                                ],
+                            ]],
+                        ]);
+ 
+                        $body = $response->json();
+                        $desc = $body['content'][0]['text'] ?? null;
+ 
+                        if ($desc) {
+                            $existing = $get('custom_description');
+                            if (empty($existing)) {
+                                $set('custom_description', trim($desc));
+                            }
+                            \Filament\Notifications\Notification::make()
+                                ->title('AI Description Generated')
+                                ->body('Description has been filled in. Review and edit as needed.')
+                                ->success()
+                                ->send();
+                        }
+ 
+                    } catch (\Exception $e) {
+                        \Filament\Notifications\Notification::make()
+                            ->title('AI Generation Failed')
+                            ->body('Could not generate description: ' . $e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
+        ]),
+    ]),
         ]);
     }
 

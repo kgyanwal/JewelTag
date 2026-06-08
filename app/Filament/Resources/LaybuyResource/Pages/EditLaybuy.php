@@ -4,7 +4,6 @@ namespace App\Filament\Resources\LaybuyResource\Pages;
 
 use App\Filament\Resources\LaybuyResource;
 use App\Models\LaybuyPayment;
-use App\Models\SalePayment;
 use Filament\Actions;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -30,9 +29,7 @@ class EditLaybuy extends EditRecord
                 ->form([
                     TextInput::make('amount')
                         ->label('Payment Amount')
-                        ->numeric()
-                        ->required()
-                        ->prefix('$')
+                        ->numeric()->required()->prefix('$')
                         ->default(fn($record) => $record->balance_due)
                         ->maxValue(fn($record) => $record->balance_due),
 
@@ -43,18 +40,16 @@ class EditLaybuy extends EditRecord
                             $methods  = $settings ? json_decode($settings, true) : ['CASH', 'VISA'];
                             $options  = [];
                             foreach ($methods as $method) {
-                                $cleanMethod = trim($method);
-                                $options[strtolower($cleanMethod)] = strtoupper($cleanMethod);
+                                $clean = strtoupper(trim($method));
+                                if ($clean !== 'LAYBUY') $options[$clean] = $clean;
                             }
                             return $options;
                         })
-                        ->default('cash')
-                        ->required(),
+                        ->default('CASH')->required(),
 
                     DatePicker::make('payment_date')
                         ->label('Date Received')
-                        ->default(now())
-                        ->required(),
+                        ->default(now())->required(),
                 ])
                 ->action(function (array $data, $record) {
                     DB::transaction(function () use ($data, $record) {
@@ -63,7 +58,7 @@ class EditLaybuy extends EditRecord
                         $tz     = \App\Models\Store::first()?->timezone ?? 'America/Denver';
                         $paidAt = Carbon::parse($data['payment_date'], $tz)->setTimezone('UTC');
 
-                        // 1. Create the Laybuy Payment Record (ledger)
+                        // 1. Laybuy ledger entry
                         LaybuyPayment::create([
                             'laybuy_id'      => $record->id,
                             'amount'         => $amount,
@@ -72,7 +67,7 @@ class EditLaybuy extends EditRecord
                             'updated_at'     => $paidAt,
                         ]);
 
-                        // 2. Create the EOD Payment Record (always, even without sale_id)
+                        // 2. EOD payment entry
                         \App\Models\Payment::create([
                             'sale_id'  => $record->sale_id ?? null,
                             'amount'   => $amount,
@@ -81,11 +76,10 @@ class EditLaybuy extends EditRecord
                             'store_id' => auth()->user()->store_id ?? 1,
                         ]);
 
-                        // 3. Recalculate Laybuy Balances
+                        // 3. Recalculate Laybuy balances
                         $newPaid    = $record->amount_paid + $amount;
                         $newBalance = max(0, $record->total_amount - $newPaid);
                         $status     = $newBalance <= 0 ? 'completed' : 'in_progress';
-
                         $record->update([
                             'amount_paid'    => $newPaid,
                             'balance_due'    => $newBalance,
@@ -93,24 +87,32 @@ class EditLaybuy extends EditRecord
                             'last_paid_date' => Carbon::parse($data['payment_date'], $tz)->toDateString(),
                         ]);
 
-                        // 4. Update the attached Sale Status
-                       if ($record->sale_id) {
-                            $sale = $record->sale;
+                        // 4. Sync linked Sale
+                        if ($record->sale_id) {
+                            $sale          = $record->sale;
+                            $totalSalePaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                            $saleBalance   = max(0, $sale->final_total - $totalSalePaid);
+                            $isFullyPaid   = $saleBalance <= 0.01;
                             $sale->update([
-                                'amount_paid'  => $sale->amount_paid + $amount,
-                                'balance_due'  => max(0, $sale->final_total - ($sale->amount_paid + $amount)),
-                                'status'       => $newBalance <= 0 ? 'completed' : $sale->status,
-                                // 🚀 THE FIX: Trigger the EOD report when paid in full
-                                'completed_at' => $newBalance <= 0 ? now() : $sale->completed_at,
+                                'amount_paid'  => $totalSalePaid,
+                                'balance_due'  => $saleBalance,
+                                'status'       => $isFullyPaid ? 'completed' : $sale->status,
+                                'completed_at' => $isFullyPaid ? now() : $sale->completed_at,
                             ]);
+                            // Release items to sold if fully paid
+                            if ($isFullyPaid) {
+                                foreach ($sale->items as $saleItem) {
+                                    if ($saleItem->product_item_id) {
+                                        \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                                            ->where('status', 'on_hold')
+                                            ->update(['status' => 'sold', 'hold_reason' => null, 'held_by_sale_id' => null]);
+                                    }
+                                }
+                            }
                         }
                     });
 
-                    Notification::make()
-                        ->title('Payment Recorded Successfully')
-                        ->success()
-                        ->send();
-
+                    Notification::make()->title('Payment Recorded Successfully')->success()->send();
                     redirect(request()->header('Referer'));
                 }),
 
@@ -126,15 +128,12 @@ class EditLaybuy extends EditRecord
                 ->fillForm(function ($record) {
                     $tz    = \App\Models\Store::first()?->timezone ?? 'America/Denver';
                     $today = now()->setTimezone($tz)->toDateString();
-
                     return [
                         'ledger' => $record->laybuyPayments
-                            ->filter(fn($p) => Carbon::parse($p->created_at)
-                                ->setTimezone($tz)->toDateString() === $today)
+                            ->filter(fn($p) => Carbon::parse($p->created_at)->setTimezone($tz)->toDateString() === $today)
                             ->map(fn($p) => [
                                 'id'             => $p->id,
-                                'created_at'     => Carbon::parse($p->created_at)
-                                    ->setTimezone($tz)->format('Y-m-d'),
+                                'created_at'     => Carbon::parse($p->created_at)->setTimezone($tz)->format('Y-m-d'),
                                 'payment_method' => $p->payment_method,
                                 'amount'         => $p->amount,
                             ])->values()->toArray(),
@@ -144,152 +143,84 @@ class EditLaybuy extends EditRecord
                     \Filament\Forms\Components\Repeater::make('ledger')
                         ->label('')
                         ->schema([
-                            \Filament\Forms\Components\DatePicker::make('created_at')
-                                ->label('Date')
-                                ->required(),
+                            \Filament\Forms\Components\DatePicker::make('created_at')->label('Date')->required(),
                             \Filament\Forms\Components\Select::make('payment_method')
                                 ->label('Method')
                                 ->options(function () {
                                     $settings = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
                                     $methods  = $settings ? json_decode($settings, true) : ['CASH', 'VISA'];
                                     $options  = [];
-                                    foreach ($methods as $method) {
-                                        $cleanMethod = trim($method);
-                                        $options[strtoupper($cleanMethod)] = strtoupper($cleanMethod);
+                                    foreach ($methods as $m) {
+                                        $clean = strtoupper(trim($m));
+                                        if ($clean !== 'LAYBUY') $options[$clean] = $clean;
                                     }
                                     return $options;
-                                })
-                                ->required(),
-                            \Filament\Forms\Components\TextInput::make('amount')
-                                ->label('Amount')
-                                ->numeric()
-                                ->prefix('$')
-                                ->required(),
+                                })->required(),
+                            \Filament\Forms\Components\TextInput::make('amount')->label('Amount')->numeric()->prefix('$')->required(),
                             \Filament\Forms\Components\Hidden::make('id'),
                         ])
-                        ->columns(3)
-                        ->addable(false)
-                        ->deletable(true)
-                        ->reorderable(false)
-                        ->itemLabel(fn(array $state): ?string =>
-                            ($state['payment_method'] ?? '') . ' — $' . number_format($state['amount'] ?? 0, 2)
-                        ),
+                        ->columns(3)->addable(false)->deletable(true)->reorderable(false)
+                        ->itemLabel(fn(array $state): ?string => ($state['payment_method'] ?? '') . ' — $' . number_format($state['amount'] ?? 0, 2)),
                 ])
                 ->action(function (array $data, $record) {
                     DB::transaction(function () use ($data, $record) {
                         $tz         = \App\Models\Store::first()?->timezone ?? 'America/Denver';
                         $ledgerData = collect($data['ledger'] ?? []);
                         $keptIds    = $ledgerData->pluck('id')->filter()->toArray();
+                        $today      = now()->setTimezone($tz)->toDateString();
 
-                        // 1. Find payments DELETED from the repeater (today's only)
-                        $today = now()->setTimezone($tz)->toDateString();
+                        // Delete removed payments
                         $paymentsToDelete = $record->laybuyPayments()
-                            ->whereNotIn('id', $keptIds)
-                            ->get()
-                            ->filter(fn($p) => Carbon::parse($p->created_at)
-                                ->setTimezone($tz)->toDateString() === $today);
+                            ->whereNotIn('id', $keptIds)->get()
+                            ->filter(fn($p) => Carbon::parse($p->created_at)->setTimezone($tz)->toDateString() === $today);
 
                         foreach ($paymentsToDelete as $payment) {
-                            // Delete matching EOD payment record
                             \App\Models\Payment::where(function ($q) use ($record) {
-                                    if ($record->sale_id) {
-                                        $q->where('sale_id', $record->sale_id);
-                                    } else {
-                                        $q->whereNull('sale_id');
-                                    }
-                                })
-                                ->where('amount', $payment->amount)
-                                ->where('method', $payment->payment_method)
-                                ->whereBetween('paid_at', [
-                                    Carbon::parse($payment->created_at)->subMinute(),
-                                    Carbon::parse($payment->created_at)->addMinute(),
-                                ])
-                                ->delete();
-
+                                $record->sale_id ? $q->where('sale_id', $record->sale_id) : $q->whereNull('sale_id');
+                            })->where('amount', $payment->amount)->where('method', $payment->payment_method)
+                              ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
+                              ->delete();
                             $payment->delete();
                         }
 
-                        // 2. Update KEPT payments if amounts/methods changed
+                        // Update changed payments
                         foreach ($ledgerData as $row) {
                             if (empty($row['id'])) continue;
-
                             $payment = LaybuyPayment::find($row['id']);
                             if (!$payment) continue;
-
-                            $newAmount  = (float) $row['amount'];
-                            $newMethod  = strtoupper($row['payment_method']);
-                            $newPaidAt  = Carbon::parse($row['created_at'], $tz)->setTimezone('UTC');
-
-                            $amountChanged = $payment->amount != $newAmount;
-                            $methodChanged = $payment->payment_method !== $newMethod;
-                            $dateChanged   = Carbon::parse($payment->created_at)->toDateString() !== $row['created_at'];
-
-                            if ($amountChanged || $methodChanged || $dateChanged) {
-                                // Sync the EOD payments table
+                            $newAmount = (float) $row['amount'];
+                            $newMethod = strtoupper(trim($row['payment_method']));
+                            $newPaidAt = Carbon::parse($row['created_at'], $tz)->setTimezone('UTC');
+                            if ($payment->amount != $newAmount || $payment->payment_method !== $newMethod) {
                                 \App\Models\Payment::where(function ($q) use ($record) {
-                                        if ($record->sale_id) {
-                                            $q->where('sale_id', $record->sale_id);
-                                        } else {
-                                            $q->whereNull('sale_id');
-                                        }
-                                    })
-                                    ->where('amount', $payment->amount)
-                                    ->where('method', $payment->payment_method)
-                                    ->whereBetween('paid_at', [
-                                        Carbon::parse($payment->created_at)->subMinute(),
-                                        Carbon::parse($payment->created_at)->addMinute(),
-                                    ])
-                                    ->update([
-                                        'amount'  => $newAmount,
-                                        'method'  => $newMethod,
-                                        'paid_at' => $newPaidAt,
-                                    ]);
-
-                                // Sync the laybuy_payments table
-                                $payment->update([
-                                    'amount'         => $newAmount,
-                                    'payment_method' => $newMethod,
-                                    'created_at'     => $newPaidAt,
-                                    'updated_at'     => now(),
-                                ]);
+                                    $record->sale_id ? $q->where('sale_id', $record->sale_id) : $q->whereNull('sale_id');
+                                })->where('amount', $payment->amount)->where('method', $payment->payment_method)
+                                  ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
+                                  ->update(['amount' => $newAmount, 'method' => $newMethod, 'paid_at' => $newPaidAt]);
+                                $payment->update(['amount' => $newAmount, 'payment_method' => $newMethod, 'created_at' => $newPaidAt, 'updated_at' => now()]);
                             }
                         }
 
-                        // 3. Recalculate Laybuy totals from full payment history
+                        // Recalculate totals
                         $newTotalPaid = $record->laybuyPayments()->sum('amount');
                         $trueBalance  = max(0, floatval($record->total_amount) - floatval($newTotalPaid));
                         $newStatus    = $trueBalance <= 0 ? 'completed' : 'in_progress';
+                        $record->update(['amount_paid' => $newTotalPaid, 'balance_due' => $trueBalance, 'status' => $newStatus]);
 
-                        $record->update([
-                            'amount_paid' => $newTotalPaid,
-                            'balance_due' => $trueBalance,
-                            'status'      => $newStatus,
-                        ]);
-
-                        // 4. Update the parent Sale
-                       if ($record->sale_id) {
-                            $sale = \App\Models\Sale::find($record->sale_id);
-                            if ($sale) {
-                                $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
-                                $saleBalance   = max(0, $sale->final_total - $saleTotalPaid);
-                                
-                                $sale->update([
-                                    'amount_paid'  => $saleTotalPaid,
-                                    'balance_due'  => $saleBalance,
-                                    'status'       => $newStatus === 'completed' ? 'completed' : 'pending',
-                                    // 🚀 THE FIX: Trigger the EOD report based on recalculated totals
-                                    'completed_at' => $newStatus === 'completed' ? now() : ($saleTotalPaid < $sale->final_total ? null : $sale->completed_at),
-                                ]);
-                            }
+                        if ($record->sale_id) {
+                            $sale          = \App\Models\Sale::find($record->sale_id);
+                            $saleTotalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                            $saleBalance   = max(0, $sale->final_total - $saleTotalPaid);
+                            $sale->update([
+                                'amount_paid'  => $saleTotalPaid,
+                                'balance_due'  => $saleBalance,
+                                'status'       => $newStatus === 'completed' ? 'completed' : 'pending',
+                                'completed_at' => $newStatus === 'completed' ? now() : ($saleTotalPaid < $sale->final_total ? null : $sale->completed_at),
+                            ]);
                         }
                     });
 
-                    Notification::make()
-                        ->title('Ledger Updated')
-                        ->body('Payments and balances have been recalculated.')
-                        ->success()
-                        ->send();
-
+                    Notification::make()->title('Ledger Updated')->body('Payments and balances have been recalculated.')->success()->send();
                     redirect(request()->header('Referer'));
                 }),
 
@@ -297,7 +228,7 @@ class EditLaybuy extends EditRecord
         ];
     }
 
-    // ─── POPULATE FORM ON EDIT ───
+    // ── Populate form on edit — maps all new field names ──
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $laybuy = $this->getRecord();
@@ -308,11 +239,26 @@ class EditLaybuy extends EditRecord
 
         if ($laybuy->sale && $laybuy->sale->items->isNotEmpty()) {
             $data['layby_items'] = $laybuy->sale->items->map(function ($item) {
+                $unitPrice = floatval($item->sold_price ?? 0);
+                $salePrice = floatval($item->sale_price_override ?? $unitPrice);
+                $discPct   = floatval($item->discount_percent ?? 0);
+                $discAmt   = floatval($item->discount_amount ?? 0);
+
+                if ($salePrice <= 0) $salePrice = $unitPrice;
+                if ($discAmt <= 0 && $discPct > 0) {
+                    $discAmt = round($unitPrice * $discPct / 100, 2);
+                }
+
                 return [
-                    'product_item_id' => $item->product_item_id,
-                    'barcode'         => $item->productItem?->barcode ?? 'N/A',
-                    'description'     => $item->custom_description ?? $item->productItem?->custom_description ?? 'Custom Item',
-                    'price'           => $item->sold_price,
+                    'product_item_id'  => $item->product_item_id,
+                    'barcode'          => $item->productItem?->barcode ?? 'N/A',
+                    'description'      => $item->custom_description ?? $item->productItem?->custom_description ?? 'Item',
+                    'unit_price'       => $unitPrice,
+                    'sale_price'       => $salePrice,
+                    'discount_percent' => $discPct,
+                    'discount_amount'  => $discAmt,
+                    'is_tax_free'      => (bool) ($item->is_tax_free ?? false),
+                    'qty'              => intval($item->qty ?? 1),
                 ];
             })->toArray();
         } else {
@@ -324,9 +270,16 @@ class EditLaybuy extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        if (isset($data['creation_mode'])) {
-            $data['is_trade_in'] = ($data['creation_mode'] === 'trade_in');
-        }
+        unset(
+            $data['layby_items'],
+            $data['item_search'],
+            $data['totals_summary'],
+            $data['totals_display'],
+            $data['imported_items_list'],
+            $data['payment_history'],
+            $data['sales_person_list'],
+            $data['progress_bar']
+        );
         return $data;
     }
 }

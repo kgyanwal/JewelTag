@@ -1692,90 +1692,120 @@ class SaleResource extends Resource
  
     // ── SPLIT PAYMENTS REPEATER ──────────────────────────────────
     Repeater::make('split_payments')
-        ->label('Payment Breakdown')
-        ->schema([
-            Grid::make(6)->schema([
-                Select::make('method')
-                    ->label('Method')
-                    ->options(function (?Sale $record) {
-                        $options = SaleResource::getPaymentOptions();
-                        // Merge any DB methods not in site_settings (e.g. KATAPULT)
-                        if ($record) {
-                            $record->payments()->pluck('method')
-                                ->merge($record->salePayments()->pluck('payment_method'))
-                                ->filter()
-                                ->map(fn($m) => strtoupper(trim($m)))
-                                ->unique()
-                                ->each(function ($m) use (&$options) {
-                                    if (!array_key_exists($m, $options)) {
-                                        $options[$m] = $m;
-                                    }
-                                });
-                        }
-                        return $options;
-                    })
-                    ->required()
-                    ->columnSpan(function (Get $get) {
-                        $items = $get('../../items') ?? [];
-                        $hasCustom = collect($items)->contains(
-                            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                        ) || request()->has('custom_order_id');
-                        return $hasCustom ? 2 : 3;
-                    }),
- 
-                TextInput::make('amount')
-    ->numeric()
-    ->prefix('$')
-    ->required()
-    ->label('Amount')
-    ->live(onBlur: true)
-   ->hintAction(
-    FormAction::make('fill_split_remaining')
-        ->label('Collect Remaining Balance')
-        ->icon('heroicon-o-banknotes')
-        ->color('success')
-        ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
-        ->action(function (Get $get, Set $set) {
-            $total     = (float) $get('../../final_total');
-            $payments  = $get('../../split_payments') ?? [];
-            $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-            $remaining = max(0, $total - $sum);
-            $set('amount', number_format($remaining, 2, '.', ''));
-        })
-)
-    ->columnSpan(function (Get $get) {
-        $items = $get('../../items') ?? [];
-        $hasCustom = collect($items)->contains(
-            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-        ) || request()->has('custom_order_id');
-        return $hasCustom ? 2 : 3;
-    }),
- 
-                Select::make('payment_target')
-                    ->label('Apply To')
-                    ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
-                    ->default('regular')
-                    ->columnSpan(2)
-                    ->visible(function (Get $get) {
-                        $items = $get('../../items') ?? [];
-                        return collect($items)->contains(
-                            fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                        ) || request()->has('custom_order_id');
-                    })
-                    ->live()
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-            ]),
-        ])
-        ->visible(fn(Get $get) => $get('is_split_payment'))
-        ->defaultItems(1)
-        ->maxItems(20)
-        ->addActionLabel('Add Another Payment Method')
-        ->reorderable(false)
-        ->live()
-        ->afterStateUpdated(function (Get $get, Set $set) {
-            self::updateTotals($get, $set);
-            self::syncStatus($get, $set);
-        }),
+    ->label('Payment Breakdown')
+    ->schema([
+        Grid::make(6)->schema([
+            Select::make('method')
+                ->label('Method')
+                ->options(function (?Sale $record) {
+                    $options = SaleResource::getPaymentOptions();
+                    if ($record) {
+                        $record->payments()->pluck('method')
+                            ->merge($record->salePayments()->pluck('payment_method'))
+                            ->filter()
+                            ->map(fn($m) => strtoupper(trim($m)))
+                            ->unique()
+                            ->each(function ($m) use (&$options) {
+                                if (!array_key_exists($m, $options)) {
+                                    $options[$m] = $m;
+                                }
+                            });
+                    }
+                    return $options;
+                })
+                ->required()
+                ->columnSpan(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    $hasCustom = collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
+                    return $hasCustom ? 2 : 3;
+                }),
+
+            TextInput::make('amount')
+                ->numeric()
+                ->prefix('$')
+                ->required()
+                ->label('Amount')
+                ->live(onBlur: true)
+                ->hintAction(
+                    FormAction::make('fill_split_remaining')
+                        ->label('Collect Remaining Balance')
+                        ->icon('heroicon-o-banknotes')
+                        ->color('success')
+                        ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
+                        ->action(function (Get $get, Set $set) {
+                            $total    = (float) $get('../../final_total');
+                            $payments = $get('../../split_payments') ?? [];
+                            $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                            $set('amount', number_format(max(0, $total - $sum), 2, '.', ''));
+                        })
+                )
+                ->columnSpan(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    $hasCustom = collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
+                    return $hasCustom ? 2 : 3;
+                }),
+
+            Select::make('payment_target')
+                ->label('Apply To')
+                ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                ->default('regular')
+                ->columnSpan(2)
+                ->visible(function (Get $get) {
+                    $items = $get('../../items') ?? [];
+                    return collect($items)->contains(
+                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                    ) || request()->has('custom_order_id');
+                })
+                ->live()
+                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+        ]),
+    ])
+    ->visible(fn(Get $get) => $get('is_split_payment'))
+    ->defaultItems(1)
+    ->maxItems(100)
+    ->addActionLabel('Add Another Payment Method')
+    ->reorderable(false)
+    ->live()
+    ->afterStateUpdated(function (Get $get, Set $set) {
+        self::updateTotals($get, $set);
+        self::syncStatus($get, $set);
+    })
+  ->hint(function (Get $get, string $operation) {
+    if ($operation === 'create') return null;
+    $count = count($get('split_payments') ?? []);
+    if ($count <= 2) return null;
+    $hidden = $count - 2;
+        return new HtmlString("
+            <style>
+                #split-payments-body.is-collapsed { max-height: 220px; overflow: hidden; }
+                #split-payments-body { transition: max-height 0.4s ease; }
+            </style>
+            <a href='#' onclick=\"
+                event.preventDefault();
+                var el = document.getElementById('split-payments-body');
+                var btn = document.getElementById('split-toggle-btn');
+                if (el.classList.contains('is-collapsed')) {
+                    el.classList.remove('is-collapsed');
+                    btn.textContent = '↑ Show less';
+                } else {
+                    el.classList.add('is-collapsed');
+                    btn.textContent = '+ Show {$hidden} more';
+                }
+            \" style='color:#0284c7;font-size:12px;font-weight:700;text-decoration:none;'>
+                <span id='split-toggle-btn'>+ Show {$hidden} more</span>
+            </a>
+        ");
+    })
+   ->extraAttributes(function (Get $get, string $operation) {
+    if ($operation === 'create') return [];
+    $count = count($get('split_payments') ?? []);
+    if ($count <= 2) return [];
+    return ['id' => 'split-payments-body', 'class' => 'is-collapsed'];
+}),
   \Filament\Forms\Components\Actions::make([
         FormAction::make('smart_collect_remaining')
             ->label('+ Collect Remaining Balance')

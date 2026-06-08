@@ -377,46 +377,61 @@ if ($newCoBal <= 0.01 && $customOrder->status !== 'completed') {
             $finalTotalPaid = $sale->payments()->sum('amount');
             // ── Sync linked Laybuy if exists ──────────────────────────────────
 $laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
-if ($laybuy) {
-    $totalSalePaid = Payment::where('sale_id', $sale->id)->sum('amount');
-    $laybuyBal     = round(max(0, floatval($laybuy->total_amount) - $totalSalePaid), 2);
-
-    $laybuy->update([
-        'amount_paid'    => round($totalSalePaid, 2),
-        'balance_due'    => $laybuyBal,
-        'status'         => $laybuyBal <= 0.01 ? 'completed' : 'in_progress',
-        'last_paid_date' => now(),
-    ]);
-
-    // Also create a LaybuyPayment ledger entry for the new payment
-    $newPayments = Payment::where('sale_id', $sale->id)
-        ->where('paid_at', '>=', now()->subSeconds(30))
-        ->get();
-
-    foreach ($newPayments as $np) {
-        $alreadyLogged = \App\Models\LaybuyPayment::where('laybuy_id', $laybuy->id)
-            ->where('amount', $np->amount)
-            ->where('created_at', '>=', now()->subSeconds(30))
-            ->exists();
-
-        if (!$alreadyLogged) {
-            \App\Models\LaybuyPayment::create([
-                'laybuy_id'      => $laybuy->id,
-                'amount'         => $np->amount,
-                'payment_method' => $np->method,
-                'created_at'     => $np->paid_at,
-                'updated_at'     => $np->paid_at,
-            ]);
-        }
-    }
-}
+            if ($laybuy) {
+                $totalSalePaid = Payment::where('sale_id', $sale->id)->sum('amount');
+                $laybuyBal     = round(max(0, floatval($laybuy->total_amount) - $totalSalePaid), 2);
+ 
+                $laybuy->update([
+                    'amount_paid'    => round($totalSalePaid, 2),
+                    'balance_due'    => $laybuyBal,
+                    'status'         => $laybuyBal <= 0.01 ? 'completed' : 'in_progress',
+                    'last_paid_date' => now(),
+                ]);
+ 
+                // ── KEY FIX: Log new payments into laybuy_payments so ledger shows them ──
+                if ($delta > 0) {
+                    $newPayments = Payment::where('sale_id', $sale->id)
+                        ->where('paid_at', '>=', now()->subSeconds(60))
+                        ->get();
+ 
+                    foreach ($newPayments as $np) {
+                        $alreadyLogged = \App\Models\LaybuyPayment::where('laybuy_id', $laybuy->id)
+                            ->where('amount', $np->amount)
+                            ->where('payment_method', $np->method)
+                            ->where('created_at', '>=', now()->subSeconds(60))
+                            ->exists();
+ 
+                        if (!$alreadyLogged) {
+                            \App\Models\LaybuyPayment::create([
+                                'laybuy_id'      => $laybuy->id,
+                                'amount'         => $np->amount,
+                                'payment_method' => $np->method,
+                                'created_at'     => $np->paid_at,
+                                'updated_at'     => $np->paid_at,
+                            ]);
+                        }
+                    }
+                }
+ 
+                // Release items to sold if fully paid
+                if ($laybuyBal <= 0.01) {
+                    foreach ($sale->items as $saleItem) {
+                        if ($saleItem->product_item_id) {
+                            \App\Models\ProductItem::where('id', $saleItem->product_item_id)
+                                ->where('status', 'on_hold')
+                                ->update(['status' => 'sold', 'hold_reason' => null, 'held_by_sale_id' => null]);
+                        }
+                    }
+                }
+            }
+ 
+            $finalTotalPaid = $sale->payments()->sum('amount');
             $sale->update(['amount_paid' => $finalTotalPaid]);
-
-            Notification::make()
+ 
+            \Filament\Notifications\Notification::make()
                 ->title('Sale Payments Updated')
                 ->body('Ledger has been synced successfully.')
-                ->success()
-                ->send();
+                ->success()->send();
         });
     }
 

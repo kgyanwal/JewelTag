@@ -534,6 +534,25 @@ class FindStock extends Page implements HasForms, HasTable
             ->query(ProductItem::query())
             ->modifyQueryUsing(fn(Builder $query) => $this->applyQueryFilters($query))
             ->columns([
+                 TextColumn::make('photo')
+        ->label('')
+        ->getStateUsing(function (ProductItem $record) {
+            $url      = $record->primary_image_url;
+            $hasPhoto = $record->has_image;
+            $badge    = !$hasPhoto
+                ? "<div style='position:absolute;bottom:2px;right:2px;background:#ef444480;border-radius:3px;padding:1px 3px;font-size:7px;font-weight:800;color:white;line-height:1;'>NO PHOTO</div>"
+                : '';
+            return new HtmlString("
+                <div style='position:relative;width:52px;height:52px;flex-shrink:0;'>
+                    <img src='{$url}'
+                         style='width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid #e2e8f0;background:#f8fafc;'
+                         onerror=\"this.src='/placeholders/jewelry-generic.svg'\" />
+                    {$badge}
+                </div>
+            ");
+        })
+        ->html()
+        ->grow(false),
                 TextColumn::make('barcode')
                     ->label('STOCK #')
                     ->sortable()
@@ -669,7 +688,42 @@ class FindStock extends Page implements HasForms, HasTable
                             ]),
                             TextEntry::make('custom_description')->label('Display Description'),
                         ]),
+\Filament\Infolists\Components\TextEntry::make('photos')
+    ->label('Item Photos')
+    ->state(fn() => 'loaded')
+    ->formatStateUsing(function () use ($record) {
+        $images = $record->all_images;
+        if (empty($images)) {
+            return new HtmlString("
+                <div style='display:flex;align-items:center;gap:8px;padding:10px;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:8px;'>
+                    <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='#94a3b8' style='width:18px;height:18px;'>
+                        <path stroke-linecap='round' stroke-linejoin='round' d='M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z' />
+                        <path stroke-linecap='round' stroke-linejoin='round' d='M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z' />
+                    </svg>
+                    <span style='font-size:12px;color:#94a3b8;font-style:italic;'>No photos on file for this item.</span>
+                </div>
+            ");
+        }
 
+        $imgs = collect($images)->map(fn($url) => "
+            <div style='position:relative;cursor:pointer;' onclick=\"window.open('{$url}','_blank')\">
+                <img src='{$url}'
+                     style='width:90px;height:90px;border-radius:10px;object-fit:cover;border:2px solid #e2e8f0;transition:transform .15s;'
+                     onmouseover=\"this.style.transform='scale(1.05)'\"
+                     onmouseout=\"this.style.transform='scale(1)'\"
+                     onerror=\"this.src='/placeholders/jewelry-generic.svg'\" />
+            </div>
+        ")->implode('');
+
+        return new HtmlString("
+            <div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;'>
+                {$imgs}
+            </div>
+            <p style='font-size:10px;color:#94a3b8;margin-top:6px;'>Click any photo to open full size.</p>
+        ");
+    })
+    ->html()
+    ->columnSpanFull(),
                         InfoSection::make('Diamond & Gemstone Specifications')->schema([
                             InfoGrid::make(4)->schema([
                                 TextEntry::make('metal_type')->label('Metal Karat'),
