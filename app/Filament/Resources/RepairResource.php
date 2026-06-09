@@ -437,20 +437,28 @@ class RepairResource extends Resource
                     ->label('SALES STAFF')
                     ->html()
                     ->getStateUsing(function ($record) {
-                        $list = $record->sales_person_list;
-                        if (is_string($list)) {
-                            $list = json_decode($list, true);
-                        }
-                        if (!empty($list) && is_array($list)) {
-                            return \App\Models\User::whereIn('id', $list)
-                                ->pluck('name')
-                                ->implode('||');
-                        }
-                        if ($record->salesPerson) {
-                            return $record->salesPerson->name;
-                        }
-                        return '—';
-                    })
+    $list = $record->sales_person_list;
+    if (is_string($list)) {
+        $decoded = json_decode($list, true);
+        $list = is_array($decoded) ? $decoded : [$list];
+    }
+    if (empty($list) || !is_array($list)) {
+        return $record->salesPerson?->name ?? '—';
+    }
+
+    // Check if list contains IDs (numeric) or names (strings)
+    $firstItem = $list[0] ?? null;
+
+    if (is_numeric($firstItem)) {
+        // List contains user IDs — look up names
+        $names = \App\Models\User::whereIn('id', $list)->pluck('name')->toArray();
+        return !empty($names) ? implode('||', $names) : ($record->salesPerson?->name ?? '—');
+    }
+
+    // List already contains names — use directly
+    $names = array_filter($list, fn($n) => !empty(trim($n ?? '')));
+    return !empty($names) ? implode('||', $names) : ($record->salesPerson?->name ?? '—');
+})
                     ->formatStateUsing(function ($state) {
                         if (!$state || $state === '—') {
                             return '<span style="color:#9ca3af;font-size:11px;">—</span>';
@@ -561,7 +569,7 @@ class RepairResource extends Resource
         ->openUrlInNewTab()
         ->grow(false),
 
-        
+
                 Tables\Columns\TextColumn::make('repair_notes')
                     ->label('NOTES')
                     ->limit(25)
