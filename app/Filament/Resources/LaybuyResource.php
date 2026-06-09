@@ -367,26 +367,314 @@ class LaybuyResource extends Resource
                     /* ─── RIGHT COLUMN (4/12) ─── */
                     Group::make()->columnSpan(4)->schema([
 
-                        Section::make('Customer Context')
+                       Section::make('Customer Context')
+    ->schema([
+        Select::make('customer_id')
+            ->label('Assign Customer')
+            ->relationship('customer', 'name')
+            ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+            ->searchable()
+            ->getSearchResultsUsing(function (string $search) {
+                return Customer::query()
+                    ->where(function ($q) use ($search) {
+                        $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                            ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhere('customer_no', 'like', "%{$search}%");
+                    })
+                    ->limit(50)
+                    ->get()
+                    ->mapWithKeys(fn($customer) => [
+                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                    ]);
+            })
+            ->preload()
+            ->required()
+            ->live()
+            ->disabledOn('edit')
+            ->columnSpanFull()
+            ->hintAction(
+                FormAction::make('view_customer_details')
+                    ->label('View Profile')
+                    ->icon('heroicon-o-user-circle')
+                    ->color('info')
+                    ->visible(fn(Get $get) => $get('customer_id'))
+                    ->modalHeading('Customer Profile Details')
+                    ->modalSubmitActionLabel('Save Changes')
+                    ->modalCancelActionLabel('Close')
+                    ->slideOver()
+                    ->form(function (Get $get) {
+                        $customer = \App\Models\Customer::find($get('customer_id'));
+                        if (!$customer) return [];
+
+                        return [
+                            \Filament\Forms\Components\Tabs::make('CustomerDetailsTabs')
+                                ->tabs([
+
+                                    // ── TAB 1: PROFILE & HISTORY ──
+                                    \Filament\Forms\Components\Tabs\Tab::make('Profile & History')
+                                        ->icon('heroicon-o-document-text')
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                Placeholder::make('img')
+                                                    ->label('')
+                                                    ->content(new HtmlString("
+                                                        <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
+                                                            <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                            <div>
+                                                                <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
+                                                                <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
+                                                                <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>
+                                                                    Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    "))
+                                                    ->columnSpanFull(),
+
+                                                Placeholder::make('view_dob')
+                                                    ->label('Birthday')
+                                                    ->content(function () use ($customer) {
+                                                        if (!$customer->dob) return '—';
+                                                        $dob = \Carbon\Carbon::parse($customer->dob);
+                                                        return new HtmlString("{$dob->format('M d, Y')} <span class='text-gray-400 text-xs'>({$dob->age} yrs)</span>");
+                                                    }),
+
+                                                TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
+                                                TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
+                                                TextInput::make('view_addr')
+                                                    ->label('Full Address')
+                                                    ->default(trim("{$customer->street} {$customer->suburb} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                    ->readOnly()
+                                                    ->columnSpanFull(),
+                                            ]),
+
+                                            Placeholder::make('layby_history')
+                                                ->label('Layby History')
+                                                ->content(function () use ($customer) {
+                                                    $laybuys = \App\Models\Laybuy::where('customer_id', $customer->id)
+                                                        ->latest()
+                                                        ->limit(5)
+                                                        ->get();
+
+                                                    if ($laybuys->isEmpty()) {
+                                                        return new HtmlString("<p class='text-sm text-gray-400 italic'>No prior layby history.</p>");
+                                                    }
+
+                                                    $rowsHtml = '';
+                                                    foreach ($laybuys as $laybuy) {
+                                                        $total   = floatval($laybuy->total_amount);
+                                                        $paid    = floatval($laybuy->amount_paid);
+                                                        $balance = max(0, $total - $paid);
+                                                        $isOwing = $balance > 0.01;
+
+                                                        $statusColor = match ($laybuy->status) {
+                                                            'completed'   => 'bg-success-100 text-success-700',
+                                                            'cancelled'   => 'bg-danger-100 text-danger-700',
+                                                            default       => 'bg-warning-100 text-warning-700',
+                                                        };
+                                                        $statusLabel = match ($laybuy->status) {
+                                                            'completed'   => 'Paid',
+                                                            'cancelled'   => 'Cancelled',
+                                                            default       => 'Active',
+                                                        };
+
+                                                        $balanceHtml = $isOwing
+                                                            ? "<p class='text-[10px] text-danger-600 font-bold mt-1 m-0'>Balance: \$" . number_format($balance, 2) . "</p>"
+                                                            : '';
+
+                                                        $editUrl = \App\Filament\Resources\LaybuyResource::getUrl('edit', ['record' => $laybuy->id]);
+
+                                                        $rowsHtml .= "
+                                                            <div class='border " . ($isOwing ? 'border-warning-300' : 'border-gray-200') . " rounded-lg p-3 mb-2 bg-white shadow-sm'>
+                                                                <div class='flex justify-between items-start'>
+                                                                    <div>
+                                                                        <a href='{$editUrl}' target='_blank' class='font-mono font-bold text-primary-600 text-xs hover:underline'>#{$laybuy->laybuy_no}</a>
+                                                                        <span class='ml-2 text-[10px] text-gray-400'>{$laybuy->created_at->format('M d, Y')}</span>
+                                                                    </div>
+                                                                    <div class='text-right'>
+                                                                        <p class='text-sm font-bold " . ($isOwing ? 'text-warning-600' : 'text-gray-900') . " m-0'>\$" . number_format($total, 2) . "</p>
+                                                                        <span class='text-[9px] px-2 py-0.5 rounded-full uppercase font-bold mt-1 inline-block {$statusColor}'>{$statusLabel}</span>
+                                                                        {$balanceHtml}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ";
+                                                    }
+
+                                                    return new HtmlString("<div class='mt-2 max-h-[300px] overflow-y-auto pr-2'>{$rowsHtml}</div>");
+                                                }),
+                                        ]),
+
+                                    // ── TAB 2: EDIT CUSTOMER ──
+                                    \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
+                                        ->icon('heroicon-o-pencil-square')
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                TextInput::make('edit_name')
+                                                    ->label('First Name')
+                                                    ->default($customer->name)
+                                                    ->required(),
+
+                                                TextInput::make('edit_last_name')
+                                                    ->label('Last Name')
+                                                    ->default($customer->last_name),
+
+                                                TextInput::make('edit_phone')
+                                                    ->label('Phone')
+                                                    ->tel()
+                                                    ->prefix('+1')
+                                                    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+                                                    ->mask('(999) 999-9999')
+                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                    ->required(),
+
+                                                TextInput::make('edit_email')
+                                                    ->label('Email')
+                                                    ->email()
+                                                    ->default($customer->email),
+
+                                                Grid::make(2)->schema([
+                                                    \App\Forms\Components\CustomDatePicker::make('edit_dob')
+                                                        ->label('Birth Date')
+                                                        ->rule('before_or_equal:today')
+                                                        ->default($customer->dob),
+
+                                                    \App\Forms\Components\CustomDatePicker::make('edit_anniversary')
+                                                        ->label('Wedding Date')
+                                                        ->default($customer->wedding_anniversary),
+                                                ]),
+
+                                                \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
+                                                    ->label('Search Address')
+                                                    ->autocompletePlaceholder('Start typing address...')
+                                                    ->countries(['US'])
+                                                    ->columnSpanFull()
+                                                    ->withFields([
+                                                        TextInput::make('edit_street')
+                                                            ->label('Street Address')
+                                                            ->default($customer->street)
+                                                            ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
+                                                            ->columnSpanFull(),
+
+                                                        TextInput::make('edit_city')
+                                                            ->label('City')
+                                                            ->default($customer->city)
+                                                            ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+
+                                                        TextInput::make('edit_state')
+                                                            ->label('State')
+                                                            ->default($customer->state)
+                                                            ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+
+                                                        TextInput::make('edit_postcode')
+                                                            ->label('Zip Code')
+                                                            ->default($customer->postcode)
+                                                            ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                    ]),
+                                            ]),
+                                        ]),
+                                ]),
+                        ];
+                    })
+                    ->action(function (array $data, Get $get) {
+                        $customer = \App\Models\Customer::find($get('customer_id'));
+                        if ($customer && isset($data['edit_name'])) {
+                            $customer->update([
+                                'name'               => $data['edit_name'],
+                                'last_name'          => $data['edit_last_name'] ?? null,
+                                'phone'              => $data['edit_phone'],
+                                'email'              => $data['edit_email'] ?? null,
+                                'dob'                => $data['edit_dob'] ?? null,
+                                'wedding_anniversary'=> $data['edit_anniversary'] ?? null,
+                                'street'             => $data['edit_street'] ?? null,
+                                'city'               => $data['edit_city'] ?? null,
+                                'state'              => $data['edit_state'] ?? null,
+                                'postcode'           => $data['edit_postcode'] ?? null,
+                            ]);
+                            Notification::make()->title('Customer Updated Successfully')->success()->send();
+                        }
+                    })
+            )
+            ->createOptionModalHeading('Quick Add New Customer')
+            ->createOptionForm([
+                \Filament\Forms\Components\Tabs::make('New Customer')
+                    ->tabs([
+                        \Filament\Forms\Components\Tabs\Tab::make('Contact')
+                            ->icon('heroicon-o-user')
                             ->schema([
-                                Select::make('customer_id')
-                                    ->label('Assign Customer')
-                                    ->relationship('customer', 'name')
-                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone}")
-                                    ->searchable(['name', 'last_name', 'phone', 'customer_no'])
-                                    ->preload()->required()->live()
-                                    ->disabledOn('edit')
-                                    ->hintAction(
-                                        FormAction::make('profile')
-                                            ->label('Details')
-                                            ->icon('heroicon-o-user-circle')
-                                            ->visible(fn(Get $get) => $get('customer_id'))
-                                            ->slideOver()
-                                            ->form(fn(Get $get) => [
-                                                Placeholder::make('info')->content(fn() => "Customer ID: " . $get('customer_id'))
-                                            ])
-                                    ),
+                                Grid::make(2)->schema([
+                                    TextInput::make('name')->label('First Name')->required(),
+                                    TextInput::make('last_name')->label('Last Name'),
+                                ]),
+                                Grid::make(2)->schema([
+                                    TextInput::make('phone')
+                                        ->label('Mobile Phone')
+                                        ->tel()
+                                        ->prefix('+1')
+                                        ->mask('(999) 999-9999')
+                                        ->placeholder('(555) 555-5555')
+                                        ->stripCharacters(['(', ')', '-', ' '])
+                                        ->rule('regex:/^[0-9]{10}$/')
+                                        ->unique('customers', 'phone')
+                                        ->afterStateHydrated(function ($component, $state) {
+                                            if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                            }
+                                        }),
+                                    TextInput::make('email')
+                                        ->label('Email')
+                                        ->email()
+                                        ->unique('customers', 'email'),
+                                ]),
+                                Grid::make(2)->schema([
+                                    \App\Forms\Components\CustomDatePicker::make('dob')
+                                        ->rule('before_or_equal:today')
+                                        ->label('Birth Date'),
+                                    \App\Forms\Components\CustomDatePicker::make('wedding_anniversary')
+                                        ->label('Wedding Date'),
+                                ]),
+                                \Filament\Forms\Components\Section::make('Customer Address')
+                                    ->description('Search for an address to automatically fill the fields below.')
+                                    ->columns(2)
+                                    ->collapsible()
+                                    ->schema([
+                                        \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('address_search')
+                                            ->label('Search Address')
+                                            ->autocompletePlaceholder('Start typing address...')
+                                            ->countries(['US'])
+                                            ->columnSpanFull()
+                                            ->withFields([
+                                                TextInput::make('street')
+                                                    ->label('Street Address')
+                                                    ->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                TextInput::make('address_line_2')
+                                                    ->label('Address 2 / Apt / Suite')
+                                                    ->extraInputAttributes(['data-google-field' => 'subpremise']),
+                                                TextInput::make('city')
+                                                    ->label('City')
+                                                    ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                TextInput::make('state')
+                                                    ->label('State')
+                                                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                TextInput::make('postcode')
+                                                    ->label('Zip Code')
+                                                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                            ]),
+                                        \Filament\Forms\Components\Select::make('country')
+                                            ->label('Country')
+                                            ->default('United States')
+                                            ->searchable(),
+                                    ]),
                             ]),
+                    ]),
+                \Filament\Forms\Components\Hidden::make('customer_no')
+                    ->default(fn() => 'CUST-' . strtoupper(\Illuminate\Support\Str::random(6))),
+            ])
+            ->createOptionUsing(function (array $data) {
+                return Customer::create($data)->id;
+            }),
+    ]),
 
                         // Staff — create shows multi-select, edit shows read-only
                         Section::make('Sales Staff')

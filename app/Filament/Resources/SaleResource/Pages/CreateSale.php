@@ -325,7 +325,7 @@ protected function mutateFormDataBeforeCreate(array $data): array
         DB::transaction(function () {
             $sale     = $this->record;
             $sale->load('items'); 
-            
+            $specialJobs = $sale->special_jobs ?? [];
             $isLaybuy = $sale->payment_method === 'laybuy';
 
             // Find the custom order if one exists in this cart
@@ -447,6 +447,58 @@ protected function mutateFormDataBeforeCreate(array $data): array
                     ->warning()
                     ->send();
             }
+
+      
+if (!empty($specialJobs) && is_array($specialJobs)) {
+
+    // Build item description from the sale items
+    $itemDescriptions = $sale->items->map(function ($item) {
+        if ($item->productItem) {
+            return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+        }
+        return $item->custom_description ?? 'Item';
+    })->filter()->implode(', ');
+
+    // One repair ticket per special job
+    foreach ($specialJobs as $job) {
+        if (empty($job['job_type'])) continue;
+
+        $repairNo = 'REP-' . strtoupper(substr($job['job_type'], 0, 3)) . '-' . date('ymd') . '-' . rand(100, 999);
+
+        \App\Models\Repair::create([
+            'sale_id'          => $sale->id,
+            'repair_no'        => $repairNo,
+            'customer_id'      => $sale->customer_id,
+            'store_id'         => $sale->store_id,
+            'staff_id'         => auth()->id(),
+            'sales_person_list'=> is_array($sale->sales_person_list)
+                                    ? $sale->sales_person_list
+                                    : [$sale->sales_person_list],
+            'status'           => 'received',
+            'item_description' => $itemDescriptions ?: 'Item from Sale #' . $sale->invoice_number,
+            'reported_issue'   => $job['job_type']
+                                    . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
+                                    . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
+                                    . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
+            'repair_notes'     => $job['job_instructions'] ?? null,
+            'customer_pickup_date' => $job['date_required'] ?? null,
+            'estimated_cost'   => 0,
+            'final_cost'       => null,
+            'items'            => [[
+                'item_description' => $itemDescriptions ?: 'Item from Sale',
+                'reported_issue'   => $job['job_type'],
+                'job_type'         => $job['job_type'],
+                'metal_type'       => $job['metal_type'] ?? null,
+                'current_size'     => $job['current_size'] ?? null,
+                'target_size'      => $job['target_size'] ?? null,
+                'job_instructions' => $job['job_instructions'] ?? null,
+                'date_required'    => $job['date_required'] ?? null,
+                'estimated_cost'   => 0,
+                'final_cost'       => null,
+            ]],
+        ]);
+    }
+}
         });
 
         session()->forget("sale_draft_{$this->draftId}");

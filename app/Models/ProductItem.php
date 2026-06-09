@@ -66,6 +66,8 @@ class ProductItem extends Model
         'inactivated_reason',
         'primary_image',
         'gallery_images',
+        'shopify_product_id',
+'shopify_inventory_item_id',
 
     ];
 
@@ -114,22 +116,33 @@ class ProductItem extends Model
         return $this->hasMany(SaleItem::class, 'product_item_id');
     }
 
-     public function getPrimaryImageUrlAttribute(): string
+   public function getPrimaryImageUrlAttribute(): string
 {
     try {
-        if ($this->primary_image) {
-            return \Illuminate\Support\Facades\Storage::url($this->primary_image);
+        // Handle array (Filament FileUpload sometimes stores as array)
+        $primary = is_array($this->primary_image)
+            ? (array_values($this->primary_image)[0] ?? null)
+            : $this->primary_image;
+ 
+        if ($primary) {
+            // Use url() instead of Storage::url() to avoid misconfigured disk URL
+            return url('storage/' . $primary);
         }
-
+ 
+        // Fallback to first gallery image
         $gallery = $this->gallery_images ?? [];
-        if (!empty($gallery[0])) {
-            return \Illuminate\Support\Facades\Storage::url($gallery[0]);
+        if (is_array($gallery) && !empty($gallery[0])) {
+            $first = is_array($gallery[0]) ? ($gallery[0][0] ?? null) : $gallery[0];
+            if ($first) {
+                return url('storage/' . $first);
+            }
         }
     } catch (\Exception $e) {
         // fall through to placeholder
     }
-
-    $category = strtolower($this->category ?? '');
+ 
+    // Category-based placeholder
+    $category     = strtolower($this->category ?? '');
     $placeholders = [
         'ring'     => '/placeholders/ring.svg',
         'necklace' => '/placeholders/necklace.svg',
@@ -138,44 +151,49 @@ class ProductItem extends Model
         'pendant'  => '/placeholders/pendant.svg',
         'diamond'  => '/placeholders/diamond.svg',
     ];
-
+ 
     foreach ($placeholders as $key => $path) {
         if (str_contains($category, $key)) {
             return $path;
         }
     }
-
+ 
     return '/placeholders/jewelry-generic.svg';
 }
  
-    /**
-     * Returns true if this item has a real uploaded photo
-     */
-    public function getHasImageAttribute(): bool
-    {
-        return !empty($this->primary_image) || !empty($this->gallery_images);
+public function getHasImageAttribute(): bool
+{
+    $primary = is_array($this->primary_image)
+        ? (array_values($this->primary_image)[0] ?? null)
+        : $this->primary_image;
+ 
+    return !empty($primary) || !empty($this->gallery_images);
+}
+ 
+public function getAllImagesAttribute(): array
+{
+    $images = [];
+ 
+    $primary = is_array($this->primary_image)
+        ? (array_values($this->primary_image)[0] ?? null)
+        : $this->primary_image;
+ 
+    if ($primary) {
+        $images[] = url('storage/' . $primary);
     }
  
-    /**
-     * All gallery image URLs (including primary as first)
-     */
-    public function getAllImagesAttribute(): array
-    {
-        $images = [];
- 
-        if ($this->primary_image) {
-            $images[] = \Illuminate\Support\Facades\Storage::url($this->primary_image);
+    foreach ($this->gallery_images ?? [] as $img) {
+        if (!$img) continue;
+        $imgPath = is_array($img) ? ($img[0] ?? null) : $img;
+        if (!$imgPath) continue;
+        $imgUrl = url('storage/' . $imgPath);
+        if (!in_array($imgUrl, $images)) {
+            $images[] = $imgUrl;
         }
- 
-        foreach ($this->gallery_images ?? [] as $img) {
-            $url = \Illuminate\Support\Facades\Storage::url($img);
-            if (!in_array($url, $images)) {
-                $images[] = $url;
-            }
-        }
- 
-        return $images;
     }
+ 
+    return $images;
+}
     //     protected static function booted()
     // {
     //     static::saving(function ($item) {

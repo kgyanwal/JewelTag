@@ -49,6 +49,9 @@ class ManageSettings extends Page
         $rawCa    = $caJson ? json_decode($caJson, true) : ['GIA', 'IGI', 'AGS', 'HRD', 'EGL', 'GSI'];
         $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
 
+        $shopifyJson   = $settings['shopify_config'] ?? '{}';
+        $shopifyConfig = json_decode($shopifyJson, true);
+
         $this->form->fill([
             'tax_rate'                  => $settings['tax_rate'] ?? '7.63',
             'barcode_prefix'            => $settings['barcode_prefix'] ?? 'D',
@@ -71,18 +74,23 @@ class ManageSettings extends Page
             'monthly_sales_target'      => $settings['monthly_sales_target'] ?? '',
             'override_month'            => now()->format('Y-m'),
             'monthly_target_override'   => $settings['monthly_target_override_' . now()->format('Y-m')] ?? '',
+            
+            // Shopify Fields
+            'shopify_store_url'    => $shopifyConfig['store_url'] ?? '',
+            'shopify_access_token' => $shopifyConfig['access_token'] ?? '',
+            'shopify_api_version'  => $shopifyConfig['api_version'] ?? '2024-01',
+            'shopify_auto_sync'    => (bool) ($shopifyConfig['auto_sync'] ?? false),
         ]);
     }
 
-public function updatedDataOverrideMonth(): void
-{
-    // Only fires when the month dropdown changes — not when typing the amount
-    $month = $this->data['override_month'] ?? now()->format('Y-m');
-    $saved = DB::table('site_settings')
-        ->where('key', 'monthly_target_override_' . $month)
-        ->value('value');
-    $this->data['monthly_target_override'] = $saved ?? '';
-}
+    public function updatedDataOverrideMonth(): void
+    {
+        $month = $this->data['override_month'] ?? now()->format('Y-m');
+        $saved = DB::table('site_settings')
+            ->where('key', 'monthly_target_override_' . $month)
+            ->value('value');
+        $this->data['monthly_target_override'] = $saved ?? '';
+    }
 
     public static function shouldRegisterNavigation(): bool
     {
@@ -180,6 +188,91 @@ public function updatedDataOverrideMonth(): void
         Notification::make()->title('✅ SMS settings saved')->success()->send();
     }
 
+    public function saveShopify(): void
+    {
+        $state = $this->form->getState();
+        $config = [
+            'store_url'    => trim($state['shopify_store_url'] ?? ''),
+            'access_token' => trim($state['shopify_access_token'] ?? ''),
+            'api_version'  => trim($state['shopify_api_version'] ?? '2024-01'),
+            'auto_sync'    => (bool) ($state['shopify_auto_sync'] ?? false),
+        ];
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'shopify_config'],
+            ['value' => json_encode($config), 'updated_at' => now()]
+        );
+        Notification::make()->title('✅ Shopify settings saved')->success()->send();
+    }
+
+ public function testShopify(): void
+{
+    $state      = $this->form->getState();
+    $url        = trim($state['shopify_store_url'] ?? '');
+    $token      = trim($state['shopify_access_token'] ?? '');
+    $apiVersion = trim($state['shopify_api_version'] ?? '2024-01');
+
+    if (empty($url) || empty($token)) {
+        Notification::make()
+            ->title('Missing credentials')
+            ->body('Enter store URL and access token first.')
+            ->danger()
+            ->send();
+        return;
+    }
+
+    // Strip https:// if user accidentally included it
+    $url = str_replace(['https://', 'http://'], '', $url);
+    $url = rtrim($url, '/');
+
+    try {
+        $response = \Illuminate\Support\Facades\Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type'           => 'application/json',
+        ])->timeout(10)->get("https://{$url}/admin/api/{$apiVersion}/shop.json");
+
+        if ($response->successful()) {
+            $shop = $response->json('shop');
+            Notification::make()
+                ->title('✅ Connected Successfully!')
+                ->body("Shop: {$shop['name']} | Plan: {$shop['plan_name']} | Email: {$shop['email']}")
+                ->success()
+                ->send();
+        } elseif ($response->status() === 401) {
+            Notification::make()
+                ->title('❌ 401 — Unauthorized')
+                ->body('Token is invalid or expired. Go to Shopify Admin → Apps → your app → reinstall and copy the new token.')
+                ->danger()
+                ->persistent()
+                ->send();
+        } elseif ($response->status() === 403) {
+            Notification::make()
+                ->title('❌ 403 — Missing Scopes')
+                ->body('Token exists but lacks permissions. Add write_products and write_inventory scopes in your Shopify app, then reinstall.')
+                ->danger()
+                ->persistent()
+                ->send();
+        } elseif ($response->status() === 404) {
+            Notification::make()
+                ->title('❌ 404 — Store Not Found')
+                ->body("Cannot find store at: {$url} — check the URL is correct.")
+                ->danger()
+                ->send();
+        } else {
+            Notification::make()
+                ->title('Connection Failed — HTTP ' . $response->status())
+                ->body($response->body())
+                ->danger()
+                ->send();
+        }
+    } catch (\Exception $e) {
+        Notification::make()
+            ->title('Connection Error')
+            ->body($e->getMessage())
+            ->danger()
+            ->send();
+    }
+}
+
     public function form(Form $form): Form
     {
         return $form
@@ -249,7 +342,6 @@ public function updatedDataOverrideMonth(): void
                                     '))
                                     ->schema([
 
-                                        // Default target — full-width row with clear label
                                         \Filament\Forms\Components\Placeholder::make('default_target_label')
                                             ->label('')
                                             ->content(new \Illuminate\Support\HtmlString('
@@ -270,7 +362,6 @@ public function updatedDataOverrideMonth(): void
                                                 ->columnSpan(1),
                                         ]),
 
-                                        // Divider
                                         \Filament\Forms\Components\Placeholder::make('override_divider')
                                             ->label('')
                                             ->content(new \Illuminate\Support\HtmlString('
@@ -285,7 +376,6 @@ public function updatedDataOverrideMonth(): void
                                                 </div>
                                             ')),
 
-                                        // Override row — month picker + amount side by side
                                         Grid::make(3)->schema([
                                             \Filament\Forms\Components\Select::make('override_month')
                                                 ->label('Select Month to Override')
@@ -544,6 +634,55 @@ public function updatedDataOverrideMonth(): void
                                             ->action(fn() => $this->saveSms()),
                                     ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+
+                                Section::make('shopify_section')
+                                    ->key('shopify_section')
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#96bf48,#5a8e22);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(150,191,72,0.3);">🛍️</div>
+                                            <div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Shopify Integration</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Connect this store\'s inventory to your Shopify storefront. Each tenant has their own credentials.</div>
+                                            </div>
+                                        </div>
+                                    '))
+                                    ->schema([
+                                        Grid::make(2)->schema([
+                                            TextInput::make('shopify_store_url')
+                                                ->label('Shopify Store URL')
+                                                ->placeholder('your-store.myshopify.com')
+                                                ->helperText('Domain only — no https://'),
+                                            TextInput::make('shopify_access_token')
+                                                ->label('Admin API Access Token')
+                                                ->placeholder('shpat_xxxxxxxxxxxxxxxx')
+                                                ->password()
+                                                ->revealable()
+                                                ->helperText('Shopify Admin → Settings → Apps → Develop apps'),
+                                            TextInput::make('shopify_api_version')
+                                                ->label('API Version')
+                                                ->placeholder('2024-01')
+                                                ->default('2024-01'),
+                                            \Filament\Forms\Components\Toggle::make('shopify_auto_sync')
+                                                ->label('Auto-sync qty to 0 when item sells')
+                                                ->helperText('Updates Shopify inventory automatically on sale')
+                                                ->inline(false),
+                                        ]),
+                                    ])
+                                    ->footerActions([
+                                        \Filament\Forms\Components\Actions\Action::make('test_shopify')
+                                            ->label('Test Connection')
+                                            ->icon('heroicon-o-signal')
+                                            ->color('info')
+                                            ->outlined()
+                                            ->action(fn() => $this->testShopify()),
+                                        \Filament\Forms\Components\Actions\Action::make('save_shopify')
+                                            ->label('Save Shopify Settings')
+                                            ->icon('heroicon-o-check-circle')
+                                            ->color('success')
+                                            ->action(fn() => $this->saveShopify()),
+                                    ])
+                                    ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
                     ])
                     ->persistTabInQueryString()
@@ -606,6 +745,18 @@ public function updatedDataOverrideMonth(): void
 
         $flatCa = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
         DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flatCa), 'updated_at' => now()]);
+
+        // Save Shopify Config
+        $shopifyConfig = [
+            'store_url'    => trim($state['shopify_store_url'] ?? ''),
+            'access_token' => trim($state['shopify_access_token'] ?? ''),
+            'api_version'  => trim($state['shopify_api_version'] ?? '2024-01'),
+            'auto_sync'    => (bool) ($state['shopify_auto_sync'] ?? false),
+        ];
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'shopify_config'],
+            ['value' => json_encode($shopifyConfig), 'updated_at' => now()]
+        );
 
         Notification::make()->title('✅ All settings saved successfully')->success()->send();
     }

@@ -62,19 +62,16 @@ class FindStock extends Page implements HasForms, HasTable
         $this->form->fill();
     }
 
-    // 🚀 1. Override native table search (Top right search bar)
     public function updatedTableSearch(): void
     {
         $this->resetPage($this->getTablePaginationPageName());
     }
 
-    // 🚀 2. Override native column searches
     public function updatedTableColumnSearches(): void
     {
         $this->resetPage($this->getTablePaginationPageName());
     }
 
-    // 🚀 3. Override your custom form filters
     public function updated($property): void
     {
         if (str_starts_with($property, 'data.')) {
@@ -96,7 +93,6 @@ class FindStock extends Page implements HasForms, HasTable
                 ->color('danger')
                 ->action(function () {
                     $this->form->fill();
-                    // Cleanly deselect records and reset page without destroying table state completely
                     $this->deselectAllTableRecords();
                     $this->resetPage($this->getTablePaginationPageName());
                     Notification::make()->title('Filters Cleared')->success()->send();
@@ -159,7 +155,6 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->placeholder('G10274...')
                                                 ->live()->debounce(500),
 
-                                            // ── JOB NUMBER SEARCH ─────────────────────────────
                                             TextInput::make('job_number')
                                                 ->label('Job # / Deposit No.')
                                                 ->placeholder('9363...')
@@ -180,32 +175,28 @@ class FindStock extends Page implements HasForms, HasTable
                                                     'memo'     => 'On Memo',
                                                 ])->live(),
 
-                                            // 1. Department Fix
                                             Select::make('department')
                                                 ->options(fn() => collect($settings['departments'] ?? [])
-                                                    ->filter(fn($item) => !empty($item['name'])) // 🚀 Strip out nulls
+                                                    ->filter(fn($item) => !empty($item['name']))
                                                     ->pluck('name', 'name'))
                                                 ->searchable()->live(),
 
-                                            // 2. Sub-Department Fix
                                             Select::make('sub_department')
                                                 ->options(fn() => collect($settings['sub_departments'] ?? [])
-                                                    ->filter() // 🚀 Strip out nulls
+                                                    ->filter()
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
-                                            // 3. Category Fix
                                             Select::make('category')
                                                 ->options(fn() => collect($settings['categories'] ?? [])
-                                                    ->filter() // 🚀 Strip out nulls
+                                                    ->filter()
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
-                                            // 4. Metal Type Fix
                                             Select::make('metal_type')
                                                 ->label('Metal Karat')
                                                 ->options(fn() => collect($settings['metal_types'] ?? [])
-                                                    ->filter() // 🚀 Strip out nulls
+                                                    ->filter()
                                                     ->mapWithKeys(fn($i) => [$i => $i]))
                                                 ->searchable()->live(),
 
@@ -307,15 +298,10 @@ class FindStock extends Page implements HasForms, HasTable
                           ->from('sale_items')
                           ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
                           ->where('sales.invoice_number', 'like', "%{$v}%")
-                          // 🚀 FIX: Prevent finding ghost items that were already released/deleted
                           ->whereNull('sale_items.deleted_at'); 
                 })
             );
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Shared helpers for "Release from Laybuy"
-    // ─────────────────────────────────────────────────────────────────────────
 
     private function buildReleaseFromLaybuyForm(ProductItem $record): array
     {
@@ -330,7 +316,6 @@ class FindStock extends Page implements HasForms, HasTable
         $custName = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : '—';
 
         return [
-            // Warning banner — doubles as the confirmation message
             \Filament\Forms\Components\Placeholder::make('info_banner')
                 ->hiddenLabel()
                 ->content(new \Illuminate\Support\HtmlString("
@@ -446,21 +431,17 @@ class FindStock extends Page implements HasForms, HasTable
             $refundMethod = strtoupper(trim($data['refund_method'] ?? 'CASH'));
             $storeId      = auth()->user()->store_id ?? 1;
 
-            // ── 1. ALWAYS release the item back to in_stock immediately ─────────
             $record->update([
                 'status'          => 'in_stock',
                 'hold_reason'     => null,
                 'held_by_sale_id' => null,
             ]);
 
-            // ── 2. Find the sale item and laybuy ─────────────────────────────────
             $saleItem = \App\Models\SaleItem::where('product_item_id', $record->id)
                 ->with(['sale.laybuy'])
                 ->latest()
                 ->first();
 
-            // 🚀 FIX: If this was just a "manual hold" (no active sale record), exit safely here
-            // This prevents the system from crashing while still putting the item back in stock
             if (!$saleItem) {
                 return; 
             }
@@ -468,10 +449,8 @@ class FindStock extends Page implements HasForms, HasTable
             $sale   = $saleItem->sale;
             $laybuy = $sale?->laybuy;
 
-            // ── 3. Remove the sale item row ───────────────────────────
             $saleItem->delete();
 
-            // ── 4. Record a NEGATIVE payment to reverse the refund ───
             if ($refundAmount > 0 && $sale) {
                 $lastPayment = \App\Models\Payment::where('sale_id', $sale->id)
                     ->where('amount', '>', 0)
@@ -487,7 +466,6 @@ class FindStock extends Page implements HasForms, HasTable
                 ]);
             }
 
-            // ── 5. Recalculate sale totals ───────────────────────────
             if ($sale) {
                 $newSubtotal   = \App\Models\SaleItem::where('sale_id', $sale->id)->sum('sold_price');
                 $newFinalTotal = $newSubtotal;
@@ -503,7 +481,6 @@ class FindStock extends Page implements HasForms, HasTable
                 ]);
             }
 
-            // ── 6. Recalculate laybuy totals ─────────────────────────
             if ($laybuy) {
                 $itemPrice      = floatval($saleItem->sold_price ?? 0);
                 $newLaybuyTotal = max(0, floatval($laybuy->total_amount) - $itemPrice);
@@ -829,8 +806,6 @@ class FindStock extends Page implements HasForms, HasTable
                             ]),
                     ])),
 
-                // ── STANDALONE release_from_laybuy (outside the group) ────────
-                // 🚀 FIX: Will ALWAYS show as long as the item is manually or systemically "on_hold"
                 TableAction::make('release_from_laybuy')
                     ->label('Release from Hold/Laybuy')
                     ->icon('heroicon-o-arrow-uturn-left')
@@ -866,12 +841,10 @@ class FindStock extends Page implements HasForms, HasTable
                             Notification::make()->title('Item placed on hold')->warning()->send();
                         }),
 
-                    // ── GROUPED release_from_laybuy — MUST use a different name ──
                     TableAction::make('release_from_laybuy_group')
                         ->label('Release from Hold/Laybuy')
                         ->icon('heroicon-o-arrow-uturn-left')
                         ->color('warning')
-                        // 🚀 FIX: Will ALWAYS show as long as the item is manually or systemically "on_hold"
                         ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
                         ->mountUsing(fn(\Filament\Forms\ComponentContainer $form, ProductItem $record) =>
                             $this->mountReleaseFromLaybuy($form, $record))
@@ -880,6 +853,106 @@ class FindStock extends Page implements HasForms, HasTable
                         ->modalSubmitActionLabel('Yes, Release Item')
                         ->action(fn(ProductItem $record, array $data) =>
                             $this->executeReleaseFromLaybuy($record, $data)),
+
+                    // 🚀 SHOPIFY: INDIVIDUAL ITEM SYNC ──────────────────────────────────────────
+                    TableAction::make('push_to_shopify')
+                        ->label('Push to Shopify')
+                        ->icon('heroicon-o-arrow-up-tray')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Push to Shopify Store?')
+                        ->modalDescription('This will create or update this item on your Shopify storefront.')
+                        ->action(function (ProductItem $record) {
+                            $service = app(\App\Services\ShopifyService::class);
+                            
+                            $images = [];
+$primaryImage = is_array($record->primary_image)
+    ? (array_values($record->primary_image)[0] ?? null)
+    : $record->primary_image;
+
+if ($primaryImage) {
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
+    
+    if (file_exists($fullPath)) {
+        if (app()->environment('production')) {
+            // Production — Shopify fetches via public URL
+            $images[] = ['src' => url('storage/' . $primaryImage)];
+        } else {
+            // Local dev — send base64 directly so Shopify can receive it
+            $images[] = [
+                'attachment' => base64_encode(file_get_contents($fullPath)),
+                'filename'   => basename($primaryImage),
+            ];
+        }
+    }
+}
+                            
+                            $payload = [
+                                'title'        => $record->custom_description ?? $record->barcode,
+                                'body_html'    => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
+                                'vendor'       => $record->supplier?->company_name ?? 'JewelTag',
+                                'product_type' => $record->category ?? $record->department ?? 'Jewelry',
+                              'tags' => implode(',', array_filter([
+    'jeweltag-instore',
+    'in-store-stock',
+    $record->metal_type,
+    $record->category,
+    $record->sub_department,
+    $record->barcode,
+])),
+                                'images'    => $images,
+                                'variants'  => [[
+                                    'price'                => $record->web_price ?? $record->retail_price,
+                                    'sku'                  => $record->barcode,
+                                    'inventory_management' => 'shopify',
+                                    'inventory_quantity'   => $record->qty ?? 1,
+                                    'weight'               => floatval($record->gross_weight ?? 0),
+                                    'weight_unit'          => 'g',
+                                ]],
+                            ];
+                            
+                            try {
+                                if ($record->shopify_product_id) {
+                                    $result = $service->updateProduct($record->shopify_product_id, $payload);
+                                    $bodyText = "Item {$record->barcode} updated successfully.";
+                                } else {
+                                    $result = $service->createProduct($payload);
+                                    $record->update([
+                                        'shopify_product_id'        => $result['id'],
+                                        'shopify_inventory_item_id' => $result['variants'][0]['inventory_item_id'] ?? null,
+                                    ]);
+                                    $bodyText = "Item {$record->barcode} is now live on your store.";
+                                }
+
+                                Notification::make()
+                                    ->title('Pushed to Shopify')
+                                    ->body($bodyText)
+                                    ->success()
+                                    ->send();
+                            } catch (\Exception $e) {
+                                Notification::make()
+                                    ->title('Shopify Sync Failed')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send();
+                            }
+                        }),
+
+                    TableAction::make('remove_from_shopify')
+                        ->label('Remove from Shopify')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->color('danger')
+                        ->visible(fn(ProductItem $record) => !empty($record->shopify_product_id))
+                        ->requiresConfirmation()
+                        ->action(function (ProductItem $record) {
+                            try {
+                                app(\App\Services\ShopifyService::class)->deleteProduct($record->shopify_product_id);
+                                $record->update(['shopify_product_id' => null, 'shopify_inventory_item_id' => null]);
+                                Notification::make()->title('Removed from Shopify')->success()->send();
+                            } catch (\Exception $e) {
+                                Notification::make()->title('Error')->body($e->getMessage())->danger()->send();
+                            }
+                        }),
                 ]),
             ])
             ->bulkActions([
@@ -1006,6 +1079,77 @@ class FindStock extends Page implements HasForms, HasTable
                         }
 
                         $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
+                        $action->deselectRecordsAfterCompletion();
+                    }),
+                    
+                // 🚀 SHOPIFY: BULK SYNC ACTION ──────────────────────────────────────────────
+                BulkAction::make('bulk_push_shopify')
+                    ->label('Push to Shopify')
+                    ->icon('heroicon-o-arrow-up-tray')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Bulk Push to Shopify')
+                    ->modalDescription('This will push all selected in-stock items to your Shopify store. This may take a moment.')
+                    ->action(function (EloquentCollection $records, BulkAction $action) {
+                        $service = app(\App\Services\ShopifyService::class);
+                        $pushed  = 0;
+                        $failed  = 0;
+                        $lastError = '';
+
+                        foreach ($records->where('status', 'in_stock') as $record) {
+                            try {
+                                $images = [];
+                                if ($record->primary_image) {
+                                    $images[] = ['src' => \Illuminate\Support\Facades\Storage::disk('public')->url($record->primary_image)];
+                                }
+
+                                $payload = [
+                                    'title'       => $record->custom_description ?? $record->barcode,
+                                    'body_html'   => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
+                                    'vendor'      => $record->supplier?->company_name ?? 'JewelTag',
+                                    'product_type'=> $record->category ?? $record->department ?? 'Jewelry',
+                                    'tags'        => implode(',', array_filter([
+                                        $record->metal_type,
+                                        $record->category,
+                                        $record->sub_department,
+                                        $record->barcode,
+                                    ])),
+                                    'images'      => $images,
+                                    'variants'    => [[
+                                        'price' => $record->web_price ?? $record->retail_price,
+                                        'sku'   => $record->barcode,
+                                        'inventory_management' => 'shopify',
+                                        'inventory_quantity'   => $record->qty ?? 1,
+                                    ]],
+                                ];
+
+                                if ($record->shopify_product_id) {
+                                    $service->updateProduct($record->shopify_product_id, $payload);
+                                } else {
+                                    $result = $service->createProduct($payload);
+                                    $record->update([
+                                        'shopify_product_id'        => $result['id'],
+                                        'shopify_inventory_item_id' => $result['variants'][0]['inventory_item_id'] ?? null,
+                                    ]);
+                                }
+                                $pushed++;
+                                
+                                // Prevent hitting Shopify 2 requests/sec rate limit on large batches
+                                usleep(500000); 
+                                
+                            } catch (\Exception $e) {
+    $failed++;
+    \Illuminate\Support\Facades\Log::error('Shopify bulk push failed for ' . $record->barcode . ': ' . $e->getMessage());
+    $lastError = $e->getMessage();
+}
+                        }
+
+                       Notification::make()
+    ->title($failed > 0 ? "Shopify Sync — {$failed} Failed" : "Shopify Sync Complete")
+    ->body("{$pushed} pushed, {$failed} failed." . ($lastError ? " Last error: {$lastError}" : ''))
+    ->color($failed > 0 ? 'danger' : 'success')
+    ->persistent()
+    ->send();
                         $action->deselectRecordsAfterCompletion();
                     }),
             ])

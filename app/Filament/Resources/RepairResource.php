@@ -408,6 +408,7 @@ class RepairResource extends Resource
     {
         return $table
             ->striped()
+            ->modifyQueryUsing(fn($query) => $query->with(['customer', 'sale']))
             ->columns([
 
                 Tables\Columns\TextColumn::make('created_at')
@@ -542,6 +543,25 @@ class RepairResource extends Resource
                     ->html()
                     ->grow(false),
 
+
+                    Tables\Columns\TextColumn::make('sale.invoice_number')
+        ->label('SALE')
+        ->placeholder('—')
+        ->formatStateUsing(fn($state) => $state
+            ? new \Illuminate\Support\HtmlString(
+                "<span style='background:#dcfce7;color:#166534;padding:2px 8px;
+                border-radius:4px;font-size:11px;font-weight:700;'>#{$state}</span>"
+            )
+            : '—'
+        )
+        ->url(fn($record) => $record->sale_id
+            ? \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id])
+            : null
+        )
+        ->openUrlInNewTab()
+        ->grow(false),
+
+        
                 Tables\Columns\TextColumn::make('repair_notes')
                     ->label('NOTES')
                     ->limit(25)

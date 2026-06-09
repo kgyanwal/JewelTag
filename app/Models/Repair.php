@@ -23,7 +23,16 @@ class Repair extends Model
     protected static function booted()
     {
         static::creating(function ($repair) {
-            $repair->repair_no = 'RPR-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(2)));
+           $datePrefix = now()->format('ymd');
+
+// Keep incrementing until we find a unique number
+$sequence = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
+
+while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
+    $sequence++;
+}
+
+$repair->repair_no = $datePrefix . '-' . $sequence;
             $repair->store_id  = auth()->user()->store_id ?? 1;
 
             // ✅ FIX: Only set staff_id if it hasn't already been set by

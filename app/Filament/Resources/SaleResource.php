@@ -1777,8 +1777,8 @@ class SaleResource extends Resource
   ->hint(function (Get $get, string $operation) {
     if ($operation === 'create') return null;
     $count = count($get('split_payments') ?? []);
-    if ($count <= 2) return null;
-    $hidden = $count - 2;
+    if ($count <= 4) return null;  // only collapse when more than 4 rows
+    $hidden = $count - 4;
         return new HtmlString("
             <style>
                 #split-payments-body.is-collapsed { max-height: 220px; overflow: hidden; }
@@ -1803,7 +1803,7 @@ class SaleResource extends Resource
    ->extraAttributes(function (Get $get, string $operation) {
     if ($operation === 'create') return [];
     $count = count($get('split_payments') ?? []);
-    if ($count <= 2) return [];
+    if ($count <= 4) return [];
     return ['id' => 'split-payments-body', 'class' => 'is-collapsed'];
 }),
   \Filament\Forms\Components\Actions::make([

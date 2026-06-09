@@ -580,12 +580,11 @@ class ProductItemResource extends Resource
         Grid::make(2)->schema([
  
             // PRIMARY IMAGE — shown everywhere
-            FileUpload::make('primary_image')
-                ->label('Primary Photo')
-                ->image()
-                ->imageEditor()           // built-in crop/rotate tool
-                ->imageEditorAspectRatios(['1:1', '4:3', '16:9'])
-                ->directory('product-items/primary')
+          FileUpload::make('primary_image')
+    ->disk('public')
+    ->directory('product-items/primary')
+    ->visibility('public')
+    ->storeFileNamesIn('primary_image_filename')
                 ->visibility('public')
                 ->maxSize(5120)           // 5MB
                 ->nullable()
@@ -615,44 +614,62 @@ class ProductItemResource extends Resource
                 ->color('warning')
                 ->outlined()
                 ->visible(fn(\Filament\Forms\Get $get) => !empty($get('primary_image')))
-                ->action(function (\Filament\Forms\Get $get, \Filament\Forms\Set $set) {
- 
-                    $imagePath = $get('primary_image');
-                    if (!$imagePath) return;
- 
-                    try {
-                        $fullPath  = \Illuminate\Support\Facades\Storage::path($imagePath);
-                        $imageData = base64_encode(file_get_contents($fullPath));
-                        $mimeType  = mime_content_type($fullPath);
- 
-                        $response = \Illuminate\Support\Facades\Http::withHeaders([
-                            'x-api-key'         => config('services.anthropic.key'),
-                            'anthropic-version' => '2023-06-01',
-                            'content-type'      => 'application/json',
-                        ])->post('https://api.anthropic.com/v1/messages', [
-                            'model'      => 'claude-haiku-4-5-20251001',
-                            'max_tokens' => 200,
-                            'messages'   => [[
-                                'role'    => 'user',
-                                'content' => [
-                                    [
-                                        'type'   => 'image',
-                                        'source' => [
-                                            'type'       => 'base64',
-                                            'media_type' => $mimeType,
-                                            'data'       => $imageData,
-                                        ],
-                                    ],
-                                    [
-                                        'type' => 'text',
-                                        'text' => 'You are a jewelry store assistant. Look at this jewelry photo and write a short, professional product description in 1-2 sentences. Focus on the visible metal type, style, and key features. Be concise and factual. Output only the description, no preamble.',
-                                    ],
-                                ],
-                            ]],
-                        ]);
- 
-                        $body = $response->json();
-                        $desc = $body['content'][0]['text'] ?? null;
+               ->action(function (\Filament\Forms\Get $get, \Filament\Forms\Set $set) {
+
+    $imagePath = $get('primary_image');
+    if (!$imagePath) return;
+
+    // Handle FileUpload returning array or string
+    if (is_array($imagePath)) {
+        $imagePath = array_values($imagePath)[0] ?? null;
+    }
+    if (!$imagePath || !is_string($imagePath)) return;
+
+    try {
+    // Handle FileUpload returning array or string
+    if (is_array($imagePath)) {
+        $imagePath = array_values($imagePath)[0] ?? null;
+    }
+    if (!$imagePath || !is_string($imagePath)) return;
+
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($imagePath);
+
+    if (!file_exists($fullPath)) {
+        \Filament\Notifications\Notification::make()
+            ->title('Image Not Found')
+            ->body('The uploaded image could not be found. Try re-uploading.')
+            ->danger()->send();
+        return;
+    }
+
+    $imageData = base64_encode(file_get_contents($fullPath));
+    $mimeType  = mime_content_type($fullPath);
+    $apiKey    = env('GEMINI_API_KEY');
+
+    // Use Gemini Vision (same API key as CustomOrderResource)
+    $response = \Illuminate\Support\Facades\Http::withHeaders([
+        'Content-Type' => 'application/json',
+    ])->timeout(30)->post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$apiKey}",
+        [
+            'contents' => [[
+                'parts' => [
+                    [
+                        'inline_data' => [
+                            'mime_type' => $mimeType,
+                            'data'      => $imageData,
+                        ],
+                    ],
+                    [
+                        'text' => 'You are a jewelry store assistant. Look at this jewelry photo and write a short, professional product description in 1-2 sentences. Focus on the visible metal type, style, and key features. Be concise and factual. Output only the description, no preamble.',
+                    ],
+                ],
+            ]],
+        ]
+    );
+
+    $body = $response->json();
+    $desc = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
  
                         if ($desc) {
                             $existing = $get('custom_description');
