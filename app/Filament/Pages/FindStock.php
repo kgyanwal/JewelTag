@@ -295,10 +295,10 @@ class FindStock extends Page implements HasForms, HasTable
                 fn($q, $v) =>
                 $q->whereIn('id', function (\Illuminate\Database\Query\Builder $query) use ($v) {
                     $query->select('product_item_id')
-                          ->from('sale_items')
-                          ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-                          ->where('sales.invoice_number', 'like', "%{$v}%")
-                          ->whereNull('sale_items.deleted_at'); 
+                        ->from('sale_items')
+                        ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+                        ->where('sales.invoice_number', 'like', "%{$v}%")
+                        ->whereNull('sale_items.deleted_at');
                 })
             );
     }
@@ -443,7 +443,7 @@ class FindStock extends Page implements HasForms, HasTable
                 ->first();
 
             if (!$saleItem) {
-                return; 
+                return;
             }
 
             $sale   = $saleItem->sale;
@@ -511,15 +511,15 @@ class FindStock extends Page implements HasForms, HasTable
             ->query(ProductItem::query())
             ->modifyQueryUsing(fn(Builder $query) => $this->applyQueryFilters($query))
             ->columns([
-                 TextColumn::make('photo')
-        ->label('')
-        ->getStateUsing(function (ProductItem $record) {
-            $url      = $record->primary_image_url;
-            $hasPhoto = $record->has_image;
-            $badge    = !$hasPhoto
-                ? "<div style='position:absolute;bottom:2px;right:2px;background:#ef444480;border-radius:3px;padding:1px 3px;font-size:7px;font-weight:800;color:white;line-height:1;'>NO PHOTO</div>"
-                : '';
-            return new HtmlString("
+                TextColumn::make('photo')
+                    ->label('')
+                    ->getStateUsing(function (ProductItem $record) {
+                        $url      = $record->primary_image_url;
+                        $hasPhoto = $record->has_image;
+                        $badge    = !$hasPhoto
+                            ? "<div style='position:absolute;bottom:2px;right:2px;background:#ef444480;border-radius:3px;padding:1px 3px;font-size:7px;font-weight:800;color:white;line-height:1;'>NO PHOTO</div>"
+                            : '';
+                        return new HtmlString("
                 <div style='position:relative;width:52px;height:52px;flex-shrink:0;'>
                     <img src='{$url}'
                          style='width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid #e2e8f0;background:#f8fafc;'
@@ -527,9 +527,9 @@ class FindStock extends Page implements HasForms, HasTable
                     {$badge}
                 </div>
             ");
-        })
-        ->html()
-        ->grow(false),
+                    })
+                    ->html()
+                    ->grow(false),
                 TextColumn::make('barcode')
                     ->label('STOCK #')
                     ->sortable()
@@ -665,13 +665,13 @@ class FindStock extends Page implements HasForms, HasTable
                             ]),
                             TextEntry::make('custom_description')->label('Display Description'),
                         ]),
-\Filament\Infolists\Components\TextEntry::make('photos')
-    ->label('Item Photos')
-    ->state(fn() => 'loaded')
-    ->formatStateUsing(function () use ($record) {
-        $images = $record->all_images;
-        if (empty($images)) {
-            return new HtmlString("
+                        \Filament\Infolists\Components\TextEntry::make('photos')
+                            ->label('Item Photos')
+                            ->state(fn() => 'loaded')
+                            ->formatStateUsing(function () use ($record) {
+                                $images = $record->all_images;
+                                if (empty($images)) {
+                                    return new HtmlString("
                 <div style='display:flex;align-items:center;gap:8px;padding:10px;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:8px;'>
                     <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='#94a3b8' style='width:18px;height:18px;'>
                         <path stroke-linecap='round' stroke-linejoin='round' d='M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z' />
@@ -680,9 +680,9 @@ class FindStock extends Page implements HasForms, HasTable
                     <span style='font-size:12px;color:#94a3b8;font-style:italic;'>No photos on file for this item.</span>
                 </div>
             ");
-        }
+                                }
 
-        $imgs = collect($images)->map(fn($url) => "
+                                $imgs = collect($images)->map(fn($url) => "
             <div style='position:relative;cursor:pointer;' onclick=\"window.open('{$url}','_blank')\">
                 <img src='{$url}'
                      style='width:90px;height:90px;border-radius:10px;object-fit:cover;border:2px solid #e2e8f0;transition:transform .15s;'
@@ -692,15 +692,15 @@ class FindStock extends Page implements HasForms, HasTable
             </div>
         ")->implode('');
 
-        return new HtmlString("
+                                return new HtmlString("
             <div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;'>
                 {$imgs}
             </div>
             <p style='font-size:10px;color:#94a3b8;margin-top:6px;'>Click any photo to open full size.</p>
         ");
-    })
-    ->html()
-    ->columnSpanFull(),
+                            })
+                            ->html()
+                            ->columnSpanFull(),
                         InfoSection::make('Diamond & Gemstone Specifications')->schema([
                             InfoGrid::make(4)->schema([
                                 TextEntry::make('metal_type')->label('Metal Karat'),
@@ -812,12 +812,12 @@ class FindStock extends Page implements HasForms, HasTable
                     ->color('warning')
                     ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
                     ->mountUsing(fn(\Filament\Forms\ComponentContainer $form, ProductItem $record) =>
-                        $this->mountReleaseFromLaybuy($form, $record))
+                    $this->mountReleaseFromLaybuy($form, $record))
                     ->form(fn(ProductItem $record) => $this->buildReleaseFromLaybuyForm($record))
                     ->modalHeading('Release Item from Laybuy')
                     ->modalSubmitActionLabel('Yes, Release Item')
                     ->action(fn(ProductItem $record, array $data) =>
-                        $this->executeReleaseFromLaybuy($record, $data)),
+                    $this->executeReleaseFromLaybuy($record, $data)),
 
                 TableActionGroup::make([
 
@@ -847,12 +847,12 @@ class FindStock extends Page implements HasForms, HasTable
                         ->color('warning')
                         ->hidden(fn(ProductItem $record) => $record->status !== 'on_hold')
                         ->mountUsing(fn(\Filament\Forms\ComponentContainer $form, ProductItem $record) =>
-                            $this->mountReleaseFromLaybuy($form, $record))
+                        $this->mountReleaseFromLaybuy($form, $record))
                         ->form(fn(ProductItem $record) => $this->buildReleaseFromLaybuyForm($record))
                         ->modalHeading('Release Item from Laybuy')
                         ->modalSubmitActionLabel('Yes, Release Item')
                         ->action(fn(ProductItem $record, array $data) =>
-                            $this->executeReleaseFromLaybuy($record, $data)),
+                        $this->executeReleaseFromLaybuy($record, $data)),
 
                     // 🚀 SHOPIFY: INDIVIDUAL ITEM SYNC ──────────────────────────────────────────
                     TableAction::make('push_to_shopify')
@@ -864,37 +864,35 @@ class FindStock extends Page implements HasForms, HasTable
                         ->modalDescription('This will create or update this item on your Shopify storefront.')
                         ->action(function (ProductItem $record) {
                             $service = app(\App\Services\ShopifyService::class);
-                            
-                            $images = [];
-$primaryImage = is_array($record->primary_image)
-    ? (array_values($record->primary_image)[0] ?? null)
-    : $record->primary_image;
 
-if ($primaryImage) {
-    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
-    if (file_exists($fullPath)) {
-        // Always use base64 — works on localhost AND production
-        // Avoids Shopify URL validation issues entirely
-        $images[] = [
-            'attachment' => base64_encode(file_get_contents($fullPath)),
-            'filename'   => basename($primaryImage),
-        ];
-    }
-}
-                            
+                            $images = [];
+                            $primaryImage = is_array($record->primary_image)
+                                ? (array_values($record->primary_image)[0] ?? null)
+                                : $record->primary_image;
+
+                            if ($primaryImage && is_string($primaryImage)) {
+                                $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
+                                if (file_exists($fullPath)) {
+                                    $images[] = [
+                                        'attachment' => base64_encode(file_get_contents($fullPath)),
+                                        'filename'   => basename($primaryImage),
+                                    ];
+                                }
+                            }
+
                             $payload = [
                                 'title'        => $record->custom_description ?? $record->barcode,
                                 'body_html'    => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
                                 'vendor'       => $record->supplier?->company_name ?? 'JewelTag',
                                 'product_type' => $record->category ?? $record->department ?? 'Jewelry',
-                              'tags' => implode(',', array_filter([
-    'jeweltag-instore',
-    'in-store-stock',
-    $record->metal_type,
-    $record->category,
-    $record->sub_department,
-    $record->barcode,
-])),
+                                'tags' => implode(',', array_filter([
+                                    'jeweltag-instore',
+                                    'in-store-stock',
+                                    $record->metal_type,
+                                    $record->category,
+                                    $record->sub_department,
+                                    $record->barcode,
+                                ])),
                                 'images'    => $images,
                                 'variants'  => [[
                                     'price'                => $record->web_price ?? $record->retail_price,
@@ -905,7 +903,7 @@ if ($primaryImage) {
                                     'weight_unit'          => 'g',
                                 ]],
                             ];
-                            
+
                             try {
                                 if ($record->shopify_product_id) {
                                     $result = $service->updateProduct($record->shopify_product_id, $payload);
@@ -1076,7 +1074,7 @@ if ($primaryImage) {
                         $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
                         $action->deselectRecordsAfterCompletion();
                     }),
-                    
+
                 // 🚀 SHOPIFY: BULK SYNC ACTION ──────────────────────────────────────────────
                 BulkAction::make('bulk_push_shopify')
                     ->label('Push to Shopify')
@@ -1102,7 +1100,7 @@ if ($primaryImage) {
                                     'title'       => $record->custom_description ?? $record->barcode,
                                     'body_html'   => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
                                     'vendor'      => $record->supplier?->company_name ?? 'JewelTag',
-                                    'product_type'=> $record->category ?? $record->department ?? 'Jewelry',
+                                    'product_type' => $record->category ?? $record->department ?? 'Jewelry',
                                     'tags'        => implode(',', array_filter([
                                         $record->metal_type,
                                         $record->category,
@@ -1128,23 +1126,22 @@ if ($primaryImage) {
                                     ]);
                                 }
                                 $pushed++;
-                                
+
                                 // Prevent hitting Shopify 2 requests/sec rate limit on large batches
-                                usleep(500000); 
-                                
+                                usleep(500000);
                             } catch (\Exception $e) {
-    $failed++;
-    \Illuminate\Support\Facades\Log::error('Shopify bulk push failed for ' . $record->barcode . ': ' . $e->getMessage());
-    $lastError = $e->getMessage();
-}
+                                $failed++;
+                                \Illuminate\Support\Facades\Log::error('Shopify bulk push failed for ' . $record->barcode . ': ' . $e->getMessage());
+                                $lastError = $e->getMessage();
+                            }
                         }
 
-                       Notification::make()
-    ->title($failed > 0 ? "Shopify Sync — {$failed} Failed" : "Shopify Sync Complete")
-    ->body("{$pushed} pushed, {$failed} failed." . ($lastError ? " Last error: {$lastError}" : ''))
-    ->color($failed > 0 ? 'danger' : 'success')
-    ->persistent()
-    ->send();
+                        Notification::make()
+                            ->title($failed > 0 ? "Shopify Sync — {$failed} Failed" : "Shopify Sync Complete")
+                            ->body("{$pushed} pushed, {$failed} failed." . ($lastError ? " Last error: {$lastError}" : ''))
+                            ->color($failed > 0 ? 'danger' : 'success')
+                            ->persistent()
+                            ->send();
                         $action->deselectRecordsAfterCompletion();
                     }),
             ])
