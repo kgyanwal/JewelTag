@@ -281,9 +281,11 @@ class CrmExportController extends Controller
                 'sales_person_list' => $staffString,
 
                 // ── Prefer completed_at for the "when was this sale done" date ─
-                'completed_at' => $sale->completed_at?->toIso8601String(),
-                'created_at'   => $sale->created_at?->toIso8601String(),
-                'updated_at'   => $sale->updated_at?->toIso8601String(),
+                // Use safeDate() because some columns may not be cast to Carbon
+                // on this JewelTag install — they arrive as plain strings.
+                'completed_at' => $this->safeDate($sale->completed_at),
+                'created_at'   => $this->safeDate($sale->created_at),
+                'updated_at'   => $this->safeDate($sale->updated_at),
 
                 // ── Customer nested object ─────────────────────────────────────
                 'customer' => $sale->customer ? $this->serializeCustomerInline($sale->customer) : null,
@@ -340,7 +342,7 @@ class CrmExportController extends Controller
                     'id'      => $p->id,
                     'amount'  => (float) $p->amount,
                     'method'  => strtoupper(trim($p->method ?? '')),
-                    'paid_at' => $p->paid_at?->toIso8601String(),
+                    'paid_at' => $this->safeDate($p->paid_at),
                 ])->values()->all(),
             ];
         })->values()->all();
@@ -380,8 +382,8 @@ class CrmExportController extends Controller
             'city'        => $c->city     ?? $c->suburb_city ?? null,
             'postcode'    => $c->postcode ?? null,
             'dob'         => $c->dob      ?? $c->birthdate  ?? null,
-            'created_at'  => $c->created_at?->toIso8601String(),
-            'updated_at'  => $c->updated_at?->toIso8601String(),
+            'created_at'  => $this->safeDate($c->created_at),
+            'updated_at'  => $this->safeDate($c->updated_at),
         ];
     }
 
@@ -411,15 +413,15 @@ class CrmExportController extends Controller
                 'amount_paid'      => (float) ($order->amount_paid ?? 0),
                 'balance_due'      => (float) ($order->balance_due ?? 0),
                 'sales_person_list' => $staffString,
-                'completed_at'     => $order->completed_at?->toIso8601String() ?? null,
-                'created_at'       => $order->created_at?->toIso8601String(),
-                'updated_at'       => $order->updated_at?->toIso8601String(),
+                'completed_at'     => $this->safeDate($order->completed_at),
+                'created_at'       => $this->safeDate($order->created_at),
+                'updated_at'       => $this->safeDate($order->updated_at),
                 'customer'         => $order->customer ? $this->serializeCustomerInline($order->customer) : null,
                 'payments'         => $order->payments->map(fn($p) => [
                     'id'      => $p->id,
                     'amount'  => (float) $p->amount,
                     'method'  => strtoupper(trim($p->method ?? '')),
-                    'paid_at' => $p->paid_at?->toIso8601String(),
+                    'paid_at' => $this->safeDate($p->paid_at),
                 ])->values()->all(),
             ];
         })->values()->all();
@@ -450,11 +452,29 @@ class CrmExportController extends Controller
                 'amount_paid'      => (float) ($repair->amount_paid ?? 0),
                 'balance_due'      => (float) ($repair->balance_due ?? 0),
                 'sales_person_list' => $staffString,
-                'completed_at'     => $repair->completed_at?->toIso8601String() ?? null,
-                'created_at'       => $repair->created_at?->toIso8601String(),
-                'updated_at'       => $repair->updated_at?->toIso8601String(),
+                'completed_at'     => $this->safeDate($repair->completed_at),
+                'created_at'       => $this->safeDate($repair->created_at),
+                'updated_at'       => $this->safeDate($repair->updated_at),
                 'customer'         => $repair->customer ? $this->serializeCustomerInline($repair->customer) : null,
             ];
         })->values()->all();
+    }
+
+    /**
+     * Safely convert any date value to an ISO-8601 string.
+     * Handles Carbon objects, plain strings, and null.
+     * Necessary because not all JewelTag model $dates/$casts are consistent —
+     * some timestamps arrive as raw strings rather than Carbon instances.
+     */
+    private function safeDate($value): ?string
+    {
+        if ($value === null) return null;
+        if ($value instanceof \Carbon\Carbon) return $value->toIso8601String();
+        if ($value instanceof \DateTimeInterface) return \Carbon\Carbon::instance($value)->toIso8601String();
+        try {
+            return \Carbon\Carbon::parse((string) $value)->toIso8601String();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 }
