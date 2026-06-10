@@ -255,11 +255,15 @@ class CrmExportController extends Controller
     private function serializeSales($sales): array
     {
         return $sales->map(function (Sale $sale) {
-            // ── sales_person_list: normalize to a clean comma-separated string ──
-            // The DB column is VARCHAR; Eloquent returns it as a string.
-            // Normalize spacing so "Alice,Bob" → "Alice, Bob"
-            $rawStaff    = $sale->sales_person_list ?? '';
-            $staffString = implode(', ', array_filter(array_map('trim', explode(',', $rawStaff))));
+            // ── sales_person_list: handle BOTH array (JSON cast) and plain string ──
+            // Some JewelTag installs cast this column as JSON array, others store
+            // it as a plain VARCHAR string. We handle both safely here.
+            $rawStaff = $sale->sales_person_list ?? '';
+            if (is_array($rawStaff)) {
+                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
+            } else {
+                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
+            }
 
             return [
                 'id'               => $sale->id,
@@ -388,8 +392,12 @@ class CrmExportController extends Controller
     private function serializeCustomOrders($orders): array
     {
         return $orders->map(function (CustomOrder $order) {
-            $rawStaff    = $order->sales_person_list ?? $order->staff_name ?? '';
-            $staffString = implode(', ', array_filter(array_map('trim', explode(',', $rawStaff))));
+            $rawStaff = $order->sales_person_list ?? $order->staff_name ?? '';
+            if (is_array($rawStaff)) {
+                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
+            } else {
+                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
+            }
 
             return [
                 'id'               => $order->id,
@@ -424,8 +432,12 @@ class CrmExportController extends Controller
     private function serializeRepairs($repairs): array
     {
         return $repairs->map(function (Repair $repair) {
-            $rawStaff    = $repair->sales_person_list ?? $repair->staff_name ?? '';
-            $staffString = implode(', ', array_filter(array_map('trim', explode(',', $rawStaff))));
+            $rawStaff = $repair->sales_person_list ?? $repair->staff_name ?? '';
+            if (is_array($rawStaff)) {
+                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
+            } else {
+                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
+            }
 
             return [
                 'id'               => $repair->id,
