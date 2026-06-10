@@ -811,6 +811,21 @@ class SaleResource extends Resource
                                     Repeater::make('special_jobs')
                                         ->label('')
                                         ->schema([
+                                                Select::make('applicable_item_indexes')
+            ->label('Apply this job to which items?')
+            ->multiple()
+            ->options(function (Get $get) {
+                $items = $get('../../items') ?? [];
+                $options = [];
+                foreach (array_values($items) as $i => $item) {
+                    $desc = $item['custom_description'] ?? $item['stock_no_display'] ?? 'Item ' . ($i + 1);
+                    $options[$i] = ($i + 1) . '. ' . \Illuminate\Support\Str::limit($desc, 50);
+                }
+                return $options;
+            })
+            ->placeholder('Select items this job applies to...')
+            ->columnSpanFull()
+            ->live(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')

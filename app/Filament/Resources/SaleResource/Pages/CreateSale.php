@@ -451,41 +451,62 @@ protected function mutateFormDataBeforeCreate(array $data): array
       
 if (!empty($specialJobs) && is_array($specialJobs)) {
 
-    // Build item description from the sale items
-    $itemDescriptions = $sale->items->map(function ($item) {
-        if ($item->productItem) {
-            return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
-        }
-        return $item->custom_description ?? 'Item';
-    })->filter()->implode(', ');
+    $saleItemsArray = $sale->items->values();
 
-    // One repair ticket per special job
     foreach ($specialJobs as $job) {
         if (empty($job['job_type'])) continue;
 
-        $repairNo = 'REP-' . strtoupper(substr($job['job_type'], 0, 3)) . '-' . date('ymd') . '-' . rand(100, 999);
+        // ── Get selected item indexes (or default to first item) ──
+        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
+        if (empty($selectedIndexes)) {
+            $selectedIndexes = [0];
+        }
+
+        // ── Build description from only the selected items ────────
+        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
+            return $saleItemsArray->get((int)$idx);
+        })->filter();
+
+        $itemDescription = $selectedItems->map(function ($item) {
+            if ($item->productItem) {
+                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+            }
+            return $item->custom_description ?? 'Item';
+        })->filter()->implode(', ');
+
+        if (empty($itemDescription)) {
+            $itemDescription = 'Item from Sale #' . $sale->invoice_number;
+        }
+
+        // ── Generate repair number ────────────────────────────────
+        $datePrefix = now()->format('ymd');
+        $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
+        while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
+            $sequence++;
+        }
+        $repairNo = $datePrefix . '-' . $sequence;
 
         \App\Models\Repair::create([
-            'sale_id'          => $sale->id,
-            'repair_no'        => $repairNo,
-            'customer_id'      => $sale->customer_id,
-            'store_id'         => $sale->store_id,
-            'staff_id'         => auth()->id(),
-            'sales_person_list'=> is_array($sale->sales_person_list)
-                                    ? $sale->sales_person_list
-                                    : [$sale->sales_person_list],
-            'status'           => 'received',
-            'item_description' => $itemDescriptions ?: 'Item from Sale #' . $sale->invoice_number,
-            'reported_issue'   => $job['job_type']
-                                    . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
-                                    . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
-                                    . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
-            'repair_notes'     => $job['job_instructions'] ?? null,
+            'sale_id'              => $sale->id,
+            'repair_no'            => $repairNo,
+            'customer_id'          => $sale->customer_id,
+            'store_id'             => $sale->store_id,
+            'staff_id'             => auth()->id(),
+            'sales_person_list'    => is_array($sale->sales_person_list)
+                                        ? $sale->sales_person_list
+                                        : [$sale->sales_person_list],
+            'status'               => 'received',
+            'item_description'     => $itemDescription,
+            'reported_issue'       => $job['job_type']
+                                        . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
+                                        . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
+                                        . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
+            'repair_notes'         => $job['job_instructions'] ?? null,
             'customer_pickup_date' => $job['date_required'] ?? null,
-            'estimated_cost'   => 0,
-            'final_cost'       => null,
-            'items'            => [[
-                'item_description' => $itemDescriptions ?: 'Item from Sale',
+            'estimated_cost'       => 0,
+            'final_cost'           => null,
+            'items'                => [[
+                'item_description' => $itemDescription,
                 'reported_issue'   => $job['job_type'],
                 'job_type'         => $job['job_type'],
                 'metal_type'       => $job['metal_type'] ?? null,
