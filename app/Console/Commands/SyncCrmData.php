@@ -26,7 +26,6 @@ class SyncCrmData extends Command
         tenancy()->initialize($tenantId);
         $this->info("Starting CRM sync for tenant: {$tenantId}");
 
-        // ── 1. Determine the last sync time ───────────────────────────────────
         $lastSyncStr = DB::table('site_settings')->where('key', 'crm_last_sync')->value('value');
         $lastSyncUtc = $lastSyncStr
             ? Carbon::parse($lastSyncStr)
@@ -34,12 +33,7 @@ class SyncCrmData extends Command
 
         $this->info("Fetching records updated since: " . $lastSyncUtc->toIso8601String());
 
-        // ── 2. Fetch updated sales (with all relationships needed for CRM) ────
-        $sales = Sale::with([
-                'items.productItem',
-                'payments',
-                'customer',
-            ])
+        $sales = Sale::with(['items.productItem', 'payments', 'customer'])
             ->where('updated_at', '>=', $lastSyncUtc)
             ->whereNull('deleted_at')
             ->get();
@@ -53,15 +47,12 @@ class SyncCrmData extends Command
 
         $this->info("Found {$sales->count()} sales and {$customers->count()} customers to sync.");
 
-        // ── 3. Upsert customers first so foreign references resolve ───────────
         $synced = $this->syncCustomers($customers);
         $this->info("Customers synced: {$synced}");
 
-        // ── 4. Upsert sales into CustomerPurchase (one row per line item) ─────
         $rows = $this->syncSales($sales);
         $this->info("Sale rows synced: {$rows}");
 
-        // ── 5. Record the successful sync timestamp ───────────────────────────
         DB::table('site_settings')->updateOrInsert(
             ['key' => 'crm_last_sync'],
             ['value' => now()->utc()->toIso8601String(), 'updated_at' => now()]
@@ -71,17 +62,12 @@ class SyncCrmData extends Command
         return Command::SUCCESS;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Sync customers into the CRM customers table
-    // ─────────────────────────────────────────────────────────────────────────
     private function syncCustomers($customers): int
     {
         $count = 0;
-
         foreach ($customers as $c) {
             $phoneValue = $c->phone ?? null;
             $mobile     = null;
-
             if (!empty($phoneValue)) {
                 $clean  = preg_replace('/[^0-9]/', '', $phoneValue);
                 $mobile = strlen($clean) === 10 ? '+1' . $clean : '+' . $clean;
@@ -105,14 +91,11 @@ class SyncCrmData extends Command
             );
             $count++;
         }
-
         return $count;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Sync sales into CustomerPurchase — one row per line item, matching
-    // exactly what JewelTagSyncService::saveSaleToCrm() produces so the
-    // CustomDashboard sees consistent data regardless of sync source.
+    // ONE row per sale, using final_total — matches JewelTag's own reports.
     // ─────────────────────────────────────────────────────────────────────────
     private function syncSales($sales): int
     {
@@ -121,115 +104,68 @@ class SyncCrmData extends Command
         foreach ($sales as $sale) {
             $customer = $sale->customer;
 
-            // ── Sales person: VARCHAR comma-separated in your DB ──────────────
-            $rawStaff    = $sale->sales_person_list ?? null;
+            // ── Sales person list — store full comma-separated list ────────
+            $rawStaff    = $sale->sales_person_list ?? '';
             $salesPerson = $this->parseSalesPerson($rawStaff);
 
-            // ── Purchase date: completed_at first, then created_at ────────────
+            // ── Purchase date ─────────────────────────────────────────────
             $purchaseDate = null;
             foreach (['completed_at', 'created_at'] as $field) {
                 if (!empty($sale->$field)) {
-                    try {
-                        $purchaseDate = \Carbon\Carbon::parse($sale->$field);
-                        break;
-                    } catch (\Exception $e) {
-                        continue;
-                    }
+                    try { $purchaseDate = \Carbon\Carbon::parse($sale->$field); break; }
+                    catch (\Exception $e) { continue; }
                 }
             }
             $purchaseDate = $purchaseDate ?? now();
 
-            // ── Customer name ─────────────────────────────────────────────────
+            // ── Customer info ─────────────────────────────────────────────
             $fullName = trim(
                 trim($customer?->name ?? '') . ' ' . trim($customer?->last_name ?? '')
             ) ?: 'Walk-in';
 
-            // ── Mobile ────────────────────────────────────────────────────────
             $mobile = null;
             if (!empty($customer?->phone)) {
                 $clean  = preg_replace('/[^0-9]/', '', $customer->phone);
                 $mobile = strlen($clean) === 10 ? '+1' . $clean : '+' . $clean;
             }
 
-            // ── One CRM row per sale item ─────────────────────────────────────
-            foreach ($sale->items as $item) {
-                $productItem = $item->productItem;
+            // ── Category from first item ──────────────────────────────────
+            $firstItem   = $sale->items->first();
+            $product     = $firstItem?->productItem;
+            $category    = $product?->department
+                ?? $product?->category
+                ?? $product?->sub_department
+                ?? ($firstItem?->custom_description ? 'Custom Item' : 'Sale');
 
-                // Accurate sold price respecting discounts and overrides
-                $qty         = max(1, intval($item->qty ?? 1));
-                $unitPrice   = floatval($item->sold_price ?? 0);
-                $discountAmt = floatval($item->discount_amount ?? 0);
-                $override    = ($item->sale_price_override !== null)
-                    ? floatval($item->sale_price_override)
-                    : null;
+            // ── Use final_total — the real amount the customer spent ───────
+            // This matches what JewelTag's Sales Report shows.
+            $soldPrice = max(0, round(floatval($sale->final_total ?? 0), 2));
 
-                $soldPrice = $override ?? (($unitPrice * $qty) - $discountAmt);
-                $soldPrice = max(0, round($soldPrice, 2));
+            CustomerPurchase::updateOrCreate(
+                [
+                    'invoice_number' => $sale->invoice_number,
+                    'stock_number'   => 'SALE',
+                ],
+                [
+                    'customer_no'     => $customer?->customer_no,
+                    'customer_name'   => $fullName,
+                    'mobile'          => $mobile,
+                    'email'           => $customer?->email ?? null,
+                    'category'        => $category,
+                    'sold_price'      => $soldPrice,
+                    'purchase_date'   => $purchaseDate,
+                    'sales_assistant' => $salesPerson,
+                    'needs_followup'  => 'no',
+                    'due_date'        => null,
+                ]
+            );
 
-                // Category chain
-                $category = $productItem?->department
-                    ?? $productItem?->category
-                    ?? $productItem?->sub_department
-                    ?? ($item->custom_description ? 'Custom Item' : 'Sale');
-
-                // Barcode
-                $barcode = $productItem?->barcode
-                    ?? $item->stock_no_display
-                    ?? ('ITEM-' . $item->id);
-
-                CustomerPurchase::updateOrCreate(
-                    [
-                        'invoice_number' => $sale->invoice_number,
-                        'stock_number'   => $barcode,
-                    ],
-                    [
-                        'customer_no'     => $customer?->customer_no,
-                        'customer_name'   => $fullName,
-                        'mobile'          => $mobile,
-                        'email'           => $customer?->email ?? null,
-                        'category'        => $category,
-                        'sold_price'      => $soldPrice,
-                        'purchase_date'   => $purchaseDate,
-                        'sales_assistant' => $salesPerson,
-                        'needs_followup'  => 'no',
-                        'due_date'        => null,
-                    ]
-                );
-
-                $count++;
-            }
-
-            // ── If no items, save a single summary row for the sale ───────────
-            if ($sale->items->isEmpty()) {
-                CustomerPurchase::updateOrCreate(
-                    [
-                        'invoice_number' => $sale->invoice_number,
-                        'stock_number'   => 'SALE-' . $sale->id,
-                    ],
-                    [
-                        'customer_no'     => $customer?->customer_no,
-                        'customer_name'   => $fullName,
-                        'mobile'          => $mobile,
-                        'email'           => $customer?->email ?? null,
-                        'category'        => 'Sale',
-                        'sold_price'      => max(0, round(floatval($sale->final_total), 2)),
-                        'purchase_date'   => $purchaseDate,
-                        'sales_assistant' => $salesPerson,
-                        'needs_followup'  => 'no',
-                        'due_date'        => null,
-                    ]
-                );
-                $count++;
-            }
+            $count++;
         }
 
         return $count;
     }
 
-    /**
-     * Parse sales_person_list whether it's a comma-separated VARCHAR string
-     * or a JSON-decoded array — matches JewelTagSyncService::parseSalesPerson().
-     */
     private function parseSalesPerson($raw): string
     {
         if (is_array($raw)) {
@@ -239,7 +175,6 @@ class SyncCrmData extends Command
         } else {
             $parsed = '';
         }
-
         return $parsed ?: 'System';
     }
 }
