@@ -198,7 +198,12 @@ body, .fi-body {
     padding: 20px !important;
     min-width: 540px !important;
 }
-
+.fi-ta-actions [wire\:loading],
+.fi-ac-action [wire\:loading] svg.animate-spin {
+    display: none !important;
+}
+.fi-dropdown-list-item svg.animate-spin { display: none !important; }
+.fi-ac-action-icon-btn svg.animate-spin { display: none !important; }
 .fi-topbar-nav-dropdown .fi-dropdown-list-item-icon,
 .fi-dropdown-list-item-icon {
     display: flex !important;
