@@ -872,18 +872,13 @@ $primaryImage = is_array($record->primary_image)
 
 if ($primaryImage) {
     $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
-    
     if (file_exists($fullPath)) {
-        if (app()->environment('production')) {
-            // Production — Shopify fetches via public URL
-            $images[] = ['src' => url('storage/' . $primaryImage)];
-        } else {
-            // Local dev — send base64 directly so Shopify can receive it
-            $images[] = [
-                'attachment' => base64_encode(file_get_contents($fullPath)),
-                'filename'   => basename($primaryImage),
-            ];
-        }
+        // Always use base64 — works on localhost AND production
+        // Avoids Shopify URL validation issues entirely
+        $images[] = [
+            'attachment' => base64_encode(file_get_contents($fullPath)),
+            'filename'   => basename($primaryImage),
+        ];
     }
 }
                             
