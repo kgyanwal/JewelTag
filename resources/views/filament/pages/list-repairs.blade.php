@@ -1,8 +1,14 @@
 <x-filament-panels::page>
-    {{-- 1. The Main Filament Table --}}
+
+    {{-- ── Filter form — above the table, same pattern as Find Sale ── --}}
+    <x-filament-panels::form wire:submit.prevent="resetFilters">
+        {{ $this->form }}
+    </x-filament-panels::form>
+
+    {{-- ── Main Repairs Table ── --}}
     {{ $this->table }}
 
-    {{-- 2. Your Custom Analytics Section --}}
+    {{-- ── Store Stock Repairs Analytics ── --}}
     <x-filament::section class="mt-8">
         <x-slot name="heading">
             Store Stock Repairs Analytics
@@ -26,7 +32,6 @@
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-white/5">
                     @php
-                        // Fetch only repairs that came from store stock
                         $stockRepairs = \App\Models\Repair::with(['originalProduct', 'sale'])
                             ->where('is_from_store_stock', true)
                             ->latest()
@@ -40,18 +45,14 @@
                                     {{ $repair->repair_no }}
                                 </a>
                             </td>
-                            <td class="px-4 py-3">
-                                {{ $repair->originalProduct->barcode ?? '—' }}
-                            </td>
-                            <td class="px-4 py-3 text-gray-500">
-                                {{ $repair->item_description }}
-                            </td>
+                            <td class="px-4 py-3">{{ $repair->originalProduct->barcode ?? '—' }}</td>
+                            <td class="px-4 py-3 text-gray-500">{{ $repair->item_description }}</td>
                             <td class="px-4 py-3">
                                 @php
                                     $color = match($repair->status) {
-                                        'delivered' => 'text-success-600 bg-success-50',
-                                        'received' => 'text-gray-600 bg-gray-50',
-                                        default => 'text-info-600 bg-info-50',
+                                        'delivered'   => 'text-success-600 bg-success-50',
+                                        'received'    => 'text-gray-600 bg-gray-50',
+                                        default       => 'text-info-600 bg-info-50',
                                     };
                                 @endphp
                                 <span class="px-2 py-1 rounded-full text-xs font-medium {{ $color }}">
@@ -60,7 +61,7 @@
                             </td>
                             <td class="px-4 py-3 text-center">
                                 @if($repair->sale)
-                                    <a href="{{ \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $repair->sale->id]) }}" 
+                                    <a href="{{ \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $repair->sale->id]) }}"
                                        class="inline-flex items-center gap-1 text-xs font-bold text-success-600 bg-success-100 px-2 py-1 rounded border border-success-200">
                                         <x-heroicon-m-check-badge class="w-4 h-4"/>
                                         YES (Inv: {{ $repair->sale->invoice_number }})
@@ -84,4 +85,5 @@
             </table>
         </div>
     </x-filament::section>
+
 </x-filament-panels::page>

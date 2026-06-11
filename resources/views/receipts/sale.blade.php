@@ -26,14 +26,14 @@
         if($item->repair_id || $item->repair) $hasRepair = true;
         if($item->custom_order_id || $item->customOrder) $hasCustom = true;
     }
+if ($hasRepair) {
+    $receiptType      = 'repair';
+    $receiptTitle     = 'REPAIR RECEIPT';
+    $receiptColor     = '#d49345ff';   // soft amber — lighter
+    $receiptDarkColor = '#d4833a';   // slightly deeper
+    $receiptAccent    = '#f5c97a';   // pale gold
+    $receiptBgLight   = '#fffaf0';   // floral white / very clean warm light version
 
-    if ($hasRepair) {
-        $receiptType = 'repair';
-        $receiptTitle = 'REPAIR RECEIPT';
-        $receiptColor = '#b45309';
-        $receiptDarkColor = '#92400e';
-        $receiptAccent = '#f59e0b';
-        $receiptBgLight = '#fffbeb';
     } elseif ($hasCustom) {
         $receiptType = 'custom';
         $receiptTitle = 'CUSTOM ORDER RECEIPT';
