@@ -679,18 +679,12 @@ class LaybuyResource extends Resource
                         // Staff — create shows multi-select, edit shows read-only
                         Section::make('Sales Staff')
                             ->schema([
-                                Select::make('sales_person_list')
-                                    ->label('Staff on Sale')
-                                    ->multiple()
-                                    ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
-                                    ->default(fn() => [\Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name])
-                                    ->required()
-                                    ->visible(fn(string $operation) => $operation === 'create'),
-
-                                TextInput::make('sales_person')
-                                    ->label('Sales Person')
-                                    ->readOnly()
-                                    ->visible(fn(string $operation) => $operation === 'edit'),
+                                 Select::make('sales_person_list')
+            ->label('Staff on Sale')
+            ->multiple()
+            ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
+            ->default(fn() => [\Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name])
+            ->required(),
                             ]),
 
                         Section::make('Agreement Status')

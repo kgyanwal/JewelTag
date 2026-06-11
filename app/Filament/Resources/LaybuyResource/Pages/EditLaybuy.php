@@ -178,8 +178,8 @@ class EditLaybuy extends EditRecord
                             \App\Models\Payment::where(function ($q) use ($record) {
                                 $record->sale_id ? $q->where('sale_id', $record->sale_id) : $q->whereNull('sale_id');
                             })->where('amount', $payment->amount)->where('method', $payment->payment_method)
-                              ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
-                              ->delete();
+                                ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
+                                ->delete();
                             $payment->delete();
                         }
 
@@ -195,8 +195,8 @@ class EditLaybuy extends EditRecord
                                 \App\Models\Payment::where(function ($q) use ($record) {
                                     $record->sale_id ? $q->where('sale_id', $record->sale_id) : $q->whereNull('sale_id');
                                 })->where('amount', $payment->amount)->where('method', $payment->payment_method)
-                                  ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
-                                  ->update(['amount' => $newAmount, 'method' => $newMethod, 'paid_at' => $newPaidAt]);
+                                    ->whereBetween('paid_at', [Carbon::parse($payment->created_at)->subMinute(), Carbon::parse($payment->created_at)->addMinute()])
+                                    ->update(['amount' => $newAmount, 'method' => $newMethod, 'paid_at' => $newPaidAt]);
                                 $payment->update(['amount' => $newAmount, 'payment_method' => $newMethod, 'created_at' => $newPaidAt, 'updated_at' => now()]);
                             }
                         }
@@ -264,22 +264,33 @@ class EditLaybuy extends EditRecord
         } else {
             $data['layby_items'] = [];
         }
-
+        if (!empty($laybuy->sales_person)) {
+            $data['sales_person_list'] = array_values(
+                array_filter(array_map('trim', explode(',', $laybuy->sales_person)))
+            );
+        } elseif (empty($data['sales_person_list'])) {
+            $data['sales_person_list'] = [];
+        }
         return $data;
     }
 
     protected function mutateFormDataBeforeSave(array $data): array
-    {
-        unset(
-            $data['layby_items'],
-            $data['item_search'],
-            $data['totals_summary'],
-            $data['totals_display'],
-            $data['imported_items_list'],
-            $data['payment_history'],
-            $data['sales_person_list'],
-            $data['progress_bar']
-        );
-        return $data;
+{
+    // Sync sales_person_list → sales_person VARCHAR before saving
+    if (!empty($data['sales_person_list']) && is_array($data['sales_person_list'])) {
+        $data['sales_person'] = implode(', ', $data['sales_person_list']);
     }
+
+    unset(
+        $data['layby_items'],
+        $data['item_search'],
+        $data['totals_summary'],
+        $data['totals_display'],
+        $data['imported_items_list'],
+        $data['payment_history'],
+        // sales_person_list is NOT unset here — Laybuy model needs it
+        $data['progress_bar']
+    );
+    return $data;
+}
 }
