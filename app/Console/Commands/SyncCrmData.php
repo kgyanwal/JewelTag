@@ -137,9 +137,13 @@ class SyncCrmData extends Command
                 ?? $product?->sub_department
                 ?? ($firstItem?->custom_description ? 'Custom Item' : 'Sale');
 
-            // ── Use final_total — the real amount the customer spent ───────
-            // This matches what JewelTag's Sales Report shows.
-            $soldPrice = max(0, round(floatval($sale->final_total ?? 0), 2));
+            // ── Sold price: store each staff member's SHARE ──────────────
+            // Matches MySalesReport: final_total ÷ number of staff on sale.
+            $staffParts = is_array($rawStaff)
+                ? array_filter(array_map('trim', $rawStaff))
+                : array_filter(array_map('trim', explode(',', (string) $rawStaff)));
+            $staffCount = max(1, count($staffParts));
+            $soldPrice  = round(floatval($sale->final_total ?? 0) / $staffCount, 2);
 
             CustomerPurchase::updateOrCreate(
                 [
