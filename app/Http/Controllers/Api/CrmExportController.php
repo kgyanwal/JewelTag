@@ -254,15 +254,31 @@ class CrmExportController extends Controller
      */
     private function serializeSales($sales): array
     {
-        return $sales->map(function (Sale $sale) {
-            // ── sales_person_list: handle BOTH array (JSON cast) and plain string ──
-            // Some JewelTag installs cast this column as JSON array, others store
-            // it as a plain VARCHAR string. We handle both safely here.
+        // ── Pre-load all users once so we can resolve IDs → names efficiently ──
+        $userMap = \App\Models\User::pluck('name', 'id')->toArray();
+
+        return $sales->map(function (Sale $sale) use ($userMap) {
+            // ── sales_person_list: resolve IDs to names ───────────────────────
+            // JewelTag stores this as a JSON array of user IDs [1,2,3] or
+            // sometimes as a comma-separated string of names "Alice, Bob".
+            // We must resolve IDs → names before sending to CRM.
             $rawStaff = $sale->sales_person_list ?? '';
+
             if (is_array($rawStaff)) {
-                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
+                // JSON array — could be IDs [1,2] or names ["Alice","Bob"]
+                $staffParts = array_filter(array_map('trim', $rawStaff));
+                $resolved = array_map(function($item) use ($userMap) {
+                    // If numeric, look up the name
+                    return is_numeric($item) ? ($userMap[(int)$item] ?? "User#{$item}") : $item;
+                }, $staffParts);
+                $staffString = implode(', ', array_filter($resolved));
             } else {
-                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
+                // Plain string — could be "1,2,3" or "Alice, Bob"
+                $parts = array_filter(array_map('trim', explode(',', (string) $rawStaff)));
+                $resolved = array_map(function($item) use ($userMap) {
+                    return is_numeric($item) ? ($userMap[(int)$item] ?? "User#{$item}") : $item;
+                }, $parts);
+                $staffString = implode(', ', array_filter($resolved));
             }
 
             return [
@@ -276,6 +292,10 @@ class CrmExportController extends Controller
                 'final_total'      => (float) $sale->final_total,
                 'amount_paid'      => (float) $sale->amount_paid,
                 'balance_due'      => (float) $sale->balance_due,
+                // ── Pre-tax components needed by CRM to match MySalesReport ──
+                'warranty_charge'  => (float) ($sale->warranty_charge  ?? 0),
+                'shipping_charges' => (float) ($sale->shipping_charges ?? 0),
+                'trade_in_value'   => (float) ($sale->trade_in_value   ?? 0),
 
                 // ── Always a plain string — matches your VARCHAR column ────────
                 'sales_person_list' => $staffString,
@@ -393,13 +413,15 @@ class CrmExportController extends Controller
      */
     private function serializeCustomOrders($orders): array
     {
-        return $orders->map(function (CustomOrder $order) {
+        $userMap = \App\Models\User::pluck('name', 'id')->toArray();
+
+        return $orders->map(function (CustomOrder $order) use ($userMap) {
             $rawStaff = $order->sales_person_list ?? $order->staff_name ?? '';
-            if (is_array($rawStaff)) {
-                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
-            } else {
-                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
-            }
+            $parts    = is_array($rawStaff)
+                ? array_filter(array_map('trim', $rawStaff))
+                : array_filter(array_map('trim', explode(',', (string) $rawStaff)));
+            $resolved = array_map(fn($i) => is_numeric($i) ? ($userMap[(int)$i] ?? "User#{$i}") : $i, $parts);
+            $staffString = implode(', ', array_filter($resolved));
 
             return [
                 'id'               => $order->id,
@@ -433,13 +455,15 @@ class CrmExportController extends Controller
      */
     private function serializeRepairs($repairs): array
     {
-        return $repairs->map(function (Repair $repair) {
+        $userMap = \App\Models\User::pluck('name', 'id')->toArray();
+
+        return $repairs->map(function (Repair $repair) use ($userMap) {
             $rawStaff = $repair->sales_person_list ?? $repair->staff_name ?? '';
-            if (is_array($rawStaff)) {
-                $staffString = implode(', ', array_filter(array_map('trim', $rawStaff)));
-            } else {
-                $staffString = implode(', ', array_filter(array_map('trim', explode(',', (string) $rawStaff))));
-            }
+            $parts    = is_array($rawStaff)
+                ? array_filter(array_map('trim', $rawStaff))
+                : array_filter(array_map('trim', explode(',', (string) $rawStaff)));
+            $resolved = array_map(fn($i) => is_numeric($i) ? ($userMap[(int)$i] ?? "User#{$i}") : $i, $parts);
+            $staffString = implode(', ', array_filter($resolved));
 
             return [
                 'id'               => $repair->id,

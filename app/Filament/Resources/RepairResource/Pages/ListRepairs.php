@@ -84,7 +84,6 @@ class ListRepairs extends ListRecords implements HasForms
             ->schema([
                 Section::make('Search & Filter Repairs')
                     ->description('Filter by customer, staff, status, location, or date range')
-                    ->aside()
                     ->schema([
                         Grid::make(4)->schema([
 
@@ -126,7 +125,7 @@ class ListRepairs extends ListRecords implements HasForms
                                     'ready'       => 'Ready for Pickup',
                                     'delivered'   => 'Delivered',
                                 ])
-                                ->placeholder('All Statuses')
+                                ->placeholder('All Status')
                                 ->live()
                                 ->afterStateUpdated(fn() => $this->resetTable()),
 

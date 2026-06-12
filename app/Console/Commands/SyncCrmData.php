@@ -137,13 +137,20 @@ class SyncCrmData extends Command
                 ?? $product?->sub_department
                 ?? ($firstItem?->custom_description ? 'Custom Item' : 'Sale');
 
-            // ── Sold price: store each staff member's SHARE ──────────────
-            // Matches MySalesReport: final_total ÷ number of staff on sale.
+            // ── Sold price: PRE-TAX share matching MySalesReport exactly ────
+            // subtotal + warranty + shipping - trade_in, divided by staff count.
+            // Tax excluded per boss confirmation.
             $staffParts = is_array($rawStaff)
                 ? array_filter(array_map('trim', $rawStaff))
                 : array_filter(array_map('trim', explode(',', (string) $rawStaff)));
-            $staffCount = max(1, count($staffParts));
-            $soldPrice  = round(floatval($sale->final_total ?? 0) / $staffCount, 2);
+            $staffCount  = max(1, count($staffParts));
+            $preTaxTotal = max(0,
+                floatval($sale->subtotal          ?? 0)
+              + floatval($sale->warranty_charge    ?? 0)
+              + floatval($sale->shipping_charges   ?? 0)
+              - floatval($sale->trade_in_value     ?? 0)
+            );
+            $soldPrice = round($preTaxTotal / $staffCount, 2);
 
             CustomerPurchase::updateOrCreate(
                 [
