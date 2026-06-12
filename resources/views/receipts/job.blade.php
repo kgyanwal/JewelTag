@@ -21,7 +21,6 @@
         
         .page-break { page-break-after: always; }
         
-        /* Header Styles */
         .header { 
             text-align: center; 
             margin-bottom: 12px; 
@@ -59,7 +58,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* Meta Info */
         .meta-table { 
             width: 100%; 
             margin-bottom: 10px; 
@@ -75,7 +73,6 @@
         }
         .right-align { text-align: right; color: #249E94; font-weight: bold; }
 
-        /* Customer Info Box */
         .customer-box {
             background: #f0f9f8;
             border: 2px solid #249E94;
@@ -85,7 +82,6 @@
             font-size: 11px;
         }
 
-        /* Items Table - Customer Version */
         .customer-table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -115,7 +111,6 @@
             color: #249E94;
         }
 
-        /* Items Table - Workshop Version */
         .workshop-table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -159,7 +154,6 @@
             font-size: 10px;
         }
 
-        /* Signatures */
         .signatures {
             margin-top: 25px;
         }
@@ -215,7 +209,7 @@
     </tr>
     <tr>
         <td><strong>Date Received:</strong> {{ $sale->created_at->format('m/d/Y') }}</td>
-       <td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
+        <td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
         <td></td>
     </tr>
 </table>
@@ -276,7 +270,7 @@
     </tr>
     <tr>
         <td><strong>Date Received:</strong> {{ $sale->created_at->format('m/d/Y') }}</td>
-<td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
+        <td><strong>Date Required:</strong> {{ $sale->date_required ? \Carbon\Carbon::parse($sale->date_required)->format('m/d/Y') : 'ASAP' }}</td>
         <td></td>
     </tr>
 </table>
@@ -300,27 +294,40 @@
                 <div style="font-size: 12px; margin-top: 4px; font-weight: 700;">
                     {{ strtoupper($item->custom_description) }}
                 </div>
-               {{-- NEW: Read from special_jobs repeater --}}
-@if(!empty($sale->special_jobs))
-    @foreach($sale->special_jobs as $job)
-    <div class="instructions" style="margin-top:6px;">
-        <strong>{{ strtoupper($job['job_type'] ?? 'Job') }}</strong>
-        @if(!empty($job['metal_type'])) — {{ $job['metal_type'] }}@endif
-        @if(!empty($job['date_required'])) | Due: {{ \Carbon\Carbon::parse($job['date_required'])->format('m/d/Y') }}@endif
-        @if(($job['job_type'] ?? '') === 'Resize' && (!empty($job['current_size']) || !empty($job['target_size'])))
-            <br>Size: {{ $job['current_size'] ?? '?' }} → {{ $job['target_size'] ?? '?' }}
-        @endif
-        @if(!empty($job['job_instructions']))
-            <br>{{ $job['job_instructions'] }}
-        @endif
-    </div>
-    @endforeach
-@elseif($sale->notes)
-    {{-- Fallback for old sales saved before special_jobs --}}
-    <div class="instructions">
-        <strong>Notes:</strong><br>{{ $sale->notes }}
-    </div>
-@endif
+
+                {{-- ── Show only jobs that apply to THIS item ──────────────────
+                     applicable_item_indexes is a 0-based array set in the
+                     SaleResource special_jobs repeater. If empty/missing the
+                     job was saved without item selection so show it on all items.
+                ────────────────────────────────────────────────────────────── --}}
+                @if(!empty($sale->special_jobs))
+                    @foreach($sale->special_jobs as $job)
+                    @php
+                        $applicableIndexes = $job['applicable_item_indexes'] ?? [];
+                        $appliesToThisItem = empty($applicableIndexes)
+                            || in_array($index, $applicableIndexes)
+                            || in_array((string)$index, $applicableIndexes);
+                    @endphp
+                    @if($appliesToThisItem)
+                    <div class="instructions" style="margin-top:6px;">
+                        <strong>{{ strtoupper($job['job_type'] ?? 'Job') }}</strong>
+                        @if(!empty($job['metal_type'])) — {{ $job['metal_type'] }}@endif
+                        @if(!empty($job['date_required'])) | Due: {{ \Carbon\Carbon::parse($job['date_required'])->format('m/d/Y') }}@endif
+                        @if(($job['job_type'] ?? '') === 'Resize' && (!empty($job['current_size']) || !empty($job['target_size'])))
+                            <br>Size: {{ $job['current_size'] ?? '?' }} → {{ $job['target_size'] ?? '?' }}
+                        @endif
+                        @if(!empty($job['job_instructions']))
+                            <br>{{ $job['job_instructions'] }}
+                        @endif
+                    </div>
+                    @endif
+                    @endforeach
+                @elseif($sale->notes)
+                    {{-- Fallback for old sales without special_jobs --}}
+                    <div class="instructions">
+                        <strong>Notes:</strong><br>{{ $sale->notes }}
+                    </div>
+                @endif
             </td>
             <td></td>
         </tr>
