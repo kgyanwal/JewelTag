@@ -2187,25 +2187,28 @@ Section::make('Financial Summary')->schema([
                     ]),
             ])
             ->actions([
+                // Tables\Actions\EditAction::make()
+                //     ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
+                //     ->visible(function (Sale $record) {
+                //         $user = Staff::user();
+                //         if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) return true;
+                //         if ($record->payment_method === 'laybuy') return true;
+                //         $record->loadMissing('items');
+                //         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
+                //         if ($record->status === 'pending') return true;
+                //         if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
+
+                //         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
+                //         if (!$dayClosed) return true;
+
+                //         return SaleEditRequest::where('sale_id', $record->id)
+                //             ->where('user_id', auth()->id())
+                //             ->where('status', 'approved')
+                //             ->exists();
+                //     }),
+
                 Tables\Actions\EditAction::make()
-                    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
-                    ->visible(function (Sale $record) {
-                        $user = Staff::user();
-                        if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) return true;
-                        if ($record->payment_method === 'laybuy') return true;
-                        $record->loadMissing('items');
-                        if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-                        if ($record->status === 'pending') return true;
-                        if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
-
-                        $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
-                        if (!$dayClosed) return true;
-
-                        return SaleEditRequest::where('sale_id', $record->id)
-                            ->where('user_id', auth()->id())
-                            ->where('status', 'approved')
-                            ->exists();
-                    }),
+    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
 
                 TableAction::make('request_edit')
                     ->label('Request Edit')
