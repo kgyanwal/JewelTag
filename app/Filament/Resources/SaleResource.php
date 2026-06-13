@@ -69,29 +69,34 @@ class SaleResource extends Resource
         return DailyClosing::whereDate('closing_date', $date)->exists();
     }
 
+    // public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    // {
+    //     $user = Staff::user();
+    //     if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) {
+    //         return true;
+    //     }
+
+    //     if ($record->payment_method === 'laybuy') return true;
+
+    //     $record->loadMissing('items');
+    //     if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
+
+    //     if ($record->status !== 'completed') return true;
+    //     if (floatval($record->balance_due) > 0.01) return true;
+
+    //     $dayClosed = self::isDateClosed($record->created_at->format('Y-m-d'));
+    //     if (!$dayClosed) return true;
+
+    //     return SaleEditRequest::where('sale_id', $record->id)
+    //         ->where('user_id', auth()->id())
+    //         ->where('status', 'approved')
+    //         ->exists();
+    // }
+
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
-    {
-        $user = Staff::user();
-        if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) {
-            return true;
-        }
-
-        if ($record->payment_method === 'laybuy') return true;
-
-        $record->loadMissing('items');
-        if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-
-        if ($record->status !== 'completed') return true;
-        if (floatval($record->balance_due) > 0.01) return true;
-
-        $dayClosed = self::isDateClosed($record->created_at->format('Y-m-d'));
-        if (!$dayClosed) return true;
-
-        return SaleEditRequest::where('sale_id', $record->id)
-            ->where('user_id', auth()->id())
-            ->where('status', 'approved')
-            ->exists();
-    }
+{
+    return true;
+}
 
     public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
     {
