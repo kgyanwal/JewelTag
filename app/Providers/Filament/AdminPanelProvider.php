@@ -339,6 +339,7 @@ section.fi-section {
     color: #ffffff !important;
     stroke: currentColor !important;
 }
+#split-payments-body.is-collapsed { max-height: 220px; }
 </style>
 HTML
             )

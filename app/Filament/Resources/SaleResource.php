@@ -1789,38 +1789,60 @@ class SaleResource extends Resource
         self::updateTotals($get, $set);
         self::syncStatus($get, $set);
     })
-  ->hint(function (Get $get, string $operation) {
-    if ($operation === 'create') return null;
-    $count = count($get('split_payments') ?? []);
-    if ($count <= 4) return null;  // only collapse when more than 4 rows
-    $hidden = $count - 4;
+ ->hint(function (Get $get, string $operation) {
+        if ($operation === 'create') return null;
+        $count = count($get('split_payments') ?? []);
+        if ($count <= 4) return null;  // only collapse when more than 4 rows
+        
+        $hidden = $count - 4;
         return new HtmlString("
             <style>
-                #split-payments-body.is-collapsed { max-height: 220px; overflow: hidden; }
+                .custom-collapsed-body { max-height: 220px !important; overflow: hidden !important; }
                 #split-payments-body { transition: max-height 0.4s ease; }
             </style>
+            <script>
+                // 1. Setup a memory variable so it survives Livewire re-renders
+                if (typeof window.splitPaymentsCollapsed === 'undefined') {
+                    window.splitPaymentsCollapsed = true; // Default to collapsed on initial page load
+                }
+
+                function syncSplitBox() {
+                    var el = document.getElementById('split-payments-body');
+                    var btn = document.getElementById('split-toggle-btn');
+                    if (!el || !btn) return;
+
+                    // 2. Read the memory variable to decide how to format the box
+                    if (window.splitPaymentsCollapsed) {
+                        el.classList.add('custom-collapsed-body');
+                        btn.textContent = '+ Show {$hidden} more';
+                    } else {
+                        el.classList.remove('custom-collapsed-body');
+                        btn.textContent = '↑ Show less';
+                    }
+                }
+
+                // 3. Run automatically every time Livewire draws the row
+                setTimeout(syncSplitBox, 10);
+            </script>
             <a href='#' onclick=\"
                 event.preventDefault();
-                var el = document.getElementById('split-payments-body');
-                var btn = document.getElementById('split-toggle-btn');
-                if (el.classList.contains('is-collapsed')) {
-                    el.classList.remove('is-collapsed');
-                    btn.textContent = '↑ Show less';
-                } else {
-                    el.classList.add('is-collapsed');
-                    btn.textContent = '+ Show {$hidden} more';
-                }
+                // 4. Flip the memory variable and update the box
+                window.splitPaymentsCollapsed = !window.splitPaymentsCollapsed;
+                syncSplitBox();
             \" style='color:#0284c7;font-size:12px;font-weight:700;text-decoration:none;'>
-                <span id='split-toggle-btn'>+ Show {$hidden} more</span>
+                <span id='split-toggle-btn'></span>
             </a>
         ");
     })
-   ->extraAttributes(function (Get $get, string $operation) {
-    if ($operation === 'create') return [];
-    $count = count($get('split_payments') ?? []);
-    if ($count <= 4) return [];
-    return ['id' => 'split-payments-body', 'class' => 'is-collapsed'];
-}),
+    ->extraAttributes(function (Get $get, string $operation) {
+        if ($operation === 'create') return [];
+        $count = count($get('split_payments') ?? []);
+        if ($count <= 4) return [];
+        
+        // 🚀 THE FIX: We removed the 'class' => 'is-collapsed' from here!
+        // Now PHP just provides the ID, and our Javascript handles the collapsing memory flawlessly.
+        return ['id' => 'split-payments-body'];
+    }),
   \Filament\Forms\Components\Actions::make([
         FormAction::make('smart_collect_remaining')
             ->label('+ Collect Remaining Balance')
