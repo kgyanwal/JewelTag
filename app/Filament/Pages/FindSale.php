@@ -432,23 +432,8 @@ CustomDatePicker::make('date_to')
                     }),
             ])
             ->actions([
-                \Filament\Tables\Actions\EditAction::make()
-                    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
-                    ->visible(function (Sale $record) {
-                        $user = Staff::user();
-                        if ($user?->hasAnyRole(['Superadmin', 'Administration'])) return true;
-                        if ($record->payment_method === 'laybuy') return true;
-                        $record->loadMissing('items');
-                        if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-                        if ($record->status === 'pending') return true;
-                        if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
-                        $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
-                        if (!$dayClosed) return true;
-                        return SaleEditRequest::where('sale_id', $record->id)
-                            ->where('user_id', auth()->id())
-                            ->where('status', 'approved')
-                            ->exists();
-                    }),
+               \Filament\Tables\Actions\EditAction::make()
+    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
 
                 Action::make('request_edit')
                     ->label('Request Edit')
