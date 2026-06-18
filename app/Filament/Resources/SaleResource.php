@@ -1197,23 +1197,50 @@ class SaleResource extends Resource
                                                                 ]),
                                                         ];
                                                     })
-                                                    ->action(function (array $data, Get $get) {
-                                                        // When they click "Save Changes", we update the customer if they made edits
-                                                        $customer = \App\Models\Customer::find($get('customer_id'));
-                                                        if ($customer && isset($data['edit_name'])) {
-                                                            $customer->update([
-                                                                'name'      => $data['edit_name'],
-                                                                'last_name' => $data['edit_last_name'] ?? null,
-                                                                'phone'     => $data['edit_phone'],
-                                                                'email'     => $data['edit_email'] ?? null,
-                                                                'street'    => $data['edit_street'] ?? null,
-                                                                'city'      => $data['edit_city'] ?? null,
-                                                                'state'     => $data['edit_state'] ?? null,
-                                                                'postcode'  => $data['edit_postcode'] ?? null,
-                                                            ]);
-                                                            Notification::make()->title('Customer Updated Successfully')->success()->send();
-                                                        }
-                                                    })
+                                                   ->action(function (array $data, Get $get) {
+    $customer = \App\Models\Customer::find($get('customer_id'));
+    if (!$customer || !isset($data['edit_name'])) {
+        return;
+    }
+
+    // Check if phone is already taken by a DIFFERENT customer
+    $cleanPhone = preg_replace('/[^0-9]/', '', $data['edit_phone'] ?? '');
+    if ($cleanPhone) {
+        $duplicate = \App\Models\Customer::where('phone', $cleanPhone)
+            ->where('id', '!=', $customer->id)
+            ->first();
+
+        if ($duplicate) {
+            Notification::make()
+                ->title('Phone Number Already In Use')
+                ->body("This phone number belongs to {$duplicate->name} {$duplicate->last_name}. Please use a different number or merge these customers.")
+                ->danger()
+                ->persistent()
+                ->send();
+            return;
+        }
+    }
+
+    try {
+        $customer->update([
+            'name'      => $data['edit_name'],
+            'last_name' => $data['edit_last_name'] ?? null,
+            'phone'     => $data['edit_phone'],
+            'email'     => $data['edit_email'] ?? null,
+            'street'    => $data['edit_street'] ?? null,
+            'city'      => $data['edit_city'] ?? null,
+            'state'     => $data['edit_state'] ?? null,
+            'postcode'  => $data['edit_postcode'] ?? null,
+        ]);
+        Notification::make()->title('Customer Updated Successfully')->success()->send();
+    } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        Notification::make()
+            ->title('Update Failed')
+            ->body('This phone number or email is already used by another customer.')
+            ->danger()
+            ->send();
+    }
+})
                                             )
                                             ->createOptionModalHeading('Quick Add New Customer')
                                             ->createOptionForm([
