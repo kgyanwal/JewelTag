@@ -58,7 +58,7 @@ class ListProductItems extends ListRecords
 
                     // ── STEP 2: Review ────────────────────────────────────────
                     Step::make('Review & Edit Items')
-                        ->description('AI-extracted items shown below. Fix typos, remove bad rows, then approve.')
+                        ->description('AI-extracted items shown below. Fix typos, categorize, and approve.')
                         ->schema([
 
                             Placeholder::make('scan_trigger')
@@ -116,6 +116,12 @@ class ListProductItems extends ListRecords
                                                 'cost_price'         => $item['cost_price'],
                                                 'qty'                => ($item['qty'] ?? 1) > 0 ? $item['qty'] : 1,
                                                 'metal_type'         => $item['metal_type'] ?? '14k',
+                                                // Initialize new fields as empty so the user can fill them
+                                                'department'         => null,
+                                                'sub_department'     => null,
+                                                'category'           => null,
+                                                'size'               => null,
+                                                'diamond_weight'     => null,
                                             ];
                                         }
 
@@ -145,40 +151,68 @@ class ListProductItems extends ListRecords
                             Repeater::make('items_to_import')
                                 ->hiddenLabel()
                                 ->schema([
-                                    Grid::make(6)->schema([
+                                    // 🚀 CHANGED TO 12 COLUMNS FOR A TWO-ROW LAYOUT
+                                    Grid::make(12)->schema([
+                                        // -- ROW 1: Core Details --
                                         TextInput::make('supplier_code')
                                             ->label('Style Code')
                                             ->required()
-                                            ->columnSpan(1),
+                                            ->columnSpan(2),
                                         TextInput::make('custom_description')
                                             ->label('Description')
                                             ->required()
-                                            ->columnSpan(2),
+                                            ->columnSpan(5),
                                         Select::make('metal_type')
                                             ->label('Metal')
                                             ->options(['10k' => '10k', '14k' => '14k', '18k' => '18k', '925 Silver' => '925 Silver', 'Platinum' => 'Platinum'])
-                                            ->columnSpan(1),
+                                            ->columnSpan(2),
+                                        TextInput::make('cost_price')
+                                            ->label('Unit Cost ($)')
+                                            ->numeric()
+                                            ->required()
+                                            ->columnSpan(2),
                                         TextInput::make('qty')
                                             ->label('Qty')
                                             ->numeric()
                                             ->default(1)
                                             ->required()
                                             ->columnSpan(1),
-                                        TextInput::make('cost_price')
-                                            ->label('Unit Cost ($)')
-                                            ->numeric()
-                                            ->required()
+
+                                        // -- ROW 2: Categorization & Specs --
+                                        Select::make('department')
+                                            ->label('Department')
+                                            ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'departments')->first()?->value ?? [])->pluck('name', 'name'))
+                                            ->searchable()
+                                            ->columnSpan(3),
+                                        Select::make('sub_department')
+                                            ->label('Sub-Department')
+                                            ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'sub_departments')->first()?->value ?? [])->filter()->mapWithKeys(fn($i) => [$i => $i]))
+                                            ->searchable()
+                                            ->columnSpan(3),
+                                        Select::make('category')
+                                            ->label('Category')
+                                            ->options(fn() => collect(\App\Models\InventorySetting::where('key', 'categories')->first()?->value ?? [])->filter()->mapWithKeys(fn($i) => [$i => $i]))
+                                            ->searchable()
+                                            ->columnSpan(3),
+                                        TextInput::make('size')
+                                            ->label('Size / Length')
+                                            ->placeholder('e.g. 7')
                                             ->columnSpan(1),
+                                        TextInput::make('diamond_weight')
+                                            ->label('CTW')
+                                            ->numeric()
+                                            ->placeholder('e.g. 1.5')
+                                            ->columnSpan(2),
                                     ]),
                                 ])
                                 ->defaultItems(0)
-                                ->reorderable(false),
+                                ->reorderable(false)
+                                // Makes the repeater items look like distinct cards
+                                ->itemLabel(fn(array $state): ?string => $state['supplier_code'] ?? 'New Extracted Item'),
                         ]),
                 ])
 
                 // ── ACTION ────────────────────────────────────────────────────
-                // Filament wizard merges ALL step fields into ONE flat $data array.
-                // Just access $data['supplier_id'], $data['items_to_import'] directly.
                 ->action(function (array $data) {
                     $supplierId  = $data['supplier_id']     ?? null;
                     $itemsToSave = $data['items_to_import'] ?? [];
@@ -200,7 +234,10 @@ class ListProductItems extends ListRecords
                     DB::transaction(function () use ($itemsToSave, $storeId, $supplierId, $invoiceHash, &$savedCount, &$isFirst) {
                         foreach ($itemsToSave as $item) {
                             $qty    = max(1, (int) ($item['qty'] ?? 1));
-                            $prefix = ProductItemResource::getPrefixForSubDepartment($item['metal_type'] ?? null);
+                            
+                            // Get prefix based on sub_department (fallback to metal_type if missing)
+                            $prefixSource = $item['sub_department'] ?? $item['metal_type'] ?? null;
+                            $prefix = ProductItemResource::getPrefixForSubDepartment($prefixSource);
 
                             for ($i = 0; $i < $qty; $i++) {
                                 ProductItem::create([
@@ -211,10 +248,19 @@ class ListProductItems extends ListRecords
                                     'cost_price'         => floatval($item['cost_price']),
                                     'retail_price'       => floatval($item['cost_price']) * 2.5,
                                     'metal_type'         => $item['metal_type'] ?? null,
+                                    
+                                    // 🚀 NEW FIELDS SAVED HERE
+                                    'department'         => $item['department'] ?? null,
+                                    'sub_department'     => $item['sub_department'] ?? null,
+                                    'category'           => $item['category'] ?? null,
+                                    'size'               => $item['size'] ?? null,
+                                    'diamond_weight'     => $item['diamond_weight'] ?? null,
+
                                     'qty'                => 1,
                                     'barcode'            => ProductItemResource::generatePersistentBarcode($prefix),
                                     'rfid_code'          => strtoupper(bin2hex(random_bytes(4))),
                                     'status'             => 'staged',
+                                    
                                     // Hash stamped on first item only — blocks re-scanning same invoice
                                     'serial_number'      => ($isFirst && $invoiceHash) ? $invoiceHash : null,
                                 ]);
@@ -227,7 +273,7 @@ class ListProductItems extends ListRecords
 
                     Notification::make()
                         ->title('Bulk Import Successful')
-                        ->body("Created {$savedCount} inventory tag(s) in stock.")
+                        ->body("Created {$savedCount} inventory tag(s) in stock. They are marked as 'Staged/Needs Approval'.")
                         ->success()
                         ->send();
                 }),
