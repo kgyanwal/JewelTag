@@ -1090,31 +1090,43 @@ class FindStock extends Page implements HasForms, HasTable
                         $lastError = '';
 
                         foreach ($records->where('status', 'in_stock') as $record) {
-                            try {
-                                $images = [];
-                                if ($record->primary_image) {
-                                    $images[] = ['src' => \Illuminate\Support\Facades\Storage::disk('public')->url($record->primary_image)];
-                                }
+    try {
+        $images = [];
+        $primaryImage = is_array($record->primary_image)
+            ? (array_values($record->primary_image)[0] ?? null)
+            : $record->primary_image;
 
-                                $payload = [
-                                    'title'       => $record->custom_description ?? $record->barcode,
-                                    'body_html'   => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
-                                    'vendor'      => $record->supplier?->company_name ?? 'JewelTag',
-                                    'product_type' => $record->category ?? $record->department ?? 'Jewelry',
-                                    'tags'        => implode(',', array_filter([
-                                        $record->metal_type,
-                                        $record->category,
-                                        $record->sub_department,
-                                        $record->barcode,
-                                    ])),
-                                    'images'      => $images,
-                                    'variants'    => [[
-                                        'price' => $record->web_price ?? $record->retail_price,
-                                        'sku'   => $record->barcode,
-                                        'inventory_management' => 'shopify',
-                                        'inventory_quantity'   => $record->qty ?? 1,
-                                    ]],
-                                ];
+        if ($primaryImage && is_string($primaryImage)) {
+            $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
+            if (file_exists($fullPath)) {
+                $images[] = [
+                    'attachment' => base64_encode(file_get_contents($fullPath)),
+                    'filename'   => basename($primaryImage),
+                ];
+            }
+        }
+
+        $payload = [
+            'title'       => $record->custom_description ?? $record->barcode,
+            'body_html'   => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
+            'vendor'      => $record->supplier?->company_name ?? 'JewelTag',
+            'product_type' => $record->category ?? $record->department ?? 'Jewelry',
+            'tags'        => implode(',', array_filter([
+                'jeweltag-instore',
+                'in-store-stock',
+                $record->metal_type,
+                $record->category,
+                $record->sub_department,
+                $record->barcode,
+            ])),
+            'images'      => $images,
+            'variants'    => [[
+                'price' => $record->web_price ?? $record->retail_price,
+                'sku'   => $record->barcode,
+                'inventory_management' => 'shopify',
+                'inventory_quantity'   => $record->qty ?? 1,
+            ]],
+        ];
 
                                 if ($record->shopify_product_id) {
                                     $service->updateProduct($record->shopify_product_id, $payload);
