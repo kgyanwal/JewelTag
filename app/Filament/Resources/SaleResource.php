@@ -1147,13 +1147,56 @@ class SaleResource extends Resource
                                                                                     ->label('Last Name')
                                                                                     ->default($customer->last_name),
                                                                                 TextInput::make('edit_phone')
-                                                                                    ->label('Phone')
-                                                                                    ->tel()
-                                                                                    ->prefix('+1')
-                                                                                    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
-                                                                                    ->mask('(999) 999-9999')
-                                                                                    ->stripCharacters(['(', ')', '-', ' '])
-                                                                                    ->required(),
+    ->label('Phone')
+    ->tel()
+    ->prefix('+1')
+    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+    ->mask('(999) 999-9999')
+    ->stripCharacters(['(', ')', '-', ' '])
+    ->required()
+    ->live(onBlur: true)
+    ->afterStateUpdated(function ($state, Set $set, Get $get) use ($customer) {
+        $clean = preg_replace('/[^0-9]/', '', $state ?? '');
+        if (!$clean) {
+            $set('phone_duplicate_warning', null);
+            return;
+        }
+        $duplicate = \App\Models\Customer::where('phone', $clean)
+            ->where('id', '!=', $customer->id)
+            ->first();
+
+        $set('phone_duplicate_warning', $duplicate
+            ? "{$duplicate->name} {$duplicate->last_name}|{$duplicate->id}"
+            : null);
+    }),
+
+Hidden::make('phone_duplicate_warning'),
+
+Placeholder::make('phone_duplicate_banner')
+    ->hiddenLabel()
+    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
+    ->content(function (Get $get) {
+        $warning = $get('phone_duplicate_warning');
+        if (!$warning) return '';
+        [$name, ] = explode('|', $warning);
+        return new HtmlString("
+            <div style='background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:12px 14px;'>
+                <div style='font-size:13px;font-weight:700;color:#dc2626;margin-bottom:6px;'>
+                    ⚠️ This number is already used by <strong>{$name}</strong>
+                </div>
+                <div style='font-size:12px;color:#7f1d1d;'>
+                    Do you want to use this number anyway? If not, enter a different phone number above.
+                </div>
+            </div>
+        ");
+    })
+    ->columnSpanFull(),
+
+Checkbox::make('phone_duplicate_confirmed')
+    ->label('Yes, use this number anyway')
+    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
+    ->default(false)
+    ->columnSpanFull(),
                                                                                 TextInput::make('edit_email')
                                                                                     ->label('Email')
                                                                                     ->email()
@@ -1197,49 +1240,44 @@ class SaleResource extends Resource
                                                                 ]),
                                                         ];
                                                     })
-                                                   ->action(function (array $data, Get $get) {
+                                                 ->action(function (array $data, Get $get) {
     $customer = \App\Models\Customer::find($get('customer_id'));
     if (!$customer || !isset($data['edit_name'])) {
         return;
     }
 
-    // Check if phone is already taken by a DIFFERENT customer
-    $cleanPhone = preg_replace('/[^0-9]/', '', $data['edit_phone'] ?? '');
-    if ($cleanPhone) {
-        $duplicate = \App\Models\Customer::where('phone', $cleanPhone)
-            ->where('id', '!=', $customer->id)
-            ->first();
+    $clean = preg_replace('/[^0-9]/', '', $data['edit_phone'] ?? '');
+    $duplicate = $clean ? \App\Models\Customer::where('phone', $clean)->where('id', '!=', $customer->id)->first() : null;
 
-        if ($duplicate) {
-            Notification::make()
-                ->title('Phone Number Already In Use')
-                ->body("This phone number belongs to {$duplicate->name} {$duplicate->last_name}. Please use a different number or merge these customers.")
-                ->danger()
-                ->persistent()
-                ->send();
-            return;
-        }
-    }
-
-    try {
-        $customer->update([
-            'name'      => $data['edit_name'],
-            'last_name' => $data['edit_last_name'] ?? null,
-            'phone'     => $data['edit_phone'],
-            'email'     => $data['edit_email'] ?? null,
-            'street'    => $data['edit_street'] ?? null,
-            'city'      => $data['edit_city'] ?? null,
-            'state'     => $data['edit_state'] ?? null,
-            'postcode'  => $data['edit_postcode'] ?? null,
-        ]);
-        Notification::make()->title('Customer Updated Successfully')->success()->send();
-    } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+    if ($duplicate && empty($data['phone_duplicate_confirmed'])) {
         Notification::make()
-            ->title('Update Failed')
-            ->body('This phone number or email is already used by another customer.')
-            ->danger()
+            ->title('Phone Number Already In Use')
+            ->body("Belongs to {$duplicate->name} {$duplicate->last_name}. Check \"Yes, use this number anyway\" below to confirm, or enter a different number.")
+            ->warning()
             ->send();
+        return;
     }
+
+   try {
+    $customer->update([
+        'name'      => $data['edit_name'],
+        'last_name' => $data['edit_last_name'] ?? null,
+        'phone'     => $data['edit_phone'],
+        'email'     => $data['edit_email'] ?? null,
+        'street'    => $data['edit_street'] ?? null,
+        'city'      => $data['edit_city'] ?? null,
+        'state'     => $data['edit_state'] ?? null,
+        'postcode'  => $data['edit_postcode'] ?? null,
+    ]);
+    Notification::make()->title('Customer Updated Successfully')->success()->send();
+} catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+    Notification::make()
+        ->title('Database Update Needed')
+        ->body('This store still has a phone-uniqueness restriction in the database. Contact support to enable shared numbers.')
+        ->danger()
+        ->persistent()
+        ->send();
+}
 })
                                             )
                                             ->createOptionModalHeading('Quick Add New Customer')
