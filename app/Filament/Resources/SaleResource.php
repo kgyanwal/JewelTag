@@ -872,35 +872,117 @@ class SaleResource extends Resource
                                 ]),
 
                             Section::make('Trade-In Details')
-                                ->schema([
-                                    Select::make('has_trade_in')
-                                        ->label('Is there a Trade-In?')
-                                        ->options([1 => 'Yes', 0 => 'No'])
-                                        ->default(0)
-                                        ->required()
-                                        ->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                    Grid::make(2)
-                                        ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-                                        ->schema([
-                                            TextInput::make('trade_in_value')
-                                                ->label('Trade-In Value (Deduction)')
-                                                ->numeric()
-                                                ->prefix('$')
-                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                                ->live(onBlur: true)
-                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                                            TextInput::make('trade_in_receipt_no')
-                                                ->label('Trade-In Tracking #')
-                                                ->default(fn() => 'TRD-' . date('Ymd-His'))
-                                                ->readOnly(),
-                                            Textarea::make('trade_in_description')
-                                                ->label('Item Description')
-                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                                ->columnSpanFull()
-                                                ->rows(2),
-                                        ]),
-                                ]),
+    ->schema([
+        Select::make('has_trade_in')
+            ->label('Is there a Trade-In?')
+            ->options([1 => 'Yes', 0 => 'No'])
+            ->default(0)
+            ->required()
+            ->live()
+            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+        Grid::make(2)
+            ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+            ->schema([
+                Toggle::make('trade_in_bought_from_store')
+                    ->label('Was this item originally bought from our store?')
+                    ->live()
+                    ->columnSpanFull(),
+
+                Select::make('trade_in_original_product_item_id')
+    ->label('Original Stock #')
+    ->placeholder('Search by stock number...')
+    ->helperText('Only items already sold can be selected — in-stock items have not left the store yet.')
+    ->visible(fn(Get $get) => $get('trade_in_bought_from_store'))
+    ->required(fn(Get $get) => $get('trade_in_bought_from_store'))
+    ->searchable()
+    ->getSearchResultsUsing(function (string $search) {
+        return \App\Models\ProductItem::withTrashed()
+            ->where('barcode', 'like', "%{$search}%")
+            ->where('status', 'sold')
+            ->limit(30)
+            ->get()
+            ->mapWithKeys(fn($item) => [
+                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+            ]);
+    })
+    ->getOptionLabelUsing(fn($value) => optional(
+        \App\Models\ProductItem::withTrashed()->find($value),
+        fn($item) => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+    ))
+    ->live()
+    ->afterStateUpdated(function ($state, Set $set) {
+        if (!$state) return;
+        $item = \App\Models\ProductItem::withTrashed()->find($state);
+        if ($item && $item->status !== 'sold') {
+            $set('trade_in_original_product_item_id', null);
+            Notification::make()
+                ->title('Item Not Eligible')
+                ->body("Stock #{$item->barcode} is currently '{$item->status}' — only sold items can be selected as a trade-in match.")
+                ->danger()
+                ->send();
+        }
+    })
+    ->columnSpanFull(),
+
+               Placeholder::make('original_stock_verification')
+    ->hiddenLabel()
+    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_original_product_item_id'))
+    ->content(function (Get $get) {
+        $item = \App\Models\ProductItem::withTrashed()->find($get('trade_in_original_product_item_id'));
+        if (!$item) {
+            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Stock item not found.</div>");
+        }
+
+        if ($item->status !== 'sold') {
+            return new HtmlString("
+                <div class='p-3 bg-red-50 border border-red-200 rounded-lg text-sm'>
+                    <div class='font-black text-red-800 mb-1'>⚠️ Not Eligible: {$item->barcode}</div>
+                    <div class='text-red-700 text-xs mt-1'>
+                        This item is currently marked <strong>'{$item->status}'</strong> — it has not been sold yet, so it cannot be a trade-in match. Please select a different stock number.
+                    </div>
+                </div>
+            ");
+        }
+
+        $originalSaleItem = \App\Models\SaleItem::where('product_item_id', $item->id)
+            ->with('sale')
+            ->latest()
+            ->first();
+
+        $soldDate  = $originalSaleItem?->sale?->created_at?->format('M d, Y') ?? 'No prior sale on record';
+        $soldPrice = $originalSaleItem ? '$' . number_format($originalSaleItem->sold_price ?? 0, 2) : '—';
+
+        return new HtmlString("
+            <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
+                <div class='font-black text-blue-800 mb-1'>✓ Verified: {$item->barcode}</div>
+                <div class='text-blue-700'>{$item->custom_description}</div>
+                <div class='mt-2 text-xs text-blue-600'>
+                    Originally sold: <strong>{$soldDate}</strong> for <strong>{$soldPrice}</strong>
+                </div>
+            </div>
+        ");
+    })
+    ->columnSpanFull(),
+                TextInput::make('trade_in_value')
+                    ->label('Trade-In Value (Deduction)')
+                    ->numeric()
+                    ->prefix('$')
+                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                TextInput::make('trade_in_receipt_no')
+                    ->label('Trade-In Tracking #')
+                    ->default(fn() => 'TRD-' . date('Ymd-His'))
+                    ->readOnly(),
+                Textarea::make('trade_in_description')
+                    ->label('Item Description')
+                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                    ->columnSpanFull()
+                    ->rows(2),
+
+                
+            ]),
+    ]),
 
                             Section::make('Warranty')
                                 ->icon('heroicon-o-shield-check')

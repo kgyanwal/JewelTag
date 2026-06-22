@@ -501,14 +501,41 @@ if ($hasRepair) {
             <tr>
                 <td width="55%" valign="top" style="padding-right:15px;">
 
-                    @if($sale->notes)
-                    <div style="margin-bottom:8px;background:#fffbeb;border:1px solid #fef3c7;border-radius:5px;padding:8px;border-left:4px solid #f59e0b;">
-                        <div style="color:#92400e;font-size:9px;font-weight:800;text-transform:uppercase;margin-bottom:4px;">
-                            <i class="fas fa-info-circle"></i> SPECIAL INSTRUCTIONS / JOB NOTES
-                        </div>
-                        <div style="font-size:9px;color:#78350f;line-height:1.5;white-space:pre-wrap;">{{ $sale->notes }}</div>
-                    </div>
-                    @endif
+                    @if($sale->has_trade_in && !$isCustomDeposit)
+@php
+    $tradeInOriginalItem = $sale->trade_in_original_product_item_id
+        ? \App\Models\ProductItem::withTrashed()->find($sale->trade_in_original_product_item_id)
+        : null;
+@endphp
+<div style="margin-bottom:8px;background:#fefce8;border:1px solid #fde68a;border-radius:5px;padding:8px;border-left:4px solid #ca8a04;">
+    <div style="color:#854d0e;font-size:9px;font-weight:800;text-transform:uppercase;margin-bottom:4px;">
+        <i class="fas fa-exchange-alt"></i> TRADE-IN DETAILS
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:9px;color:#713f12;line-height:1.5;">
+        <tr>
+            <td style="font-weight:600;width:35%;">Tracking #:</td>
+            <td>{{ $sale->trade_in_receipt_no ?? '—' }}</td>
+        </tr>
+        <tr>
+            <td style="font-weight:600;vertical-align:top;">Description:</td>
+            <td style="white-space:pre-wrap;">{{ $sale->trade_in_description ?? '—' }}</td>
+        </tr>
+        @if($sale->trade_in_bought_from_store)
+        <tr>
+            <td style="font-weight:600;">Origin:</td>
+            <td>
+                <span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;border:1px solid #fde68a;">
+                    ORIGINALLY SOLD BY US
+                </span>
+                @if($tradeInOriginalItem)
+                    — Stock #{{ $tradeInOriginalItem->barcode }}
+                @endif
+            </td>
+        </tr>
+        @endif
+    </table>
+</div>
+@endif
 
                     @if($isSpecialJob)
                     <div style="margin-bottom:8px;background:#fffbeb;border:1px solid #fef3c7;border-radius:5px;padding:8px;border-left:4px solid #f59e0b;">

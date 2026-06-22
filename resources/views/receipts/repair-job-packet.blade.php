@@ -94,6 +94,17 @@
         .signature-box.right { float: right; }
         .clearfix::after { content: ""; display: table; clear: both; }
         .divider { border: none; border-top: 1px dashed #249E94; margin: 8px 0; }
+        .agreement-box {
+            margin-top: 14px; border: 1.5px solid #249E94; background: #f9fefe;
+            border-radius: 4px; padding: 10px 12px; font-size: 9.5px; line-height: 1.5; color: #333;
+        }
+        .agreement-box .items-list {
+            margin: 6px 0; font-weight: 700; text-transform: uppercase; color: #1a6b65;
+        }
+        .item-photo {
+            width: 70px; height: 70px; object-fit: cover; border-radius: 4px;
+            border: 1px solid #249E94; margin-top: 5px; display: block;
+        }
         @media print {
             .header, .document-title, .customer-table th, .workshop-table th {
                 -webkit-print-color-adjust: exact !important;
@@ -156,7 +167,7 @@
 <div class="page">
 
     <div class="header">
-        <h1 class="brand-name">{{ strtoupper($repair->customer->name . ' ' . $repair->customer->last_name) }}</h1>
+        <h1 class="brand-name">{{ strtoupper($repair->store?->name ?? $repair->store?->legal_name ?? 'Diamond Square') }}</h1>
         <div class="legal-name">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</div>
         <div class="store-details">
             {{ $repair->store?->street }},
@@ -166,6 +177,7 @@
     </div>
 
     <div class="document-title">REPAIR — CUSTOMER RECEIPT</div>
+
 
     <div class="badge-row">
         @if($repair->is_warranty)
@@ -221,6 +233,10 @@
                     <div style="font-weight:700;font-size:11px;margin-top:2px;">
                         {{ strtoupper($rItem['item_description'] ?? '') }}
                     </div>
+                    @if(!empty($rItem['item_photo']))
+                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
+                             class="item-photo">
+                    @endif
                 </td>
                 <td>
                     {{-- Issue reported --}}
@@ -269,6 +285,17 @@
         &nbsp;|&nbsp; <strong>{{ $repair->store?->phone ?? '' }}</strong>
     </div>
 
+    <div class="agreement-box">
+        <strong style="color:#1a6b65;">CUSTOMER AGREEMENT:</strong>
+        I, the undersigned, confirm that I have dropped off the following item(s) for repair as described above:
+        <div class="items-list">
+            @foreach($repairItems as $rItem)
+                {{ $rItem['item_description'] ?? '' }}@if(!$loop->last), @endif
+            @endforeach
+        </div>
+        I agree to the service described on the description and understand any estimated costs are subject to change upon any modification. I authorize {{ $repair->store?->legal_name ?? 'Diamond Square' }} to proceed with the work outlined above.
+    </div>
+
     <div class="signatures clearfix" style="margin-top:16px;">
         <div class="signature-box">Customer Signature<br>Date: ___________</div>
         <div class="signature-box right">Staff Initials<br>Date: ___________</div>
@@ -282,7 +309,7 @@
 <div class="page">
 
     <div class="header">
-        <h1 class="brand-name">{{ strtoupper($repair->customer->name . ' ' . $repair->customer->last_name) }}</h1>
+        <h1 class="brand-name">{{ strtoupper($repair->store?->name ?? $repair->store?->legal_name ?? 'Diamond Square') }}</h1>
         <div class="legal-name">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</div>
         <div class="store-details">
             {{ $repair->store?->street }},
@@ -344,6 +371,10 @@
                     <div style="font-size:11px;font-weight:700;margin-top:3px;text-transform:uppercase;">
                         {{ $rItem['item_description'] ?? '' }}
                     </div>
+                    @if(!empty($rItem['item_photo']))
+                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
+                             class="item-photo">
+                    @endif
                     @if(!empty($rItem['is_warranty']))
                         <div style="margin-top:3px;">
                             <span style="background:#fef2f2;color:#dc2626;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:900;border:1px solid #dc2626;">WARRANTY</span>
@@ -430,9 +461,20 @@
         </table>
     </div>
 
-    <div class="signatures clearfix">
-        <div class="signature-box">Jeweler Signature<br>Date: ___________</div>
-        <div class="signature-box right">Quality Control<br>Date: ___________</div>
+    <div class="agreement-box">
+        <strong style="color:#1a6b65;">CUSTOMER AGREEMENT (WORKSHOP COPY):</strong>
+        Customer agrees to the service described below for the following item(s):
+        <div class="items-list">
+            @foreach($repairItems as $rItem)
+                {{ $rItem['item_description'] ?? '' }}@if(!$loop->last), @endif
+            @endforeach
+        </div>
+        This copy confirms the work order accepted by the customer. Retain on file with the item during repair.
+    </div>
+
+    <div class="signatures clearfix" style="margin-top:16px;">
+        <div class="signature-box">Customer Signature<br>Date: ___________</div>
+        <div class="signature-box right">Jeweler Signature<br>Date: ___________</div>
     </div>
 
 </div>{{-- end page 2 --}}

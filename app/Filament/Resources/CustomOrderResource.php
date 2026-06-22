@@ -989,6 +989,8 @@ class CustomOrderResource extends Resource
     {
         return $table
             ->columns([
+                 Tables\Columns\TextColumn::make('created_at')
+                    ->label('DATE')->date('m/d/y')->sortable()->size('sm')->grow(false),
                 Tables\Columns\TextColumn::make('order_no')
                     ->label('ORDER #')
                     ->searchable()
@@ -1015,7 +1017,7 @@ class CustomOrderResource extends Resource
 
                 Tables\Columns\TextColumn::make('due_date')
                     ->date('M d, Y')
-                    ->label('DUE DATE')
+                    ->label('Expected Date')
                     ->sortable()
                     ->grow(false)
                     ->color(fn($record) => $record->due_date && $record->due_date <= now() ? 'danger' : 'warning'),

@@ -243,8 +243,38 @@ class ListRepairs extends ListRecords implements HasForms
     }
 
     protected function getHeaderActions(): array
-    {
-        return [
+{
+    \Filament\Support\Facades\FilamentView::registerRenderHook(
+        'panels::head.end',
+        fn () => new HtmlString('
+            <style>
+                [wire\\:id] .fi-icon-btn:has(.fi-icon-btn-icon) {
+                    position: relative;
+                }
+                [wire\\:id] .fi-ta-header-toolbar .fi-icon-btn:last-of-type {
+                    position: relative;
+                }
+                [wire\\:id] .fi-ta-header-toolbar .fi-icon-btn:last-of-type:hover::after {
+                    content: "Toggle columns — click to show/hide";
+                    position: absolute;
+                    top: 100%;
+                    right: 0;
+                    margin-top: 6px;
+                    background: #1f2937;
+                    color: white;
+                    font-size: 11px;
+                    font-weight: 500;
+                    padding: 6px 10px;
+                    border-radius: 6px;
+                    white-space: nowrap;
+                    z-index: 50;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                }
+            </style>
+        ')
+    );
+
+    return [
             Actions\Action::make('repair_manual')
                 ->label('Docs')
                 ->icon('heroicon-o-book-open')

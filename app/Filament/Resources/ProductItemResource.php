@@ -277,12 +277,21 @@ class ProductItemResource extends Resource
                                     ->columnSpan(4),
 
                                 Select::make('original_trade_in_no')
-                                    ->label('Tracking #')
-                                    ->placeholder('Search TRD-...')
-                                    ->options(function () {
-                                        $used = \App\Models\ProductItem::whereNotNull('original_trade_in_no')->pluck('original_trade_in_no')->toArray();
-                                        return \App\Models\Sale::where('has_trade_in', 1)->whereNotIn('trade_in_receipt_no', $used)->latest()->pluck('trade_in_receipt_no', 'trade_in_receipt_no');
-                                    })
+    ->label('Tracking #')
+    ->placeholder('Search TRD-...')
+    ->options(function () {
+        $used = \App\Models\ProductItem::whereNotNull('original_trade_in_no')
+            ->pluck('original_trade_in_no')
+            ->toArray();
+        return \App\Models\Sale::where('has_trade_in', 1)
+            ->whereNotNull('trade_in_receipt_no')
+            ->where('trade_in_receipt_no', '!=', '')
+            ->whereNotIn('trade_in_receipt_no', $used)
+            ->latest()
+            ->pluck('trade_in_receipt_no', 'trade_in_receipt_no')
+            ->filter()
+            ->toArray();
+    })
                                     ->visible(fn(Get $get) => $get('creation_mode') === 'trade_in')
                                     ->required(function (Get $get, $livewire) {
                                         return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem

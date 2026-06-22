@@ -366,6 +366,7 @@ HTML
                 \App\Filament\Resources\WishlistResource::class,
                 \App\Filament\Resources\SalePaymentResource::class,
                 \App\Filament\Resources\StockTransferResource::class,
+                \App\Filament\Resources\SupportTicketResource::class,
             ])
             ->pages([
                 \App\Filament\Pages\Dashboard::class,
@@ -395,9 +396,10 @@ HTML
                 \App\Filament\Pages\SalesReport::class,
                 \App\Filament\Pages\RestockLogs::class,
                 \App\Filament\Pages\WarrantyReport::class,
+                \App\Filament\Pages\FaqCenter::class,
             ])
             ->widgets([
-                 \App\Filament\Widgets\AdminAttentionWidget::class,
+                \App\Filament\Widgets\AdminAttentionWidget::class,
                 \App\Filament\Widgets\DashboardQuickMenu::class,
                 \App\Filament\Widgets\ScrapGoldCalculator::class,
             ])
@@ -469,6 +471,16 @@ HTML
                     ->icon('heroicon-o-adjustments-horizontal')
                     ->visible(fn(): bool => \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false),
 
+                'support' => MenuItem::make()
+                    ->label('Help & Support')
+                    ->icon('heroicon-o-lifebuoy')
+                    ->color('info')
+                    ->url(fn(): string => \App\Filament\Resources\SupportTicketResource::getUrl('index')),
+'faq' => MenuItem::make()
+    ->label('Help & FAQ')
+    ->icon('heroicon-o-question-mark-circle')
+    ->color('info')
+    ->url(fn(): string => \App\Filament\Pages\FaqCenter::getUrl()),
                 'activity_logs' => MenuItem::make()
                     ->label('Activity Logs')
                     ->icon('heroicon-o-finger-print')
@@ -484,37 +496,37 @@ HTML
 
     public function boot(): void
     {
-       FilamentView::registerRenderHook(
-    'panels::content.start',
-    function (): string {
-        try {
-            $announcement = \Illuminate\Support\Facades\DB::connection('mysql')
-                ->table('announcements')
-                ->where('is_active', true)
-                ->where(function ($q) {
-                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->latest()
-                ->first();
-        } catch (\Exception $e) {
-            $announcement = null;
-        }
+        FilamentView::registerRenderHook(
+            'panels::content.start',
+            function (): string {
+                try {
+                    $announcement = \Illuminate\Support\Facades\DB::connection('mysql')
+                        ->table('announcements')
+                        ->where('is_active', true)
+                        ->where(function ($q) {
+                            $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                        })
+                        ->latest()
+                        ->first();
+                } catch (\Exception $e) {
+                    $announcement = null;
+                }
 
-        if (!$announcement) return '';
+                if (!$announcement) return '';
 
-        $styles = [
-            'info'    => ['bg' => '#eff6ff', 'border' => '#3b82f6', 'icon' => '#3b82f6', 'text' => '#1e40af', 'sub' => '#3b5fc0'],
-            'success' => ['bg' => '#f0fdf4', 'border' => '#22c55e', 'icon' => '#22c55e', 'text' => '#166534', 'sub' => '#15803d'],
-            'warning' => ['bg' => '#fffbeb', 'border' => '#f59e0b', 'icon' => '#f59e0b', 'text' => '#92400e', 'sub' => '#b45309'],
-            'danger'  => ['bg' => '#fef2f2', 'border' => '#ef4444', 'icon' => '#ef4444', 'text' => '#991b1b', 'sub' => '#b91c1c'],
-        ];
-        $s       = $styles[$announcement->color ?? 'info'] ?? $styles['info'];
-        $key     = 'announcement_dismissed_' . $announcement->id;
-        $expires = $announcement->expires_at
-            ? '<div style="font-size:10px;color:' . $s['text'] . ';opacity:0.5;white-space:nowrap;flex-shrink:0;margin-top:3px;font-weight:600;">Expires ' . \Carbon\Carbon::parse($announcement->expires_at)->diffForHumans() . '</div>'
-            : '';
+                $styles = [
+                    'info'    => ['bg' => '#eff6ff', 'border' => '#3b82f6', 'icon' => '#3b82f6', 'text' => '#1e40af', 'sub' => '#3b5fc0'],
+                    'success' => ['bg' => '#f0fdf4', 'border' => '#22c55e', 'icon' => '#22c55e', 'text' => '#166534', 'sub' => '#15803d'],
+                    'warning' => ['bg' => '#fffbeb', 'border' => '#f59e0b', 'icon' => '#f59e0b', 'text' => '#92400e', 'sub' => '#b45309'],
+                    'danger'  => ['bg' => '#fef2f2', 'border' => '#ef4444', 'icon' => '#ef4444', 'text' => '#991b1b', 'sub' => '#b91c1c'],
+                ];
+                $s       = $styles[$announcement->color ?? 'info'] ?? $styles['info'];
+                $key     = 'announcement_dismissed_' . $announcement->id;
+                $expires = $announcement->expires_at
+                    ? '<div style="font-size:10px;color:' . $s['text'] . ';opacity:0.5;white-space:nowrap;flex-shrink:0;margin-top:3px;font-weight:600;">Expires ' . \Carbon\Carbon::parse($announcement->expires_at)->diffForHumans() . '</div>'
+                    : '';
 
-        return '
+                return '
         <div id="jeweltag-announcement" style="background:' . $s['bg'] . ';border-left:4px solid ' . $s['border'] . ';border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
             <div style="background:' . $s['icon'] . ';border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
                 <svg xmlns="http://www.w3.org/2000/svg" style="width:15px;height:15px;" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5">
@@ -554,8 +566,8 @@ HTML
                 }
             })();
         </script>';
-    }
-);
+            }
+        );
 
         \Filament\Tables\Columns\TextColumn::configureUsing(function (\Filament\Tables\Columns\TextColumn $column): void {
             $column->timezone(fn() => config('app.timezone'));
