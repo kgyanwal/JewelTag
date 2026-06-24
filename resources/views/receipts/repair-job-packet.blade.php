@@ -105,6 +105,27 @@
             width: 70px; height: 70px; object-fit: cover; border-radius: 4px;
             border: 1px solid #249E94; margin-top: 5px; display: block;
         }
+        /* 🚀 NEW: Location + Ready status bar — large, visible from outside a sealed bag */
+        .location-ready-bar {
+            display: table; width: 100%; margin: 10px 0;
+            border: 3px solid #1a6b65; border-radius: 6px; background: #f9fefe;
+        }
+        .location-ready-bar .cell {
+            display: table-cell; vertical-align: middle; padding: 10px 14px;
+            text-align: center; border-right: 2px solid #1a6b65;
+        }
+        .location-ready-bar .cell:last-child { border-right: none; }
+        .location-ready-bar .label {
+            font-size: 9px; font-weight: 900; text-transform: uppercase;
+            letter-spacing: 0.08em; color: #1a6b65; display: block; margin-bottom: 3px;
+        }
+        .location-ready-bar .value {
+            font-size: 20px; font-weight: 900; color: #000;
+        }
+        .ready-yes { background: #f0fdf4 !important; }
+        .ready-yes .value { color: #166534; }
+        .ready-no { background: #fef2f2 !important; }
+        .ready-no .value { color: #dc2626; }
         @media print {
             .header, .document-title, .customer-table th, .workshop-table th {
                 -webkit-print-color-adjust: exact !important;
@@ -139,6 +160,9 @@
     ];
     $st = $statusMap[$repair->status] ?? ['label' => ucfirst($repair->status), 'class' => 'status-received'];
 
+    // Is the repair actually ready/done, for the bold workshop indicator
+    $isReady = in_array($repair->status, ['ready', 'delivered']);
+
     // Helper to render service/metal/sizing badges for a repair item
     $serviceInfo = function(array $item, bool $showBadges = true) {
         $parts = [];
@@ -167,7 +191,7 @@
 <div class="page">
 
     <div class="header">
-        <h1 class="brand-name">{{ strtoupper($repair->store?->name ?? $repair->store?->legal_name ?? 'Diamond Square') }}</h1>
+        <h1 class="brand-name">{{ strtoupper($repair->customer->name . ' ' . $repair->customer->last_name) }}</h1>
         <div class="legal-name">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</div>
         <div class="store-details">
             {{ $repair->store?->street }},
@@ -177,7 +201,6 @@
     </div>
 
     <div class="document-title">REPAIR — CUSTOMER RECEIPT</div>
-
 
     <div class="badge-row">
         @if($repair->is_warranty)
@@ -309,7 +332,7 @@
 <div class="page">
 
     <div class="header">
-        <h1 class="brand-name">{{ strtoupper($repair->store?->name ?? $repair->store?->legal_name ?? 'Diamond Square') }}</h1>
+        <h1 class="brand-name">{{ strtoupper($repair->customer->name . ' ' . $repair->customer->last_name) }}</h1>
         <div class="legal-name">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</div>
         <div class="store-details">
             {{ $repair->store?->street }},
@@ -341,6 +364,18 @@
             <td class="right-align" style="color:#94a3b8;font-size:9px;">Internal use only</td>
         </tr>
     </table>
+
+    {{-- 🚀 NEW: Location + Ready status bar — large, bold, readable from outside a sealed bag --}}
+    <div class="location-ready-bar">
+        <div class="cell" style="width:60%;">
+           <span class="label">Location</span>
+<span class="value">{{ $repair->repair_location ?? '— Not Set —' }}</span>
+        </div>
+        <div class="cell {{ $isReady ? 'ready-yes' : 'ready-no' }}" style="width:40%;">
+            <span class="label">Ready?</span>
+            <span class="value">{{ $isReady ? '✔ YES' : '✘ NO' }}</span>
+        </div>
+    </div>
 
     <div class="customer-box">
         <div class="cust-name">{{ $repair->customer->name }} {{ $repair->customer->last_name }}</div>
