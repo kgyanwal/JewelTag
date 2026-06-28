@@ -240,7 +240,76 @@ header.fi-topbar {
     transition: background 150ms var(--jt-ease);
 }
 .jt-staff-chip:hover { background: rgba(201,162,75,0.22); }
+/* ── GLOBAL SEARCH BAR (top nav) ──────────── */
+.fi-topbar .fi-global-search-field,
+.fi-global-search-field {
+    background: rgba(248,246,241,0.97) !important;
+    border: 1.5px solid var(--jt-gold) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12) !important;
+    transition: box-shadow 150ms var(--jt-ease), border-color 150ms var(--jt-ease) !important;
+}
+.fi-global-search-field:focus-within {
+    box-shadow: 0 0 0 3px rgba(201,162,75,0.35) !important;
+    border-color: var(--jt-gold-soft) !important;
+}
+.fi-global-search-field input {
+    color: var(--jt-ink) !important;
+    background: transparent !important;
+}
+.fi-global-search-field input::placeholder {
+    color: #8A9491 !important;
+    opacity: 1 !important;
+}
+.fi-global-search-field svg {
+    color: var(--jt-sage) !important;
+    stroke: var(--jt-sage) !important;
+}
+/* ── GLOBAL SEARCH RESULTS PANEL (appears while typing) ── */
+.fi-topbar .fi-global-search-field-results,
+[x-show*="search"] [class*="results"],
+.fi-global-search-results-ctn,
+div[id*="global-search"] {
+    background: #ffffff !important;
+    border: 1.5px solid var(--jt-gold) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.18) !important;
+}
 
+/* Force every piece of text/icon inside the results panel to be dark
+   and readable, regardless of what class Filament gives it */
+.fi-topbar .fi-global-search-field-results,
+.fi-topbar .fi-global-search-field-results *,
+.fi-global-search-results-ctn,
+.fi-global-search-results-ctn *,
+div[id*="global-search"],
+div[id*="global-search"] * {
+    color: var(--jt-ink) !important;
+}
+
+/* Result group headings (e.g. "Customers", "Sales") */
+.fi-global-search-results-ctn [class*="heading"],
+div[id*="global-search"] [class*="heading"] {
+    color: var(--jt-sage) !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 0.05em !important;
+}
+
+/* Hover state on a result row */
+.fi-global-search-results-ctn a:hover,
+div[id*="global-search"] a:hover {
+    background: rgba(201,162,75,0.10) !important;
+    color: var(--jt-pine) !important;
+}
+
+/* "No search results found" + any empty-state text */
+.fi-global-search-results-ctn p,
+div[id*="global-search"] p {
+    color: var(--jt-ink) !important;
+    opacity: 0.65 !important;
+}
 /* ── NAV ──────────────────────────────────── */
 .fi-topbar nav > ul {
     display: flex !important;
