@@ -31,10 +31,19 @@ class MySalesReport extends Page implements HasTable
 
     // ─── SHARED HELPER ───────────────────────────────────────────────────────
     private static function effectiveDateExpr(): string
-    {
-        return 'COALESCE(completed_at, updated_at, created_at)';
-    }
-
+{
+    // Imported (OnSwim) invoices look like D091225-4992 — the 6 digits
+    // right after the letter prefix are MMDDYY, the REAL sale date.
+    // For those, parse the date out of invoice_number. Everything else
+    // (normal sales created in JewelTag) keeps using completed_at/created_at.
+    return "
+        CASE
+            WHEN invoice_number REGEXP '^[A-Za-z][0-9]{6}-'
+            THEN STR_TO_DATE(SUBSTRING(invoice_number, 2, 6), '%m%d%y')
+            ELSE COALESCE(completed_at, updated_at, created_at)
+        END
+    ";
+}
     public function table(Table $table): Table
     {
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
