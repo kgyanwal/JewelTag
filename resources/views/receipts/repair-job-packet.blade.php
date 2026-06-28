@@ -257,9 +257,17 @@
                         {{ strtoupper($rItem['item_description'] ?? '') }}
                     </div>
                     @if(!empty($rItem['item_photo']))
-                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
-                             class="item-photo">
-                    @endif
+    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
+         class="item-photo">
+@endif
+@if(!empty($rItem['captured_photos']) && is_array($rItem['captured_photos']))
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+        @foreach($rItem['captured_photos'] as $camPhoto)
+            <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($camPhoto) }}"
+                 class="item-photo" style="width:55px;height:55px;">
+        @endforeach
+    </div>
+@endif
                 </td>
                 <td>
                     {{-- Issue reported --}}
@@ -406,10 +414,18 @@
                     <div style="font-size:11px;font-weight:700;margin-top:3px;text-transform:uppercase;">
                         {{ $rItem['item_description'] ?? '' }}
                     </div>
-                    @if(!empty($rItem['item_photo']))
-                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
-                             class="item-photo">
-                    @endif
+                   @if(!empty($rItem['item_photo']))
+    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
+         class="item-photo">
+@endif
+@if(!empty($rItem['captured_photos']) && is_array($rItem['captured_photos']))
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+        @foreach($rItem['captured_photos'] as $camPhoto)
+            <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($camPhoto) }}"
+                 class="item-photo" style="width:55px;height:55px;">
+        @endforeach
+    </div>
+@endif
                     @if(!empty($rItem['is_warranty']))
                         <div style="margin-top:3px;">
                             <span style="background:#fef2f2;color:#dc2626;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:900;border:1px solid #dc2626;">WARRANTY</span>

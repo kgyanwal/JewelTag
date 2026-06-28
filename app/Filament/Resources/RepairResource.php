@@ -252,7 +252,7 @@ class RepairResource extends Resource
                                         ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
                                         ->columnSpanFull(),
 Forms\Components\FileUpload::make('item_photo')
-    ->label('Item Photo (Intake Condition)')
+    ->label('Item Photo (Intake Condition) — Upload File')
     ->image()
     ->disk('public')
     ->directory('repair-intake-photos')
@@ -263,7 +263,40 @@ Forms\Components\FileUpload::make('item_photo')
     ->helperText('Take a photo of the item as received — protects against later disputes about condition.')
     ->extraInputAttributes(['capture' => 'environment'])
     ->columnSpanFull(),
-                                    Grid::make(2)->schema([
+
+Forms\Components\Hidden::make('captured_photos')
+    ->default([])
+    ->dehydrated(true), // Crucial: This tells Filament to save this field
+
+Placeholder::make('webcam_view')
+    ->live()
+    ->content(function (Forms\Get $get, $component) {
+        // captured_photos is a sibling field in the same repeater row
+        $photos    = $get('captured_photos') ?? [];
+        
+        // Ensure it's always an array (DB might return null or string)
+        if (!is_array($photos)) {
+            $photos = [];
+        }
+
+        $statePath = $component->getStatePath();
+        $fieldPath = str_replace('webcam_view', 'captured_photos', $statePath);
+
+        // Use a unique key based on statePath + photos count so Livewire
+        // re-mounts the component when the form is hydrated with real data
+        $key = md5($fieldPath . count($photos));
+
+        return new \Illuminate\Support\HtmlString(
+            \Illuminate\Support\Facades\Blade::render(
+                '<livewire:repair-webcam-capture :statePath="$statePath" :photos="$photos" :key="$key" />',
+                [
+                    'statePath' => $fieldPath,
+                    'photos'    => $photos,
+                    'key'       => $key,
+                ]
+            )
+        );
+    }),                         Grid::make(2)->schema([
                                         Textarea::make('item_description')
                                             ->label('Item Name / Description')
                                             ->placeholder('e.g., 14k White Gold Diamond Engagement Ring')
@@ -564,6 +597,21 @@ Forms\Components\FileUpload::make('item_photo')
                     'delivered'   => ['style' => 'background:#DBEAFE;color:#1D4ED8;font-weight:700;border-radius:4px;min-width:90px;'],
                     default       => ['style' => 'min-width:90px;'],
                 })
+                ->toggleable(),
+
+                Tables\Columns\ToggleColumn::make('is_ready_toggle')
+                ->label('READY?')
+                ->getStateUsing(fn($record) => in_array($record->status, ['ready', 'delivered']))
+                ->onColor('success')
+                ->offColor('gray')
+                ->updateStateUsing(function ($record, $state) {
+                    if ($state) {
+                        $record->update(['status' => 'ready']);
+                    } else {
+                        $record->update(['status' => 'received']);
+                    }
+                })
+                ->grow(false)
                 ->toggleable(),
 
             Tables\Columns\SelectColumn::make('repair_location')

@@ -94,9 +94,9 @@ class SaleResource extends Resource
     // }
 
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
-{
-    return true;
-}
+    {
+        return true;
+    }
 
     public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
     {
@@ -164,19 +164,21 @@ class SaleResource extends Resource
 
                                                 // 3. Append the new regular item using the unique UUID as the key
                                                 // This prevents it from wiping out the Custom Order, which also uses a UUID key!
-                                                $currentItems[$newItemId] = [
-                                                    'product_item_id'     => $item->id,
-                                                    'repair_id'           => null,
-                                                    'custom_order_id'     => null, // explicitly mark as not custom
-                                                    'is_new_custom_order' => false, // explicitly mark as not custom
-                                                    'stock_no_display'    => $item->barcode,
-                                                    'custom_description'  => $item->custom_description ?? $item->barcode,
-                                                    'qty'                 => $qty,
-                                                    'sold_price'          => $item->retail_price,
-                                                    'sale_price_override' => $item->retail_price * $qty,
-                                                    'discount_percent'    => 0,
-                                                    'discount_amount'     => 0,
-                                                    'is_tax_free'         => false,
+                                              $currentItems[$newItemId] = [
+                                                    'product_item_id'          => $item->id,
+                                                    'repair_id'                => null,
+                                                    'custom_order_id'           => null,
+                                                    'is_new_custom_order'       => false,
+                                                    'is_non_stock'              => false,
+                                                    'stock_no_display'          => $item->barcode,
+                                                    'stock_no_display_persist'  => $item->barcode,
+                                                    'custom_description'        => $item->custom_description ?? $item->barcode,
+                                                    'qty'                       => $qty,
+                                                    'sold_price'                => $item->retail_price,
+                                                    'sale_price_override'       => $item->retail_price * $qty,
+                                                    'discount_percent'          => 0,
+                                                    'discount_amount'           => 0,
+                                                    'is_tax_free'               => false,
                                                 ];
 
                                                 // 4. Save the safely merged array back to the state
@@ -241,18 +243,19 @@ class SaleResource extends Resource
                                                 $newItemId = (string) \Illuminate\Support\Str::uuid();
 
                                                 $currentItems[$newItemId] = [
-                                                    'product_item_id'     => null,
-                                                    'repair_id'           => null,
-                                                    'custom_order_id'     => null,
-                                                    'is_non_stock'        => true,
-                                                    'stock_no_display'    => 'NON-TAG',
-                                                    'custom_description'  => $data['description'],
-                                                    'qty'                 => $qty,
-                                                    'sold_price'          => $price,
-                                                    'sale_price_override' => $finalPrice,
-                                                    'discount_percent'    => $discPct,
-                                                    'discount_amount'     => $discAmt,
-                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
+                                                    'product_item_id'          => null,
+                                                    'repair_id'                 => null,
+                                                    'custom_order_id'           => null,
+                                                    'is_non_stock'              => true,
+                                                    'stock_no_display'          => 'NON-TAG',
+                                                    'stock_no_display_persist'  => 'NON-TAG',
+                                                    'custom_description'        => $data['description'],
+                                                    'qty'                       => $qty,
+                                                    'sold_price'                => $price,
+                                                    'sale_price_override'       => $finalPrice,
+                                                    'discount_percent'          => $discPct,
+                                                    'discount_amount'           => $discAmt,
+                                                    'is_tax_free'               => $data['is_tax_free'] ?? false,
                                                 ];
 
                                                 $set('items', $currentItems);
@@ -407,20 +410,21 @@ class SaleResource extends Resource
 
                                                 $currentItems = $get('items') ?? [];
                                                 $currentItems[$draftId] = [
-                                                    'product_item_id'     => null,
-                                                    'repair_id'           => null,
-                                                    'custom_order_id'     => null,
-                                                    'is_non_stock'        => false,
-                                                    'is_new_custom_order' => true,
-                                                    'new_custom_data'     => json_encode($data),
-                                                    'stock_no_display'    => 'NEW CUSTOM',
-                                                    'custom_description'  => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
-                                                    'qty'                 => 1,
-                                                    'sold_price'          => $price,
-                                                    'sale_price_override' => $finalPrice,
-                                                    'discount_percent'    => $discPct,
-                                                    'discount_amount'     => $discAmt,
-                                                    'is_tax_free'         => $data['is_tax_free'] ?? false,
+                                                    'product_item_id'          => null,
+                                                    'repair_id'                => null,
+                                                    'custom_order_id'           => null,
+                                                    'is_non_stock'              => false,
+                                                    'is_new_custom_order'       => true,
+                                                    'new_custom_data'           => json_encode($data),
+                                                    'stock_no_display'          => 'NEW CUSTOM',
+                                                    'stock_no_display_persist'  => 'NEW CUSTOM',
+                                                    'custom_description'        => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
+                                                    'qty'                       => 1,
+                                                    'sold_price'                => $price,
+                                                    'sale_price_override'       => $finalPrice,
+                                                    'discount_percent'          => $discPct,
+                                                    'discount_amount'           => $discAmt,
+                                                    'is_tax_free'               => $data['is_tax_free'] ?? false,
                                                 ];
                                                 $set('items', $currentItems);
 
@@ -504,7 +508,9 @@ class SaleResource extends Resource
                                             ]);
                                             $data['custom_order_id'] = $customOrder->id;
                                         }
-                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+                                       $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
+                                        $data['is_non_stock']     = (bool) ($data['is_non_stock'] ?? false);
+                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['stock_no_display_persist']);
                                         return $data;
                                     })
                                     ->mutateRelationshipDataBeforeSaveUsing(function (array $data, $livewire) {
@@ -546,7 +552,9 @@ class SaleResource extends Resource
                                             ]);
                                             $data['custom_order_id'] = $customOrder->id;
                                         }
-                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['is_non_stock']);
+                                       $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
+                                        $data['is_non_stock']     = (bool) ($data['is_non_stock'] ?? false);
+                                        unset($data['is_new_custom_order'], $data['new_custom_data'], $data['stock_no_display_persist']);
                                         return $data;
                                     })
                                     ->live()
@@ -556,6 +564,8 @@ class SaleResource extends Resource
                                         Hidden::make('custom_order_id')->dehydrated(),
                                         Hidden::make('is_new_custom_order')->default(false)->dehydrated(),
                                         Hidden::make('new_custom_data')->dehydrated(),
+                                        Hidden::make('is_non_stock')->default(false)->dehydrated(),
+                                        Hidden::make('stock_no_display_persist')->dehydrated(),
 
                                         TextInput::make('stock_no_display')
                                             ->label('Item')
@@ -816,21 +826,21 @@ class SaleResource extends Resource
                                     Repeater::make('special_jobs')
                                         ->label('')
                                         ->schema([
-                                                Select::make('applicable_item_indexes')
-            ->label('Apply this job to which items?')
-            ->multiple()
-            ->options(function (Get $get) {
-                $items = $get('../../items') ?? [];
-                $options = [];
-                foreach (array_values($items) as $i => $item) {
-                    $desc = $item['custom_description'] ?? $item['stock_no_display'] ?? 'Item ' . ($i + 1);
-                    $options[$i] = ($i + 1) . '. ' . \Illuminate\Support\Str::limit($desc, 50);
-                }
-                return $options;
-            })
-            ->placeholder('Select items this job applies to...')
-            ->columnSpanFull()
-            ->live(),
+                                            Select::make('applicable_item_indexes')
+                                                ->label('Apply this job to which items?')
+                                                ->multiple()
+                                                ->options(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $options = [];
+                                                    foreach (array_values($items) as $i => $item) {
+                                                        $desc = $item['custom_description'] ?? $item['stock_no_display'] ?? 'Item ' . ($i + 1);
+                                                        $options[$i] = ($i + 1) . '. ' . \Illuminate\Support\Str::limit($desc, 50);
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->placeholder('Select items this job applies to...')
+                                                ->columnSpanFull()
+                                                ->live(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')
@@ -872,15 +882,15 @@ class SaleResource extends Resource
                                 ]),
 
                             Section::make('Trade-In Details')
-    ->schema([
-        Select::make('has_trade_in')
-            ->label('Is there a Trade-In?')
-            ->options([1 => 'Yes', 0 => 'No'])
-            ->default(0)
-            ->required()
-            ->live()
-            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-        Grid::make(2)
+                                ->schema([
+                                    Select::make('has_trade_in')
+                                        ->label('Is there a Trade-In?')
+                                        ->options([1 => 'Yes', 0 => 'No'])
+                                        ->default(0)
+                                        ->required()
+                                        ->live()
+                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                    Grid::make(2)
             ->visible(fn(Get $get) => $get('has_trade_in') == 1)
             ->schema([
                 Toggle::make('trade_in_bought_from_store')
@@ -888,81 +898,247 @@ class SaleResource extends Resource
                     ->live()
                     ->columnSpanFull(),
 
+                // 🚀 Choose tagged vs non-tag right under the "bought from store" toggle
+                Select::make('trade_in_match_type')
+                    ->label('Item Type')
+                    ->options([
+                        'tagged'  => 'Tagged Item (has barcode)',
+                        'non_tag' => 'Non-Tag Item (no barcode)',
+                    ])
+                    ->default('tagged')
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store'))
+                    ->required(fn(Get $get) => $get('trade_in_bought_from_store'))
+                    ->live()
+                    ->afterStateUpdated(fn(Set $set) => $set('trade_in_original_product_item_id', null))
+                    ->columnSpanFull(),
+
+                // ── TAGGED ITEM PATH (barcode search) ──────────────────
                 Select::make('trade_in_original_product_item_id')
-    ->label('Original Stock #')
-    ->placeholder('Search by stock number...')
-    ->helperText('Only items already sold can be selected — in-stock items have not left the store yet.')
-    ->visible(fn(Get $get) => $get('trade_in_bought_from_store'))
-    ->required(fn(Get $get) => $get('trade_in_bought_from_store'))
-    ->searchable()
-    ->getSearchResultsUsing(function (string $search) {
-        return \App\Models\ProductItem::withTrashed()
-            ->where('barcode', 'like', "%{$search}%")
-            ->where('status', 'sold')
-            ->limit(30)
-            ->get()
-            ->mapWithKeys(fn($item) => [
-                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
-            ]);
-    })
-    ->getOptionLabelUsing(fn($value) => optional(
-        \App\Models\ProductItem::withTrashed()->find($value),
-        fn($item) => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
-    ))
-    ->live()
-    ->afterStateUpdated(function ($state, Set $set) {
-        if (!$state) return;
-        $item = \App\Models\ProductItem::withTrashed()->find($state);
-        if ($item && $item->status !== 'sold') {
-            $set('trade_in_original_product_item_id', null);
-            Notification::make()
-                ->title('Item Not Eligible')
-                ->body("Stock #{$item->barcode} is currently '{$item->status}' — only sold items can be selected as a trade-in match.")
-                ->danger()
-                ->send();
-        }
-    })
-    ->columnSpanFull(),
+                    ->label('Original Stock #')
+                    ->placeholder('Search by stock number...')
+                    ->helperText('Only items already sold can be selected — in-stock items have not left the store yet.')
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
+                    ->required(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
+                    ->searchable()
+                    ->getSearchResultsUsing(function (string $search) {
+                        return \App\Models\ProductItem::withTrashed()
+                            ->where('barcode', 'like', "%{$search}%")
+                            ->where('status', 'sold')
+                            ->limit(30)
+                            ->get()
+                            ->mapWithKeys(fn($item) => [
+                                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+                            ]);
+                    })
+                    ->getOptionLabelUsing(fn($value) => optional(
+                        \App\Models\ProductItem::withTrashed()->find($value),
+                        fn($item) => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+                    ))
+                    ->live()
+                    ->afterStateUpdated(function ($state, Set $set) {
+                        if (!$state) return;
+                        $item = \App\Models\ProductItem::withTrashed()->find($state);
+                        if ($item && $item->status !== 'sold') {
+                            $set('trade_in_original_product_item_id', null);
+                            Notification::make()
+                                ->title('Item Not Eligible')
+                                ->body("Stock #{$item->barcode} is currently '{$item->status}' — only sold items can be selected as a trade-in match.")
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->columnSpanFull(),
 
-               Placeholder::make('original_stock_verification')
-    ->hiddenLabel()
-    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_original_product_item_id'))
-    ->content(function (Get $get) {
-        $item = \App\Models\ProductItem::withTrashed()->find($get('trade_in_original_product_item_id'));
-        if (!$item) {
-            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Stock item not found.</div>");
-        }
+                Placeholder::make('original_stock_verification')
+                    ->hiddenLabel()
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged' && $get('trade_in_original_product_item_id'))
+                    ->content(function (Get $get) {
+                        $item = \App\Models\ProductItem::withTrashed()->find($get('trade_in_original_product_item_id'));
+                        if (!$item) {
+                            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Stock item not found.</div>");
+                        }
 
-        if ($item->status !== 'sold') {
-            return new HtmlString("
-                <div class='p-3 bg-red-50 border border-red-200 rounded-lg text-sm'>
-                    <div class='font-black text-red-800 mb-1'>⚠️ Not Eligible: {$item->barcode}</div>
-                    <div class='text-red-700 text-xs mt-1'>
-                        This item is currently marked <strong>'{$item->status}'</strong> — it has not been sold yet, so it cannot be a trade-in match. Please select a different stock number.
-                    </div>
-                </div>
-            ");
-        }
+                        if ($item->status !== 'sold') {
+                            return new HtmlString("
+                                <div class='p-3 bg-red-50 border border-red-200 rounded-lg text-sm'>
+                                    <div class='font-black text-red-800 mb-1'>⚠️ Not Eligible: {$item->barcode}</div>
+                                    <div class='text-red-700 text-xs mt-1'>
+                                        This item is currently marked <strong>'{$item->status}'</strong> — it has not been sold yet, so it cannot be a trade-in match. Please select a different stock number.
+                                    </div>
+                                </div>
+                            ");
+                        }
 
-        $originalSaleItem = \App\Models\SaleItem::where('product_item_id', $item->id)
-            ->with('sale')
-            ->latest()
-            ->first();
+                        $originalSaleItem = \App\Models\SaleItem::where('product_item_id', $item->id)
+                            ->with('sale')
+                            ->latest()
+                            ->first();
 
-        $soldDate  = $originalSaleItem?->sale?->created_at?->format('M d, Y') ?? 'No prior sale on record';
-        $soldPrice = $originalSaleItem ? '$' . number_format($originalSaleItem->sold_price ?? 0, 2) : '—';
+                        $soldDate  = $originalSaleItem?->sale?->created_at?->format('M d, Y') ?? 'No prior sale on record';
+                        $soldPrice = $originalSaleItem ? '$' . number_format($originalSaleItem->sold_price ?? 0, 2) : '—';
 
-        return new HtmlString("
-            <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
-                <div class='font-black text-blue-800 mb-1'>✓ Verified: {$item->barcode}</div>
-                <div class='text-blue-700'>{$item->custom_description}</div>
-                <div class='mt-2 text-xs text-blue-600'>
-                    Originally sold: <strong>{$soldDate}</strong> for <strong>{$soldPrice}</strong>
-                </div>
-            </div>
-        ");
-    })
-    ->columnSpanFull(),
+                        return new HtmlString("
+                            <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
+                                <div class='font-black text-blue-800 mb-1'>✓ Verified: {$item->barcode}</div>
+                                <div class='text-blue-700'>{$item->custom_description}</div>
+                                <div class='mt-2 text-xs text-blue-600'>
+                                    Originally sold: <strong>{$soldDate}</strong> for <strong>{$soldPrice}</strong>
+                                </div>
+                            </div>
+                        ");
+                    })
+                    ->columnSpanFull(),
+
+                // ── NON-TAG ITEM PATH (search modal) ────────────────────
+                Hidden::make('trade_in_original_sale_item_id'),
+
+                Placeholder::make('non_tag_trade_in_picker')
+                    ->hiddenLabel()
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                    ->content(function (Get $get) {
+                        $selectedId = $get('trade_in_original_sale_item_id');
+                        if (!$selectedId) {
+                            return new HtmlString("<div style='padding:10px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;'>No item selected yet — use the search button below.</div>");
+                        }
+                        return new HtmlString("<div style='padding:6px 0;font-size:11px;color:#6b7280;'>Item selected. Use the search button to change it.</div>");
+                    })
+                    ->columnSpanFull(),
+
+                \Filament\Forms\Components\Actions::make([
+                    FormAction::make('search_non_tag_trade_in')
+                        ->label('🔍 Search Non-Tag Sales History')
+                        ->color('info')
+                        ->outlined()
+                        ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                        ->modalHeading('Search Non-Tag Item History')
+                        ->modalWidth('4xl')
+                        ->modalSubmitActionLabel('Use Selected Item')
+                        ->form([
+                            Grid::make(4)->schema([
+                                TextInput::make('search_description')
+                                    ->label('Description Contains')
+                                    ->placeholder('e.g. engraved pendant')
+                                    ->live(onBlur: true),
+                                TextInput::make('search_customer')
+                                    ->label('Customer Name')
+                                    ->placeholder('e.g. Jane Smith')
+                                    ->live(onBlur: true),
+                                CustomDatePicker::make('search_date_from')
+                                    ->label('Sold From')
+                                    ->live(),
+                                CustomDatePicker::make('search_date_to')
+                                    ->label('Sold To')
+                                    ->live(),
+                            ]),
+                            Grid::make(2)->schema([
+                                TextInput::make('search_price_min')
+                                    ->label('Min Price')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->live(onBlur: true),
+                                TextInput::make('search_price_max')
+                                    ->label('Max Price')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->live(onBlur: true),
+                            ]),
+                            \Filament\Forms\Components\Radio::make('selected_sale_item_id')
+                                ->label('Matching Items')
+                                ->options(function (Get $get) {
+                                    $query = \App\Models\SaleItem::query()
+                                        ->where('is_non_stock', true)
+                                        ->whereNull('product_item_id')
+                                        ->whereNull('custom_order_id')
+                                        ->whereNull('repair_id')
+                                        ->whereHas('sale', fn($q) => $q->where('status', '!=', 'cancelled'))
+                                        ->with('sale.customer');
+
+                                    if ($desc = $get('search_description')) {
+                                        $query->where('custom_description', 'like', "%{$desc}%");
+                                    }
+
+                                    if ($cust = $get('search_customer')) {
+                                        $query->whereHas('sale.customer', function ($q) use ($cust) {
+                                            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$cust}%"]);
+                                        });
+                                    }
+
+                                    if ($from = $get('search_date_from')) {
+                                        $query->whereDate('created_at', '>=', $from);
+                                    }
+
+                                    if ($to = $get('search_date_to')) {
+                                        $query->whereDate('created_at', '<=', $to);
+                                    }
+
+                                    if ($min = $get('search_price_min')) {
+                                        $query->where(fn($q) => $q->where('sale_price_override', '>=', $min)->orWhere('sold_price', '>=', $min));
+                                    }
+
+                                    if ($max = $get('search_price_max')) {
+                                        $query->where(fn($q) => $q->where('sale_price_override', '<=', $max)->orWhere('sold_price', '<=', $max));
+                                    }
+
+                                    return $query->latest('created_at')
+                                        ->limit(50)
+                                        ->get()
+                                        ->mapWithKeys(function ($saleItem) {
+                                            $date  = $saleItem->created_at?->format('M d, Y');
+                                            $price = $saleItem->sale_price_override ?: $saleItem->sold_price;
+                                            $cust  = $saleItem->sale?->customer
+                                                ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
+                                                : 'Unknown';
+                                            $inv   = $saleItem->sale?->invoice_number ?? '—';
+                                            $label = "{$saleItem->custom_description} — \${$price} — {$cust} — {$date} (Inv #{$inv})";
+                                            return [$saleItem->id => $label];
+                                        });
+                                })
+                                ->live()
+                                ->columnSpanFull(),
+                        ])
+                        ->action(function (array $data, Set $set) {
+                            if (!empty($data['selected_sale_item_id'])) {
+                                $set('trade_in_original_sale_item_id', $data['selected_sale_item_id']);
+                                Notification::make()
+                                    ->title('Item Matched')
+                                    ->body('Non-tag sale record linked as trade-in match.')
+                                    ->success()
+                                    ->send();
+                            }
+                        }),
+                ])
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                    ->columnSpanFull(),
+
+                Placeholder::make('non_tag_trade_in_verification')
+                    ->hiddenLabel()
+                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag' && $get('trade_in_original_sale_item_id'))
+                    ->content(function (Get $get) {
+                        $saleItem = \App\Models\SaleItem::with('sale.customer')->find($get('trade_in_original_sale_item_id'));
+                        if (!$saleItem) {
+                            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Original sale record not found.</div>");
+                        }
+
+                        $soldDate  = $saleItem->created_at?->format('M d, Y') ?? '—';
+                        $soldPrice = '$' . number_format($saleItem->sale_price_override ?: $saleItem->sold_price ?? 0, 2);
+                        $customerName = $saleItem->sale?->customer
+                            ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
+                            : 'Unknown';
+                        $invoice = $saleItem->sale?->invoice_number ?? '—';
+
+                        return new HtmlString("
+                            <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
+                                <div class='font-black text-blue-800 mb-1'>✓ Verified Non-Tag Item</div>
+                                <div class='text-blue-700'>{$saleItem->custom_description}</div>
+                                <div class='mt-2 text-xs text-blue-600'>
+                                    Sold to <strong>{$customerName}</strong> on <strong>{$soldDate}</strong> for <strong>{$soldPrice}</strong>
+                                    &nbsp;·&nbsp; Invoice #{$invoice}
+                                </div>
+                            </div>
+                        ");
+                    })
+                    ->columnSpanFull(),
+
                 TextInput::make('trade_in_value')
                     ->label('Trade-In Value (Deduction)')
                     ->numeric()
@@ -979,10 +1155,8 @@ class SaleResource extends Resource
                     ->required(fn(Get $get) => $get('has_trade_in') == 1)
                     ->columnSpanFull()
                     ->rows(2),
-
-                
             ]),
-    ]),
+                                ]),
 
                             Section::make('Warranty')
                                 ->icon('heroicon-o-shield-check')
@@ -1229,39 +1403,39 @@ class SaleResource extends Resource
                                                                                     ->label('Last Name')
                                                                                     ->default($customer->last_name),
                                                                                 TextInput::make('edit_phone')
-    ->label('Phone')
-    ->tel()
-    ->prefix('+1')
-    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
-    ->mask('(999) 999-9999')
-    ->stripCharacters(['(', ')', '-', ' '])
-    ->required()
-    ->live(onBlur: true)
-    ->afterStateUpdated(function ($state, Set $set, Get $get) use ($customer) {
-        $clean = preg_replace('/[^0-9]/', '', $state ?? '');
-        if (!$clean) {
-            $set('phone_duplicate_warning', null);
-            return;
-        }
-        $duplicate = \App\Models\Customer::where('phone', $clean)
-            ->where('id', '!=', $customer->id)
-            ->first();
+                                                                                    ->label('Phone')
+                                                                                    ->tel()
+                                                                                    ->prefix('+1')
+                                                                                    ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+                                                                                    ->mask('(999) 999-9999')
+                                                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                                                    ->required()
+                                                                                    ->live(onBlur: true)
+                                                                                    ->afterStateUpdated(function ($state, Set $set, Get $get) use ($customer) {
+                                                                                        $clean = preg_replace('/[^0-9]/', '', $state ?? '');
+                                                                                        if (!$clean) {
+                                                                                            $set('phone_duplicate_warning', null);
+                                                                                            return;
+                                                                                        }
+                                                                                        $duplicate = \App\Models\Customer::where('phone', $clean)
+                                                                                            ->where('id', '!=', $customer->id)
+                                                                                            ->first();
 
-        $set('phone_duplicate_warning', $duplicate
-            ? "{$duplicate->name} {$duplicate->last_name}|{$duplicate->id}"
-            : null);
-    }),
+                                                                                        $set('phone_duplicate_warning', $duplicate
+                                                                                            ? "{$duplicate->name} {$duplicate->last_name}|{$duplicate->id}"
+                                                                                            : null);
+                                                                                    }),
 
-Hidden::make('phone_duplicate_warning'),
+                                                                                Hidden::make('phone_duplicate_warning'),
 
-Placeholder::make('phone_duplicate_banner')
-    ->hiddenLabel()
-    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
-    ->content(function (Get $get) {
-        $warning = $get('phone_duplicate_warning');
-        if (!$warning) return '';
-        [$name, ] = explode('|', $warning);
-        return new HtmlString("
+                                                                                Placeholder::make('phone_duplicate_banner')
+                                                                                    ->hiddenLabel()
+                                                                                    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
+                                                                                    ->content(function (Get $get) {
+                                                                                        $warning = $get('phone_duplicate_warning');
+                                                                                        if (!$warning) return '';
+                                                                                        [$name,] = explode('|', $warning);
+                                                                                        return new HtmlString("
             <div style='background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:12px 14px;'>
                 <div style='font-size:13px;font-weight:700;color:#dc2626;margin-bottom:6px;'>
                     ⚠️ This number is already used by <strong>{$name}</strong>
@@ -1271,14 +1445,14 @@ Placeholder::make('phone_duplicate_banner')
                 </div>
             </div>
         ");
-    })
-    ->columnSpanFull(),
+                                                                                    })
+                                                                                    ->columnSpanFull(),
 
-Checkbox::make('phone_duplicate_confirmed')
-    ->label('Yes, use this number anyway')
-    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
-    ->default(false)
-    ->columnSpanFull(),
+                                                                                Checkbox::make('phone_duplicate_confirmed')
+                                                                                    ->label('Yes, use this number anyway')
+                                                                                    ->visible(fn(Get $get) => !empty($get('phone_duplicate_warning')))
+                                                                                    ->default(false)
+                                                                                    ->columnSpanFull(),
                                                                                 TextInput::make('edit_email')
                                                                                     ->label('Email')
                                                                                     ->email()
@@ -1322,45 +1496,45 @@ Checkbox::make('phone_duplicate_confirmed')
                                                                 ]),
                                                         ];
                                                     })
-                                                 ->action(function (array $data, Get $get) {
-    $customer = \App\Models\Customer::find($get('customer_id'));
-    if (!$customer || !isset($data['edit_name'])) {
-        return;
-    }
+                                                    ->action(function (array $data, Get $get) {
+                                                        $customer = \App\Models\Customer::find($get('customer_id'));
+                                                        if (!$customer || !isset($data['edit_name'])) {
+                                                            return;
+                                                        }
 
-    $clean = preg_replace('/[^0-9]/', '', $data['edit_phone'] ?? '');
-    $duplicate = $clean ? \App\Models\Customer::where('phone', $clean)->where('id', '!=', $customer->id)->first() : null;
+                                                        $clean = preg_replace('/[^0-9]/', '', $data['edit_phone'] ?? '');
+                                                        $duplicate = $clean ? \App\Models\Customer::where('phone', $clean)->where('id', '!=', $customer->id)->first() : null;
 
-    if ($duplicate && empty($data['phone_duplicate_confirmed'])) {
-        Notification::make()
-            ->title('Phone Number Already In Use')
-            ->body("Belongs to {$duplicate->name} {$duplicate->last_name}. Check \"Yes, use this number anyway\" below to confirm, or enter a different number.")
-            ->warning()
-            ->send();
-        return;
-    }
+                                                        if ($duplicate && empty($data['phone_duplicate_confirmed'])) {
+                                                            Notification::make()
+                                                                ->title('Phone Number Already In Use')
+                                                                ->body("Belongs to {$duplicate->name} {$duplicate->last_name}. Check \"Yes, use this number anyway\" below to confirm, or enter a different number.")
+                                                                ->warning()
+                                                                ->send();
+                                                            return;
+                                                        }
 
-   try {
-    $customer->update([
-        'name'      => $data['edit_name'],
-        'last_name' => $data['edit_last_name'] ?? null,
-        'phone'     => $data['edit_phone'],
-        'email'     => $data['edit_email'] ?? null,
-        'street'    => $data['edit_street'] ?? null,
-        'city'      => $data['edit_city'] ?? null,
-        'state'     => $data['edit_state'] ?? null,
-        'postcode'  => $data['edit_postcode'] ?? null,
-    ]);
-    Notification::make()->title('Customer Updated Successfully')->success()->send();
-} catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-    Notification::make()
-        ->title('Database Update Needed')
-        ->body('This store still has a phone-uniqueness restriction in the database. Contact support to enable shared numbers.')
-        ->danger()
-        ->persistent()
-        ->send();
-}
-})
+                                                        try {
+                                                            $customer->update([
+                                                                'name'      => $data['edit_name'],
+                                                                'last_name' => $data['edit_last_name'] ?? null,
+                                                                'phone'     => $data['edit_phone'],
+                                                                'email'     => $data['edit_email'] ?? null,
+                                                                'street'    => $data['edit_street'] ?? null,
+                                                                'city'      => $data['edit_city'] ?? null,
+                                                                'state'     => $data['edit_state'] ?? null,
+                                                                'postcode'  => $data['edit_postcode'] ?? null,
+                                                            ]);
+                                                            Notification::make()->title('Customer Updated Successfully')->success()->send();
+                                                        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                                                            Notification::make()
+                                                                ->title('Database Update Needed')
+                                                                ->body('This store still has a phone-uniqueness restriction in the database. Contact support to enable shared numbers.')
+                                                                ->danger()
+                                                                ->persistent()
+                                                                ->send();
+                                                        }
+                                                    })
                                             )
                                             ->createOptionModalHeading('Quick Add New Customer')
                                             ->createOptionForm([
@@ -1431,51 +1605,58 @@ Checkbox::make('phone_duplicate_confirmed')
                                         ->searchable()
                                         ->preload()
                                         ->options(fn() => User::orderBy('name')->pluck('name', 'name')->toArray())
-                                        ->default(fn() => [Session::get('active_staff_name') ?? auth()->user()->name])
+                                        ->default(function () {
+                                            if ($ids = request()->get('sales_person_ids')) {
+                                                $idArray = array_filter(explode(',', $ids));
+                                                $names   = User::whereIn('id', $idArray)->pluck('name')->toArray();
+                                                if (!empty($names)) return $names;
+                                            }
+                                            return [Session::get('active_staff_name') ?? auth()->user()->name];
+                                        })
                                         ->required()
                                         ->live(onBlur: true),
                                 ]),
 
                             Section::make('Payment & Status')->schema([
- 
-    // ── PREVIOUS DEPOSITS LOG (custom orders only) ────────────────
-    Placeholder::make('custom_order_payment_logs')
-        ->label('PREVIOUS DEPOSITS LOG')
-        ->visible(function (Get $get) {
-            $items = $get('items') ?? [];
-            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
-                || request()->has('custom_order_id');
-        })
-        ->content(function (Get $get) {
-            $items         = $get('items') ?? [];
-            $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
-                ?? request()->get('custom_order_id');
- 
-            if (!$customOrderId) return null;
- 
-            $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
-                ->orderBy('paid_at', 'asc')->get();
- 
-            if ($payments->isEmpty()) {
-                return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
-            }
- 
-            $rows = "";
-            foreach ($payments as $payment) {
-                $date   = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
-                $method = strtoupper($payment->method);
-                $amount = number_format($payment->amount, 2);
-                $rows  .= "<div style='display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;'>
+
+                                // ── PREVIOUS DEPOSITS LOG (custom orders only) ────────────────
+                                Placeholder::make('custom_order_payment_logs')
+                                    ->label('PREVIOUS DEPOSITS LOG')
+                                    ->visible(function (Get $get) {
+                                        $items = $get('items') ?? [];
+                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']))
+                                            || request()->has('custom_order_id');
+                                    })
+                                    ->content(function (Get $get) {
+                                        $items         = $get('items') ?? [];
+                                        $customOrderId = collect($items)->firstWhere('custom_order_id')['custom_order_id']
+                                            ?? request()->get('custom_order_id');
+
+                                        if (!$customOrderId) return null;
+
+                                        $payments = \App\Models\Payment::where('custom_order_id', $customOrderId)
+                                            ->orderBy('paid_at', 'asc')->get();
+
+                                        if ($payments->isEmpty()) {
+                                            return new HtmlString("<div class='text-xs text-gray-400 italic bg-gray-50 p-2 rounded'>No previous deposit records found in database.</div>");
+                                        }
+
+                                        $rows = "";
+                                        foreach ($payments as $payment) {
+                                            $date   = \Carbon\Carbon::parse($payment->paid_at)->format('M d, Y h:i A');
+                                            $method = strtoupper($payment->method);
+                                            $amount = number_format($payment->amount, 2);
+                                            $rows  .= "<div style='display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f5f9;'>
                     <div style='display:flex;flex-direction:column;'>
                         <span style='font-size:10px;font-weight:700;color:#334155;'>{$method}</span>
                         <span style='font-size:9px;color:#94a3b8;'>{$date}</span>
                     </div>
                     <span style='font-size:11px;font-weight:700;color:#10b981;'>+\${$amount}</span>
                 </div>";
-            }
- 
-            $totalDeposited = $payments->sum('amount');
-            return new HtmlString("
+                                        }
+
+                                        $totalDeposited = $payments->sum('amount');
+                                        return new HtmlString("
                 <div style='background-color:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:15px;'>
                     <div style='font-size:10px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;'>Custom Order Payment Trail</div>
                     <div style='max-height:150px;overflow-y:auto;padding-right:5px;'>{$rows}</div>
@@ -1485,101 +1666,101 @@ Checkbox::make('phone_duplicate_confirmed')
                     </div>
                 </div>
             ");
-        }),
- 
-    // ── PAYMENT LOG BUTTON ────────────────────────────────────────
-    \Filament\Forms\Components\Actions::make([
-    FormAction::make('view_payment_log')
-            ->label('📋 Payment Log')
-            ->color('info')
-            ->outlined()
-            ->icon('heroicon-o-banknotes')
-            ->visible(fn(string $operation) => $operation === 'edit')
-            ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
-            ->modalWidth('3xl')
-            ->modalSubmitAction(false)
-            ->modalCancelActionLabel('Close')
-            ->form(function (?Sale $record) {
-                if (!$record) return [];
- 
-                // 1. Fetch POS payments directly attached to this sale record
-                $payments1 = $record->payments()->orderBy('paid_at')->get()
-                    ->map(fn($p) => [
-                        'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
-                        'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
-                        'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
-                        'method'   => strtoupper($p->method ?? '—'),
-                        'amount'   => floatval($p->amount),
-                        'source'   => 'payments',
-                        'id'       => $p->id,
-                    ]);
- 
-                // 2. Fetch historical or split layout sale_payments ledger records
-                $payments2 = $record->salePayments()->orderBy('payment_date')->get()
-                    ->map(fn($p) => [
-                        'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
-                        'time'     => '',
-                        'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
-                        'method'   => strtoupper($p->payment_method ?? '—'),
-                        'amount'   => floatval($p->amount),
-                        'source'   => 'sale_payments',
-                        'id'       => $p->id,
-                    ]);
+                                    }),
 
-                // 🚀 CRITICAL FIX: Automatically find and merge deposits attached via the Custom Order milestone
-                $customOrderIds = $record->items()->whereNotNull('custom_order_id')->pluck('custom_order_id')->unique();
-                
-                $payments3 = \App\Models\Payment::whereIn('custom_order_id', $customOrderIds)
-                    ->where(function($query) use ($record) {
-                        $query->whereNull('sale_id')
-                              ->orWhere('sale_id', '!=', $record->id);
-                    })
-                    ->orderBy('paid_at')
-                    ->get()
-                    ->map(fn($p) => [
-                        'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
-                        'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
-                        'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
-                        'method'   => strtoupper($p->method ?? '—'),
-                        'amount'   => floatval($p->amount),
-                        'source'   => 'custom_order_deposits',
-                        'id'       => $p->id,
-                    ]);
- 
-                // Merge all arrays safely and sort chronologically by true UNIX timestamp status
-                $allPayments = $payments1->concat($payments2)->concat($payments3)->sortBy('raw_date')->values();
-                $grandTotal  = floatval($record->final_total);
-                $customer    = $record->customer;
-                $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
-                $custPhone   = $customer?->phone ?? '—';
-                $invoiceNo   = $record->invoice_number;
- 
-                $paymentsWithBalance = [];
-                $running = 0;
-                foreach ($allPayments as $index => $p) {
-                    $running += $p['amount'];
-                    $balance  = max(0, $grandTotal - $running);
-                    $paymentsWithBalance[] = array_merge($p, [
-                        'running' => $running,
-                        'balance' => $balance,
-                        'num'     => $index + 1,
-                    ]);
-                }
- 
-                $rows = '';
-                foreach (array_reverse($paymentsWithBalance) as $p) {
-                    $balColor   = $p['balance'] <= 0 ? '#16a34a' : '#dc2626';
-                    $balLabel   = $p['balance'] <= 0 ? '✅ Paid in Full' : '$' . number_format($p['balance'], 2) . ' remaining';
-                    $timeHtml   = !empty($p['time']) ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>" : '';
-                    
-                    // Route calculation logic matching our alternative dynamic sources mapping tracker
-                    $receiptUrl = route('sales.payment-receipt', [
-                        'record'     => $record->id, 
-                        'source'     => $p['source'] === 'custom_order_deposits' ? 'payments' : $p['source'], 
-                        'payment_id' => $p['id']
-                    ]);
- 
-                    $rows .= "
+                                // ── PAYMENT LOG BUTTON ────────────────────────────────────────
+                                \Filament\Forms\Components\Actions::make([
+                                    FormAction::make('view_payment_log')
+                                        ->label('📋 Payment Log')
+                                        ->color('info')
+                                        ->outlined()
+                                        ->icon('heroicon-o-banknotes')
+                                        ->visible(fn(string $operation) => $operation === 'edit')
+                                        ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
+                                        ->modalWidth('3xl')
+                                        ->modalSubmitAction(false)
+                                        ->modalCancelActionLabel('Close')
+                                        ->form(function (?Sale $record) {
+                                            if (!$record) return [];
+
+                                            // 1. Fetch POS payments directly attached to this sale record
+                                            $payments1 = $record->payments()->orderBy('paid_at')->get()
+                                                ->map(fn($p) => [
+                                                    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+                                                    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+                                                    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+                                                    'method'   => strtoupper($p->method ?? '—'),
+                                                    'amount'   => floatval($p->amount),
+                                                    'source'   => 'payments',
+                                                    'id'       => $p->id,
+                                                ]);
+
+                                            // 2. Fetch historical or split layout sale_payments ledger records
+                                            $payments2 = $record->salePayments()->orderBy('payment_date')->get()
+                                                ->map(fn($p) => [
+                                                    'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
+                                                    'time'     => '',
+                                                    'raw_date' => \Carbon\Carbon::parse($p->payment_date)->timestamp,
+                                                    'method'   => strtoupper($p->payment_method ?? '—'),
+                                                    'amount'   => floatval($p->amount),
+                                                    'source'   => 'sale_payments',
+                                                    'id'       => $p->id,
+                                                ]);
+
+                                            // 🚀 CRITICAL FIX: Automatically find and merge deposits attached via the Custom Order milestone
+                                            $customOrderIds = $record->items()->whereNotNull('custom_order_id')->pluck('custom_order_id')->unique();
+
+                                            $payments3 = \App\Models\Payment::whereIn('custom_order_id', $customOrderIds)
+                                                ->where(function ($query) use ($record) {
+                                                    $query->whereNull('sale_id')
+                                                        ->orWhere('sale_id', '!=', $record->id);
+                                                })
+                                                ->orderBy('paid_at')
+                                                ->get()
+                                                ->map(fn($p) => [
+                                                    'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
+                                                    'time'     => \Carbon\Carbon::parse($p->paid_at)->format('h:i A'),
+                                                    'raw_date' => \Carbon\Carbon::parse($p->paid_at)->timestamp,
+                                                    'method'   => strtoupper($p->method ?? '—'),
+                                                    'amount'   => floatval($p->amount),
+                                                    'source'   => 'custom_order_deposits',
+                                                    'id'       => $p->id,
+                                                ]);
+
+                                            // Merge all arrays safely and sort chronologically by true UNIX timestamp status
+                                            $allPayments = $payments1->concat($payments2)->concat($payments3)->sortBy('raw_date')->values();
+                                            $grandTotal  = floatval($record->final_total);
+                                            $customer    = $record->customer;
+                                            $custName    = $customer ? trim($customer->name . ' ' . ($customer->last_name ?? '')) : 'Walk-in';
+                                            $custPhone   = $customer?->phone ?? '—';
+                                            $invoiceNo   = $record->invoice_number;
+
+                                            $paymentsWithBalance = [];
+                                            $running = 0;
+                                            foreach ($allPayments as $index => $p) {
+                                                $running += $p['amount'];
+                                                $balance  = max(0, $grandTotal - $running);
+                                                $paymentsWithBalance[] = array_merge($p, [
+                                                    'running' => $running,
+                                                    'balance' => $balance,
+                                                    'num'     => $index + 1,
+                                                ]);
+                                            }
+
+                                            $rows = '';
+                                            foreach (array_reverse($paymentsWithBalance) as $p) {
+                                                $balColor   = $p['balance'] <= 0 ? '#16a34a' : '#dc2626';
+                                                $balLabel   = $p['balance'] <= 0 ? '✅ Paid in Full' : '$' . number_format($p['balance'], 2) . ' remaining';
+                                                $timeHtml   = !empty($p['time']) ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>" : '';
+
+                                                // Route calculation logic matching our alternative dynamic sources mapping tracker
+                                                $receiptUrl = route('sales.payment-receipt', [
+                                                    'record'     => $record->id,
+                                                    'source'     => $p['source'] === 'custom_order_deposits' ? 'payments' : $p['source'],
+                                                    'payment_id' => $p['id']
+                                                ]);
+
+                                                $rows .= "
                     <div style='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05);'>
                         <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
                             <div>
@@ -1604,16 +1785,16 @@ Checkbox::make('phone_duplicate_confirmed')
                             <div><span style='font-weight:600;color:#374151;'>Running Total:</span> \$" . number_format($p['running'], 2) . "</div>
                         </div>
                     </div>";
-                }
- 
-                $totalPaid    = $allPayments->sum('amount');
-                $finalBal     = max(0, $grandTotal - $totalPaid);
-                $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
-                $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
-                $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
-                $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
- 
-                $summary = "<div style='background:{$summBg};border:2px solid {$summBorder};border-radius:10px;padding:14px;margin-bottom:16px;'>
+                                            }
+
+                                            $totalPaid    = $allPayments->sum('amount');
+                                            $finalBal     = max(0, $grandTotal - $totalPaid);
+                                            $summBg       = $finalBal <= 0 ? '#f0fdf4' : '#fef2f2';
+                                            $summBorder   = $finalBal <= 0 ? '#10b981' : '#ef4444';
+                                            $summBalColor = $finalBal <= 0 ? '#16a34a' : '#dc2626';
+                                            $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
+
+                                            $summary = "<div style='background:{$summBg};border:2px solid {$summBorder};border-radius:10px;padding:14px;margin-bottom:16px;'>
                     <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;'>
                         <div>
                             <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Invoice Total</div>
@@ -1629,94 +1810,94 @@ Checkbox::make('phone_duplicate_confirmed')
                         </div>
                     </div>
                 </div>";
- 
-                if ($allPayments->isEmpty()) {
-                    $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>No payments recorded yet.</div>";
-                }
- 
-                return [
-                    Placeholder::make('payment_log_content')->label('')->content(new HtmlString($summary . $rows)),
-                ];
-            }),
-    ])->visible(fn(string $operation) => $operation === 'edit'),
-    // ── SPLIT TOGGLE ─────────────────────────────────────────────
-    Toggle::make('is_split_payment')
-        ->label('Enable Split Payment')
-        ->onColor('warning')
-        ->live()
-        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-            if ($state) {
-                $existingAmount = floatval($get('amount_paid') ?? 0);
-                $existingMethod = $get('payment_method') ?? 'VISA';
-                $currentSplits  = $get('split_payments') ?? [];
-                if ($existingAmount > 0 && empty($currentSplits)) {
-                    $set('split_payments', [
-                        (string) \Illuminate\Support\Str::uuid() => [
-                            'method' => $existingMethod,
-                            'amount' => $existingAmount,
-                        ]
-                    ]);
-                }
-            } else {
-                $currentSplits = $get('split_payments') ?? [];
-                if (!empty($currentSplits)) {
-                    $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                    $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
-                    $set('amount_paid', number_format($totalSplit, 2, '.', ''));
-                    $set('payment_method', $firstMethod);
-                }
-            }
-            self::updateTotals($get, $set);
-        })
-        ->columnSpanFull(),
- 
-    // ── NON-SPLIT: METHOD ────────────────────────────────────────
-    Select::make('payment_method')
-        ->label('Payment Method')
-        ->options(self::getPaymentOptions())
-        ->placeholder('Select Payment Method')
-        ->required(fn(Get $get) => !$get('is_split_payment'))
-        ->visible(fn(Get $get) => !$get('is_split_payment'))
-        ->live()
-        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
- 
-    Select::make('payment_target')
-        ->label('Apply To')
-        ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
-        ->default('regular')
-        ->required(function (Get $get) {
-            if ($get('is_split_payment')) return false;
-            $items = $get('items') ?? [];
-            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                || request()->has('custom_order_id');
-        })
-        ->visible(function (Get $get) {
-            if ($get('is_split_payment')) return false;
-            $items = $get('items') ?? [];
-            return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                || request()->has('custom_order_id');
-        })
-        ->live()
-        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
- 
-    // ── TOTAL AMOUNT TO COLLECT (remaining after DB payments) ────
-    Placeholder::make('display_total_due')
-        ->label('Total Amount to Collect')
-        ->visible(fn(Get $get) => !$get('is_split_payment'))
-        ->content(function (Get $get, ?Sale $record) {
-            $total     = floatval($get('final_total') ?? 0);
-            $dbPaid    = $record
-                ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount'))
-                : 0;
-            $remaining = max(0, $total - $dbPaid);
-            $method    = strtoupper($get('payment_method') ?? '');
-            $badge     = $method
-                ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
-                : '';
-            $note = $dbPaid > 0
-                ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Invoice total: \$" . number_format($total, 2) . "</div>"
-                : '';
-            return new HtmlString("
+
+                                            if ($allPayments->isEmpty()) {
+                                                $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>No payments recorded yet.</div>";
+                                            }
+
+                                            return [
+                                                Placeholder::make('payment_log_content')->label('')->content(new HtmlString($summary . $rows)),
+                                            ];
+                                        }),
+                                ])->visible(fn(string $operation) => $operation === 'edit'),
+                                // ── SPLIT TOGGLE ─────────────────────────────────────────────
+                                Toggle::make('is_split_payment')
+                                    ->label('Enable Split Payment')
+                                    ->onColor('warning')
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        if ($state) {
+                                            $existingAmount = floatval($get('amount_paid') ?? 0);
+                                            $existingMethod = $get('payment_method') ?? 'VISA';
+                                            $currentSplits  = $get('split_payments') ?? [];
+                                            if ($existingAmount > 0 && empty($currentSplits)) {
+                                                $set('split_payments', [
+                                                    (string) \Illuminate\Support\Str::uuid() => [
+                                                        'method' => $existingMethod,
+                                                        'amount' => $existingAmount,
+                                                    ]
+                                                ]);
+                                            }
+                                        } else {
+                                            $currentSplits = $get('split_payments') ?? [];
+                                            if (!empty($currentSplits)) {
+                                                $totalSplit  = collect($currentSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                                $firstMethod = collect($currentSplits)->first()['method'] ?? 'VISA';
+                                                $set('amount_paid', number_format($totalSplit, 2, '.', ''));
+                                                $set('payment_method', $firstMethod);
+                                            }
+                                        }
+                                        self::updateTotals($get, $set);
+                                    })
+                                    ->columnSpanFull(),
+
+                                // ── NON-SPLIT: METHOD ────────────────────────────────────────
+                                Select::make('payment_method')
+                                    ->label('Payment Method')
+                                    ->options(self::getPaymentOptions())
+                                    ->placeholder('Select Payment Method')
+                                    ->required(fn(Get $get) => !$get('is_split_payment'))
+                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                Select::make('payment_target')
+                                    ->label('Apply To')
+                                    ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                                    ->default('regular')
+                                    ->required(function (Get $get) {
+                                        if ($get('is_split_payment')) return false;
+                                        $items = $get('items') ?? [];
+                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                                            || request()->has('custom_order_id');
+                                    })
+                                    ->visible(function (Get $get) {
+                                        if ($get('is_split_payment')) return false;
+                                        $items = $get('items') ?? [];
+                                        return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                                            || request()->has('custom_order_id');
+                                    })
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+
+                                // ── TOTAL AMOUNT TO COLLECT (remaining after DB payments) ────
+                                Placeholder::make('display_total_due')
+                                    ->label('Total Amount to Collect')
+                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->content(function (Get $get, ?Sale $record) {
+                                        $total     = floatval($get('final_total') ?? 0);
+                                        $dbPaid    = $record
+                                            ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount'))
+                                            : 0;
+                                        $remaining = max(0, $total - $dbPaid);
+                                        $method    = strtoupper($get('payment_method') ?? '');
+                                        $badge     = $method
+                                            ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
+                                            : '';
+                                        $note = $dbPaid > 0
+                                            ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Invoice total: \$" . number_format($total, 2) . "</div>"
+                                            : '';
+                                        return new HtmlString("
                 <div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
                     <div style='display:flex;align-items:center;'>
                         <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($remaining, 2) . "</span>
@@ -1725,229 +1906,229 @@ Checkbox::make('phone_duplicate_confirmed')
                     {$note}
                 </div>
             ");
-        })
-        ->live(),
- 
-    // ── AMOUNT RECEIVED (new money only) ────────────────────────
-    TextInput::make('amount_paid')
-        ->label('Amount Received')
-        ->numeric()
-        ->prefix('$')
-        ->default(0)
-        ->live(onBlur: true)
-        ->visible(fn(Get $get) => !$get('is_split_payment'))
-        ->afterStateUpdated(function (Get $get, Set $set) {
-            self::updateTotals($get, $set);
-            self::syncStatus($get, $set);
-        })
-        ->helperText(function (Get $get, ?Sale $record) {
-            if (!$record) return 'What the customer is paying right now';
-            if ($record->status === 'cancelled') {
-                return new HtmlString("<strong style='color:#6b7280;'>This sale has been cancelled.</strong>");
-            }
-            $dbPaid    = $record->payments()->sum('amount') + $record->salePayments()->sum('amount');
-            $total     = floatval($get('final_total') ?? 0);
-            $remaining = max(0, $total - $dbPaid);
-            $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
-            $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
-            return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
-        })
-        ->hintAction(
-       FormAction::make('fill_full_amount')
-    ->label('Collect Remaining Balance')
-    ->icon('heroicon-o-banknotes')
-    ->color('success')
-  ->action(function (Get $get, Set $set, ?Sale $record) {
+                                    })
+                                    ->live(),
 
-    $items     = $get('items') ?? [];
-    $hasCustom = collect($items)->contains(
-        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-    ) || request()->has('custom_order_id');
+                                // ── AMOUNT RECEIVED (new money only) ────────────────────────
+                                TextInput::make('amount_paid')
+                                    ->label('Amount Received')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->default(0)
+                                    ->live(onBlur: true)
+                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        self::updateTotals($get, $set);
+                                        self::syncStatus($get, $set);
+                                    })
+                                    ->helperText(function (Get $get, ?Sale $record) {
+                                        if (!$record) return 'What the customer is paying right now';
+                                        if ($record->status === 'cancelled') {
+                                            return new HtmlString("<strong style='color:#6b7280;'>This sale has been cancelled.</strong>");
+                                        }
+                                        $dbPaid    = $record->payments()->sum('amount') + $record->salePayments()->sum('amount');
+                                        $total     = floatval($get('final_total') ?? 0);
+                                        $remaining = max(0, $total - $dbPaid);
+                                        $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
+                                        $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
+                                        return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
+                                    })
+                                    ->hintAction(
+                                        FormAction::make('fill_full_amount')
+                                            ->label('Collect Remaining Balance')
+                                            ->icon('heroicon-o-banknotes')
+                                            ->color('success')
+                                            ->action(function (Get $get, Set $set, ?Sale $record) {
 
-    $saleTotal = floatval($get('final_total') ?? 0);
+                                                $items     = $get('items') ?? [];
+                                                $hasCustom = collect($items)->contains(
+                                                    fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                ) || request()->has('custom_order_id');
 
-    if (!$hasCustom) {
-        // ── Simple sale: remaining = invoice total minus what's in DB ──
-        $dbPaid = $record
-            ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
-               + $record->salePayments()->sum('amount'))
-            : 0;
-        $remaining = max(0, round($saleTotal - $dbPaid, 2));
-        $set('amount_paid', number_format($remaining, 2, '.', ''));
-        self::updateTotals($get, $set);
-        self::syncStatus($get, $set);
-        return;
-    }
+                                                $saleTotal = floatval($get('final_total') ?? 0);
 
-    // ── Mixed sale: split into custom portion + regular portion ──
+                                                if (!$hasCustom) {
+                                                    // ── Simple sale: remaining = invoice total minus what's in DB ──
+                                                    $dbPaid = $record
+                                                        ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
+                                                            + $record->salePayments()->sum('amount'))
+                                                        : 0;
+                                                    $remaining = max(0, round($saleTotal - $dbPaid, 2));
+                                                    $set('amount_paid', number_format($remaining, 2, '.', ''));
+                                                    self::updateTotals($get, $set);
+                                                    self::syncStatus($get, $set);
+                                                    return;
+                                                }
 
-    // 1. Find the custom order
-    $customOrderId = collect($items)
-        ->filter(fn($i) => !empty($i['custom_order_id']))
-        ->pluck('custom_order_id')
-        ->first()
-        ?? request()->get('custom_order_id');
+                                                // ── Mixed sale: split into custom portion + regular portion ──
 
-    $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
+                                                // 1. Find the custom order
+                                                $customOrderId = collect($items)
+                                                    ->filter(fn($i) => !empty($i['custom_order_id']))
+                                                    ->pluck('custom_order_id')
+                                                    ->first()
+                                                    ?? request()->get('custom_order_id');
 
-    // 2. Custom order grand total (quoted price + tax - discount)
-    $coGrandTotal = 0;
-    if ($customOrder) {
-        $isTaxFree    = (bool) $customOrder->is_tax_free;
-        $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
-            ->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
-        $discAmt      = floatval($customOrder->discount_amount ?? 0);
-        $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
-        $coGrandTotal = $afterDisc * (1 + $taxRate);
-    }
+                                                $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
-    // 3. What has already been paid toward the custom order in DB
-    $customDbPaid = $customOrder
-        ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
-        : 0;
+                                                // 2. Custom order grand total (quoted price + tax - discount)
+                                                $coGrandTotal = 0;
+                                                if ($customOrder) {
+                                                    $isTaxFree    = (bool) $customOrder->is_tax_free;
+                                                    $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
+                                                        ->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                                    $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+                                                    $discAmt      = floatval($customOrder->discount_amount ?? 0);
+                                                    $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
+                                                    $coGrandTotal = $afterDisc * (1 + $taxRate);
+                                                }
 
-    $customRemaining = max(0, round($coGrandTotal - $customDbPaid, 2));
+                                                // 3. What has already been paid toward the custom order in DB
+                                                $customDbPaid = $customOrder
+                                                    ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
+                                                    : 0;
 
-    // 4. Regular portion: total sale minus custom order total
-    $regularTotal = max(0, round($saleTotal - $coGrandTotal, 2));
+                                                $customRemaining = max(0, round($coGrandTotal - $customDbPaid, 2));
 
-    // What's already paid toward regular (sale payments excluding custom order payments)
-    $regularDbPaid = $record
-        ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
-           + $record->salePayments()->sum('amount'))
-        : 0;
+                                                // 4. Regular portion: total sale minus custom order total
+                                                $regularTotal = max(0, round($saleTotal - $coGrandTotal, 2));
 
-    $regularRemaining = max(0, round($regularTotal - $regularDbPaid, 2));
+                                                // What's already paid toward regular (sale payments excluding custom order payments)
+                                                $regularDbPaid = $record
+                                                    ? ($record->payments()->whereNull('custom_order_id')->sum('amount')
+                                                        + $record->salePayments()->sum('amount'))
+                                                    : 0;
 
-    // 5. Build split rows
-    $set('is_split_payment', true);
-    $existingSplits = $get('split_payments') ?? [];
+                                                $regularRemaining = max(0, round($regularTotal - $regularDbPaid, 2));
 
-    if ($regularRemaining > 0.01) {
-        $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
-            'method'         => $get('payment_method') ?? 'CASH',
-            'amount'         => number_format($regularRemaining, 2, '.', ''),
-            'payment_target' => 'regular',
-        ];
-    }
+                                                // 5. Build split rows
+                                                $set('is_split_payment', true);
+                                                $existingSplits = $get('split_payments') ?? [];
 
-    if ($customRemaining > 0.01) {
-        $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
-            'method'         => $get('payment_method') ?? 'CASH',
-            'amount'         => number_format($customRemaining, 2, '.', ''),
-            'payment_target' => 'custom',
-        ];
-    }
+                                                if ($regularRemaining > 0.01) {
+                                                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                        'method'         => $get('payment_method') ?? 'CASH',
+                                                        'amount'         => number_format($regularRemaining, 2, '.', ''),
+                                                        'payment_target' => 'regular',
+                                                    ];
+                                                }
 
-    $set('split_payments', $existingSplits);
-    self::updateTotals($get, $set);
-    self::syncStatus($get, $set);
-})
-        ),
- 
-    // ── CHANGE GIVEN ─────────────────────────────────────────────
-    TextInput::make('change_given')
-        ->label('Change Given')
-        ->prefix('$')
-        ->readOnly()
-        ->default('0.00')
-        ->dehydrated(false)
-        ->live()
-        ->visible(fn(Get $get) => !$get('is_split_payment'))
-        ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
- 
-    // ── SPLIT PAYMENTS REPEATER ──────────────────────────────────
-    Repeater::make('split_payments')
-    ->label('Payment Breakdown')
-    ->schema([
-        Grid::make(6)->schema([
-            Select::make('method')
-                ->label('Method')
-                ->options(function (?Sale $record) {
-                    $options = SaleResource::getPaymentOptions();
-                    if ($record) {
-                        $record->payments()->pluck('method')
-                            ->merge($record->salePayments()->pluck('payment_method'))
-                            ->filter()
-                            ->map(fn($m) => strtoupper(trim($m)))
-                            ->unique()
-                            ->each(function ($m) use (&$options) {
-                                if (!array_key_exists($m, $options)) {
-                                    $options[$m] = $m;
-                                }
-                            });
-                    }
-                    return $options;
-                })
-                ->required()
-                ->columnSpan(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    $hasCustom = collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                    return $hasCustom ? 2 : 3;
-                }),
+                                                if ($customRemaining > 0.01) {
+                                                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                        'method'         => $get('payment_method') ?? 'CASH',
+                                                        'amount'         => number_format($customRemaining, 2, '.', ''),
+                                                        'payment_target' => 'custom',
+                                                    ];
+                                                }
 
-            TextInput::make('amount')
-                ->numeric()
-                ->prefix('$')
-                ->required()
-                ->label('Amount')
-                ->live(onBlur: true)
-                ->hintAction(
-                    FormAction::make('fill_split_remaining')
-                        ->label('Collect Remaining Balance')
-                        ->icon('heroicon-o-banknotes')
-                        ->color('success')
-                        ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
-                        ->action(function (Get $get, Set $set) {
-                            $total    = (float) $get('../../final_total');
-                            $payments = $get('../../split_payments') ?? [];
-                            $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                            $set('amount', number_format(max(0, $total - $sum), 2, '.', ''));
-                        })
-                )
-                ->columnSpan(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    $hasCustom = collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                    return $hasCustom ? 2 : 3;
-                }),
+                                                $set('split_payments', $existingSplits);
+                                                self::updateTotals($get, $set);
+                                                self::syncStatus($get, $set);
+                                            })
+                                    ),
 
-            Select::make('payment_target')
-                ->label('Apply To')
-                ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
-                ->default('regular')
-                ->columnSpan(2)
-                ->visible(function (Get $get) {
-                    $items = $get('../../items') ?? [];
-                    return collect($items)->contains(
-                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                    ) || request()->has('custom_order_id');
-                })
-                ->live()
-                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-        ]),
-    ])
-    ->visible(fn(Get $get) => $get('is_split_payment'))
-    ->defaultItems(1)
-    ->maxItems(100)
-    ->addActionLabel('Add Another Payment Method')
-    ->reorderable(false)
-    ->live()
-    ->afterStateUpdated(function (Get $get, Set $set) {
-        self::updateTotals($get, $set);
-        self::syncStatus($get, $set);
-    })
- ->hint(function (Get $get, string $operation) {
-        if ($operation === 'create') return null;
-        $count = count($get('split_payments') ?? []);
-        if ($count <= 4) return null;  // only collapse when more than 4 rows
-        
-        $hidden = $count - 4;
-        return new HtmlString("
+                                // ── CHANGE GIVEN ─────────────────────────────────────────────
+                                TextInput::make('change_given')
+                                    ->label('Change Given')
+                                    ->prefix('$')
+                                    ->readOnly()
+                                    ->default('0.00')
+                                    ->dehydrated(false)
+                                    ->live()
+                                    ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->extraInputAttributes(['class' => 'text-right font-bold text-green-600 text-xl']),
+
+                                // ── SPLIT PAYMENTS REPEATER ──────────────────────────────────
+                                Repeater::make('split_payments')
+                                    ->label('Payment Breakdown')
+                                    ->schema([
+                                        Grid::make(6)->schema([
+                                            Select::make('method')
+                                                ->label('Method')
+                                                ->options(function (?Sale $record) {
+                                                    $options = SaleResource::getPaymentOptions();
+                                                    if ($record) {
+                                                        $record->payments()->pluck('method')
+                                                            ->merge($record->salePayments()->pluck('payment_method'))
+                                                            ->filter()
+                                                            ->map(fn($m) => strtoupper(trim($m)))
+                                                            ->unique()
+                                                            ->each(function ($m) use (&$options) {
+                                                                if (!array_key_exists($m, $options)) {
+                                                                    $options[$m] = $m;
+                                                                }
+                                                            });
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->required()
+                                                ->columnSpan(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $hasCustom = collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                    return $hasCustom ? 2 : 3;
+                                                }),
+
+                                            TextInput::make('amount')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->required()
+                                                ->label('Amount')
+                                                ->live(onBlur: true)
+                                                ->hintAction(
+                                                    FormAction::make('fill_split_remaining')
+                                                        ->label('Collect Remaining Balance')
+                                                        ->icon('heroicon-o-banknotes')
+                                                        ->color('success')
+                                                        ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
+                                                        ->action(function (Get $get, Set $set) {
+                                                            $total    = (float) $get('../../final_total');
+                                                            $payments = $get('../../split_payments') ?? [];
+                                                            $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                                            $set('amount', number_format(max(0, $total - $sum), 2, '.', ''));
+                                                        })
+                                                )
+                                                ->columnSpan(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $hasCustom = collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                    return $hasCustom ? 2 : 3;
+                                                }),
+
+                                            Select::make('payment_target')
+                                                ->label('Apply To')
+                                                ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                                                ->default('regular')
+                                                ->columnSpan(2)
+                                                ->visible(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    return collect($items)->contains(
+                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                                    ) || request()->has('custom_order_id');
+                                                })
+                                                ->live()
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                        ]),
+                                    ])
+                                    ->visible(fn(Get $get) => $get('is_split_payment'))
+                                    ->defaultItems(1)
+                                    ->maxItems(100)
+                                    ->addActionLabel('Add Another Payment Method')
+                                    ->reorderable(false)
+                                    ->live()
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        self::updateTotals($get, $set);
+                                        self::syncStatus($get, $set);
+                                    })
+                                    ->hint(function (Get $get, string $operation) {
+                                        if ($operation === 'create') return null;
+                                        $count = count($get('split_payments') ?? []);
+                                        if ($count <= 4) return null;  // only collapse when more than 4 rows
+
+                                        $hidden = $count - 4;
+                                        return new HtmlString("
             <style>
                 .custom-collapsed-body { max-height: 220px !important; overflow: hidden !important; }
                 #split-payments-body { transition: max-height 0.4s ease; }
@@ -1985,231 +2166,231 @@ Checkbox::make('phone_duplicate_confirmed')
                 <span id='split-toggle-btn'></span>
             </a>
         ");
-    })
-    ->extraAttributes(function (Get $get, string $operation) {
-        if ($operation === 'create') return [];
-        $count = count($get('split_payments') ?? []);
-        if ($count <= 4) return [];
-        
-        // 🚀 THE FIX: We removed the 'class' => 'is-collapsed' from here!
-        // Now PHP just provides the ID, and our Javascript handles the collapsing memory flawlessly.
-        return ['id' => 'split-payments-body'];
-    }),
-  \Filament\Forms\Components\Actions::make([
-        FormAction::make('smart_collect_remaining')
-            ->label('+ Collect Remaining Balance')
-            ->icon('heroicon-o-banknotes')
-            ->color('success')
-            ->outlined()
-            ->visible(function (Get $get) {
-                $total    = floatval($get('final_total') ?? 0);
-                $payments = $get('split_payments') ?? [];
-                $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                return round($total - $sum, 2) > 0.01;
-            })
-            ->action(function (Get $get, Set $set, ?Sale $record) {
+                                    })
+                                    ->extraAttributes(function (Get $get, string $operation) {
+                                        if ($operation === 'create') return [];
+                                        $count = count($get('split_payments') ?? []);
+                                        if ($count <= 4) return [];
 
-                $items     = $get('items') ?? [];
-                $hasCustom = collect($items)->contains(
-                    fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                ) || request()->has('custom_order_id');
+                                        // 🚀 THE FIX: We removed the 'class' => 'is-collapsed' from here!
+                                        // Now PHP just provides the ID, and our Javascript handles the collapsing memory flawlessly.
+                                        return ['id' => 'split-payments-body'];
+                                    }),
+                                \Filament\Forms\Components\Actions::make([
+                                    FormAction::make('smart_collect_remaining')
+                                        ->label('+ Collect Remaining Balance')
+                                        ->icon('heroicon-o-banknotes')
+                                        ->color('success')
+                                        ->outlined()
+                                        ->visible(function (Get $get) {
+                                            $total    = floatval($get('final_total') ?? 0);
+                                            $payments = $get('split_payments') ?? [];
+                                            $sum      = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                            return round($total - $sum, 2) > 0.01;
+                                        })
+                                        ->action(function (Get $get, Set $set, ?Sale $record) {
 
-                // Best default method — from existing split rows or fallback CASH
-                $defaultMethod = collect($get('split_payments') ?? [])
-                    ->filter(fn($p) => !empty($p['method']))
-                    ->pluck('method')
-                    ->first()
-                    ?? $get('payment_method')
-                    ?? 'CASH';
+                                            $items     = $get('items') ?? [];
+                                            $hasCustom = collect($items)->contains(
+                                                fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
+                                            ) || request()->has('custom_order_id');
 
-                $existingSplits = $get('split_payments') ?? [];
-                $currentSum     = collect($existingSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                $saleTotal      = floatval($get('final_total') ?? 0);
-                $totalRemaining = max(0, round($saleTotal - $currentSum, 2));
+                                            // Best default method — from existing split rows or fallback CASH
+                                            $defaultMethod = collect($get('split_payments') ?? [])
+                                                ->filter(fn($p) => !empty($p['method']))
+                                                ->pluck('method')
+                                                ->first()
+                                                ?? $get('payment_method')
+                                                ?? 'CASH';
 
-                if (!$hasCustom) {
-                    // Simple sale — one regular row
-                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
-                        'method'         => $defaultMethod,
-                        'amount'         => number_format($totalRemaining, 2, '.', ''),
-                        'payment_target' => 'regular',
-                    ];
-                    $set('split_payments', $existingSplits);
-                    self::updateTotals($get, $set);
-                    return;
-                }
+                                            $existingSplits = $get('split_payments') ?? [];
+                                            $currentSum     = collect($existingSplits)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                            $saleTotal      = floatval($get('final_total') ?? 0);
+                                            $totalRemaining = max(0, round($saleTotal - $currentSum, 2));
 
-                // Mixed — calculate custom order remaining separately
-                $customOrderId = collect($items)
-                    ->filter(fn($i) => !empty($i['custom_order_id']))
-                    ->pluck('custom_order_id')
-                    ->first()
-                    ?? request()->get('custom_order_id');
+                                            if (!$hasCustom) {
+                                                // Simple sale — one regular row
+                                                $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                    'method'         => $defaultMethod,
+                                                    'amount'         => number_format($totalRemaining, 2, '.', ''),
+                                                    'payment_target' => 'regular',
+                                                ];
+                                                $set('split_payments', $existingSplits);
+                                                self::updateTotals($get, $set);
+                                                return;
+                                            }
 
-                $customOrder = $customOrderId
-                    ? \App\Models\CustomOrder::find($customOrderId)
-                    : null;
+                                            // Mixed — calculate custom order remaining separately
+                                            $customOrderId = collect($items)
+                                                ->filter(fn($i) => !empty($i['custom_order_id']))
+                                                ->pluck('custom_order_id')
+                                                ->first()
+                                                ?? request()->get('custom_order_id');
 
-                // What's already paid on custom order in DB
-                $customAlreadyPaid = $customOrder
-                    ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
-                    : 0;
+                                            $customOrder = $customOrderId
+                                                ? \App\Models\CustomOrder::find($customOrderId)
+                                                : null;
 
-                // What's already in the form split rows as custom
-  $customInForm = collect($existingSplits)
-    ->where('payment_target', 'custom')
-    ->filter(fn($p) => empty($p['is_prior_deposit']))
-    ->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                            // What's already paid on custom order in DB
+                                            $customAlreadyPaid = $customOrder
+                                                ? \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount')
+                                                : 0;
 
-                // Custom order grand total
-                $coGrandTotal = 0;
-                if ($customOrder) {
-                    $isTaxFree    = (bool) $customOrder->is_tax_free;
-                    $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
-                        ->where('key', 'tax_rate')->value('value') ?? 7.63;
-                    $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
-                    $discAmt      = floatval($customOrder->discount_amount ?? 0);
-                    $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
-                    $warranty     = $customOrder->has_warranty
-                        ? floatval($customOrder->warranty_charge ?? 0) : 0;
-                    $coGrandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
-                }
+                                            // What's already in the form split rows as custom
+                                            $customInForm = collect($existingSplits)
+                                                ->where('payment_target', 'custom')
+                                                ->filter(fn($p) => empty($p['is_prior_deposit']))
+                                                ->sum(fn($p) => (float)($p['amount'] ?? 0));
 
-                // How much custom order still needs
-                $customRemaining  = max(0, round($coGrandTotal - $customAlreadyPaid - $customInForm, 2));
-                $regularRemaining = max(0, round($totalRemaining - $customRemaining, 2));
+                                            // Custom order grand total
+                                            $coGrandTotal = 0;
+                                            if ($customOrder) {
+                                                $isTaxFree    = (bool) $customOrder->is_tax_free;
+                                                $dbTaxRate    = \Illuminate\Support\Facades\DB::table('site_settings')
+                                                    ->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                                $taxRate      = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+                                                $discAmt      = floatval($customOrder->discount_amount ?? 0);
+                                                $afterDisc    = floatval($customOrder->quoted_price) - $discAmt;
+                                                $warranty     = $customOrder->has_warranty
+                                                    ? floatval($customOrder->warranty_charge ?? 0) : 0;
+                                                $coGrandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
+                                            }
 
-                // Add regular row
-                if ($regularRemaining > 0.01) {
-                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
-                        'method'         => $defaultMethod,
-                        'amount'         => number_format($regularRemaining, 2, '.', ''),
-                        'payment_target' => 'regular',
-                    ];
-                }
+                                            // How much custom order still needs
+                                            $customRemaining  = max(0, round($coGrandTotal - $customAlreadyPaid - $customInForm, 2));
+                                            $regularRemaining = max(0, round($totalRemaining - $customRemaining, 2));
 
-                // Add custom deposit row
-                if ($customRemaining > 0.01) {
-                    $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
-                        'method'         => $defaultMethod,
-                        'amount'         => number_format($customRemaining, 2, '.', ''),
-                        'payment_target' => 'custom',
-                    ];
-                }
+                                            // Add regular row
+                                            if ($regularRemaining > 0.01) {
+                                                $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                    'method'         => $defaultMethod,
+                                                    'amount'         => number_format($regularRemaining, 2, '.', ''),
+                                                    'payment_target' => 'regular',
+                                                ];
+                                            }
 
-                $set('split_payments', $existingSplits);
-                self::updateTotals($get, $set);
-            }),
-    ])->visible(fn(Get $get) => $get('is_split_payment')),
-    // ── REMAINING BALANCE (split mode) ───────────────────────────
-    // Form pre-fills existing DB payments into split_payments rows.
-    // So remaining = total - formSum directly (no extra DB lookup).
-    Placeholder::make('split_calc')
-        ->label('Remaining Balance')
-        ->content(function (Get $get) {
-            $total     = (float) $get('final_total');
-            $payments  = $get('split_payments') ?? [];
-            $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-            $remaining = $total - $sum;
- 
-            if ($remaining < 0) {
-                return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
-            }
-            $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
-            return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
-        })
-        ->visible(fn(Get $get) => $get('is_split_payment')),
- 
-    // ── STATUS ───────────────────────────────────────────────────
-    Select::make('status')
-        ->label('Sale Status')
-        ->options([
-            'completed'  => 'Completed',
-            'inprogress' => 'In Progress',
-            'pending'    => 'Pending',
-            'cancelled'  => 'Cancelled',
-        ])
-        ->default('inprogress')
-        ->required()
-        ->live(),
-]),
- 
-// ── FINANCIAL SUMMARY ─────────────────────────────────────────────
-Section::make('Financial Summary')->schema([
-    self::totalRow('TAX TOTAL', 'tax_amount'),
-    TextInput::make('tax_amount_warranty')
-        ->label('WARRANTY TAX')
-        ->prefix('$')
-        ->readOnly()
-        ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
-    self::totalRow('SUBTOTAL', 'subtotal'),
- 
-    // Form pre-fills DB payments into split_payments.
-    // Just use form values — do NOT add $dbPaid separately.
-    Placeholder::make('balance_due_display')
-        ->label('INVOICE TOTALS')
-        ->content(function (Get $get) {
-            $total       = floatval($get('final_total') ?? 0);
-            $isSplit     = $get('is_split_payment');
-            $customPaid  = 0;
-            $regularPaid = 0;
- 
-            if ($isSplit) {
-                foreach ($get('split_payments') ?? [] as $p) {
-                    $amt = (float)($p['amount'] ?? 0);
-                    if (($p['payment_target'] ?? 'regular') === 'custom') {
-                        $customPaid += $amt;
-                    } else {
-                        $regularPaid += $amt;
-                    }
-                }
-            } else {
-                $amt = floatval($get('amount_paid') ?? 0);
-                if (($get('payment_target') ?? 'regular') === 'custom') {
-                    $customPaid += $amt;
-                } else {
-                    $regularPaid += $amt;
-                }
-            }
- 
-            $totalPaid = $customPaid + $regularPaid;
-            $remaining = $total - $totalPaid;
- 
-            $html = "<div style='display:flex;justify-content:space-between;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                                            // Add custom deposit row
+                                            if ($customRemaining > 0.01) {
+                                                $existingSplits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                    'method'         => $defaultMethod,
+                                                    'amount'         => number_format($customRemaining, 2, '.', ''),
+                                                    'payment_target' => 'custom',
+                                                ];
+                                            }
+
+                                            $set('split_payments', $existingSplits);
+                                            self::updateTotals($get, $set);
+                                        }),
+                                ])->visible(fn(Get $get) => $get('is_split_payment')),
+                                // ── REMAINING BALANCE (split mode) ───────────────────────────
+                                // Form pre-fills existing DB payments into split_payments rows.
+                                // So remaining = total - formSum directly (no extra DB lookup).
+                                Placeholder::make('split_calc')
+                                    ->label('Remaining Balance')
+                                    ->content(function (Get $get) {
+                                        $total     = (float) $get('final_total');
+                                        $payments  = $get('split_payments') ?? [];
+                                        $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                        $remaining = $total - $sum;
+
+                                        if ($remaining < 0) {
+                                            return new HtmlString("<span class='text-danger-600 font-bold'>Overpaid by: $" . number_format(abs($remaining), 2) . "</span>");
+                                        }
+                                        $color = round($remaining, 2) == 0 ? 'text-success-600' : 'text-primary-600';
+                                        return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
+                                    })
+                                    ->visible(fn(Get $get) => $get('is_split_payment')),
+
+                                // ── STATUS ───────────────────────────────────────────────────
+                                Select::make('status')
+                                    ->label('Sale Status')
+                                    ->options([
+                                        'completed'  => 'Completed',
+                                        'inprogress' => 'In Progress',
+                                        'pending'    => 'Pending',
+                                        'cancelled'  => 'Cancelled',
+                                    ])
+                                    ->default('inprogress')
+                                    ->required()
+                                    ->live(),
+                            ]),
+
+                            // ── FINANCIAL SUMMARY ─────────────────────────────────────────────
+                            Section::make('Financial Summary')->schema([
+                                self::totalRow('TAX TOTAL', 'tax_amount'),
+                                TextInput::make('tax_amount_warranty')
+                                    ->label('WARRANTY TAX')
+                                    ->prefix('$')
+                                    ->readOnly()
+                                    ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
+                                self::totalRow('SUBTOTAL', 'subtotal'),
+
+                                // Form pre-fills DB payments into split_payments.
+                                // Just use form values — do NOT add $dbPaid separately.
+                                Placeholder::make('balance_due_display')
+                                    ->label('INVOICE TOTALS')
+                                    ->content(function (Get $get) {
+                                        $total       = floatval($get('final_total') ?? 0);
+                                        $isSplit     = $get('is_split_payment');
+                                        $customPaid  = 0;
+                                        $regularPaid = 0;
+
+                                        if ($isSplit) {
+                                            foreach ($get('split_payments') ?? [] as $p) {
+                                                $amt = (float)($p['amount'] ?? 0);
+                                                if (($p['payment_target'] ?? 'regular') === 'custom') {
+                                                    $customPaid += $amt;
+                                                } else {
+                                                    $regularPaid += $amt;
+                                                }
+                                            }
+                                        } else {
+                                            $amt = floatval($get('amount_paid') ?? 0);
+                                            if (($get('payment_target') ?? 'regular') === 'custom') {
+                                                $customPaid += $amt;
+                                            } else {
+                                                $regularPaid += $amt;
+                                            }
+                                        }
+
+                                        $totalPaid = $customPaid + $regularPaid;
+                                        $remaining = $total - $totalPaid;
+
+                                        $html = "<div style='display:flex;justify-content:space-between;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                 <span style='font-size:0.875rem;color:#64748b;'>Invoice Total:</span>
                 <span style='font-size:0.875rem;font-weight:bold;color:#334155;'>$" . number_format($total, 2) . "</span>
             </div>";
- 
-            if ($customPaid > 0) {
-                $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+
+                                        if ($customPaid > 0) {
+                                            $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                     <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200'>✨ CUSTOM DEPOSIT</span>
                     <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($customPaid, 2) . "</span>
                 </div>";
-            }
- 
-            if ($regularPaid > 0) {
-                $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                                        }
+
+                                        if ($regularPaid > 0) {
+                                            $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                     <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
                     <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($regularPaid, 2) . "</span>
                 </div>";
-            }
- 
-            if (round($remaining, 2) <= 0) {
-                $overpaid = abs($remaining);
-                return new HtmlString($html . "<div style='text-align:right;'>
+                                        }
+
+                                        if (round($remaining, 2) <= 0) {
+                                            $overpaid = abs($remaining);
+                                            return new HtmlString($html . "<div style='text-align:right;'>
                     <span style='color:#16a34a;font-weight:900;font-size:1.875rem;'>\$0.00</span>
                     <div style='color:#16a34a;font-size:0.75rem;font-weight:700;'>✅ FULLY PAID</div>"
-                    . ($overpaid > 0.01 ? "<div style='color:#2563eb;font-size:0.875rem;font-weight:700;margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "")
-                    . "</div>");
-            }
- 
-            return new HtmlString($html . "<div style='text-align:right;'>
+                                                . ($overpaid > 0.01 ? "<div style='color:#2563eb;font-size:0.875rem;font-weight:700;margin-top:8px;'>💵 Change Due: \$" . number_format($overpaid, 2) . "</div>" : "")
+                                                . "</div>");
+                                        }
+
+                                        return new HtmlString($html . "<div style='text-align:right;'>
                 <span style='color:#dc2626;font-weight:900;font-size:1.875rem;'>\$" . number_format($remaining, 2) . "</span>
                 <div style='color:#dc2626;font-size:0.75rem;font-weight:700;'>BALANCE DUE</div>
             </div>");
-        })
-        ->live(),
-]),
+                                    })
+                                    ->live(),
+                            ]),
                         ]),
                 ]),
 
@@ -2360,7 +2541,7 @@ Section::make('Financial Summary')->schema([
                 //     }),
 
                 Tables\Actions\EditAction::make()
-    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
+                    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
 
                 TableAction::make('request_edit')
                     ->label('Request Edit')
@@ -2518,50 +2699,51 @@ Section::make('Financial Summary')->schema([
                     ->outlined(),
 
                 Tables\Actions\Action::make('refund')
-    ->label('Refund')
-    ->icon('heroicon-o-arrow-uturn-left')
-    ->color('danger')
-    ->visible(fn(Sale $record) => $record->status === 'completed')
-    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
+                    ->label('Refund')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('danger')
+                    ->visible(fn(Sale $record) => $record->status === 'completed')
+                    ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id])),
 
-Tables\Actions\Action::make('cancel_sale')
-    ->label('Cancel Sale')
-    ->icon('heroicon-o-x-circle')
-    ->color('danger')
-    ->visible(fn(Sale $record) =>
-        !in_array($record->status, ['cancelled', 'refunded', 'void']) &&
-        auth()->user()->hasAnyRole(['Superadmin', 'Administration'])
-    )
-    ->requiresConfirmation()
-    ->modalHeading('Cancel This Sale?')
-    ->modalDescription('This will mark the sale as cancelled and return all items back to stock.')
-    ->modalSubmitActionLabel('Yes, Cancel Sale')
-    ->action(function (Sale $record) {
-        foreach ($record->items as $saleItem) {
-            if (!$saleItem->product_item_id) continue;
-            $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
-            if ($productItem) {
-                $productItem->update([
-                    'status'          => 'in_stock',
-                    'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
-                    'hold_reason'     => null,
-                    'held_by_sale_id' => null,
-                ]);
-            }
-        }
-        $record->update([
-            'status'       => 'cancelled',
-            'balance_due'  => 0,
-            'completed_at' => null,
-        ]);
-        Notification::make()
-            ->title('Sale Cancelled')
-            ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
-            ->success()
-            ->send();
-    }),
+                Tables\Actions\Action::make('cancel_sale')
+                    ->label('Cancel Sale')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(
+                        fn(Sale $record) =>
+                        !in_array($record->status, ['cancelled', 'refunded', 'void']) &&
+                            auth()->user()->hasAnyRole(['Superadmin', 'Administration'])
+                    )
+                    ->requiresConfirmation()
+                    ->modalHeading('Cancel This Sale?')
+                    ->modalDescription('This will mark the sale as cancelled and return all items back to stock.')
+                    ->modalSubmitActionLabel('Yes, Cancel Sale')
+                    ->action(function (Sale $record) {
+                        foreach ($record->items as $saleItem) {
+                            if (!$saleItem->product_item_id) continue;
+                            $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
+                            if ($productItem) {
+                                $productItem->update([
+                                    'status'          => 'in_stock',
+                                    'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
+                                    'hold_reason'     => null,
+                                    'held_by_sale_id' => null,
+                                ]);
+                            }
+                        }
+                        $record->update([
+                            'status'       => 'cancelled',
+                            'balance_due'  => 0,
+                            'completed_at' => null,
+                        ]);
+                        Notification::make()
+                            ->title('Sale Cancelled')
+                            ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
+                            ->success()
+                            ->send();
+                    }),
 
-                    
+
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -2584,19 +2766,17 @@ Tables\Actions\Action::make('cancel_sale')
         $itemsSubtotal = 0;
         $taxableItemsBasis = 0;
 
-       foreach ($items as $item) {
+        foreach ($items as $item) {
             $qty = intval($item['qty'] ?? 1);
             $rowTotal = !empty($item['sale_price_override']) && floatval($item['sale_price_override']) > 0
                 ? floatval($item['sale_price_override'])
                 : (floatval($item['sold_price'] ?? 0) * $qty) - floatval($item['discount_amount'] ?? 0);
 
             $itemsSubtotal += $rowTotal;
-            
+
             // 🚀 DATABASE CHECK FALLBACK CRITICAL REPAIR
             $isRowTaxFree = $item['is_tax_free'] ?? false;
-            if (!$isRowTaxFree && !empty($item['custom_order_id'])) {
-                $isRowTaxFree = (bool) \App\Models\CustomOrder::where('id', $item['custom_order_id'])->value('is_tax_free');
-            }
+
 
             if (!$isRowTaxFree) {
                 $taxableItemsBasis += $rowTotal;

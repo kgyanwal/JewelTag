@@ -305,13 +305,28 @@ class CustomOrderResource extends Resource
                                         return \App\Models\Customer::create($data)->id;
                                     }),
 
-                                Select::make('staff_id')
-                                    ->label('Sales Person')
+                                Select::make('sales_person_list')
+                                    ->label('Sales Person(s)')
+                                    ->multiple()
                                     ->options(User::pluck('name', 'id'))
-                                    ->default(fn() => auth()->id())
+                                    ->default(function () {
+                                        $activeName = Session::get('active_staff_name');
+                                        if ($activeName) {
+                                            $user = User::where('name', 'LIKE', "%{$activeName}%")->first();
+                                            if ($user) return [$user->id];
+                                        }
+                                        return auth()->id() ? [auth()->id()] : [];
+                                    })
                                     ->searchable()
+                                    ->preload()
                                     ->prefixIcon('heroicon-o-identification')
-                                    ->required(),
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Set $set) {
+                                        $set('staff_id', !empty($state) ? (int) $state[0] : null);
+                                    }),
+
+                                Hidden::make('staff_id'),
                             ]),
                         ]),
 
@@ -831,15 +846,17 @@ class CustomOrderResource extends Resource
                                 ->dehydrated(false),
 
                             Select::make('initial_payment_method')
-                                ->label('Deposit Payment Method')
-                                ->options(self::getPaymentOptions())
-                                ->default('CASH')
-                                ->required(fn(Get $get) => floatval($get('amount_paid')) > 0 && !$get('is_split_deposit'))
-                                ->visible(
-                                    fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                                        && !$get('is_split_deposit')
-                                )
-                                ->dehydrated(false),
+    ->label('Deposit Payment Method')
+    ->options(self::getPaymentOptions())
+    ->default('CASH')
+    ->required(fn(string $operation, Get $get) =>
+        $operation === 'create' && floatval($get('amount_paid')) > 0 && !$get('is_split_deposit')
+    )
+    ->visible(
+        fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+            && !$get('is_split_deposit')
+    )
+    ->dehydrated(false),
 
                             Repeater::make('split_deposit_payments')
                                 ->label('Split Deposit Breakdown')
@@ -1010,10 +1027,35 @@ class CustomOrderResource extends Resource
                     ->searchable()
                     ->description(fn($record) => $record->product_name ?? 'Custom Piece'),
 
-                Tables\Columns\TextColumn::make('staff.name')
-                    ->label('SALES REP')
-                    ->toggleable(isToggledHiddenByDefault: true)
-                    ->color('gray'),
+                Tables\Columns\TextColumn::make('sales_person_list')
+                    ->label('SALES REP')->html()
+                    ->getStateUsing(function ($record) {
+                        $list = $record->sales_person_list;
+                        if (is_string($list)) {
+                            $decoded = json_decode($list, true);
+                            $list    = is_array($decoded) ? $decoded : [];
+                        }
+                        if (empty($list) || !is_array($list)) {
+                            return $record->staff?->name ?? '—';
+                        }
+                        $names = \App\Models\User::whereIn('id', $list)->pluck('name')->toArray();
+                        return !empty($names) ? implode('||', $names) : ($record->staff?->name ?? '—');
+                    })
+                    ->formatStateUsing(function ($state) {
+                        if (!$state || $state === '—') return '<span style="color:#9ca3af;font-size:11px;">—</span>';
+                        $names = explode('||', $state);
+                        return collect($names)->map(function ($name) {
+                            $palette = [
+                                ['#DBEAFE', '#1D4ED8'], ['#EDE9FE', '#6D28D9'], ['#CCFBF1', '#0F766E'],
+                                ['#FEF3C7', '#B45309'], ['#DCFCE7', '#15803D'], ['#FCE7F3', '#BE185D'],
+                            ];
+                            $index       = abs(crc32(strtolower(trim($name)))) % count($palette);
+                            [$bg, $text] = $palette[$index];
+                            $short       = strtoupper(substr(trim($name), 0, 6));
+                            return "<span style='background:{$bg};color:{$text};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px;white-space:nowrap;display:inline-block;border:1px solid {$text}33;margin-right:3px;'>{$short}</span>";
+                        })->implode(' ');
+                    })
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('due_date')
                     ->date('M d, Y')
@@ -1195,25 +1237,49 @@ class CustomOrderResource extends Resource
 
         [$color, $bg, $border, $icon] = $configs[$type] ?? $configs['none'];
 
+        $staffIds = $record->sales_person_list;
+        if (is_string($staffIds)) {
+            $decoded = json_decode($staffIds, true);
+            $staffIds = is_array($decoded) ? $decoded : [];
+        }
+        if (empty($staffIds) || !is_array($staffIds)) {
+            $staffIds = $record->staff_id ? [$record->staff_id] : [];
+        }
+        $idsParam = implode(',', $staffIds);
+
         $convertUrl = $type === 'sale'
             ? \App\Filament\Resources\SaleResource::getUrl('create', [
-                'customer_id'     => $record->customer_id,
-                'custom_order_id' => $record->id,
+                'customer_id'      => $record->customer_id,
+                'custom_order_id'  => $record->id,
+                'sales_person_ids' => $idsParam,
             ])
             : null;
 
         if ($convertUrl) {
+            $animId = 'blk' . $record->id;
             return new \Illuminate\Support\HtmlString("
+                <style>
+                    @-webkit-keyframes {$animId} {
+                        0%, 100% { background-color: #16a34a; color: #ffffff; }
+                        50%      { background-color: #f0fdf4; color: #15803d; }
+                    }
+                    @keyframes {$animId} {
+                        0%, 100% { background-color: #16a34a; color: #ffffff; }
+                        50%      { background-color: #f0fdf4; color: #15803d; }
+                    }
+                    .{$animId} {
+                        -webkit-animation: {$animId} 1s ease-in-out infinite;
+                        animation: {$animId} 1s ease-in-out infinite;
+                    }
+                </style>
                 <a href='{$convertUrl}'
+                   class='{$animId}'
                    style='display:inline-flex;align-items:center;gap:5px;
-                          background:{$bg};color:{$color};
                           border:1px solid {$border};
                           border-radius:20px;padding:3px 10px;
                           font-size:10px;font-weight:800;
                           white-space:nowrap;text-decoration:none;
-                          cursor:pointer;'
-                   onmouseover=\"this.style.opacity='0.8'\"
-                   onmouseout=\"this.style.opacity='1'\">
+                          cursor:pointer;'>
                     {$icon} {$label}
                 </a>
             ");
@@ -1261,6 +1327,43 @@ class CustomOrderResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
+
+                Tables\Actions\Action::make('createSaleNow')
+                    ->label('🛒 Create Sale')
+                    ->icon('heroicon-o-shopping-cart')
+                    ->color('success')
+                    ->button()
+                    ->size('sm')
+                    ->visible(fn(CustomOrder $record) => floatval($record->balance_due) <= 0.01 && !$record->sale_id)
+                    ->modalHeading('✅ Order Fully Paid — Enter Staff PIN')
+                    ->modalDescription('Enter your PIN to verify and create the sale.')
+                    ->modalSubmitActionLabel('Verify & Create Sale')
+                    ->modalWidth('md')
+                    ->form([
+                        TextInput::make('verification_pin')
+                            ->label('PIN')
+                            ->password()
+                            ->revealable()
+                            ->required()
+                            ->numeric()
+                            ->autofocus(),
+                    ])
+                    ->action(function (CustomOrder $record, array $data) {
+                        $staff = User::where('pin_code', $data['verification_pin'])->where('is_active', true)->first();
+                        if (!$staff) {
+                            Notification::make()->title('Invalid PIN')->danger()->send();
+                            return;
+                        }
+
+                        $sale = self::createSaleDirectly($record->fresh());
+
+                        Notification::make()
+                            ->title("✅ Sale #{$sale->invoice_number} Created")
+                            ->body("View it anytime in Find Sale. Staff: {$staff->name}")
+                            ->success()
+                            ->persistent()
+                            ->send();
+                    }),
 
                 Tables\Actions\Action::make('recordPayment')
                     ->label('Add Deposit')
@@ -1395,7 +1498,7 @@ class CustomOrderResource extends Resource
                                 ->reorderable(false),
                         ];
                     })
-                    ->action(function (CustomOrder $record, array $data) {
+                    ->action(function (CustomOrder $record, array $data, $livewire) {
                         DB::transaction(function () use ($record, $data) {
                             $amountPaid = round((float) $data['amount'], 2);
                             $isTaxFree  = (bool)($record->is_tax_free ?? false);
@@ -1451,10 +1554,21 @@ class CustomOrderResource extends Resource
                                 }
                             }
 
-                            if ($newBalanceDue <= 0 && $record->status !== 'completed') {
-                                $record->update(['status' => 'completed']);
+                            if ($newBalanceDue <= 0 && $record->status !== 'received' && $record->status !== 'completed') {
+                                $record->update(['status' => 'received']);
                             }
                         });
+
+                       if ($record->refresh()->balance_due <= 0 && !$record->sale_id) {
+                            Notification::make()
+                                ->title('✅ Payment Recorded — Fully Paid')
+                                ->body('Opening PIN verification to create the sale...')
+                                ->success()
+                                ->send();
+
+                            $livewire->dispatch('open-create-sale-now', recordId: $record->getKey());
+                            return;
+                        }
 
                         Notification::make()
                             ->title('✅ Payment Recorded')
@@ -1597,8 +1711,9 @@ class CustomOrderResource extends Resource
                         ->color('info')
                         ->visible(fn(CustomOrder $record) => $record->status === 'received')
                         ->action(fn(CustomOrder $record) => redirect()->route('filament.admin.resources.sales.create', [
-                            'customer_id'     => $record->customer_id,
-                            'custom_order_id' => $record->id,
+                            'customer_id'      => $record->customer_id,
+                            'custom_order_id'  => $record->id,
+                            'sales_person_ids' => implode(',', $record->sales_person_list ?? ($record->staff_id ? [$record->staff_id] : [])),
                         ])),
 
                     Tables\Actions\Action::make('viewMessageHistory')
@@ -1684,6 +1799,85 @@ class CustomOrderResource extends Resource
         $set('balance_due', round(max(0, $total - $paid), 2));
     }
 
+    public static function createSaleDirectly(CustomOrder $record): \App\Models\Sale
+{
+    return DB::transaction(function () use ($record) {
+        // ── Build staff list exactly like the existing logic does ──
+        $staffIds = $record->sales_person_list;
+        if (is_string($staffIds)) {
+            $decoded  = json_decode($staffIds, true);
+            $staffIds = is_array($decoded) ? $decoded : [];
+        }
+        if (empty($staffIds) || !is_array($staffIds)) {
+            $staffIds = $record->staff_id ? [$record->staff_id] : [];
+        }
+        $staffNames = User::whereIn('id', $staffIds)->pluck('name')->toArray();
+        if (empty($staffNames)) {
+            $staffNames = [auth()->user()->name ?? 'Unknown'];
+        }
+
+        // ── Recompute the exact pre-tax line amount, same math CreateSale::mount() uses ──
+        $isTaxFree  = (bool) $record->is_tax_free;
+        $discAmt    = floatval($record->discount_amount ?? 0);
+        $afterDisc  = max(0, floatval($record->quoted_price) - $discAmt);
+        $warranty   = $record->has_warranty ? floatval($record->warranty_charge ?? 0) : 0;
+        $preTaxAmount = round($afterDisc + $warranty, 2);
+
+        $dbTaxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate   = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+        $taxAmount = round($preTaxAmount * $taxRate, 2);
+        $finalTotal = round($preTaxAmount + $taxAmount, 2);
+
+        // ── Pull every payment already recorded against this custom order ──
+        $existingPayments = \App\Models\Payment::where('custom_order_id', $record->id)
+            ->orderBy('paid_at')
+            ->get();
+        $totalPaid = $existingPayments->sum('amount');
+
+        $invoiceNumber = 'D' . str_pad((string) (\App\Models\Sale::max('id') + 1), 4, '0', STR_PAD_LEFT);
+
+        $sale = \App\Models\Sale::create([
+            'invoice_number'     => $invoiceNumber,
+            'customer_id'        => $record->customer_id,
+            'store_id'           => auth()->user()->store_id ?? \App\Models\Store::first()?->id ?? 1,
+            'sales_person_list'  => $staffNames,
+            'subtotal'           => $preTaxAmount,
+            'tax_amount'         => $taxAmount,
+            'final_total'        => $finalTotal,
+            'amount_paid'        => round($totalPaid, 2),
+            'balance_due'        => max(0, round($finalTotal - $totalPaid, 2)),
+            'payment_method'     => 'split',
+            'is_split_payment'   => true,
+            'status'             => 'completed',
+            'completed_at'       => now(),
+        ]);
+
+        $sale->items()->create([
+            'custom_order_id'     => $record->id,
+            'stock_no_display'    => 'CUSTOM #' . $record->order_no,
+            'custom_description'  => "Custom {$record->product_name}",
+            'qty'                 => 1,
+            'sold_price'          => $preTaxAmount,
+            'sale_price_override' => $preTaxAmount,
+            'is_tax_free'         => $isTaxFree,
+            'is_non_stock'        => false,
+            'discount_percent'    => 0,
+            'discount_amount'     => 0,
+            'discount'            => 0,
+        ]);
+
+        // ── Re-point existing payments to this new sale, exactly like CreateSale::afterCreate() ──
+        \App\Models\Payment::where('custom_order_id', $record->id)
+            ->update(['sale_id' => $sale->id]);
+
+        $record->update([
+            'sale_id' => $sale->id,
+            'status'  => 'completed',
+        ]);
+
+        return $sale;
+    });
+}
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
     {
         $record->update([

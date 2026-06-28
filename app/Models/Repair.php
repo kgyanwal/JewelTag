@@ -13,11 +13,12 @@ class Repair extends Model
 
     protected $guarded = [];
 
-    protected $casts = [
-        'items'              => 'array',
-        'sales_person_list'  => 'array',
-        'notified_at'        => 'datetime',
-        'repair_history'     => 'array',
+  protected $casts = [
+        'items'             => 'array',
+        'sales_person_list' => 'array',
+        'notified_at'       => 'datetime',
+        'repair_history'    => 'array',
+        'captured_photos'   => 'array', // 🚀 ADD THIS
     ];
 
     protected static function booted()

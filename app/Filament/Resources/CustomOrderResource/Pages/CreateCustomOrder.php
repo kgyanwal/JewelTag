@@ -74,7 +74,40 @@ class CreateCustomOrder extends CreateRecord
     protected function afterCreate(): void
     {
         $order = $this->record;
-
+\Filament\Notifications\Notification::make()
+            ->title('📨 Notify the Customer?')
+            ->body("Order #{$order->order_no} was created. Let {$order->customer?->name} know.")
+            ->success()
+            ->persistent()
+            ->actions([
+                \Filament\Notifications\Actions\Action::make('notify_sms')
+                    ->label('Send SMS')
+                    ->color('warning')
+                    ->button()
+                    ->action(function () use ($order) {
+                        \App\Filament\Resources\CustomOrderResource::handleNotification(
+                            $order,
+                            'sms',
+                            "Hi {$order->customer?->name}, thanks for your order #{$order->order_no}! We'll keep you updated."
+                        );
+                    }),
+                \Filament\Notifications\Actions\Action::make('notify_email')
+                    ->label('Send Email')
+                    ->color('info')
+                    ->button()
+                    ->action(function () use ($order) {
+                        \App\Filament\Resources\CustomOrderResource::handleNotification(
+                            $order,
+                            'email',
+                            "Hi {$order->customer?->name}, thanks for your order #{$order->order_no}! We'll keep you updated."
+                        );
+                    }),
+                \Filament\Notifications\Actions\Action::make('notify_skip')
+                    ->label('Skip')
+                    ->color('gray')
+                    ->close(),
+            ])
+            ->send();
         if ($order->amount_paid > 0) {
             if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
                 foreach ($this->splitDepositPayments as $payment) {

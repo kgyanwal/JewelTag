@@ -28,7 +28,9 @@ class EditCustomOrder extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $record = $this->record;
-
+        if (empty($record->sales_person_list) && $record->staff_id) {
+            $data['sales_person_list'] = [$record->staff_id];
+        }
         $isTaxFree  = (bool)($record->is_tax_free ?? false);
         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
@@ -57,14 +59,14 @@ class EditCustomOrder extends EditRecord
         $trueBalance = round(max(0, $grandTotal - $actualPaid), 2);
 
         // ── SELF-HEAL: update DB if stale ─────────────────────────────────
-        if (
+       if (
             abs(floatval($record->balance_due) - $trueBalance) > 0.01 ||
             abs(floatval($record->amount_paid) - $actualPaid) > 0.01
         ) {
             $record->update([
                 'balance_due' => $trueBalance,
                 'amount_paid' => round($actualPaid, 2),
-                'status'      => $trueBalance <= 0 ? 'completed' : $record->status,
+                'status'      => ($trueBalance <= 0 && !in_array($record->status, ['received', 'completed'])) ? 'received' : $record->status,
             ]);
         }
 
@@ -75,26 +77,26 @@ class EditCustomOrder extends EditRecord
         return $data;
     }
 
-   protected function mutateFormDataBeforeSave(array $data): array
+    protected function mutateFormDataBeforeSave(array $data): array
     {
         // Capture dehydrated(false) fields
         $this->depositMethod        = $this->data['initial_payment_method'] ?? null;
         $this->isSplitDeposit       = (bool) ($this->data['is_split_deposit'] ?? false);
         $this->splitDepositPayments = $this->data['split_deposit_payments'] ?? [];
 
-     // ── CALCULATE GRAND TOTAL ────────
-        $quoted         = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0); 
+        // ── CALCULATE GRAND TOTAL ────────
+        $quoted         = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0);
         $discountAmount = floatval($data['discount_amount'] ?? $this->record->discount_amount ?? 0);
         $tradeIn        = ($data['has_trade_in'] ?? 0) == 1 ? floatval($data['trade_in_value'] ?? 0) : 0;
         $afterDiscount  = max(0, $quoted - $discountAmount);
-        
+
         $hasWarranty    = ($data['has_warranty'] ?? $this->record->has_warranty ?? 0) == 1;
         $warrantyCharge = $hasWarranty ? floatval($data['warranty_charge'] ?? $this->record->warranty_charge ?? 0) : 0;
-        
+
         $isTaxFree      = (bool)($data['is_tax_free'] ?? $this->record->is_tax_free ?? false);
         $dbTax          = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate        = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        
+
         $tax            = ($afterDiscount + $warrantyCharge) * $taxRate;
         $grandTotal     = $afterDiscount + $warrantyCharge + $tax;
         // 🚀 THE FIX: If an admin explicitly edited the amount_paid field, TRUST THE FORM DATA.
@@ -148,7 +150,6 @@ class EditCustomOrder extends EditRecord
                         'paid_at'         => now(),
                     ]);
                 }
-
             } elseif ($this->depositMethod) {
                 // ── SINGLE: get all payments for this custom order ─────────
                 $existingPayments = Payment::where('custom_order_id', $order->id)
@@ -176,7 +177,6 @@ class EditCustomOrder extends EditRecord
                         'amount'          => round((float) $order->amount_paid, 2),
                         'custom_order_id' => $order->id,
                     ]);
-
                 } elseif ($existingPayments->count() === 1) {
                     // Update existing payment
                     $existingPayments->first()->update([
@@ -184,7 +184,6 @@ class EditCustomOrder extends EditRecord
                         'amount'          => round((float) $order->amount_paid, 2),
                         'custom_order_id' => $order->id,
                     ]);
-
                 } else {
                     // No payment exists — create one
                     Payment::create([

@@ -11,6 +11,42 @@ class CreateRepair extends CreateRecord
 {
     protected static string $resource = RepairResource::class;
 
+    protected function getListeners(): array
+    {
+        return [
+            'webcam-photo-added'   => 'onWebcamPhotoAdded',
+            'webcam-photo-removed' => 'onWebcamPhotoRemoved',
+        ];
+    }
+
+  public function onWebcamPhotoAdded(string $statePath, string $path): void
+{
+    $relativePath = str_starts_with($statePath, 'data.') ? substr($statePath, 5) : $statePath;
+
+    $current   = data_get($this->data, $relativePath) ?? [];
+    $current[] = $path;
+
+    $dataCopy = $this->data;
+    data_set($dataCopy, $relativePath, $current);
+    $this->data = $dataCopy;
+
+    $this->dispatch('webcam-photo-synced', statePath: $statePath, photos: $current);
+}
+
+public function onWebcamPhotoRemoved(string $statePath, string $path): void
+{
+    $relativePath = str_starts_with($statePath, 'data.') ? substr($statePath, 5) : $statePath;
+
+    $current = data_get($this->data, $relativePath) ?? [];
+    $current = array_values(array_filter($current, fn($p) => $p !== $path));
+
+    $dataCopy = $this->data;
+    data_set($dataCopy, $relativePath, $current);
+    $this->data = $dataCopy;
+
+    $this->dispatch('webcam-photo-synced', statePath: $statePath, photos: $current);
+}
+
     protected function afterCreate(): void
     {
         if ($this->data['auto_print'] ?? false) {
@@ -24,8 +60,32 @@ class CreateRepair extends CreateRecord
         return $this->getResource()::getUrl('index');
     }
 
-    protected function mutateFormDataBeforeCreate(array $data): array
-    {
+   protected function mutateFormDataBeforeCreate(array $data): array
+{
+    // 🔍 TEMP DEBUG — remove after we find the bug
+    \Illuminate\Support\Facades\Log::info('WEBCAM DEBUG — raw $this->data[items]', [
+        'this_data_items' => $this->data['items'] ?? 'MISSING',
+    ]);
+    \Illuminate\Support\Facades\Log::info('WEBCAM DEBUG — incoming $data[items]', [
+        'data_items' => $data['items'] ?? 'MISSING',
+    ]);
+
+    // Fix captured_photos per repeater item — same UUID→numeric mismatch fix
+    $livewireItems = array_values($this->data['items'] ?? []);
+
+    if (!empty($data['items']) && is_array($data['items'])) {
+        foreach ($data['items'] as $index => &$item) {
+            $livewirePhotos = $livewireItems[$index]['captured_photos'] ?? [];
+            if (!is_array($livewirePhotos)) {
+                $livewirePhotos = [];
+            }
+            $item['captured_photos'] = array_values(array_filter($livewirePhotos));
+        }
+        unset($item);
+    }
+
+    unset($data['captured_photos']);
+
         // Resolve the correct user ID from the visible Select
         $resolvedId = null;
 
@@ -45,8 +105,6 @@ class CreateRepair extends CreateRecord
             $resolvedId = auth()->id();
         }
 
-        // Write to BOTH columns — staff_id is what the relationship uses,
-        // sales_person_id is the extra column. Both must match.
         $data['staff_id']          = $resolvedId;
         $data['sales_person_id']   = $resolvedId;
         $data['sales_person_list'] = [$resolvedId];

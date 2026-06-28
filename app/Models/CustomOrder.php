@@ -18,6 +18,7 @@ class CustomOrder extends Model
         'follow_up_date'         => 'date',
         'is_customer_notified'   => 'boolean',
         'notified_at'            => 'datetime',
+        'sales_person_list'      => 'array',
         'items'                  => 'array', // ← add this
     ];
 

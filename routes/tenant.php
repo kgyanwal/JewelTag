@@ -81,4 +81,30 @@ Route::get('/laybuys/{laybuy}/print', [ReceiptController::class, 'printLaybuy'])
            Route::middleware('auth:sanctum')->prefix('api/v1/crm')->group(function () {
         Route::get('/daily-export', [\App\Http\Controllers\Api\CrmExportController::class, 'export']);
     });
+
+    Route::post('/repair-webcam-capture', function (\Illuminate\Http\Request $request) {
+    $request->validate([
+        'image' => 'required|string',
+    ]);
+
+    $imageData = $request->input('image');
+
+    // Strip the data URL prefix: "data:image/jpeg;base64,...."
+    if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $matches)) {
+        $extension = $matches[1] === 'jpeg' ? 'jpg' : $matches[1];
+        $imageData = substr($imageData, strpos($imageData, ',') + 1);
+    } else {
+        $extension = 'jpg';
+    }
+
+    $decoded = base64_decode($imageData);
+    if ($decoded === false) {
+        return response()->json(['error' => 'Invalid image data'], 422);
+    }
+
+    $filename = 'repair-intake-photos/' . \Illuminate\Support\Str::uuid() . '.' . $extension;
+    \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $decoded);
+
+    return response()->json(['path' => $filename]);
+})->name('repair.webcam.capture')->middleware(['web', 'auth']);
 });

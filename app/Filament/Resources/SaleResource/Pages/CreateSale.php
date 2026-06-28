@@ -25,7 +25,7 @@ class CreateSale extends CreateRecord
     {
         return $data;
     }
-protected function mutateFormDataBeforeCreate(array $data): array
+    protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['is_warranty_taxed'] = (bool) ($data['is_warranty_taxed'] ?? false);
         $data['shipping_taxed']    = (bool) ($data['shipping_taxed'] ?? false);
@@ -108,14 +108,24 @@ protected function mutateFormDataBeforeCreate(array $data): array
             if ($customOrder) {
                 $this->data['customer_id'] = $customOrder->customer_id;
 
+                $coIsTaxFree  = (bool) $customOrder->is_tax_free;
+                $coDiscAmt    = floatval($customOrder->discount_amount ?? 0);
+                $coAfterDisc  = max(0, floatval($customOrder->quoted_price) - $coDiscAmt);
+                $coWarranty   = $customOrder->has_warranty ? floatval($customOrder->warranty_charge ?? 0) : 0;
+
+                // 🚀 Carry the PRE-TAX amount on the line item. Let the Sale's own
+                // updateTotals() apply tax once, matching the Custom Order's
+                // is_tax_free flag — so the Financial Summary's tax breakdown is correct.
+                $coPreTaxAmount = round($coAfterDisc + $coWarranty, 2);
+
                 $this->data['items'] = [[
                     'custom_order_id'     => $customOrder->id,
                     'stock_no_display'    => 'CUSTOM #' . $customOrder->order_no,
                     'custom_description'  => "Custom {$customOrder->product_name}",
                     'qty'                 => 1,
-                    'sold_price'          => $customOrder->quoted_price,
-                    'sale_price_override' => $customOrder->quoted_price,
-                    'is_tax_free'         => true,
+                    'sold_price'          => $coPreTaxAmount,
+                    'sale_price_override' => $coPreTaxAmount,
+                    'is_tax_free'         => $coIsTaxFree,
                 ]];
 
                 if ($customOrder->has_trade_in) {
@@ -131,16 +141,28 @@ protected function mutateFormDataBeforeCreate(array $data): array
                 $this->data['split_payments']   = $priorPayments->map(fn($p) => [
                     'method'           => $p->method,
                     'amount'           => $p->amount,
+                    'payment_target'   => 'custom',
                     'is_prior_deposit' => true,
                 ])->toArray();
 
-                $netBill  = floatval($customOrder->quoted_price) - floatval($customOrder->trade_in_value ?? 0);
-                $dueToday = max(0, $netBill - $totalPriorPaid);
+                // 🚀 Authoritative grand total — matches CustomOrderResource::calculateBalance() exactly
+                $isTaxFree  = (bool) $customOrder->is_tax_free;
+                $dbTaxRate  = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                $taxRate    = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+                $discAmt    = floatval($customOrder->discount_amount ?? 0);
+                $afterDisc  = floatval($customOrder->quoted_price) - $discAmt;
+                $warranty   = $customOrder->has_warranty ? floatval($customOrder->warranty_charge ?? 0) : 0;
+                $tradeIn    = floatval($customOrder->trade_in_value ?? 0);
 
-                if ($dueToday > 0) {
+                $grandTotal = max(0, ($afterDisc + $warranty - $tradeIn) * (1 + $taxRate));
+                $dueToday   = round(max(0, $grandTotal - $totalPriorPaid), 2);
+
+                // Only add a "due today" row if there's genuinely money still owed
+                if ($dueToday > 0.01) {
                     $this->data['split_payments'][] = [
-                        'method' => 'CASH',
-                        'amount' => $dueToday,
+                        'method'         => 'CASH',
+                        'amount'         => $dueToday,
+                        'payment_target' => 'custom',
                     ];
                 }
 
@@ -324,10 +346,10 @@ protected function mutateFormDataBeforeCreate(array $data): array
     {
         DB::transaction(function () {
             $sale     = $this->record;
-            $sale->load('items'); 
+            $sale->load('items');
             $specialJobs = $sale->special_jobs ?? [];
             $isLaybuy = $sale->payment_method === 'laybuy';
-
+            $sale->update(['effective_sale_date' => $sale->completed_at ?? now()]);
             // Find the custom order if one exists in this cart
             $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
             $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
@@ -366,7 +388,7 @@ protected function mutateFormDataBeforeCreate(array $data): array
 
                 $target = $p['target'] ?? 'regular';
                 $isCustom = ($target === 'custom' && $customOrder);
-                
+
                 \App\Models\Payment::create([
                     'sale_id'         => $sale->id,
                     'custom_order_id' => $isCustom ? $customOrder->id : null,
@@ -382,7 +404,13 @@ protected function mutateFormDataBeforeCreate(array $data): array
             $sale->update([
                 'amount_paid' => round($totalSalePaid, 2)
             ]);
+            $earliest = \Illuminate\Support\Facades\DB::table('payments')
+                ->where('sale_id', $sale->id)
+                ->min('paid_at');
 
+            if ($earliest && (!$sale->effective_sale_date || $earliest < $sale->effective_sale_date)) {
+                $sale->update(['effective_sale_date' => $earliest]);
+            }
             // Update the nested Custom Order parameters instantly
             if ($customOrder) {
                 $allCustomPaid = \App\Models\Payment::where('custom_order_id', $customOrder->id)->sum('amount');
@@ -448,78 +476,78 @@ protected function mutateFormDataBeforeCreate(array $data): array
                     ->send();
             }
 
-      
-if (!empty($specialJobs) && is_array($specialJobs)) {
 
-    $saleItemsArray = $sale->items->values();
+            if (!empty($specialJobs) && is_array($specialJobs)) {
 
-    foreach ($specialJobs as $job) {
-        if (empty($job['job_type'])) continue;
+                $saleItemsArray = $sale->items->values();
 
-        // ── Get selected item indexes (or default to first item) ──
-        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
-        if (empty($selectedIndexes)) {
-            $selectedIndexes = [0];
-        }
+                foreach ($specialJobs as $job) {
+                    if (empty($job['job_type'])) continue;
 
-        // ── Build description from only the selected items ────────
-        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
-            return $saleItemsArray->get((int)$idx);
-        })->filter();
+                    // ── Get selected item indexes (or default to first item) ──
+                    $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
+                    if (empty($selectedIndexes)) {
+                        $selectedIndexes = [0];
+                    }
 
-        $itemDescription = $selectedItems->map(function ($item) {
-            if ($item->productItem) {
-                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                    // ── Build description from only the selected items ────────
+                    $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
+                        return $saleItemsArray->get((int)$idx);
+                    })->filter();
+
+                    $itemDescription = $selectedItems->map(function ($item) {
+                        if ($item->productItem) {
+                            return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                        }
+                        return $item->custom_description ?? 'Item';
+                    })->filter()->implode(', ');
+
+                    if (empty($itemDescription)) {
+                        $itemDescription = 'Item from Sale #' . $sale->invoice_number;
+                    }
+
+                    // ── Generate repair number ────────────────────────────────
+                    $datePrefix = now()->format('ymd');
+                    $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
+                    while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
+                        $sequence++;
+                    }
+                    $repairNo = $datePrefix . '-' . $sequence;
+
+                    \App\Models\Repair::create([
+                        'sale_id'              => $sale->id,
+                        'repair_no'            => $repairNo,
+                        'customer_id'          => $sale->customer_id,
+                        'store_id'             => $sale->store_id,
+                        'staff_id'             => auth()->id(),
+                        'sales_person_list'    => is_array($sale->sales_person_list)
+                            ? $sale->sales_person_list
+                            : [$sale->sales_person_list],
+                        'status'               => 'received',
+                        'item_description'     => $itemDescription,
+                        'reported_issue'       => $job['job_type']
+                            . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
+                            . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
+                            . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
+                        'repair_notes'         => $job['job_instructions'] ?? null,
+                        'customer_pickup_date' => $job['date_required'] ?? null,
+                        'estimated_cost'       => 0,
+                        'final_cost'           => null,
+                        'items'                => [[
+                            'item_description' => $itemDescription,
+                            'reported_issue'   => $job['job_type'],
+                            'job_type'         => $job['job_type'],
+                            'metal_type'       => $job['metal_type'] ?? null,
+                            'current_size'     => $job['current_size'] ?? null,
+                            'target_size'      => $job['target_size'] ?? null,
+                            'job_instructions' => $job['job_instructions'] ?? null,
+                            'date_required'    => $job['date_required'] ?? null,
+                            'estimated_cost'   => 0,
+                            'final_cost'       => null,
+                        ]],
+                    ]);
+                }
             }
-            return $item->custom_description ?? 'Item';
-        })->filter()->implode(', ');
-
-        if (empty($itemDescription)) {
-            $itemDescription = 'Item from Sale #' . $sale->invoice_number;
-        }
-
-        // ── Generate repair number ────────────────────────────────
-        $datePrefix = now()->format('ymd');
-        $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
-        while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
-            $sequence++;
-        }
-        $repairNo = $datePrefix . '-' . $sequence;
-
-        \App\Models\Repair::create([
-            'sale_id'              => $sale->id,
-            'repair_no'            => $repairNo,
-            'customer_id'          => $sale->customer_id,
-            'store_id'             => $sale->store_id,
-            'staff_id'             => auth()->id(),
-            'sales_person_list'    => is_array($sale->sales_person_list)
-                                        ? $sale->sales_person_list
-                                        : [$sale->sales_person_list],
-            'status'               => 'received',
-            'item_description'     => $itemDescription,
-            'reported_issue'       => $job['job_type']
-                                        . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
-                                        . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
-                                        . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
-            'repair_notes'         => $job['job_instructions'] ?? null,
-            'customer_pickup_date' => $job['date_required'] ?? null,
-            'estimated_cost'       => 0,
-            'final_cost'           => null,
-            'items'                => [[
-                'item_description' => $itemDescription,
-                'reported_issue'   => $job['job_type'],
-                'job_type'         => $job['job_type'],
-                'metal_type'       => $job['metal_type'] ?? null,
-                'current_size'     => $job['current_size'] ?? null,
-                'target_size'      => $job['target_size'] ?? null,
-                'job_instructions' => $job['job_instructions'] ?? null,
-                'date_required'    => $job['date_required'] ?? null,
-                'estimated_cost'   => 0,
-                'final_cost'       => null,
-            ]],
-        ]);
-    }
-}
         });
 
         session()->forget("sale_draft_{$this->draftId}");
