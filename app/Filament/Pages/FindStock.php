@@ -865,7 +865,7 @@ class FindStock extends Page implements HasForms, HasTable
                         ->action(function (ProductItem $record) {
                             $service = app(\App\Services\ShopifyService::class);
 
-                            $images = [];
+                           $images = [];
                             $primaryImage = is_array($record->primary_image)
                                 ? (array_values($record->primary_image)[0] ?? null)
                                 : $record->primary_image;
@@ -880,10 +880,24 @@ class FindStock extends Page implements HasForms, HasTable
                                 }
                             }
 
+                            $galleryImages = $record->gallery_images;
+                            if (is_array($galleryImages)) {
+                                foreach ($galleryImages as $galleryImage) {
+                                    if (!is_string($galleryImage)) continue;
+                                    $galleryFullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($galleryImage);
+                                    if (file_exists($galleryFullPath)) {
+                                        $images[] = [
+                                            'attachment' => base64_encode(file_get_contents($galleryFullPath)),
+                                            'filename'   => basename($galleryImage),
+                                        ];
+                                    }
+                                }
+                            }
+
                             $payload = [
                                 'title'        => $record->custom_description ?? $record->barcode,
                                 'body_html'    => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
-                                'vendor'       => $record->supplier?->company_name ?? 'JewelTag',
+                                'vendor'       => $record->store?->name ?? 'JewelTag',
                                 'product_type' => $record->category ?? $record->department ?? 'Jewelry',
                                 'tags' => implode(',', array_filter([
                                     'jeweltag-instore',
@@ -1092,6 +1106,7 @@ class FindStock extends Page implements HasForms, HasTable
                         foreach ($records->where('status', 'in_stock') as $record) {
     try {
         $images = [];
+        $images = [];
         $primaryImage = is_array($record->primary_image)
             ? (array_values($record->primary_image)[0] ?? null)
             : $record->primary_image;
@@ -1106,10 +1121,24 @@ class FindStock extends Page implements HasForms, HasTable
             }
         }
 
+        $galleryImages = $record->gallery_images;
+        if (is_array($galleryImages)) {
+            foreach ($galleryImages as $galleryImage) {
+                if (!is_string($galleryImage)) continue;
+                $galleryFullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($galleryImage);
+                if (file_exists($galleryFullPath)) {
+                    $images[] = [
+                        'attachment' => base64_encode(file_get_contents($galleryFullPath)),
+                        'filename'   => basename($galleryImage),
+                    ];
+                }
+            }
+        }
+
         $payload = [
             'title'       => $record->custom_description ?? $record->barcode,
             'body_html'   => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
-            'vendor'      => $record->supplier?->company_name ?? 'JewelTag',
+            'vendor'      => $record->store?->name ?? 'JewelTag',
             'product_type' => $record->category ?? $record->department ?? 'Jewelry',
             'tags'        => implode(',', array_filter([
                 'jeweltag-instore',
