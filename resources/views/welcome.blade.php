@@ -4,1265 +4,1079 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JewelTag.us | Ultimate Jewelry Management & Inventory Software</title>
-    <meta name="description" content="World's most advanced jewelry inventory management, POS, CRM, and business intelligence platform for jewelers, retailers, and luxury brands.">
+    <title>JewelTag.us | Inventory, POS & CRM Built for Jewelers</title>
+    <meta name="description" content="JewelTag is the inventory management, point-of-sale, and CRM platform built specifically for jewelry retailers — RFID tracking, repair orders, layaway, and more.">
 
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- AOS Animation Library -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
 
     <style>
         :root {
-            --primary-gold: #d97706;
-            --secondary-gold: #fbbf24;
-            --dark-gold: #b45309;
-            --gold-soft: #fffbeb;
-            --platinum: #E5E4E2;
-            --diamond-white: #F8FAFC;
-            --deep-sapphire: #0A2540;
-            --royal-blue: #1E3A8A;
-            --emerald-green: #047857;
-            --ruby-red: #DC2626;
-            --amethyst-purple: #7C3AED;
-            --onyx-black: #111827;
-            --text-main: #1e293b;
+            --onyx:        #15120F;
+            --onyx-soft:   #1F1A15;
+            --case-felt:   #FAF6EE;
+            --brass:       #B8863B;
+            --brass-bright:#E0AE5C;
+            --brass-dim:   #8A6428;
+            --loupe:       #6FCF97;
+            --loupe-dim:   #3E7C5A;
+            --ink:         #211C16;
+            --ink-soft:    #5C5346;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', sans-serif;
-            color: var(--text-main);
+            color: var(--ink);
+            background: var(--case-felt);
             overflow-x: hidden;
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
         }
 
-        .playfair {
-            font-family: 'Playfair Display', serif;
+        .fraunces { font-family: 'Fraunces', serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
         }
 
-        .cormorant {
-            font-family: 'Cormorant Garamond', serif;
-        }
-
-        /* Gold Gradients */
-        .gold-gradient {
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
-        }
-
-        .gold-text {
-            color: var(--primary-gold);
-        }
-
-        .gold-gradient-text {
-            background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold), var(--dark-gold));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        /* Advanced Animations */
-        @keyframes float {
-
-            0%,
-            100% {
-                transform: translateY(0px) rotate(0deg);
-            }
-
-            33% {
-                transform: translateY(-20px) rotate(3deg);
-            }
-
-            66% {
-                transform: translateY(-10px) rotate(-3deg);
-            }
-        }
-
-        @keyframes diamond-sparkle {
-
-            0%,
-            100% {
-                opacity: 0.3;
-                transform: scale(0.8) rotate(0deg);
-            }
-
-            50% {
-                opacity: 1;
-                transform: scale(1.2) rotate(180deg);
-            }
-        }
-
-        @keyframes shimmer {
-            0% {
-                background-position: -2000px 0;
-            }
-
-            100% {
-                background-position: 2000px 0;
-            }
-        }
-
-        @keyframes pulse-glow {
-
-            0%,
-            100% {
-                box-shadow: 0 0 20px rgba(217, 119, 6, 0.3);
-            }
-
-            50% {
-                box-shadow: 0 0 40px rgba(217, 119, 6, 0.6);
-            }
-        }
-
-        @keyframes gradient-shift {
-            0% {
-                background-position: 0% 50%;
-            }
-
-            50% {
-                background-position: 100% 50%;
-            }
-
-            100% {
-                background-position: 0% 50%;
-            }
-        }
-
-        .animate-float {
-            animation: float 8s ease-in-out infinite;
-        }
-
-        .animate-sparkle {
-            animation: diamond-sparkle 3s infinite;
-        }
-
-        .animate-shimmer {
-            animation: shimmer 3s infinite linear;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-            background-size: 1000px 100%;
-        }
-
-        .animate-pulse-glow {
-            animation: pulse-glow 2s infinite;
-        }
-
-        .animate-gradient-shift {
-            background-size: 200% 200%;
-            animation: gradient-shift 5s ease infinite;
-        }
-
-        /* Premium Backgrounds */
-        .luxury-gradient-bg {
-            background: linear-gradient(135deg, var(--deep-sapphire) 0%, var(--royal-blue) 100%);
-        }
-
-        .gold-gradient-bg {
-            background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold));
-        }
-
-        .diamond-mesh-bg {
+        .engraved-grid {
             background-image:
-                radial-gradient(circle at 25% 25%, rgba(217, 119, 6, 0.1) 2px, transparent 2px),
-                radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.1) 2px, transparent 2px);
-            background-size: 60px 60px;
+                linear-gradient(rgba(33,28,22,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(33,28,22,0.04) 1px, transparent 1px);
+            background-size: 28px 28px;
         }
 
-        .jewel-pattern-bg {
-            background-color: #f8fafc;
-            background-image:
-                radial-gradient(circle at 10% 20%, rgba(217, 119, 6, 0.05) 0%, transparent 20%),
-                radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 20%);
+        .nav-case {
+            background: rgba(21,18,15,0.94);
+            backdrop-filter: blur(14px) saturate(140%);
+            border-bottom: 1px solid rgba(184,134,59,0.28);
         }
-
-        .diamond-text {
-            background: linear-gradient(135deg, #ffffff, #e2e8f0, #cbd5e1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        /* Premium Cards */
-        .luxury-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(217, 119, 6, 0.2);
-            box-shadow:
-                0 20px 40px rgba(0, 0, 0, 0.05),
-                0 1px 0 rgba(255, 255, 255, 0.8) inset;
-            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            border-radius: 24px;
+        .nav-link {
             position: relative;
-            overflow: hidden;
+            color: rgba(250,246,238,0.75);
+            font-weight: 600;
+            font-size: 0.84rem;
+            letter-spacing: 0.02em;
+            transition: color 200ms var(--ease);
         }
-
-        .luxury-card::before {
+        .nav-link::after {
             content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary-gold), var(--secondary-gold));
-            border-radius: 24px 24px 0 0;
+            position: absolute; left: 0; bottom: -6px;
+            width: 0; height: 1.5px;
+            background: var(--brass-bright);
+            transition: width 220ms var(--ease);
         }
+        .nav-link:hover { color: var(--brass-bright); }
+        .nav-link:hover::after { width: 100%; }
 
-        .luxury-card:hover {
-            transform: translateY(-15px) scale(1.02);
-            box-shadow:
-                0 40px 80px rgba(0, 0, 0, 0.1),
-                0 0 0 1px rgba(217, 119, 6, 0.3),
-                0 0 40px rgba(217, 119, 6, 0.1);
-        }
-
-        .jewel-icon-card {
-            width: 80px;
-            height: 80px;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 32px;
-            margin-bottom: 24px;
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .jewel-icon-card::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .jewel-icon-card:hover::after {
-            opacity: 1;
-        }
-
-        /* Navigation */
-        .nav-luxury {
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(217, 119, 6, 0.1);
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
-        }
-
-        /* Buttons */
-        .btn-luxury {
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
-            color: white;
-            padding: 16px 36px;
-            border-radius: 50px;
+        .btn-brass {
+            background: linear-gradient(160deg, var(--brass-bright), var(--brass-dim));
+            color: var(--onyx);
             font-weight: 700;
-            font-size: 16px;
-            letter-spacing: 0.5px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            border: none;
-            position: relative;
-            overflow: hidden;
+            font-size: 0.84rem;
+            letter-spacing: 0.02em;
+            padding: 12px 26px;
+            border-radius: 4px;
             display: inline-flex;
             align-items: center;
-            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 6px 16px rgba(184,134,59,0.28);
+            transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+        }
+        .btn-brass:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 12px 28px rgba(184,134,59,0.4);
+        }
+
+        .btn-ghost-dark {
+            border: 1.5px solid rgba(255,255,255,0.28);
+            color: var(--case-felt);
+            font-weight: 700;
+            font-size: 0.84rem;
+            letter-spacing: 0.02em;
+            padding: 12px 26px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 200ms var(--ease);
+        }
+        .btn-ghost-dark:hover {
+            border-color: var(--brass-bright);
+            background: rgba(184,134,59,0.12);
+            color: var(--brass-bright);
+        }
+
+        .hero-case {
+            background:
+                radial-gradient(ellipse 900px 600px at 80% -10%, rgba(184,134,59,0.18), transparent 60%),
+                radial-gradient(ellipse 700px 500px at 0% 100%, rgba(184,134,59,0.10), transparent 60%),
+                linear-gradient(180deg, var(--onyx) 0%, var(--onyx-soft) 100%);
+            position: relative;
+        }
+
+        .facet-overlay {
+            position: absolute; inset: 0; opacity: 0.5; pointer-events: none;
+            background-image: repeating-linear-gradient(115deg, transparent 0 60px, rgba(255,255,255,0.015) 60px 61px);
+        }
+
+        .eyebrow-tag {
+            display: inline-flex; align-items: center; gap: 8px;
+            border: 1px solid rgba(184,134,59,0.4);
+            background: rgba(184,134,59,0.08);
+            border-radius: 999px;
+            padding: 6px 16px 6px 10px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
+            color: var(--brass-bright);
+        }
+        .eyebrow-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--loupe);
+            box-shadow: 0 0 8px rgba(111,207,151,0.7);
+            animation: pulse-dot 2.2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .loupe-stage {
+            position: relative;
+        }
+        .loupe-frame {
+            position: absolute;
+            width: 168px; height: 168px;
+            border-radius: 50%;
+            border: 6px solid var(--brass-bright);
+            box-shadow:
+                0 0 0 3px var(--onyx),
+                0 0 0 5px rgba(184,134,59,0.35),
+                0 20px 50px rgba(0,0,0,0.55),
+                inset 0 0 30px rgba(111,207,151,0.25);
+            background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.18), transparent 55%), rgba(15,18,16,0.35);
+            backdrop-filter: blur(0.5px);
+            animation: loupe-drift 9s var(--ease) infinite;
+            z-index: 30;
+        }
+        @keyframes loupe-drift {
+            0%, 100% { transform: translate(0,0) scale(1); }
+            25%      { transform: translate(6px,-10px) scale(1.03); }
+            50%      { transform: translate(-4px,4px) scale(1); }
+            75%      { transform: translate(8px,8px) scale(1.02); }
+        }
+        .loupe-handle {
+            position: absolute;
+            width: 14px; height: 70px;
+            background: linear-gradient(90deg, var(--brass-dim), var(--brass-bright), var(--brass-dim));
+            border-radius: 0 0 8px 8px;
+            bottom: -58px; left: 50%;
+            transform: translateX(-50%) rotate(28deg);
+            transform-origin: top center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            z-index: 29;
+        }
+        .loupe-readout {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--loupe);
+            font-size: 0.62rem;
+            text-align: center;
+            line-height: 1.3;
         }
 
-        .btn-luxury::before {
-            content: '';
+        .flip-stage {
+            position: relative;
+            perspective: 1800px;
+        }
+
+        .flip-frame {
+            border-radius: 18px;
+            border: 1px solid rgba(184,134,59,0.35);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.06) inset;
+            overflow: hidden;
+            position: relative;
+            background: var(--onyx-soft);
+        }
+
+        .flip-aspect {
+            position: relative;
+            width: 100%;
+            padding-top: 66%;
+        }
+
+        .flip-card {
             position: absolute;
-            top: 0;
-            left: -100%;
+            inset: 0;
+            backface-visibility: hidden;
+            transform-origin: top center;
+            transform-style: preserve-3d;
+        }
+
+        .flip-card img {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-            transition: left 0.7s;
+            object-fit: cover;
+            display: block;
         }
 
-        .btn-luxury:hover {
-            transform: translateY(-5px) scale(1.05);
-            box-shadow: 0 20px 40px rgba(217, 119, 6, 0.3);
-        }
-
-        .btn-luxury:hover::before {
-            left: 100%;
-        }
-
-        .btn-outline-luxury {
-            border: 2px solid var(--primary-gold);
-            color: var(--primary-gold);
-            padding: 16px 36px;
-            border-radius: 50px;
-            font-weight: 700;
-            font-size: 16px;
-            letter-spacing: 0.5px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            background: transparent;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .btn-outline-luxury:hover {
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
-            color: white;
-            transform: translateY(-5px);
-            box-shadow: 0 15px 30px rgba(217, 119, 6, 0.2);
-        }
-
-        /* Stats */
-        .stat-number {
-            font-size: 4.5rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            line-height: 1;
-            text-shadow: 0 5px 15px rgba(217, 119, 6, 0.2);
-        }
-
-        /* Partner Card */
-        .partner-card {
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            border-radius: 24px;
-            padding: 40px;
-            color: white;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-            transition: all 0.4s ease;
-        }
-
-        .partner-card:hover {
-            transform: translateY(-10px);
-            border-color: rgba(59, 130, 246, 0.6);
-            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.3), 0 0 30px rgba(59, 130, 246, 0.2);
-        }
-
-        /* Testimonials */
-        .testimonial-luxury {
-            background: white;
-            border-radius: 24px;
-            padding: 40px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-            border: 1px solid rgba(217, 119, 6, 0.2);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .testimonial-luxury::before {
-            content: '"';
-            position: absolute;
-            top: 20px;
-            left: 30px;
-            font-size: 120px;
-            font-family: 'Playfair Display', serif;
-            color: rgba(217, 119, 6, 0.1);
-            line-height: 1;
-        }
-
-        /* Pricing */
-        .pricing-luxury {
-            background: white;
-            border-radius: 28px;
-            padding: 48px;
-            border: 2px solid rgba(217, 119, 6, 0.2);
-            transition: all 0.4s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .pricing-luxury.featured {
-            border-color: var(--primary-gold);
-            transform: scale(1.05);
-            box-shadow: 0 40px 80px rgba(217, 119, 6, 0.15);
-        }
-
-        .pricing-luxury.featured::before {
-            content: 'MOST POPULAR';
-            position: absolute;
-            top: 25px;
-            right: -35px;
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
-            color: white;
-            padding: 8px 50px;
-            font-size: 14px;
-            font-weight: 800;
-            letter-spacing: 1px;
-            transform: rotate(45deg);
-        }
-
-        /* Forms */
-        .form-luxury {
-            border: 2px solid rgba(217, 119, 6, 0.2);
-            border-radius: 16px;
-            padding: 20px;
-            transition: all 0.3s ease;
-            width: 100%;
-            background: white;
-            font-size: 16px;
-        }
-
-        .form-luxury:focus {
-            outline: none;
-            border-color: var(--primary-gold);
-            box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.1);
-        }
-
-        /* Footer */
-        .footer-luxury {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: white;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .footer-luxury::before {
+        .flip-card::after {
             content: '';
-            position: absolute;
-            width: 400%;
-            height: 400%;
-            background: radial-gradient(circle, rgba(217, 119, 6, 0.05) 1px, transparent 1px);
-            background-size: 40px 40px;
-            transform: rotate(45deg);
-            top: -150%;
-            left: -150%;
-            z-index: 0;
-            opacity: 0.4;
+            position: absolute; inset: 0;
+            background: linear-gradient(180deg, transparent 60%, rgba(21,18,15,0.5) 100%);
+            pointer-events: none;
         }
 
-        /* Hero Section */
-        .hero-luxury {
-            background: linear-gradient(135deg, #0A2540 0%, #1E3A8A 100%);
-            position: relative;
-            overflow: hidden;
-            min-height: 100vh;
+        .flip-card-1 { z-index: 3; animation: flip-page-1 6s infinite; }
+        .flip-card-2 { z-index: 2; animation: flip-page-2 6s infinite; }
+        .flip-card-3 { z-index: 1; animation: flip-page-3 6s infinite; }
+
+        @keyframes flip-page-1 {
+            0%      { transform: rotateX(0deg); opacity: 1; }
+            29%     { transform: rotateX(0deg); opacity: 1; }
+            38%     { transform: rotateX(-130deg); opacity: 1; }
+            38.5%   { transform: rotateX(-130deg); opacity: 0; }
+            99.9%   { transform: rotateX(-130deg); opacity: 0; }
+            100%    { transform: rotateX(0deg); opacity: 1; }
+        }
+
+        @keyframes flip-page-2 {
+            0%      { transform: rotateX(0deg); opacity: 0; }
+            29%     { transform: rotateX(0deg); opacity: 0; }
+            29.5%   { transform: rotateX(0deg); opacity: 1; }
+            62%     { transform: rotateX(0deg); opacity: 1; }
+            71%     { transform: rotateX(-130deg); opacity: 1; }
+            71.5%   { transform: rotateX(-130deg); opacity: 0; }
+            100%    { transform: rotateX(-130deg); opacity: 0; }
+        }
+
+        @keyframes flip-page-3 {
+            0%      { transform: rotateX(0deg); opacity: 0; }
+            62%     { transform: rotateX(0deg); opacity: 0; }
+            62.5%   { transform: rotateX(0deg); opacity: 1; }
+            95%     { transform: rotateX(0deg); opacity: 1; }
+            100%    { transform: rotateX(-130deg); opacity: 1; }
+        }
+
+        .flip-binding {
+            position: absolute;
+            top: -7px; left: 50%;
+            transform: translateX(-50%);
+            width: 86%;
+            height: 14px;
             display: flex;
-            align-items: center;
+            justify-content: space-between;
+            z-index: 25;
+            pointer-events: none;
         }
-
-        .hero-luxury::before {
-            content: '';
-            position: absolute;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, rgba(217, 119, 6, 0.15) 0%, transparent 70%);
-            top: -300px;
-            right: -300px;
+        .flip-binding span {
+            width: 10px; height: 10px;
             border-radius: 50%;
+            background: linear-gradient(160deg, var(--brass-bright), var(--brass-dim));
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 0 2px var(--onyx);
         }
 
-        .hero-luxury::after {
-            content: '';
-            position: absolute;
-            width: 500px;
-            height: 500px;
-            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-            bottom: -250px;
-            left: -250px;
+        .flip-dots {
+            display: flex;
+            justify-content: center;
+            gap: 7px;
+            margin-top: 16px;
+        }
+        .flip-dot {
+            width: 6px; height: 6px;
             border-radius: 50%;
+            background: rgba(184,134,59,0.25);
+            transition: width 0.3s, background 0.3s;
+        }
+        .flip-dot-1 { animation: dot-glow-1 6s infinite; }
+        .flip-dot-2 { animation: dot-glow-2 6s infinite; }
+        .flip-dot-3 { animation: dot-glow-3 6s infinite; }
+
+        @keyframes dot-glow-1 {
+            0%, 29% { background: var(--brass-bright); width: 18px; }
+            38%, 100% { background: rgba(184,134,59,0.25); width: 6px; }
+        }
+        @keyframes dot-glow-2 {
+            0%, 29.5% { background: rgba(184,134,59,0.25); width: 6px; }
+            30%, 62% { background: var(--brass-bright); width: 18px; }
+            71%, 100% { background: rgba(184,134,59,0.25); width: 6px; }
+        }
+        @keyframes dot-glow-3 {
+            0%, 62.5% { background: rgba(184,134,59,0.25); width: 6px; }
+            63%, 95% { background: var(--brass-bright); width: 18px; }
+            100% { background: rgba(184,134,59,0.25); width: 6px; }
         }
 
-        .diamond-grid {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background-image:
-                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: 0;
+        @media (prefers-reduced-motion: reduce) {
+            .flip-card-1, .flip-card-2, .flip-card-3,
+            .flip-dot-1, .flip-dot-2, .flip-dot-3 {
+                animation: none !important;
+            }
+            .flip-card-1 { opacity: 1; z-index: 3; }
+            .flip-card-2, .flip-card-3 { opacity: 0; }
         }
 
-        /* Floating Elements */
-        .floating-diamond {
-            position: absolute;
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .stat-tray {
+            background: var(--onyx-soft);
+            border-top: 1px solid rgba(184,134,59,0.18);
+            border-bottom: 1px solid rgba(184,134,59,0.18);
+        }
+        .stat-figure {
+            font-family: 'Fraunces', serif;
+            font-weight: 700;
+            font-size: clamp(2.2rem, 4vw, 3.2rem);
+            color: var(--brass-bright);
+            line-height: 1;
+        }
+        .stat-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(250,246,238,0.5);
+        }
+
+        .tray-card {
+            background: #ffffff;
+            border: 1px solid rgba(33,28,22,0.08);
+            border-radius: 16px;
+            padding: 32px;
+            position: relative;
+            transition: transform 260ms var(--ease), box-shadow 260ms var(--ease), border-color 260ms var(--ease);
+            overflow: hidden;
+        }
+        .tray-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--brass-dim), var(--brass-bright));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 320ms var(--ease);
+        }
+        .tray-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 24px 48px rgba(33,28,22,0.10);
+            border-color: rgba(184,134,59,0.3);
+        }
+        .tray-card:hover::before { transform: scaleX(1); }
+
+        .tray-icon {
+            width: 52px; height: 52px;
+            border-radius: 12px;
+            background: linear-gradient(160deg, var(--onyx-soft), var(--onyx));
+            color: var(--brass-bright);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 20px rgba(21,18,15,0.18);
+        }
+
+        .section-eyebrow {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--brass-dim);
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 14px;
+        }
+        .section-eyebrow::before {
+            content: ''; width: 24px; height: 1.5px; background: var(--brass);
+        }
+
+        .price-card {
+            background: #ffffff;
+            border: 1.5px solid rgba(33,28,22,0.10);
             border-radius: 20px;
-            transform: rotate(45deg);
-            z-index: 1;
+            padding: 40px 32px;
+            position: relative;
+            transition: transform 280ms var(--ease), box-shadow 280ms var(--ease);
+        }
+        .price-card:hover { transform: translateY(-6px); }
+        .price-card.featured {
+            background: linear-gradient(165deg, var(--onyx) 0%, var(--onyx-soft) 100%);
+            border-color: var(--brass);
+            box-shadow: 0 30px 60px rgba(184,134,59,0.22);
+            transform: scale(1.04);
+        }
+        .price-card.featured:hover { transform: scale(1.04) translateY(-6px); }
+        .featured-ribbon {
+            position: absolute; top: 22px; right: -8px;
+            background: linear-gradient(160deg, var(--brass-bright), var(--brass-dim));
+            color: var(--onyx);
+            font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em;
+            padding: 6px 18px 6px 14px;
+            border-radius: 3px 0 0 3px;
+            box-shadow: -3px 4px 10px rgba(0,0,0,0.25);
+        }
+        .featured-ribbon::after {
+            content: ''; position: absolute; right: 0; top: 100%;
+            border-width: 4px 0 4px 8px;
+            border-style: solid;
+            border-color: transparent transparent transparent var(--brass-dim);
+        }
+        .price-check {
+            color: var(--loupe-dim);
+            margin-right: 10px;
+            font-size: 0.78rem;
+        }
+        .price-check.dim { color: rgba(33,28,22,0.18); }
+        .featured .price-check { color: var(--loupe); }
+        .featured .price-check.dim { color: rgba(255,255,255,0.18); }
+
+        .quote-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 32px;
+            border: 1px solid rgba(33,28,22,0.08);
+            position: relative;
+        }
+        .quote-mark {
+            font-family: 'Fraunces', serif;
+            font-size: 64px;
+            color: rgba(184,134,59,0.18);
+            line-height: 1;
+            position: absolute;
+            top: 14px; left: 20px;
         }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(217, 119, 6, 0.1);
+        .rail-step {
+            position: relative;
+            padding-left: 0;
+        }
+        .rail-num {
+            font-family: 'Fraunces', serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: var(--onyx);
+            color: var(--brass-bright);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 18px;
+            border: 1.5px solid var(--brass);
+        }
+        .rail-track {
+            position: absolute; top: 22px; left: 0; right: 0;
+            height: 1.5px;
+            background: repeating-linear-gradient(90deg, var(--brass) 0 6px, transparent 6px 12px);
+            z-index: -1;
         }
 
-        /* Responsive */
+        .input-felt {
+            border: 1.5px solid rgba(33,28,22,0.14);
+            border-radius: 10px;
+            padding: 14px 16px;
+            width: 100%;
+            background: var(--case-felt);
+            font-size: 0.92rem;
+            transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+        }
+        .input-felt:focus {
+            outline: none;
+            border-color: var(--brass);
+            box-shadow: 0 0 0 4px rgba(184,134,59,0.12);
+            background: #ffffff;
+        }
+
+        .footer-onyx { background: var(--onyx); color: rgba(250,246,238,0.65); }
+        .footer-link { color: rgba(250,246,238,0.55); transition: color 180ms var(--ease); }
+        .footer-link:hover { color: var(--brass-bright); }
+
+        .gold-underline {
+            background: linear-gradient(transparent 65%, rgba(184,134,59,0.35) 65%);
+        }
+
         @media (max-width: 1024px) {
-            .stat-number {
-                font-size: 3.5rem;
-            }
-
-            .pricing-luxury.featured {
-                transform: scale(1);
-            }
-
-            .hero-luxury::before,
-            .hero-luxury::after {
-                display: none;
-            }
+            .loupe-frame { width: 120px; height: 120px; }
+            .price-card.featured { transform: scale(1); }
+            .price-card.featured:hover { transform: translateY(-6px); }
         }
-
-        @media (max-width: 768px) {
-            .stat-number {
-                font-size: 2.8rem;
-            }
-
-            .btn-luxury,
-            .btn-outline-luxury {
-                padding: 14px 28px;
-                font-size: 14px;
-            }
-
-            .jewel-icon-card {
-                width: 64px;
-                height: 64px;
-                font-size: 24px;
-            }
+        @media (max-width: 640px) {
+            .loupe-frame { display: none; }
         }
     </style>
 </head>
 
-<body class="antialiased relative">
-    <!-- Gold Top Bar -->
-    <div class="fixed top-0 left-0 w-full h-1 gold-gradient z-50"></div>
+<body class="antialiased">
 
-    <!-- Animated Background Elements -->
-    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div class="floating-diamond animate-float" style="top:10%; left:5%; animation-delay:0s;"></div>
-        <div class="floating-diamond animate-float" style="top:20%; right:10%; animation-delay:1s; width:60px; height:60px;"></div>
-        <div class="floating-diamond animate-float" style="bottom:30%; left:15%; animation-delay:2s; width:100px; height:100px;"></div>
-        <div class="floating-diamond animate-float" style="bottom:15%; right:5%; animation-delay:3s; width:70px; height:70px;"></div>
-    </div>
-
-    <!-- Navigation -->
-    <nav class="nav-luxury fixed w-full z-50 py-4">
-        <div class="container mx-auto px-6 lg:px-8">
+    <nav class="nav-case fixed w-full z-50">
+        <div class="container mx-auto px-6 lg:px-10 py-4">
             <div class="flex justify-between items-center">
-                <!-- Logo -->
-                <div class="flex items-center space-x-4">
-                    <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center text-white text-xl shadow-lg">
-                        <i class="fas fa-gem"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-2xl lg:text-3xl font-bold playfair gold-gradient-text">JewelTag<span class="text-deep-sapphire">.us</span></h1>
+                <a href="/" class="flex items-center gap-3">
+                    <img src="/jeweltaglogo.png" alt="JewelTag" class="h-10 w-auto">
+                </a>
+
+                <div class="hidden lg:flex items-center gap-10">
+                    <a href="#features" class="nav-link">Features</a>
+                    <a href="#solutions" class="nav-link">Implementation</a>
+                    <a href="#pricing" class="nav-link">Pricing</a>
+                    <a href="#testimonials" class="nav-link">Customers</a>
+                    <div class="flex items-center gap-3 ml-4">
+                        <a href="/master/login" class="text-sm font-semibold text-[var(--ink-soft)] hover:text-[var(--onyx)] transition-colors px-2">
+                            <i class="fas fa-lock mr-1.5 text-xs"></i>Staff Login
+                        </a>
+                        <a href="#demo" class="btn-brass">
+                            <i class="fas fa-arrow-right text-xs"></i> Start Free Trial
+                        </a>
                     </div>
                 </div>
 
-                <!-- Desktop Menu -->
-                <div class="hidden lg:flex items-center space-x-8">
-                    <a href="#features" class="text-gray-700 hover:text-amber-600 font-semibold text-sm uppercase tracking-wider transition duration-300">Features</a>
-                    <a href="#solutions" class="text-gray-700 hover:text-amber-600 font-semibold text-sm uppercase tracking-wider transition duration-300">Solutions</a>
-                    <a href="#pricing" class="text-gray-700 hover:text-amber-600 font-semibold text-sm uppercase tracking-wider transition duration-300">Pricing</a>
-                    <a href="#testimonials" class="text-gray-700 hover:text-amber-600 font-semibold text-sm uppercase tracking-wider transition duration-300">Success Stories</a>
-                    <a href="/master/login" class="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all text-sm uppercase tracking-wider">
-                        <i class="fas fa-lock mr-2"></i> Staff Login
-                    </a>
-                    <a href="#demo" class="px-6 py-3 gold-gradient text-white font-bold rounded-xl hover:shadow-lg transition-all text-sm uppercase tracking-wider">
-                        <i class="fas fa-crown mr-2"></i> Free Demo
-                    </a>
-                </div>
-
-                <!-- Mobile Menu Button -->
-                <button id="mobile-menu-button" class="lg:hidden text-gray-700">
-                    <i class="fas fa-bars text-2xl"></i>
+                <button id="mobile-menu-button" class="lg:hidden text-[var(--onyx)] text-xl">
+                    <i class="fas fa-bars"></i>
                 </button>
             </div>
 
-            <!-- Mobile Menu -->
-            <div id="mobile-menu" class="lg:hidden hidden mt-6 pb-4">
-                <div class="flex flex-col space-y-4">
-                    <a href="#features" class="text-gray-700 hover:text-amber-600 font-semibold py-2 border-b border-gray-100">Features</a>
-                    <a href="#solutions" class="text-gray-700 hover:text-amber-600 font-semibold py-2 border-b border-gray-100">Solutions</a>
-                    <a href="#pricing" class="text-gray-700 hover:text-amber-600 font-semibold py-2 border-b border-gray-100">Pricing</a>
-                    <a href="#testimonials" class="text-gray-700 hover:text-amber-600 font-semibold py-2 border-b border-gray-100">Success Stories</a>
-                    <a href="/master/login" class="w-full px-6 py-3 bg-slate-900 text-white font-bold rounded-xl text-center mt-4">Staff Login</a>
-                    <a href="#demo" class="w-full px-6 py-3 gold-gradient text-white font-bold rounded-xl text-center">Free Demo</a>
+            <div id="mobile-menu" class="lg:hidden hidden mt-5 pb-4 border-t border-[rgba(184,134,59,0.2)] pt-4">
+                <div class="flex flex-col gap-4">
+                    <a href="#features" class="text-sm font-semibold text-[var(--ink-soft)]">Features</a>
+                    <a href="#solutions" class="text-sm font-semibold text-[var(--ink-soft)]">Implementation</a>
+                    <a href="#pricing" class="text-sm font-semibold text-[var(--ink-soft)]">Pricing</a>
+                    <a href="#testimonials" class="text-sm font-semibold text-[var(--ink-soft)]">Customers</a>
+                    <a href="/master/login" class="text-sm font-semibold text-[var(--ink-soft)]">Staff Login</a>
+                    <a href="#demo" class="btn-brass justify-center">Start Free Trial</a>
                 </div>
             </div>
         </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="hero-luxury pt-32 pb-20 lg:pt-40 lg:pb-32">
-        <div class="diamond-grid"></div>
-        <div class="container mx-auto px-6 lg:px-8 relative z-10">
-            <div class="flex flex-col lg:flex-row items-center">
-                <div class="lg:w-1/2 mb-16 lg:mb-0" data-aos="fade-right">
-                    <div class="inline-flex items-center px-5 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-6 border border-white/20">
-                        <span class="w-2 h-2 rounded-full bg-amber-500 mr-2"></span>
-                        <span class="text-white/90 text-sm font-semibold tracking-wider">TRUSTED BY 750+ LUXURY JEWELERS WORLDWIDE</span>
+    <section class="hero-case pt-36 pb-24 lg:pt-44 lg:pb-32">
+        <div class="facet-overlay"></div>
+        <div class="container mx-auto px-6 lg:px-10 relative z-10">
+            <div class="grid lg:grid-cols-2 gap-16 items-center">
+
+                <div data-aos="fade-up">
+                    <div class="eyebrow-tag mb-7">
+                        <span class="eyebrow-dot"></span>
+                        Built specifically for jewelry retail
                     </div>
 
-                    <h1 class="text-5xl lg:text-7xl font-black text-white mb-6 playfair leading-tight">
-                        The <span class="gold-gradient-text">Ultimate Platform</span> for Jewelry Excellence
+                    <h1 class="fraunces text-[2.6rem] leading-[1.08] sm:text-5xl lg:text-[3.6rem] font-semibold text-[var(--case-felt)] mb-7">
+                        Every <span style="color: #B8863B;">piece,</span><br>
+                        <span class="gold-underline" style="background-image: linear-gradient(transparent 70%, rgba(184,134,59,0.4) 70%); display:inline;">accounted for.</span>
                     </h1>
 
-                    <p class="text-xl lg:text-2xl text-white/80 mb-8 leading-relaxed">
-                        Transform your jewelry business with the world's most advanced inventory management, POS, CRM, and business intelligence platform designed exclusively for luxury retailers.
+                    <p class="text-lg text-[rgba(250,246,238,0.68)] mb-10 leading-relaxed max-w-md">
+                        Inventory, point-of-sale, repairs, and customer relationships — one system built around how a jewelry counter actually runs, from intake to sale to follow-up.
                     </p>
 
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        <a href="#demo" class="btn-luxury text-center">
-                            <i class="fas fa-play-circle mr-3"></i> Start 30-Day Trial
+                    <div class="flex flex-col sm:flex-row gap-4 mb-12">
+                        <a href="#demo" class="btn-brass justify-center">
+                            <i class="fas fa-play text-xs"></i> Start 30-Day Trial
                         </a>
-                        <a href="/master" class="btn-outline-luxury text-white border-white/40 hover:border-white text-center">
-                            <i class="fas fa-gem mr-3"></i> Enter Master Portal
+                        <a href="/master" class="btn-ghost-dark justify-center">
+                            <i class="fas fa-arrow-up-right-from-square text-xs"></i> Enter Master Portal
                         </a>
                     </div>
 
-                    <div class="mt-10 flex items-center">
+                    <div class="flex items-center gap-5 pt-2">
                         <div class="flex -space-x-3">
-                            <div class="w-12 h-12 rounded-full gold-gradient flex items-center justify-center text-white text-sm font-bold border-2 border-white">JD</div>
-                            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white">SR</div>
-                            <div class="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white">MK</div>
-                            <div class="w-12 h-12 rounded-full bg-amber-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white">+</div>
+                            <div class="w-10 h-10 rounded-full bg-[var(--brass)] flex items-center justify-center text-[var(--onyx)] text-xs font-bold border-2 border-[var(--onyx)]">SC</div>
+                            <div class="w-10 h-10 rounded-full bg-[var(--loupe-dim)] flex items-center justify-center text-white text-xs font-bold border-2 border-[var(--onyx)]">MR</div>
+                            <div class="w-10 h-10 rounded-full bg-[var(--brass-dim)] flex items-center justify-center text-white text-xs font-bold border-2 border-[var(--onyx)]">JW</div>
                         </div>
-                        <div class="ml-4">
-                            <p class="text-white/80 text-sm"><span class="text-white font-bold">750+</span> jewelers transformed</p>
-                            <div class="flex items-center mt-1">
-                                <i class="fas fa-star text-yellow-400 text-sm"></i>
-                                <i class="fas fa-star text-yellow-400 text-sm"></i>
-                                <i class="fas fa-star text-yellow-400 text-sm"></i>
-                                <i class="fas fa-star text-yellow-400 text-sm"></i>
-                                <i class="fas fa-star text-yellow-400 text-sm"></i>
-                                <span class="text-white/60 text-xs ml-2">4.95/5 (428 reviews)</span>
-                            </div>
+                        <div class="text-sm text-[rgba(250,246,238,0.55)]">
+                            <span class="text-[var(--case-felt)] font-bold">750+</span> jewelry retailers running on JewelTag
                         </div>
                     </div>
                 </div>
 
-                <div class="lg:w-1/2 relative" data-aos="fade-left">
-                    <!-- Dashboard Preview -->
-                    <div class="glass-card rounded-2xl p-4 shadow-2xl animate-float" style="animation-delay: 1s;">
-                        <div class="gold-gradient rounded-xl p-6 text-white">
-                            <div class="flex items-center justify-between mb-6">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                                        <i class="fas fa-gem text-white"></i>
-                                    </div>
-                                    <div>
-                                        <p class="text-white/80 text-xs">Today's Revenue</p>
-                                        <p class="text-2xl font-bold">$24,847</p>
-                                    </div>
+                <div data-aos="fade-left" data-aos-delay="150">
+                    <div class="loupe-stage flip-stage">
+
+                        <div class="flip-binding">
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+
+                        <div class="flip-frame">
+                            <div class="flip-aspect">
+                                <div class="flip-card flip-card-1">
+                                    <img src="/homephoto.png" alt="JewelTag — inventory dashboard">
                                 </div>
-                                <div class="px-2 py-1 bg-white/20 rounded-full text-xs">
-                                    +32.5%
+                                <div class="flip-card flip-card-2">
+                                    <img src="/homephoto2.png" alt="JewelTag — point of sale">
+                                </div>
+                                <div class="flip-card flip-card-3">
+                                    <img src="/homephoto3.png" alt="JewelTag — repair tracking">
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="grid grid-cols-2 gap-3">
-                                <div class="bg-white/10 rounded-lg p-3">
-                                    <p class="text-white/80 text-xs">Inventory</p>
-                                    <p class="text-xl font-bold">2,847</p>
-                                </div>
-                                <div class="bg-white/10 rounded-lg p-3">
-                                    <p class="text-white/80 text-xs">Avg. Sale</p>
-                                    <p class="text-xl font-bold">$1,249</p>
-                                </div>
-                            </div>
-
-                            <!-- Live Activity -->
-                            <div class="mt-4 pt-4 border-t border-white/20">
-                                <div class="flex items-center justify-between text-xs">
-                                    <span class="text-white/80">Live Activity Feed</span>
-                                    <span class="flex items-center">
-                                        <span class="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></span>
-                                        <span class="text-white/60">3 active</span>
-                                    </span>
-                                </div>
-                                <div class="mt-3 space-y-2">
-                                    <div class="flex items-center text-xs">
-                                        <div class="w-6 h-6 bg-green-500/20 rounded flex items-center justify-center mr-2">
-                                            <i class="fas fa-shopping-cart text-green-300 text-xs"></i>
-                                        </div>
-                                        <span class="text-white/80">Premium Sale: $8,499</span>
-                                    </div>
-                                    <div class="flex items-center text-xs">
-                                        <div class="w-6 h-6 bg-purple-500/20 rounded flex items-center justify-center mr-2">
-                                            <i class="fas fa-box text-purple-300 text-xs"></i>
-                                        </div>
-                                        <span class="text-white/80">New Inventory Added</span>
-                                    </div>
+                        <div class="loupe-frame" style="top: -14px; right: -22px;">
+                            <div class="loupe-handle"></div>
+                            <div class="loupe-readout mono">
+                                <div>
+                                    <div style="font-size:1.1rem; font-weight:700;">2,847</div>
+                                    <div style="opacity:0.7; letter-spacing:0.06em;">SKUs TRACKED</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Floating Elements -->
-                    <div class="absolute -top-6 -right-6 w-24 h-24 gold-gradient rounded-2xl opacity-20 blur-xl"></div>
-                    <div class="absolute -bottom-6 -left-6 w-32 h-32 bg-blue-600 rounded-2xl opacity-10 blur-xl"></div>
+                    <div class="flip-dots">
+                        <span class="flip-dot flip-dot-1"></span>
+                        <span class="flip-dot flip-dot-2"></span>
+                        <span class="flip-dot flip-dot-3"></span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section class="stat-tray py-14">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-10">
+                <div class="text-center" data-aos="fade-up" data-aos-delay="0">
+                    <div class="stat-figure">50+</div>
+                    <div class="stat-label mt-2">Jewelers on JewelTag</div>
+                </div>
+                <div class="text-center" data-aos="fade-up" data-aos-delay="80">
+                    <div class="stat-figure">POS+CRM</div>
+                    <div class="stat-label mt-2">POS CRM and SMM</div>
+                </div>
+                <div class="text-center" data-aos="fade-up" data-aos-delay="160">
+                    <div class="stat-figure">99.5%</div>
+                    <div class="stat-label mt-2">Target uptime SLA</div>
+                </div>
+                <div class="text-center" data-aos="fade-up" data-aos-delay="240">
+                    <div class="stat-figure">256-bit</div>
+                    <div class="stat-label mt-2">Encryption at rest</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Stats Section -->
-    <section class="py-16 bg-white">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="text-center">
-                    <div class="stat-number text-4xl lg:text-5xl">750+</div>
-                    <p class="text-gray-600 mt-2 text-sm font-medium uppercase tracking-wider">Premium Jewelers</p>
-                </div>
-                <div class="text-center">
-                    <div class="stat-number text-4xl lg:text-5xl">$4.2B+</div>
-                    <p class="text-gray-600 mt-2 text-sm font-medium uppercase tracking-wider">Inventory Managed</p>
-                </div>
-                <div class="text-center">
-                    <div class="stat-number text-4xl lg:text-5xl">99.95%</div>
-                    <p class="text-gray-600 mt-2 text-sm font-medium uppercase tracking-wider">System Uptime</p>
-                </div>
-                <div class="text-center">
-                    <div class="stat-number text-4xl lg:text-5xl">24/7</div>
-                    <p class="text-gray-600 mt-2 text-sm font-medium uppercase tracking-wider">Premium Support</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Features Section -->
-    <section id="features" class="py-20 jewel-pattern-bg">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="text-center mb-12" data-aos="fade-up">
-                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
-                    <span class="text-deep-sapphire">Unparalleled Features for</span> <span class="gold-gradient-text">Luxury Retail</span>
+    <section id="features" class="py-24 engraved-grid">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="max-w-2xl mb-16" data-aos="fade-up">
+                <div class="section-eyebrow">The Workbench</div>
+                <h2 class="fraunces text-4xl lg:text-5xl font-semibold text-[var(--onyx)] leading-tight">
+                    Everything the counter touches, in one place.
                 </h2>
-                <p class="text-lg text-gray-600 max-w-3xl mx-auto">
-                    Designed exclusively for jewelry businesses, our comprehensive platform transforms every aspect of your operations.
-                </p>
             </div>
 
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Feature 1 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-boxes-stacked"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">Intelligent Inventory</h3>
-                    <p class="text-gray-600 text-sm mb-4">AI-powered tracking with RFID, barcode scanning, and multi-location management.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="0">
+                    <div class="tray-icon"><i class="fas fa-tags"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">Inventory &amp; RFID</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Barcode and RFID tracking down to metal, stone, and weight — with certification records attached to every piece.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>GIA Certificate Integration</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Automated Reordering</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>GIA &amp; cert record storage</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Multi-store sync</li>
                     </ul>
                 </div>
 
-                <!-- Feature 2 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-cash-register"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">Luxury POS Suite</h3>
-                    <p class="text-gray-600 text-sm mb-4">Complete point-of-sale with integrated payments, layaway, and commission tracking.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="80">
+                    <div class="tray-icon"><i class="fas fa-cash-register"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">Point of Sale</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Built for the counter — layaway, financing, commission splits, and receipts that match how jewelers actually sell.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Custom Invoice Templates</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Multi-store Support</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Layaway &amp; financing</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Commission tracking</li>
                     </ul>
                 </div>
 
-                <!-- Feature 3 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-chart-network"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">Business Intelligence</h3>
-                    <p class="text-gray-600 text-sm mb-4">Real-time dashboards, sales forecasting, and profit margin analysis.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="160">
+                    <div class="tray-icon"><i class="fas fa-screwdriver-wrench"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">Repair Orders</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Digital work orders with photo documentation, status tracking, and automatic customer notifications.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Predictive Analytics</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>ROI Optimization</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Photo documentation</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Warranty tracking</li>
                     </ul>
                 </div>
 
-                <!-- Feature 4 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-users-crown"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">VIP CRM</h3>
-                    <p class="text-gray-600 text-sm mb-4">Client profiles, purchase history, and automated marketing for VIP customers.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="0">
+                    <div class="tray-icon"><i class="fas fa-chart-line"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">Reporting</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Margin analysis, staff performance, and sales trends — pulled straight from the floor, not estimated after the fact.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Anniversary Automation</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Wishlist Management</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Margin &amp; staff reports</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>QuickBooks integration</li>
                     </ul>
                 </div>
 
-                <!-- Feature 5 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-tools"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">Repair Management</h3>
-                    <p class="text-gray-600 text-sm mb-4">Digital work orders, status tracking, and customer notifications.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="80">
+                    <div class="tray-icon"><i class="fas fa-heart"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">CRM_JewelTag</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Customer profiles, anniversaries, and wish lists — with marketing automation that knows what they bought before.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Photo Documentation</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Warranty Tracking</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Anniversary automation</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Wish list tracking</li>
                     </ul>
                 </div>
 
-                <!-- Feature 6 -->
-                <div class="luxury-card p-6">
-                    <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-xl mb-4">
-                        <i class="fas fa-mobile-alt"></i>
-                    </div>
-                    <h3 class="text-xl font-bold mb-3">Mobile Platform</h3>
-                    <p class="text-gray-600 text-sm mb-4">Native iOS & Android apps with offline mode and bank-level encryption.</p>
+                <div class="tray-card" data-aos="fade-up" data-aos-delay="160">
+                    <div class="tray-icon"><i class="fas fa-shop"></i></div>
+                    <h3 class="text-lg font-bold mb-2.5">E-Commerce Sync</h3>
+                    <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-4">Connect Shopify or WooCommerce directly to your floor inventory — sell online without double-counting stock.</p>
                     <ul class="space-y-2 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>Offline Auto-Sync</span>
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>
-                            <span>256-bit Encryption</span>
-                        </li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Shopify &amp; WooCommerce</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Live stock sync</li>
                     </ul>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Partner Section -->
-    <section class="py-20">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="partner-card max-w-4xl mx-auto text-center">
-                <div class="w-20 h-20 gold-gradient rounded-2xl flex items-center justify-center mx-auto mb-6">
-                    <i class="fas fa-brain text-white text-3xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-3">Strategic Partner: Creative AI Network</h3>
-                <p class="text-white/80 mb-6 max-w-2xl mx-auto">
-                    Enhancing JewelTag with cutting-edge AI, custom software development, and digital transformation expertise.
-                </p>
-                <div class="flex flex-wrap justify-center gap-3 mb-6">
-                    <span class="px-4 py-2 bg-white/10 rounded-full text-white/90 text-sm">Finance</span>
-                    <span class="px-4 py-2 bg-white/10 rounded-full text-white/90 text-sm">Healthcare</span>
-                    <span class="px-4 py-2 bg-white/10 rounded-full text-white/90 text-sm">E-commerce</span>
-                    <span class="px-4 py-2 bg-white/10 rounded-full text-white/90 text-sm">Luxury Retail</span>
-                </div>
-                <a href="https://creativeainetworks.com" target="_blank" class="inline-flex items-center text-amber-400 hover:text-amber-300 font-semibold">
-                    Visit Partner Website <i class="fas fa-arrow-right ml-2 text-sm"></i>
-                </a>
-            </div>
-        </div>
-    </section>
-
-    <!-- Docs -->
-    <section id="solutions" class="py-20 bg-white">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="text-center mb-12">
-                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
-                    <span class="text-deep-sapphire">Implementation</span> <span class="gold-gradient-text">Excellence</span>
-                </h2>
-                <p class="text-lg text-gray-600">Your journey to jewelry management excellence in 4 simple steps.</p>
+    <section id="solutions" class="py-24 bg-white border-y border-[rgba(33,28,22,0.06)]">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="max-w-2xl mx-auto text-center mb-16" data-aos="fade-up">
+                <div class="section-eyebrow mx-auto" style="justify-content:center;">Getting Set Up</div>
+                <h2 class="fraunces text-4xl lg:text-5xl font-semibold text-[var(--onyx)]">From signup to selling — four steps.</h2>
             </div>
 
-            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
-                <div class="text-center">
-                    <div class="w-16 h-16 gold-gradient rounded-full flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">01</div>
-                    <h3 class="font-bold mb-2">Discovery</h3>
-                    <p class="text-gray-600 text-sm">In-depth analysis of your business needs</p>
-                    <span class="text-xs text-amber-600 font-semibold mt-2 inline-block">1-3 Days</span>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 max-w-5xl mx-auto relative">
+                <div class="rail-track hidden lg:block"></div>
+
+                <div class="rail-step text-center" data-aos="fade-up" data-aos-delay="0">
+                    <div class="rail-num">01</div>
+                    <h3 class="font-bold mb-1.5">Discovery</h3>
+                    <p class="text-[var(--ink-soft)] text-sm">We map your current workflow and store setup</p>
+                    <span class="text-xs text-[var(--brass-dim)] font-bold mt-2 inline-block">1–3 days</span>
                 </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 gold-gradient rounded-full flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">02</div>
-                    <h3 class="font-bold mb-2">Migration</h3>
-                    <p class="text-gray-600 text-sm">White-glove data transfer & setup</p>
-                    <span class="text-xs text-amber-600 font-semibold mt-2 inline-block">3-7 Days</span>
+                <div class="rail-step text-center" data-aos="fade-up" data-aos-delay="80">
+                    <div class="rail-num">02</div>
+                    <h3 class="font-bold mb-1.5">Migration</h3>
+                    <p class="text-[var(--ink-soft)] text-sm">White-glove transfer of inventory and customer data</p>
+                    <span class="text-xs text-[var(--brass-dim)] font-bold mt-2 inline-block">3–7 days</span>
                 </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 gold-gradient rounded-full flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">03</div>
-                    <h3 class="font-bold mb-2">Training</h3>
-                    <p class="text-gray-600 text-sm">Personalized team onboarding</p>
-                    <span class="text-xs text-amber-600 font-semibold mt-2 inline-block">5-10 Days</span>
+                <div class="rail-step text-center" data-aos="fade-up" data-aos-delay="160">
+                    <div class="rail-num">03</div>
+                    <h3 class="font-bold mb-1.5">Training</h3>
+                    <p class="text-[var(--ink-soft)] text-sm">Hands-on onboarding for every staff member</p>
+                    <span class="text-xs text-[var(--brass-dim)] font-bold mt-2 inline-block">5–10 days</span>
                 </div>
-                <div class="text-center">
-                    <div class="w-16 h-16 gold-gradient rounded-full flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">04</div>
-                    <h3 class="font-bold mb-2">Go Live</h3>
-                    <p class="text-gray-600 text-sm">Launch with dedicated support</p>
-                    <span class="text-xs text-amber-600 font-semibold mt-2 inline-block">Ongoing</span>
+                <div class="rail-step text-center" data-aos="fade-up" data-aos-delay="240">
+                    <div class="rail-num">04</div>
+                    <h3 class="font-bold mb-1.5">Go Live</h3>
+                    <p class="text-[var(--ink-soft)] text-sm">Launch with support watching your first weeks</p>
+                    <span class="text-xs text-[var(--brass-dim)] font-bold mt-2 inline-block">Ongoing</span>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Testimonials -->
-    <section id="testimonials" class="py-20 jewel-pattern-bg">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="text-center mb-12">
-                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
-                    <span class="gold-gradient-text">Success Stories</span>
-                </h2>
-                <p class="text-lg text-gray-600">Trusted by leading jewelers worldwide</p>
+    <section id="testimonials" class="py-24 engraved-grid">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="max-w-2xl mb-16" data-aos="fade-up">
+                <div class="section-eyebrow">From the Counter</div>
+                <h2 class="fraunces text-4xl lg:text-5xl font-semibold text-[var(--onyx)]">What changes when the system fits the work.</h2>
             </div>
 
-            <div class="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
-                    <div class="flex items-center mb-4">
-                        <div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3">SC</div>
-                        <div>
-                            <h4 class="font-bold">Sarah Chen</h4>
-                            <p class="text-xs text-gray-500">CEO, Brilliance Diamonds</p>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="quote-card" data-aos="fade-up" data-aos-delay="0">
+                    <span class="quote-mark">"</span>
+                    <div class="relative pt-8">
+                        <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-5">Inventory reconciliation went from three weeks to two days. Stock accuracy is at 99.8% now.</p>
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-[var(--brass)] flex items-center justify-center text-[var(--onyx)] text-xs font-bold">SC</div>
+                            <div>
+                                <div class="font-bold text-sm">Sarah Chen</div>
+                                <div class="text-xs text-[var(--ink-soft)]">Brilliance Diamonds</div>
+                            </div>
                         </div>
                     </div>
-                    <p class="text-gray-600 text-sm italic">"Inventory reconciliation reduced from 3 weeks to 2 days. Stock accuracy increased to 99.8%."</p>
-                    <div class="mt-3 text-amber-600 font-bold text-sm">+42% Revenue</div>
                 </div>
 
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
-                    <div class="flex items-center mb-4">
-                        <div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3">MR</div>
-                        <div>
-                            <h4 class="font-bold">Michael Rodriguez</h4>
-                            <p class="text-xs text-gray-500">Gold Standard Jewelers</p>
+                <div class="quote-card" data-aos="fade-up" data-aos-delay="80">
+                    <span class="quote-mark">"</span>
+                    <div class="relative pt-8">
+                        <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-5">Repair admin time dropped 70%. Customers actually know where their piece is now — satisfaction went from 82% to 98%.</p>
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-[var(--loupe-dim)] flex items-center justify-center text-white text-xs font-bold">MR</div>
+                            <div>
+                                <div class="font-bold text-sm">Michael Rodriguez</div>
+                                <div class="text-xs text-[var(--ink-soft)]">Gold Standard Jewelers</div>
+                            </div>
                         </div>
                     </div>
-                    <p class="text-gray-600 text-sm italic">"Repair admin time reduced by 70%. Customer satisfaction increased from 82% to 98%."</p>
-                    <div class="mt-3 text-amber-600 font-bold text-sm">+156% Repair Revenue</div>
                 </div>
 
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-100">
-                    <div class="flex items-center mb-4">
-                        <div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3">JW</div>
-                        <div>
-                            <h4 class="font-bold">James Wilson</h4>
-                            <p class="text-xs text-gray-500">Heritage Jewelers</p>
+                <div class="quote-card" data-aos="fade-up" data-aos-delay="160">
+                    <span class="quote-mark">"</span>
+                    <div class="relative pt-8">
+                        <p class="text-[var(--ink-soft)] text-sm leading-relaxed mb-5">Sales are up 34% in six months, and our margins improved by eight points just from having real numbers to act on.</p>
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-[var(--brass-dim)] flex items-center justify-center text-white text-xs font-bold">JW</div>
+                            <div>
+                                <div class="font-bold text-sm">James Wilson</div>
+                                <div class="text-xs text-[var(--ink-soft)]">Heritage Jewelers</div>
+                            </div>
                         </div>
                     </div>
-                    <p class="text-gray-600 text-sm italic">"Sales increased 34% in 6 months. Profit margins improved by 8 percentage points."</p>
-                    <div class="mt-3 text-amber-600 font-bold text-sm">+34% Sales Growth</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Pricing Section -->
-    <section id="pricing" class="py-20 bg-white">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="text-center mb-12">
-                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
-                    <span class="text-deep-sapphire">Premium Plans for</span> <span class="gold-gradient-text">Every Business</span>
-                </h2>
-                <p class="text-lg text-gray-600">Transparent pricing, no hidden fees, no long-term contracts.</p>
+    <section id="pricing" class="py-24 bg-white border-t border-[rgba(33,28,22,0.06)]">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="max-w-2xl mx-auto text-center mb-16" data-aos="fade-up">
+                <div class="section-eyebrow mx-auto" style="justify-content:center;">Plans</div>
+                <h2 class="fraunces text-4xl lg:text-5xl font-semibold text-[var(--onyx)] mb-4">Priced for the size of your floor.</h2>
+                <p class="text-[var(--ink-soft)]">Every plan includes JewelTag's inventory core. Add CRM_JewelTag whenever you're ready for it.</p>
             </div>
 
-            <div class="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <!-- Essential Plan -->
-                <div class="pricing-luxury p-6">
-                    <h3 class="text-xl font-bold mb-2">Essential</h3>
-                    <p class="text-sm text-gray-500 mb-4">For small jewelry shops</p>
-                    <div class="mb-4">
-                        <span class="text-3xl font-bold gold-gradient-text">$299</span>
-                        <span class="text-gray-500 text-sm">/month</span>
+            <div class="grid md:grid-cols-3 gap-7 max-w-5xl mx-auto items-start">
+
+                <div class="price-card" data-aos="fade-up" data-aos-delay="0">
+                    <h3 class="text-lg font-bold mb-1">JewelTag Basic</h3>
+                    <p class="text-sm text-[var(--ink-soft)] mb-6">For a single-location shop getting organized</p>
+                    <div class="mb-7">
+                        <span class="fraunces text-4xl font-bold">$499</span>
+                        <span class="text-[var(--ink-soft)] text-sm">/month</span>
                     </div>
-                    <ul class="space-y-2 text-sm mb-6">
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Up to 1,000 items</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Basic POS</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Customer management</li>
-                        <li class="flex items-center text-gray-400"><i class="fas fa-times text-gray-400 mr-2 text-xs"></i>Advanced analytics</li>
+                    <ul class="space-y-3 text-sm mb-8">
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Inventory &amp; SKU management</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Barcode scanning &amp; labels</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Repair order tracking</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>QuickBooks integration</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Up to 3 users · 1 location</li>
+                        <li class="flex items-center text-[rgba(33,28,22,0.4)]"><i class="fas fa-xmark price-check dim"></i>RFID &amp; multi-store sync</li>
                     </ul>
-                    <a href="#demo" class="btn-outline-luxury w-full text-center py-3 text-sm">Start Free Trial</a>
+                    <a href="#demo" class="btn-ghost-dark w-full justify-center" style="color: var(--onyx); border-color: rgba(33,28,22,0.18);">Start Free Trial</a>
                 </div>
 
-                <!-- Professional Plan -->
-                <div class="pricing-luxury featured p-6">
-                    <h3 class="text-xl font-bold mb-2">Professional</h3>
-                    <p class="text-sm text-gray-500 mb-4">Most popular choice</p>
-                    <div class="mb-4">
-                        <span class="text-3xl font-bold gold-gradient-text">$899</span>
-                        <span class="text-gray-500 text-sm">/month</span>
+                <div class="price-card featured" data-aos="fade-up" data-aos-delay="80">
+                    <div class="featured-ribbon">MOST CHOSEN</div>
+                    <h3 class="text-lg font-bold mb-1 text-[var(--case-felt)]">JewelTag Pro + CRM</h3>
+                    <p class="text-sm text-[rgba(250,246,238,0.6)] mb-6">The full counter-to-customer system</p>
+                    <div class="mb-7">
+                        <span class="fraunces text-4xl font-bold text-[var(--brass-bright)]">$1,299</span>
+                        <span class="text-[rgba(250,246,238,0.55)] text-sm">/month</span>
                     </div>
-                    <ul class="space-y-2 text-sm mb-6">
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Unlimited items</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Advanced POS</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>CRM & marketing</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Repair tracking</li>
+                    <ul class="space-y-3 text-sm mb-8 text-[rgba(250,246,238,0.85)]">
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Everything in Basic, unlimited items</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>RFID tracking &amp; live metal pricing</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Layaway, financing &amp; multi-store sync</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>CRM_JewelTag — loyalty, SMS &amp; email</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Advanced analytics &amp; API access</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Up to 15 users · 2 locations</li>
                     </ul>
-                    <a href="#demo" class="btn-luxury w-full text-center py-3 text-sm">Start Free Trial</a>
+                    <a href="#demo" class="btn-brass w-full justify-center">Start Free Trial</a>
                 </div>
 
-                <!-- Enterprise Plan -->
-                <div class="pricing-luxury p-6">
-                    <h3 class="text-xl font-bold mb-2">Enterprise</h3>
-                    <p class="text-sm text-gray-500 mb-4">For multi-store retailers</p>
-                    <div class="mb-4">
-                        <span class="text-3xl font-bold gold-gradient-text">Custom</span>
+                <div class="price-card" data-aos="fade-up" data-aos-delay="160">
+                    <h3 class="text-lg font-bold mb-1">Enterprise</h3>
+                    <p class="text-sm text-[var(--ink-soft)] mb-6">For multi-store retailers &amp; custom needs</p>
+                    <div class="mb-7">
+                        <span class="fraunces text-4xl font-bold">Custom</span>
                     </div>
-                    <ul class="space-y-2 text-sm mb-6">
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Multi-store management</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Custom integrations</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>Dedicated account manager</li>
-                        <li class="flex items-center"><i class="fas fa-check text-emerald-600 mr-2 text-xs"></i>24/7 premium support</li>
+                    <ul class="space-y-3 text-sm mb-8">
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Unlimited locations &amp; users</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Custom integrations</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Dedicated account manager</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Priority phone support</li>
+                        <li class="flex items-center"><i class="fas fa-check price-check"></i>Unlimited CRM customer records</li>
                     </ul>
-                    <a href="#contact" class="btn-outline-luxury w-full text-center py-3 text-sm">Contact Sales</a>
+                    <a href="#contact" class="btn-ghost-dark w-full justify-center" style="color: var(--onyx); border-color: rgba(33,28,22,0.18);">Contact Sales</a>
                 </div>
             </div>
 
-            <div class="mt-8 text-center">
-                <p class="text-xs text-gray-500">
-                    <i class="fas fa-shield-alt text-amber-600 mr-1"></i> All plans include: 256-bit encryption • Daily backups • 99.95% uptime SLA • GDPR compliance
-                </p>
-            </div>
+            <p class="text-center text-xs text-[var(--ink-soft)] mt-10">
+                <i class="fas fa-shield-halved text-[var(--brass-dim)] mr-1.5"></i>
+                256-bit encryption · Daily backups · 99.5% target uptime SLA · CRM_JewelTag requires an active JewelTag subscription
+            </p>
         </div>
     </section>
 
-    <!-- Demo Section -->
-    <section id="demo" class="py-20 luxury-gradient-bg">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="max-w-4xl mx-auto text-center text-white mb-10">
-                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
-                    <span class="diamond-text">Experience JewelTag</span> <span class="gold-gradient-text">Firsthand</span>
-                </h2>
-                <p class="text-white/80">Start your 30-day premium trial today. No credit card required.</p>
+    <section id="demo" class="py-24 hero-case relative">
+        <div class="facet-overlay"></div>
+        <div class="container mx-auto px-6 lg:px-10 relative z-10">
+            <div class="max-w-xl mx-auto text-center mb-12" data-aos="fade-up">
+                <h2 class="fraunces text-4xl lg:text-5xl font-semibold text-[var(--case-felt)] mb-4">See it on your own inventory.</h2>
+                <p class="text-[rgba(250,246,238,0.65)]">30 days, full access, no card required.</p>
             </div>
 
-            <div class="max-w-2xl mx-auto bg-white rounded-2xl p-8">
+            <div class="max-w-xl mx-auto bg-[var(--case-felt)] rounded-2xl p-8 shadow-2xl" data-aos="fade-up" data-aos-delay="100">
                 <form id="demo-form" class="space-y-4">
                     <div class="grid sm:grid-cols-2 gap-4">
-                        <input type="text" placeholder="First Name" class="form-luxury py-3 text-sm" required>
-                        <input type="text" placeholder="Last Name" class="form-luxury py-3 text-sm" required>
+                        <input type="text" placeholder="First name" class="input-felt" required>
+                        <input type="text" placeholder="Last name" class="input-felt" required>
                     </div>
-                    <input type="email" placeholder="Email Address" class="form-luxury py-3 text-sm" required>
-                    <input type="text" placeholder="Business Name" class="form-luxury py-3 text-sm" required>
-                    <button type="submit" class="btn-luxury w-full py-4 text-sm">
-                        <i class="fas fa-play-circle mr-2"></i> Start 30-Day Premium Trial
+                    <input type="email" placeholder="Work email" class="input-felt" required>
+                    <input type="text" placeholder="Business name" class="input-felt" required>
+                    <button type="submit" class="btn-brass w-full justify-center py-3.5">
+                        <i class="fas fa-play text-xs"></i> Start 30-Day Trial
                     </button>
-                    <p class="text-xs text-center text-gray-500">
-                        By signing up, you agree to our <a href="#" class="text-amber-600">Terms</a> and <a href="#" class="text-amber-600">Privacy Policy</a>.
+                    <p class="text-xs text-center text-[var(--ink-soft)]">
+                        By signing up you agree to our <a href="#" class="font-semibold text-[var(--brass-dim)]">Terms</a> and <a href="#" class="font-semibold text-[var(--brass-dim)]">Privacy Policy</a>.
                     </p>
                 </form>
             </div>
         </div>
     </section>
 
-    <!-- FAQ Section -->
-    <section class="py-20 bg-gray-50">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="text-center mb-10">
-                <h2 class="text-3xl lg:text-4xl font-bold mb-3 playfair">
-                    <span class="text-deep-sapphire">Frequently Asked</span> <span class="gold-gradient-text">Questions</span>
-                </h2>
+    <section class="py-24 bg-white">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="max-w-2xl mx-auto text-center mb-12" data-aos="fade-up">
+                <div class="section-eyebrow mx-auto" style="justify-content:center;">Questions</div>
+                <h2 class="fraunces text-3xl lg:text-4xl font-semibold text-[var(--onyx)]">Before you start the trial.</h2>
             </div>
 
-            <div class="max-w-3xl mx-auto space-y-4">
-                <div class="bg-white rounded-xl p-5 border border-gray-200">
+            <div class="max-w-2xl mx-auto space-y-3">
+                <div class="bg-[var(--case-felt)] rounded-xl p-5 border border-[rgba(33,28,22,0.08)]">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(1)">
                         <h3 class="font-bold text-sm">How long does implementation take?</h3>
-                        <i class="fas fa-chevron-down text-amber-600 text-xs"></i>
+                        <i class="fas fa-chevron-down text-[var(--brass-dim)] text-xs transition-transform"></i>
                     </button>
-                    <div id="faq-1" class="mt-3 hidden text-sm text-gray-600">
-                        Most customers complete implementation within 2-3 weeks, including discovery, migration, training, and go-live support.
+                    <div id="faq-1" class="mt-3 hidden text-sm text-[var(--ink-soft)] leading-relaxed">
+                        Most shops are fully live within two to three weeks, covering discovery, data migration, staff training, and go-live support.
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl p-5 border border-gray-200">
+                <div class="bg-[var(--case-felt)] rounded-xl p-5 border border-[rgba(33,28,22,0.08)]">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(2)">
-                        <h3 class="font-bold text-sm">Can we import existing data?</h3>
-                        <i class="fas fa-chevron-down text-amber-600 text-xs"></i>
+                        <h3 class="font-bold text-sm">Can we bring over our existing data?</h3>
+                        <i class="fas fa-chevron-down text-[var(--brass-dim)] text-xs transition-transform"></i>
                     </button>
-                    <div id="faq-2" class="mt-3 hidden text-sm text-gray-600">
-                        Yes! We support data imports from all major jewelry management systems, spreadsheets, and custom databases.
+                    <div id="faq-2" class="mt-3 hidden text-sm text-[var(--ink-soft)] leading-relaxed">
+                        Yes — we migrate inventory, customer records, and transaction history from most existing jewelry systems and spreadsheets.
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl p-5 border border-gray-200">
+                <div class="bg-[var(--case-felt)] rounded-xl p-5 border border-[rgba(33,28,22,0.08)]">
                     <button class="flex justify-between items-center w-full text-left" onclick="toggleFAQ(3)">
-                        <h3 class="font-bold text-sm">What security measures do you have?</h3>
-                        <i class="fas fa-chevron-down text-amber-600 text-xs"></i>
+                        <h3 class="font-bold text-sm">What happens to our data if we cancel?</h3>
+                        <i class="fas fa-chevron-down text-[var(--brass-dim)] text-xs transition-transform"></i>
                     </button>
-                    <div id="faq-3" class="mt-3 hidden text-sm text-gray-600">
-                        Bank-level 256-bit encryption, daily backups, intrusion detection, and compliance with GDPR, CCPA, and PCI DSS.
+                    <div id="faq-3" class="mt-3 hidden text-sm text-[var(--ink-soft)] leading-relaxed">
+                        You can export everything in CSV, JSON, or PDF at any time. After cancellation, you get a 30-day window to export before deletion.
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Contact Section -->
-    <section id="contact" class="py-20 luxury-gradient-bg">
-        <div class="container mx-auto px-6 lg:px-8">
-            <div class="max-w-4xl mx-auto text-center text-white mb-10">
-                <h2 class="text-3xl lg:text-4xl font-bold mb-3 playfair">
-                    <span class="diamond-text">Connect With Our</span> <span class="gold-gradient-text">Expert Team</span>
-                </h2>
+    <section id="contact" class="py-24 hero-case relative">
+        <div class="facet-overlay"></div>
+        <div class="container mx-auto px-6 lg:px-10 relative z-10">
+            <div class="max-w-2xl mx-auto text-center mb-12" data-aos="fade-up">
+                <h2 class="fraunces text-3xl lg:text-4xl font-semibold text-[var(--case-felt)] mb-4">Talk to the team.</h2>
             </div>
 
-            <div class="grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto mb-10">
-                <div class="text-center text-white">
-                    <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-phone"></i>
-                    </div>
-                    <p class="text-sm font-bold">1-800-JEWEL-TAG</p>
-                    <p class="text-white/60 text-xs">Mon-Fri, 8AM-8PM</p>
+            <div class="grid sm:grid-cols-3 gap-6 max-w-2xl mx-auto mb-12">
+                <div class="text-center">
+                    <div class="tray-icon mx-auto"><i class="fas fa-phone"></i></div>
+                    <p class="text-sm font-bold text-[var(--case-felt)]">1-800-JEWEL-TAG</p>
+                    <p class="text-[rgba(250,246,238,0.5)] text-xs">Mon–Fri, 8am–8pm CT</p>
                 </div>
-                <div class="text-center text-white">
-                    <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-envelope"></i>
-                    </div>
-                    <p class="text-sm font-bold">info@jeweltag.us</p>
-                    <p class="text-white/60 text-xs">24hr response</p>
+                <div class="text-center">
+                    <div class="tray-icon mx-auto"><i class="fas fa-envelope"></i></div>
+                    <p class="text-sm font-bold text-[var(--case-felt)]">info@jeweltag.us</p>
+                    <p class="text-[rgba(250,246,238,0.5)] text-xs">Reply within 1 business day</p>
                 </div>
-                <div class="text-center text-white">
-                    <div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-comments"></i>
-                    </div>
-                    <p class="text-sm font-bold">Live Chat</p>
-                    <p class="text-white/60 text-xs">Click chat icon below</p>
+                <div class="text-center">
+                    <div class="tray-icon mx-auto"><i class="fas fa-comments"></i></div>
+                    <p class="text-sm font-bold text-[var(--case-felt)]">Live Chat</p>
+                    <p class="text-[rgba(250,246,238,0.5)] text-xs">Bottom right corner</p>
                 </div>
             </div>
 
-            <div class="max-w-2xl mx-auto bg-white rounded-2xl p-8">
+            <div class="max-w-xl mx-auto bg-[var(--case-felt)] rounded-2xl p-8 shadow-2xl">
                 <form id="contact-form" class="space-y-4">
-                    <input type="text" placeholder="Your Name" class="form-luxury py-3 text-sm" required>
-                    <input type="email" placeholder="Email Address" class="form-luxury py-3 text-sm" required>
-                    <input type="text" placeholder="Business Name" class="form-luxury py-3 text-sm" required>
-                    <select class="form-luxury py-3 text-sm" required>
+                    <input type="text" placeholder="Your name" class="input-felt" required>
+                    <input type="email" placeholder="Email address" class="input-felt" required>
+                    <input type="text" placeholder="Business name" class="input-felt" required>
+                    <select class="input-felt" required>
                         <option value="">Select inquiry type</option>
                         <option value="demo">Schedule a Demo</option>
                         <option value="pricing">Pricing Questions</option>
                         <option value="support">Technical Support</option>
                     </select>
-                    <textarea placeholder="Your message..." class="form-luxury py-3 text-sm h-32" required></textarea>
-                    <button type="submit" class="btn-luxury w-full py-4 text-sm">
-                        <i class="fas fa-paper-plane mr-2"></i> Send Message
+                    <textarea placeholder="Your message..." class="input-felt h-28" required></textarea>
+                    <button type="submit" class="btn-brass w-full justify-center py-3.5">
+                        <i class="fas fa-paper-plane text-xs"></i> Send Message
                     </button>
                 </form>
             </div>
         </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="footer-luxury py-12">
-        <div class="container mx-auto px-6 lg:px-8 relative z-10">
-            <div class="grid md:grid-cols-4 gap-8 mb-8">
+    <footer class="footer-onyx py-14">
+        <div class="container mx-auto px-6 lg:px-10">
+            <div class="grid md:grid-cols-4 gap-10 mb-10">
                 <div>
-                    <div class="flex items-center mb-4">
-                        <div class="w-10 h-10 gold-gradient rounded-lg flex items-center justify-center mr-3">
-                            <i class="fas fa-gem text-white text-sm"></i>
-                        </div>
-                        <h3 class="text-xl font-bold playfair gold-gradient-text">JewelTag</h3>
+                    <div class="flex items-center gap-3 mb-4">
+                        <img src="/jeweltaglogo.png" alt="JewelTag" class="h-9 w-auto">
                     </div>
-                    <p class="text-white/60 text-xs leading-relaxed">
-                        The ultimate software solution for luxury jewelry businesses.
-                    </p>
+                    <p class="text-xs leading-relaxed opacity-70">Inventory, POS, and CRM built specifically for jewelry retailers.</p>
                 </div>
                 <div>
-                    <h4 class="text-white font-bold text-sm mb-4">Platform</h4>
+                    <h4 class="text-[var(--case-felt)] font-bold text-sm mb-4">Platform</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#features" class="text-white/60 hover:text-white">Features</a></li>
-                        <li><a href="#pricing" class="text-white/60 hover:text-white">Pricing</a></li>
-                        <li><a href="#demo" class="text-white/60 hover:text-white">Free Trial</a></li>
+                        <li><a href="#features" class="footer-link">Features</a></li>
+                        <li><a href="#pricing" class="footer-link">Pricing</a></li>
+                        <li><a href="#demo" class="footer-link">Free Trial</a></li>
                     </ul>
                 </div>
                 <div>
-                    <h4 class="text-white font-bold text-sm mb-4">Company</h4>
+                    <h4 class="text-[var(--case-felt)] font-bold text-sm mb-4">Company</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#" class="text-white/60 hover:text-white">About</a></li>
-                        <li><a href="#contact" class="text-white/60 hover:text-white">Contact</a></li>
-                        <li><a href="#" class="text-white/60 hover:text-white">Blog</a></li>
+                        <li><a href="#" class="footer-link">About</a></li>
+                        <li><a href="#contact" class="footer-link">Contact</a></li>
+                        <li><a href="#" class="footer-link">Blog</a></li>
                     </ul>
                 </div>
                 <div>
-                    <h4 class="text-white font-bold text-sm mb-4">Resources</h4>
+                    <h4 class="text-[var(--case-felt)] font-bold text-sm mb-4">Resources</h4>
                     <ul class="space-y-2 text-xs">
-        <li><a href="{{ route('docs') }}" class="text-white/60 hover:text-white">Documentation</a></li>
-        <li><a href="{{ route('api') }}" class="text-white/60 hover:text-white">API Reference</a></li>
-        <li><a href="{{ route('privacy') }}" class="text-white/60 hover:text-white">Privacy Policy</a></li>
-    </ul>
+                        <li><a href="{{ route('docs') }}" class="footer-link">Documentation</a></li>
+                        <li><a href="{{ route('api') }}" class="footer-link">API Reference</a></li>
+                        <li><a href="{{ route('privacy') }}" class="footer-link">Privacy Policy</a></li>
+                    </ul>
                 </div>
             </div>
 
-            <div class="pt-6 border-t border-white/10 text-center">
-                <p class="text-white/40 text-xs">
-                    © {{ date('Y') }} JewelTag Systems. All rights reserved. | ISO 27001 Certified • SOC 2 Compliant
-                </p>
-                <div class="flex justify-center space-x-4 mt-4">
-                    <i class="fab fa-cc-visa text-white/40 text-lg"></i>
-                    <i class="fab fa-cc-mastercard text-white/40 text-lg"></i>
-                    <i class="fab fa-cc-amex text-white/40 text-lg"></i>
-                    <i class="fab fa-cc-paypal text-white/40 text-lg"></i>
+            <div class="pt-6 border-t border-[rgba(184,134,59,0.18)] text-center">
+                <p class="text-xs opacity-50">© {{ date('Y') }} The Explorers USA DBA JewelTag. All rights reserved.</p>
+                <div class="flex justify-center space-x-4 mt-4 opacity-40">
+                    <i class="fab fa-cc-visa text-lg"></i>
+                    <i class="fab fa-cc-mastercard text-lg"></i>
+                    <i class="fab fa-cc-amex text-lg"></i>
+                    <i class="fab fa-cc-paypal text-lg"></i>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- Chat Widget -->
     <div class="fixed bottom-6 right-6 z-50">
-        <button id="chat-toggle" class="w-14 h-14 gold-gradient rounded-full flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all">
+        <button id="chat-toggle" class="w-14 h-14 rounded-full flex items-center justify-center text-[var(--onyx)] shadow-lg hover:shadow-xl transition-all" style="background: linear-gradient(160deg, var(--brass-bright), var(--brass-dim));">
             <i class="fas fa-comment text-xl"></i>
         </button>
 
-        <div id="chat-window" class="absolute bottom-20 right-0 w-80 bg-white rounded-xl shadow-2xl hidden">
-            <div class="p-4 border-b border-gray-200">
+        <div id="chat-window" class="absolute bottom-20 right-0 w-80 bg-white rounded-xl shadow-2xl hidden border border-[rgba(33,28,22,0.08)]">
+            <div class="p-4 border-b border-[rgba(33,28,22,0.08)]">
                 <div class="flex items-center">
-                    <div class="w-10 h-10 gold-gradient rounded-lg flex items-center justify-center mr-3">
-                        <i class="fas fa-headset text-white"></i>
+                    <div class="tray-icon mr-3" style="width:40px;height:40px;margin-bottom:0;">
+                        <i class="fas fa-headset text-sm"></i>
                     </div>
                     <div>
                         <h4 class="font-bold text-sm">JewelTag Support</h4>
-                        <p class="text-xs text-gray-500">We're online</p>
+                        <p class="text-xs text-[var(--ink-soft)]">We're online</p>
                     </div>
                 </div>
             </div>
             <div class="p-4 h-64 overflow-y-auto">
-                <div class="bg-gray-100 rounded-lg p-3 max-w-xs mb-4">
-                    <p class="text-xs">Hello! How can we help you today?</p>
+                <div class="bg-[var(--case-felt)] rounded-lg p-3 max-w-xs mb-4 text-xs">
+                    Hello! How can we help you today?
                 </div>
                 <div class="text-center">
-                    <button class="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold mr-2">Pricing</button>
-                    <button class="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold">Demo</button>
+                    <button class="px-3 py-2 rounded-lg text-xs font-semibold mr-2" style="background: rgba(184,134,59,0.1); color: var(--brass-dim);">Pricing</button>
+                    <button class="px-3 py-2 rounded-lg text-xs font-semibold" style="background: rgba(184,134,59,0.1); color: var(--brass-dim);">Demo</button>
                 </div>
             </div>
-            <div class="p-4 border-t border-gray-200">
+            <div class="p-4 border-t border-[rgba(33,28,22,0.08)]">
                 <div class="flex">
-                    <input type="text" placeholder="Type your message..." class="flex-1 border border-gray-300 rounded-l-lg px-4 py-2 text-xs focus:outline-none focus:border-amber-500">
-                    <button class="gold-gradient text-white px-4 rounded-r-lg text-sm">
+                    <input type="text" placeholder="Type your message..." class="flex-1 border border-[rgba(33,28,22,0.14)] rounded-l-lg px-4 py-2 text-xs focus:outline-none">
+                    <button class="text-[var(--onyx)] px-4 rounded-r-lg text-sm" style="background: var(--brass-bright);">
                         <i class="fas fa-paper-plane"></i>
                     </button>
                 </div>
@@ -1270,123 +1084,91 @@
         </div>
     </div>
 
-    <!-- Back to Top Button -->
-    <button id="back-to-top" class="fixed bottom-24 right-6 w-12 h-12 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all hidden z-40">
-        <i class="fas fa-chevron-up text-gray-700"></i>
+    <button id="back-to-top" class="fixed bottom-24 right-6 w-12 h-12 bg-white border border-[rgba(33,28,22,0.1)] rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all hidden z-40">
+        <i class="fas fa-chevron-up text-[var(--ink-soft)]"></i>
     </button>
 
-    <!-- AOS Animation Library -->
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-
     <script>
-        // Initialize AOS
-        AOS.init({
-            duration: 800,
-            once: true,
-            offset: 50
-        });
+        AOS.init({ duration: 700, once: true, offset: 40 });
 
-        // Mobile Menu Toggle
-        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+        document.getElementById('mobile-menu-button').addEventListener('click', function () {
             document.getElementById('mobile-menu').classList.toggle('hidden');
         });
 
-        // Chat Toggle
-        document.getElementById('chat-toggle').addEventListener('click', function() {
+        document.getElementById('chat-toggle').addEventListener('click', function () {
             document.getElementById('chat-window').classList.toggle('hidden');
         });
 
-        // Back to Top
         const backToTop = document.getElementById('back-to-top');
-        window.addEventListener('scroll', function() {
-            if (window.pageYOffset > 300) {
-                backToTop.classList.remove('hidden');
-            } else {
-                backToTop.classList.add('hidden');
-            }
+        window.addEventListener('scroll', function () {
+            backToTop.classList.toggle('hidden', window.pageYOffset <= 300);
+        });
+        backToTop.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
 
-        backToTop.addEventListener('click', function() {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        });
-
-        // FAQ Toggle
-        window.toggleFAQ = function(number) {
+        window.toggleFAQ = function (number) {
             const faq = document.getElementById('faq-' + number);
             const icon = event.currentTarget.querySelector('i');
             faq.classList.toggle('hidden');
             icon.classList.toggle('fa-chevron-down');
             icon.classList.toggle('fa-chevron-up');
-        }
+        };
 
-        // Form Submissions
-       // Form Submissions
-document.getElementById('demo-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const inputs = this.querySelectorAll('input');
-    const payload = new FormData();
-    payload.append('name', inputs[0].value + ' ' + inputs[1].value);
-    payload.append('email', inputs[2].value);
-    payload.append('business', inputs[3].value);
-    payload.append('type', 'Free Trial Request');
-    payload.append('message', 'Requested a 30-day free trial.');
-    payload.append('_token', '{{ csrf_token() }}');
+        document.getElementById('demo-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const inputs = this.querySelectorAll('input');
+            const payload = new FormData();
+            payload.append('name', inputs[0].value + ' ' + inputs[1].value);
+            payload.append('email', inputs[2].value);
+            payload.append('business', inputs[3].value);
+            payload.append('type', 'Free Trial Request');
+            payload.append('message', 'Requested a 30-day free trial.');
+            payload.append('_token', '{{ csrf_token() }}');
 
-    fetch('/contact', {
-        method: 'POST',
-        body: payload
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            alert('Thank you! We\'ll be in touch within 1 hour.');
-            this.reset();
-        } else {
-            alert('Something went wrong. Please email info@jeweltag.us directly.');
-        }
-    });
-});
+            fetch('/contact', { method: 'POST', body: payload })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert("Thank you! We'll be in touch within 1 business day.");
+                        this.reset();
+                    } else {
+                        alert('Something went wrong. Please email info@jeweltag.us directly.');
+                    }
+                });
+        });
 
-document.getElementById('contact-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const inputs = this.querySelectorAll('input, select, textarea');
-    const payload = new FormData();
-    payload.append('name', inputs[0].value);
-    payload.append('email', inputs[1].value);
-    payload.append('business', inputs[2].value);
-    payload.append('type', inputs[3].value);
-    payload.append('message', inputs[4].value);
-    payload.append('_token', '{{ csrf_token() }}');
+        document.getElementById('contact-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const inputs = this.querySelectorAll('input, select, textarea');
+            const payload = new FormData();
+            payload.append('name', inputs[0].value);
+            payload.append('email', inputs[1].value);
+            payload.append('business', inputs[2].value);
+            payload.append('type', inputs[3].value);
+            payload.append('message', inputs[4].value);
+            payload.append('_token', '{{ csrf_token() }}');
 
-    fetch('/contact', {
-        method: 'POST',
-        body: payload
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            alert('Message sent! We\'ll respond within 1 hour.');
-            this.reset();
-        } else {
-            alert('Something went wrong. Please email info@jeweltag.us directly.');
-        }
-    });
-});
+            fetch('/contact', { method: 'POST', body: payload })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert("Message sent! We'll respond within 1 business day.");
+                        this.reset();
+                    } else {
+                        alert('Something went wrong. Please email info@jeweltag.us directly.');
+                    }
+                });
+        });
 
-        // Smooth Scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function(e) {
+            anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
                     document.getElementById('mobile-menu')?.classList.add('hidden');
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
