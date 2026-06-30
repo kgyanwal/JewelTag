@@ -11,43 +11,50 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts (Playfair & Inter) -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Google Fonts (Fraunces & Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --primary-gold: #d97706;
-            --secondary-gold: #fbbf24;
-            --dark-gold: #b45309;
-            --deep-sapphire: #0A2540;
+            /* ── JEWELER'S WORKBENCH PALETTE ── matches the main site theme */
+            --onyx:         #15120F;
+            --onyx-soft:    #1F1A15;
+            --case-felt:    #FAF6EE;
+            --brass:        #B8863B;
+            --brass-bright: #E0AE5C;
+            --brass-dim:    #8A6428;
+            --loupe:        #6FCF97;
+            --loupe-dim:    #3E7C5A;
+            --ink:          #211C16;
+            --ink-soft:     #5C5346;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            color: #1e293b;
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            color: var(--ink);
+            background: var(--case-felt);
         }
 
-        .playfair { font-family: 'Playfair Display', serif; }
+        .playfair, .fraunces { font-family: 'Fraunces', serif; }
 
         .gold-gradient {
-            background: linear-gradient(135deg, var(--primary-gold), var(--dark-gold));
+            background: linear-gradient(160deg, var(--brass-bright), var(--brass-dim));
         }
 
         .gold-gradient-text {
-            background: linear-gradient(135deg, var(--primary-gold), var(--secondary-gold), var(--dark-gold));
+            background: linear-gradient(135deg, var(--brass-bright), var(--brass), var(--brass-dim));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        /* Luxury Content Card */
+        /* Content card */
         .luxury-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(217, 119, 6, 0.15);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
-            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid rgba(33, 28, 22, 0.08);
+            box-shadow: 0 20px 50px rgba(21, 18, 15, 0.08);
+            border-radius: 20px;
             position: relative;
             overflow: hidden;
         }
@@ -59,35 +66,53 @@
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg, var(--primary-gold), var(--secondary-gold));
+            background: linear-gradient(90deg, var(--brass-dim), var(--brass-bright));
         }
 
         .scroll-mt-24 {
             scroll-margin-top: 6rem;
         }
+
+        /* Nav */
+        .legal-nav {
+            background: rgba(21,18,15,0.94);
+            backdrop-filter: blur(14px) saturate(140%);
+            border-bottom: 1px solid rgba(184,134,59,0.28);
+        }
+        .legal-nav-link {
+            position: relative;
+            color: rgba(250,246,238,0.75);
+            transition: color 200ms var(--ease);
+        }
+        .legal-nav-link:hover { color: var(--brass-bright); }
+
+        /* Footer */
+        .legal-footer {
+            background: var(--onyx);
+            color: rgba(250,246,238,0.55);
+        }
+        .legal-footer a { color: rgba(250,246,238,0.65); transition: color 200ms var(--ease); }
+        .legal-footer a:hover { color: var(--brass-bright); }
     </style>
 </head>
 
 <body class="antialiased">
-    <!-- Gold Top Accent -->
+    <!-- Brass Top Accent -->
     <div class="fixed top-0 left-0 w-full h-1 gold-gradient z-50"></div>
 
     <!-- Navigation -->
-    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-100 py-4 fixed w-full top-0 z-40">
+    <nav class="legal-nav py-4 fixed w-full top-0 z-40">
         <div class="container mx-auto px-6 flex justify-between items-center">
             <div class="flex items-center space-x-3">
                 <a href="/" class="flex items-center space-x-3">
-                    <div class="w-10 h-10 gold-gradient rounded-lg flex items-center justify-center text-white shadow-md">
-                        <i class="fas fa-gem"></i>
-                    </div>
-                    <span class="text-xl font-bold playfair text-deep-sapphire">JewelTag<span class="text-amber-600">.us</span></span>
+                    <img src="/jeweltaglogo.png" alt="JewelTag" class="h-9 w-auto">
                 </a>
             </div>
-            
+
             <div class="hidden md:flex space-x-6">
-                <a href="/#features" class="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-amber-600 transition">Features</a>
-                <a href="/#pricing" class="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-amber-600 transition">Pricing</a>
-                <a href="/master/login" class="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-amber-600 transition">Staff Login</a>
+                <a href="/#features" class="legal-nav-link text-xs font-bold uppercase tracking-widest">Features</a>
+                <a href="/#pricing" class="legal-nav-link text-xs font-bold uppercase tracking-widest">Pricing</a>
+                <a href="/master/login" class="legal-nav-link text-xs font-bold uppercase tracking-widest">Staff Login</a>
             </div>
         </div>
     </nav>
@@ -100,13 +125,13 @@
         </div>
     </main>
 
-    <footer class="text-center py-12 text-gray-400 text-xs border-t border-gray-100">
+    <footer class="legal-footer text-center py-12 text-xs">
         <div class="flex justify-center space-x-4 mb-4">
-            <a href="{{ route('privacy') }}" class="hover:text-amber-600 transition">Privacy Policy</a>
-            <a href="{{ route('docs') }}" class="hover:text-amber-600 transition">Documentation</a>
-            <a href="{{ route('api') }}" class="hover:text-amber-600 transition">API Reference</a>
+            <a href="{{ route('privacy') }}" class="transition">Privacy Policy</a>
+            <a href="{{ route('docs') }}" class="transition">Documentation</a>
+            <a href="{{ route('api') }}" class="transition">API Reference</a>
         </div>
-        <p>&copy; {{ date('Y') }} JewelTag Systems. All rights reserved.</p>
+        <p class="opacity-60">&copy; {{ date('Y') }} The Explorers USA DBA JewelTag. All rights reserved.</p>
     </footer>
 </body>
 </html>
