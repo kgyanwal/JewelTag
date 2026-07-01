@@ -58,17 +58,31 @@
     <meta charset="utf-8">
     <title>Deposit Receipt — Custom Order #{{ $orderNo }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; font-size:11px; }
-        body { font-family: Helvetica, Arial, sans-serif; color:#2c3e50; background:#f0f9ff; padding:20px; line-height:1.4; }
-        @media print {
-            body { background:white; padding:0; }
-            .no-print { display:none !important; }
-            .card { box-shadow:none !important; }
-            * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-            @page { margin:.3in; size:auto; }
-        }
-    </style>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-size:10px; } /* Slightly smaller base font */
+    body { font-family: Helvetica, Arial, sans-serif; color:#2c3e50; background:#f0f9ff; padding:5px; line-height:1.2; }
+    
+    /* Force single page layout */
+    .card { 
+        max-width: 850px; 
+        margin: 0 auto; 
+        padding: 15px; 
+        background: #fff; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,.1); 
+        border-top: 4px solid {{ $color }};
+        height: auto;
+    }
+
+    @media print {
+        body { background:white; padding:0; height:100vh; overflow:hidden; }
+        .no-print { display:none !important; }
+        .card { box-shadow:none !important; border-top:4px solid {{ $color }}; }
+        /* Prevent page breaks inside the receipt */
+        * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        @page { size: portrait; margin: 0.2in; }
+    }
+</style>
 </head>
 <body>
 
