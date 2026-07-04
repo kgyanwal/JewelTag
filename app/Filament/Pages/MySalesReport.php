@@ -10,18 +10,21 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Filters\Filter;
 use App\Forms\Components\CustomDatePicker;
-use Filament\Forms\Components\Select;
+use Filament\Forms\Form;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Components\{Grid, Section, Select};
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Filament\Tables\Columns\Summarizers\Summarizer;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\DB;
 
-class MySalesReport extends Page implements HasTable
+class MySalesReport extends Page implements HasTable, HasForms
 {
     use InteractsWithTable;
+    use InteractsWithForms;
 
     protected static ?string $navigationIcon  = 'heroicon-o-presentation-chart-line';
     protected static ?string $navigationGroup = 'Analytics & Reports';
@@ -29,25 +32,172 @@ class MySalesReport extends Page implements HasTable
     protected static ?string $title           = 'Sales Performance Report';
     protected static string  $view            = 'filament.pages.my-sales-report';
 
+    // ── URL-bound filter state (persists in browser URL like ListRepairs) ──
+
+    #[\Livewire\Attributes\Url(as: 'from')]
+    public ?string $date_from = null;
+
+    #[\Livewire\Attributes\Url(as: 'until')]
+    public ?string $date_until = null;
+
+    #[\Livewire\Attributes\Url(as: 'associates')]
+    public ?array $associates = [];
+
+    public ?array $data = [];
+
+    public function mount(): void
+    {
+        $this->data = [
+            'date_from'  => $this->date_from ?? now()->startOfMonth()->format('Y-m-d'),
+            'date_until' => $this->date_until ?? now()->format('Y-m-d'),
+            'associates' => $this->associates ?? [],
+        ];
+
+        $this->form->fill($this->data);
+    }
+
+    public function updated($property): void
+    {
+        if (str_starts_with($property, 'data.')) {
+            $this->date_from  = $this->data['date_from']  ?? null;
+            $this->date_until = $this->data['date_until'] ?? null;
+            $this->associates = $this->data['associates'] ?? [];
+
+            $this->resetTable();
+        }
+    }
+
+    public function form(Form $form): Form
+    {
+        $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
+
+        return $form
+            ->statePath('data')
+            ->schema([
+               Section::make('Filter Sales')
+                    ->description('Filter by date range and sales associate')
+                    ->schema([
+                       Grid::make(['default' => 1, 'md' => 3])->schema([
+
+                            CustomDatePicker::make('date_from')
+                                ->label('Start Date')
+                                ->displayFormat('m/d/Y')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable())
+                                ->extraAttributes(['style' => 'height: 42px;']),
+
+                            CustomDatePicker::make('date_until')
+                                ->label('End Date')
+                                ->displayFormat('m/d/Y')
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable())
+                                ->extraAttributes(['style' => 'height: 42px;']),
+
+                            Select::make('associates')
+                                ->label('Sales Associates')
+                                ->options(
+                                    $isPrivileged
+                                        ? User::orderBy('name')->pluck('name', 'name')
+                                        : []
+                                )
+                                ->placeholder('All Associates')
+                                ->searchable()
+                                ->multiple()
+                                ->preload()
+                                ->visible($isPrivileged)
+                                ->live()
+                                ->afterStateUpdated(fn() => $this->resetTable())
+                                ->native(false),
+                        ])->columns(3),
+
+                        \Filament\Forms\Components\Actions::make([
+                            \Filament\Forms\Components\Actions\Action::make('reset_filters')
+                                ->label('Clear Filters')
+                                ->icon('heroicon-o-x-circle')
+                                ->color('gray')
+                                ->outlined()
+                                ->action(function () {
+                                    $this->date_from  = now()->startOfMonth()->format('Y-m-d');
+                                    $this->date_until = now()->format('Y-m-d');
+                                    $this->associates = [];
+
+                                    $this->data = [
+                                        'date_from'  => $this->date_from,
+                                        'date_until' => $this->date_until,
+                                        'associates' => [],
+                                    ];
+
+                                    $this->form->fill($this->data);
+                                    $this->resetTable();
+                                }),
+                        ])->verticalAlignment(\Filament\Support\Enums\VerticalAlignment::Start),
+                    ])
+                    ->extraAttributes(['style' => 'position: relative; z-index: 40;']),
+            ]);
+    }
+
     // ─── SHARED HELPER ───────────────────────────────────────────────────────
+    // Returns a SQL expression for the "effective date" of a sale, used for
+    // both sorting and date-range filtering.
+    //
+    // Imported (OnSwim) invoices encode the REAL historical sale date right
+    // inside the invoice number as 6 digits (MMDDYY) somewhere after a letter
+    // prefix — e.g. D071623-23 means July 16, 2023. When these were imported,
+    // the import process stamped completed_at/updated_at with the IMPORT date
+    // (e.g. April 8), not the real sale date. So for any invoice number that
+    // contains that 6-digit MMDDYY date pattern, we parse the date directly
+    // out of the invoice number and IGNORE completed_at/updated_at entirely.
+    //
+    // The previous version anchored the regex to match from the very start
+    // of the string only (^[A-Za-z][0-9]{6}-), which silently failed to match
+    // any invoice number that didn't have EXACTLY one letter before the 6
+    // digits, or that had something other than a single trailing dash right
+    // after — e.g. extra prefix characters, a differently-placed dash, etc.
+    // This version instead searches for the 6-digit date pattern ANYWHERE in
+    // the invoice number (still requiring it to look like a valid MMDDYY
+    // date — month 01-12, day 01-31), which is far more tolerant of minor
+    // formatting differences across different import batches while still
+    // refusing to misfire on a normal JewelTag-generated invoice number like
+    // "D5230" (no 6-digit run present at all).
     private static function effectiveDateExpr(): string
-{
-    // Imported (OnSwim) invoices look like D091225-4992 — the 6 digits
-    // right after the letter prefix are MMDDYY, the REAL sale date.
-    // For those, parse the date out of invoice_number. Everything else
-    // (normal sales created in JewelTag) keeps using completed_at/created_at.
-    return "
-        CASE
-            WHEN invoice_number REGEXP '^[A-Za-z][0-9]{6}-'
-            THEN STR_TO_DATE(SUBSTRING(invoice_number, 2, 6), '%m%d%y')
-            ELSE COALESCE(completed_at, updated_at, created_at)
-        END
-    ";
-}
+    {
+        return "
+            CASE
+                WHEN invoice_number REGEXP '[0-9]{6}'
+                     AND CAST(SUBSTRING(
+                            REGEXP_SUBSTR(invoice_number, '[0-9]{6}'), 1, 2
+                         ) AS UNSIGNED) BETWEEN 1 AND 12
+                     AND CAST(SUBSTRING(
+                            REGEXP_SUBSTR(invoice_number, '[0-9]{6}'), 3, 2
+                         ) AS UNSIGNED) BETWEEN 1 AND 31
+                THEN STR_TO_DATE(REGEXP_SUBSTR(invoice_number, '[0-9]{6}'), '%m%d%y')
+                ELSE COALESCE(completed_at, updated_at, created_at)
+            END
+        ";
+    }
+
+    // ── Resolve the store timezone once, consistently, everywhere on this page ──
+    private static function storeTimezone(): string
+    {
+        return Store::first()?->timezone ?? config('app.timezone', 'UTC');
+    }
+
+    // ── Convert a local calendar date (Y-m-d string) into UTC start-of-day ──
+    private static function localStartOfDayUtc(string $date, string $tz): string
+    {
+        return Carbon::parse($date, $tz)->startOfDay()->utc()->toDateTimeString();
+    }
+
+    // ── Convert a local calendar date (Y-m-d string) into UTC end-of-day ──
+    private static function localEndOfDayUtc(string $date, string $tz): string
+    {
+        return Carbon::parse($date, $tz)->endOfDay()->utc()->toDateTimeString();
+    }
+
     public function table(Table $table): Table
     {
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
-        $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
+        $tz           = self::storeTimezone();
 
         return $table
             ->query(
@@ -63,6 +213,21 @@ class MySalesReport extends Page implements HasTable
                 TextColumn::make('effective_date')
                     ->label('Completed Date')
                     ->getStateUsing(function ($record) use ($tz) {
+                        // Mirror the SQL CASE logic in PHP so the displayed
+                        // date always matches what the filter/sort used.
+                        if (preg_match('/(\d{6})/', $record->invoice_number, $m)) {
+                            $digits = $m[1];
+                            $month  = (int) substr($digits, 0, 2);
+                            $day    = (int) substr($digits, 2, 2);
+                            if ($month >= 1 && $month <= 12 && $day >= 1 && $day <= 31) {
+                                try {
+                                    return Carbon::createFromFormat('mdy', $digits)->format('M d, Y');
+                                } catch (\Exception $e) {
+                                    // fall through to completed_at below
+                                }
+                            }
+                        }
+
                         $raw = $record->completed_at
                             ?? $record->updated_at
                             ?? $record->created_at;
@@ -120,7 +285,7 @@ class MySalesReport extends Page implements HasTable
                     ->alignRight()
                     ->getStateUsing(function ($record) {
                         return floatval($record->subtotal)
-                             + floatval($record->warranty_charge ?? 0)
+                            
                              + floatval($record->shipping_charges ?? 0)
                              - floatval($record->trade_in_value ?? 0);
                     })
@@ -155,7 +320,7 @@ class MySalesReport extends Page implements HasTable
 
                                 foreach ($sales as $sale) {
                                     $saleVolume = floatval($sale->subtotal)
-                                                + floatval($sale->warranty_charge ?? 0)
+                                               
                                                 + floatval($sale->shipping_charges ?? 0)
                                                 - floatval($sale->trade_in_value ?? 0);
 
@@ -184,104 +349,64 @@ class MySalesReport extends Page implements HasTable
                             })
                     ),
             ])
-            ->filters([
-                Filter::make('date_range')
-                    ->label('Date Range')
-                    ->form([
-                        CustomDatePicker::make('from')
-                            ->label('Start Date')
-                            ->default(now()->startOfMonth()),
-                        CustomDatePicker::make('until')
-                            ->label('End Date')
-                            ->default(now()),
-                    ])
-                    ->query(function (Builder $query, array $data) use ($tz): Builder {
-                        $from  = !empty($data['from'])
-                            ? Carbon::parse($data['from'], $tz)->startOfDay()->utc()->toDateTimeString()
-                            : null;
-                        $until = !empty($data['until'])
-                            ? Carbon::parse($data['until'], $tz)->endOfDay()->utc()->toDateTimeString()
-                            : null;
+            ->defaultSort('effective_date', 'desc');
+    }
 
-                        return $query
-                            ->when($from,  fn($q) => $q->whereRaw(
-                                self::effectiveDateExpr() . ' >= ?', [$from]
-                            ))
-                            ->when($until, fn($q) => $q->whereRaw(
-                                self::effectiveDateExpr() . ' <= ?', [$until]
-                            ));
-                    })
-                    ->indicateUsing(function (array $data): array {
-                        $indicators = [];
-                        if (!empty($data['from']))  $indicators[] = 'From: '  . $data['from'];
-                        if (!empty($data['until'])) $indicators[] = 'Until: ' . $data['until'];
-                        return $indicators;
-                    }),
+    // ── Override the table query to apply our custom Blade-bound filters ──
+    protected function getTableQuery(): Builder
+    {
+        $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
+        $tz           = self::storeTimezone();
+        $expr         = self::effectiveDateExpr();
 
-                // ── STAFF FILTER: now supports selecting MULTIPLE associates ──
-                Filter::make('staff_filter')
-                    ->label('Associate')
-                    ->form([
-                        Select::make('associates')
-                            ->label('Sales Associates')
-                            ->options(
-                                $isPrivileged
-                                    ? User::orderBy('name')->pluck('name', 'name')
-                                    : []
-                            )
-                            ->placeholder('All Associates')
-                            ->searchable()
-                            ->multiple()   // ← allows selecting 2+ people
-                            ->preload(),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        if (!auth()->user()->hasAnyRole(['Superadmin', 'Administration'])) {
-                            return $query;
-                        }
+        $query = Sale::query()
+            ->with('customer')
+            ->where('status', 'completed')
+            ->where('balance_due', 0);
 
-                        $names = $data['associates'] ?? [];
-                        if (empty($names)) return $query;
+        if (!$isPrivileged) {
+            $query->whereJsonContains('sales_person_list', auth()->user()->name);
+        }
 
-                        // Match sales where ANY of the selected names appears in sales_person_list
-                        // For a single name: whereJsonContains
-                        // For multiple names: wrap in where() with orWhereJsonContains for each
-                        return $query->where(function (Builder $q) use ($names) {
-                            foreach ($names as $name) {
-                                $q->orWhereJsonContains('sales_person_list', $name);
-                            }
-                        });
-                    })
-                    ->indicateUsing(function (array $data): array {
-                        $names = $data['associates'] ?? [];
-                        if (empty($names)) return [];
-                        return ['Associates: ' . implode(', ', $names)];
-                    })
-                    ->hidden(!$isPrivileged),
-            ])
-            ->defaultSort(
-                fn(Builder $q) => $q->orderByRaw(self::effectiveDateExpr() . ' DESC')
-            )
-            ->filtersLayout(\Filament\Tables\Enums\FiltersLayout::AboveContentCollapsible)
-            ->filtersTriggerAction(
-                fn($action) => $action->label('Filter / Date Range')->icon('heroicon-o-funnel')
-            );
+        $from  = $this->data['date_from']  ?? $this->date_from  ?? null;
+        $until = $this->data['date_until'] ?? $this->date_until ?? null;
+
+        if ($from) {
+            $query->whereRaw("$expr >= ?", [self::localStartOfDayUtc($from, $tz)]);
+        }
+
+        if ($until) {
+            $query->whereRaw("$expr <= ?", [self::localEndOfDayUtc($until, $tz)]);
+        }
+
+        if ($isPrivileged) {
+            $names = $this->data['associates'] ?? $this->associates ?? [];
+            if (!empty($names)) {
+                $query->where(function (Builder $q) use ($names) {
+                    foreach ($names as $name) {
+                        $q->orWhereJsonContains('sales_person_list', $name);
+                    }
+                });
+            }
+        }
+
+     $query->orderByRaw(self::effectiveDateExpr() . ' DESC')
+              ->orderBy('created_at', 'desc')
+              ->orderBy('id', 'desc');
+
+        return $query;
     }
 
     public function getStats(): array
     {
         $isPrivileged = auth()->user()->hasAnyRole(['Superadmin', 'Administration']);
         $isSuperadmin = auth()->user()->hasRole('Superadmin');
-        $tz           = Store::first()?->timezone ?? config('app.timezone', 'UTC');
+        $tz           = self::storeTimezone();
         $currentUser  = auth()->user()->name;
 
-        $filters = $this->tableFilters ?? [];
-
-        // ── Resolve which names are being filtered ────────────────────────────
-        // New: 'associates' is an array (multi-select). Fall back to single
-        // 'associate' key for backwards compat if someone had the old filter cached.
         $filteredAssocs = [];
         if ($isPrivileged) {
-            $raw = $filters['staff_filter']['associates'] ?? $filters['staff_filter']['associate'] ?? null;
+            $raw = $this->data['associates'] ?? $this->associates ?? [];
             if (is_array($raw) && !empty($raw)) {
                 $filteredAssocs = array_values(array_filter($raw));
             } elseif (is_string($raw) && $raw !== '') {
@@ -289,26 +414,21 @@ class MySalesReport extends Page implements HasTable
             }
         }
 
-        // For stat cards: if exactly one person is selected show their name,
-        // if multiple show "X Associates", if none show current user (non-privileged) or "All Staff"
         $viewingLabel = match(true) {
             !$isPrivileged         => $currentUser,
             count($filteredAssocs) === 1 => $filteredAssocs[0],
             count($filteredAssocs) > 1   => count($filteredAssocs) . ' Associates',
-            default                => null,   // All Staff
+            default                => null,
         };
 
-        $from  = !empty($filters['date_range']['from'])
-            ? Carbon::parse($filters['date_range']['from'], $tz)->startOfDay()->utc()->toDateTimeString()
-            : Carbon::now($tz)->startOfMonth()->utc()->toDateTimeString();
+        $fromDate  = $this->data['date_from']  ?? $this->date_from  ?? now($tz)->startOfMonth()->format('Y-m-d');
+        $untilDate = $this->data['date_until'] ?? $this->date_until ?? now($tz)->format('Y-m-d');
 
-        $until = !empty($filters['date_range']['until'])
-            ? Carbon::parse($filters['date_range']['until'], $tz)->endOfDay()->utc()->toDateTimeString()
-            : Carbon::now($tz)->endOfDay()->utc()->toDateTimeString();
+        $from  = self::localStartOfDayUtc($fromDate, $tz);
+        $until = self::localEndOfDayUtc($untilDate, $tz);
 
         $expr = self::effectiveDateExpr();
 
-        // ── BUILD BASE QUERY for personal/filtered stats ──────────────────────
         $statsQuery = Sale::query()
             ->where('status', 'completed')
             ->where('balance_due', 0)
@@ -316,33 +436,26 @@ class MySalesReport extends Page implements HasTable
             ->whereRaw("$expr <= ?", [$until]);
 
         if (!$isPrivileged) {
-            // Regular staff see only their own sales
             $statsQuery->whereJsonContains('sales_person_list', $currentUser);
         } elseif (!empty($filteredAssocs)) {
-            // Privileged + specific people selected: show sales where ANY of them appear
             $statsQuery->where(function (Builder $q) use ($filteredAssocs) {
                 foreach ($filteredAssocs as $name) {
                     $q->orWhereJsonContains('sales_person_list', $name);
                 }
             });
         }
-        // else: privileged + no filter = all staff, no extra constraint
 
         $sales = $statsQuery->get([
             'subtotal', 'warranty_charge', 'shipping_charges',
             'trade_in_value', 'tax_amount', 'sales_person_list', 'payment_method',
         ]);
 
-        // ── CALCULATE NET SHARE ───────────────────────────────────────────────
-        // When multiple associates are filtered, we sum each person's individual
-        // share (so if Nabin + Rabin are selected and they both appear on a $1000
-        // sale split 2-ways, each contributed $500 → total shown = $1000).
         $netShare = $laybuyCount = 0;
         $targetNames = !$isPrivileged ? [$currentUser] : $filteredAssocs;
 
         foreach ($sales as $sale) {
             $saleVolume = floatval($sale->subtotal)
-                        + floatval($sale->warranty_charge ?? 0)
+                        
                         + floatval($sale->shipping_charges ?? 0)
                         - floatval($sale->trade_in_value ?? 0);
 
@@ -354,18 +467,15 @@ class MySalesReport extends Page implements HasTable
             $share = $saleVolume / $count;
 
             if (!empty($targetNames)) {
-                // Count how many of the filtered names appear on this sale
                 $matchCount = count(array_intersect($targetNames, $staffList));
                 $netShare += $share * $matchCount;
             } else {
-                // No filter = show per-person share (one slot)
                 $netShare += $share;
             }
 
             if ($sale->payment_method === 'laybuy') $laybuyCount++;
         }
 
-        // ── STORE TOTAL ───────────────────────────────────────────────────────
         $storeTotal = null;
         if ($isSuperadmin) {
             $storeTotal = Sale::query()
@@ -373,11 +483,10 @@ class MySalesReport extends Page implements HasTable
                 ->where('balance_due', 0)
                 ->whereRaw("$expr >= ?", [$from])
                 ->whereRaw("$expr <= ?", [$until])
-                ->selectRaw('SUM(subtotal + COALESCE(warranty_charge,0) + COALESCE(shipping_charges,0) - COALESCE(trade_in_value,0)) as total_volume')
+               ->selectRaw('SUM(subtotal + COALESCE(shipping_charges,0) - COALESCE(trade_in_value,0)) as total_volume')
                 ->value('total_volume');
         }
 
-        // ── STAFF LEADERBOARD ─────────────────────────────────────────────────
         $staffBreakdown = [];
         if ($isPrivileged) {
             $allSales = Sale::query()
@@ -389,7 +498,7 @@ class MySalesReport extends Page implements HasTable
 
             foreach ($allSales as $sale) {
                 $saleVolume = floatval($sale->subtotal)
-                            + floatval($sale->warranty_charge ?? 0)
+                           
                             + floatval($sale->shipping_charges ?? 0)
                             - floatval($sale->trade_in_value ?? 0);
 
@@ -417,9 +526,8 @@ class MySalesReport extends Page implements HasTable
             'is_privileged'    => $isPrivileged,
             'is_superadmin'    => $isSuperadmin,
             'user_name'        => $currentUser,
-            'viewing_label'    => $viewingLabel,          // ← replaces old 'viewing_user'
-            'filtered_assocs'  => $filteredAssocs,        // ← array, may be empty
-            // keep old keys for blade compat
+            'viewing_label'    => $viewingLabel,
+            'filtered_assocs'  => $filteredAssocs,
             'viewing_user'     => $viewingLabel,
             'filtered_assoc'   => count($filteredAssocs) === 1 ? $filteredAssocs[0] : null,
             'staff_breakdown'  => $staffBreakdown,
