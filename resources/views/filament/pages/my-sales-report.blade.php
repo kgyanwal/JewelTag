@@ -3,6 +3,10 @@
 
     <div class="flex flex-col gap-4">
 
+      {{-- ── FILTER BAR ─────────────────────────────────────────────────── --}}
+        <div class="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800 p-4 relative" style="overflow: visible; z-index: 50;">
+            {{ $this->form }}
+        </div>
         {{-- ── STAT CARDS ─────────────────────────────────────────────────── --}}
         <div class="flex flex-wrap items-stretch gap-3">
 
