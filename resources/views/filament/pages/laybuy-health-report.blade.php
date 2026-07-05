@@ -47,9 +47,8 @@
 .lhr-tier-section { margin-bottom: 22px; }
 .lhr-tier-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .lhr-tier-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.lhr-tier-title { font-size: 13.5px; font-weight: 800; color: var(--o-ink); }
-.lhr-tier-count { background: rgba(33,28,22,0.06); color: var(--o-ink-soft); font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
-
+.lhr-tier-title { font-size: 13.5px; font-weight: 800; color: #FAF6EE; }
+.lhr-tier-count { background: rgba(250,246,238,0.12); color: rgba(250,246,238,0.75); font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .lhr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 
 .lhr-card {
@@ -168,7 +167,7 @@
                 <span class="lhr-tier-dot" style="background: {{ $tierMeta[$tier]['dot'] }};"></span>
                 <span class="lhr-tier-title">{{ $tierMeta[$tier]['label'] }}</span>
                 <span class="lhr-tier-count">{{ $items->count() }}</span>
-                <span style="font-size:10.5px;color:var(--o-ink-soft);">— {{ $tierMeta[$tier]['desc'] }}</span>
+                <span style="font-size:10.5px;color:rgba(250,246,238,0.65);">— {{ $tierMeta[$tier]['desc'] }}</span>
             </div>
 
             @if($items->isEmpty())

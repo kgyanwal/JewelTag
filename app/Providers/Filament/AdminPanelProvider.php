@@ -657,6 +657,10 @@ HTML
                 \App\Filament\Pages\RestockLogs::class,
                 \App\Filament\Pages\WarrantyReport::class,
                 \App\Filament\Pages\FaqCenter::class,
+                \App\Filament\Pages\CustomOrderPipelineReport::class,
+                \App\Filament\Pages\LaybuyHealthReport::class,
+                \App\Filament\Pages\GrossMarginReport::class,
+                \App\Filament\Pages\WarrantyExpiryReminders::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
