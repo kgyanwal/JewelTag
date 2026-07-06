@@ -90,7 +90,11 @@ public function onWebcamPhotoRemoved(string $statePath, string $path): void
         $resolvedId = null;
 
         if (!empty($data['sales_person_list']) && is_array($data['sales_person_list'])) {
-            $resolvedId = (int) $data['sales_person_list'][0];
+            $candidate = (int) $data['sales_person_list'][0];
+            // Only accept if it's a positive integer (valid user ID)
+            if ($candidate > 0) {
+                $resolvedId = $candidate;
+            }
         }
 
         if (!$resolvedId) {
@@ -105,9 +109,15 @@ public function onWebcamPhotoRemoved(string $statePath, string $path): void
             $resolvedId = auth()->id();
         }
 
-        $data['staff_id']          = $resolvedId;
-        $data['sales_person_id']   = $resolvedId;
-        $data['sales_person_list'] = [$resolvedId];
+         if ($resolvedId) {
+            $data['staff_id']        = $resolvedId;
+            $data['sales_person_id'] = $resolvedId;
+        } else {
+            $data['staff_id']        = null;
+            $data['sales_person_id'] = null;
+        }
+
+        $data['sales_person_list'] = $resolvedId ? [$resolvedId] : [];
 
         return $data;
     }
