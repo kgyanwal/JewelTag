@@ -85,16 +85,30 @@ public function onWebcamPhotoRemoved(string $statePath, string $path): void
             $list = json_decode($list, true);
         }
 
-        if (!empty($list) && is_array($list)) {
-            $data['sales_person_list'] = $list;
-            $data['sales_person_id']   = (int) $list[0];
+     if (!empty($list) && is_array($list)) {
+            $candidate = (int) $list[0];
+            if ($candidate > 0) {
+                $data['sales_person_list'] = $list;
+                $data['staff_id']          = $candidate;
+                $data['sales_person_id']   = $candidate;
+            } else {
+                $data['staff_id']          = null;
+                $data['sales_person_id']   = null;
+                $data['sales_person_list'] = [];
+            }
             return $data;
         }
 
-        if (!empty($data['staff_id'])) {
+        if (!empty($data['staff_id']) && (int) $data['staff_id'] > 0) {
             $data['sales_person_list'] = [$data['staff_id']];
             $data['sales_person_id']   = (int) $data['staff_id'];
+        } else {
+            $data['staff_id']          = null;
+            $data['sales_person_id']   = null;
+            $data['sales_person_list'] = [];
         }
+
+        return $data;
 
         return $data;
     }
@@ -127,13 +141,13 @@ public function onWebcamPhotoRemoved(string $statePath, string $path): void
         }
 
         if (!empty($list) && is_array($list)) {
+            $candidate = (int) $list[0];
             $data['sales_person_list'] = $list;
-            $data['staff_id']          = (int) $list[0];
-            $data['sales_person_id']   = (int) $list[0];
+            $data['sales_person_id']   = $candidate > 0 ? $candidate : null;
             return $data;
         }
 
-        if (!empty($data['staff_id'])) {
+        if (!empty($data['staff_id']) && (int) $data['staff_id'] > 0) {
             $data['sales_person_list'] = [$data['staff_id']];
             $data['sales_person_id']   = (int) $data['staff_id'];
         }
