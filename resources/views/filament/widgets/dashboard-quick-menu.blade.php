@@ -154,7 +154,7 @@ $tzAbbreviation = $now->format('T');
                     <!-- Laybuys -->
                     <a href="/admin/laybuys" class="operation-card priority-card" style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; border-color: #10b981;">
                         <div class="card-gem" style="background: #10b981;"></div>
-                        <img src="https://images.unsplash.com/photo-1747933509433-c58152c10ee7?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                        <img src="https://plus.unsplash.com/premium_photo-1732179722786-2018d0efe605?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aXRlbXMlMjBob2xkfGVufDB8fDB8fHww?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                         <div class="card-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -170,7 +170,7 @@ $tzAbbreviation = $now->format('T');
                     <!-- Custom Orders -->
                     <a href="/admin/custom-orders" class="operation-card priority-card" style="background: linear-gradient(135deg, #f3e8ff, #e9d5ff); color: #6d28d9; border-color: #8b5cf6;">
                         <div class="card-gem" style="background: #8b5cf6;"></div>
-                        <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                        <img src="https://plus.unsplash.com/premium_photo-1664301272309-f81590c07d23?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8Y3VzdG9tJTIwamV3bGVyeXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                         <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -186,7 +186,7 @@ $tzAbbreviation = $now->format('T');
                     <!-- Upcoming Follow-ups -->
                     <a href="/admin/upcoming-follow-ups" class="operation-card priority-card" style="background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; border-color: #f59e0b;">
                         <div class="card-gem" style="background: #f59e0b;"></div>
-                        <img src="https://images.unsplash.com/photo-1640083239745-9bbd77a2097f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                        <img src="https://images.unsplash.com/photo-1543269664-56d93c1b41a6?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                         <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -218,7 +218,7 @@ $tzAbbreviation = $now->format('T');
                     <!-- Trade-in Check -->
                     <a href="/admin/trade-in-check" class="operation-card priority-card" style="background: linear-gradient(135deg, #e0f2fe, #bae6fd); color: #075985; border-color: #0ea5e9;">
                         <div class="card-gem" style="background: #0ea5e9;"></div>
-                        <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 70% 30%;">
+                        <img src="https://images.unsplash.com/photo-1660860547079-fd4845880af9?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjB8fHRyYWRlJTIwamV3ZWxyeXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 70% 30%;">
                         <div class="card-icon" style="background: linear-gradient(135deg, #0ea5e9, #0369a1);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -256,7 +256,7 @@ $tzAbbreviation = $now->format('T');
                         <div class="five-card-grid">
                             <a href="/admin/sales/create" class="operation-card sapphire-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                                <img src="https://images.unsplash.com/photo-1607083206968-13611e3d76db?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8c2FsZXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
@@ -271,7 +271,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/sales/create?quick=true" class="operation-card emerald-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1640083239745-9bbd77a2097f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                                <img src="https://images.unsplash.com/photo-1633934542430-0905ccb5f050?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8amV3ZWxyeXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -301,7 +301,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/sold-items-report" class="operation-card ruby-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 30% 60%;">
+                                <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 30% 60%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -316,7 +316,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/end-of-day-closing" class="operation-card onyx-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1640083239745-9bbd77a2097f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 40% 70%;">
+                                <img src="https://plus.unsplash.com/premium_photo-1679923813998-6603ee2466c5?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8YWNjb3VudHxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 40% 70%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -447,7 +447,7 @@ $tzAbbreviation = $now->format('T');
                         <div class="five-card-grid">
                             <a href="/admin/custom-orders" class="operation-card aquamarine-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                                <img src="https://plus.unsplash.com/premium_photo-1664301272309-f81590c07d23?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8Y3VzdG9tJTIwamV3bGVyeXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -507,7 +507,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/upcoming-follow-ups" class="operation-card gold-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1747933509433-c58152c10ee7?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 35% 65%;">
+                                <img src="https://images.unsplash.com/photo-1543269664-56d93c1b41a6?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 35% 65%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -541,7 +541,7 @@ $tzAbbreviation = $now->format('T');
                         <div class="five-card-grid">
                             <a href="/admin/analytics" class="operation-card peridot-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1588575790097-721a1ed45d79?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 25% 75%;">
+                                <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 25% 75%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -554,24 +554,24 @@ $tzAbbreviation = $now->format('T');
                                 <div class="card-tag">Insights</div>
                             </a>
 
-                            <a href="/admin/customers" class="operation-card pink-sapphire-card">
+                            <a href="/admin/customers/create" class="operation-card pink-sapphire-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1640083239745-9bbd77a2097f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 65% 35%;">
+                                <img src="https://images.unsplash.com/photo-1543269865-0a740d43b90c?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 65% 35%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                                     </svg>
                                 </div>
                                 <div class="card-content">
-                                    <h3>Customers</h3>
+                                    <h3>New </h3>
                                     <p>Database</p>
                                 </div>
-                                <div class="card-tag">Clients</div>
+                                <div class="card-tag">Customers</div>
                             </a>
 
                             <a href="/admin/customer-details-report" class="operation-card topaz-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1747933509433-c58152c10ee7?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 40% 40%;">
+                                <img src="https://images.unsplash.com/photo-1543269664-56d93c1b41a6?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 40% 40%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -601,7 +601,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/activity-logs" class="operation-card onyx-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1640083239745-9bbd77a2097f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 30% 30%;">
+                                <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo" style="object-position: 30% 30%;">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0zM4 4v4h4" />

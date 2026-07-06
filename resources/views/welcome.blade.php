@@ -230,7 +230,7 @@
           <a href="#solutions" class="nav-link">Solutions</a>
           <a href="#pricing" class="nav-link">Pricing</a>
           <a href="#testimonials" class="nav-link">Success Stories</a>
-          <a href="/admin/login" class="px-5 py-2.5 border border-white/30 text-white/80 font-bold rounded-xl hover:border-yellow-400/60 hover:text-yellow-300 transition-all text-sm uppercase tracking-wider">
+          <a href="/master" class="px-5 py-2.5 border border-white/30 text-white/80 font-bold rounded-xl hover:border-yellow-400/60 hover:text-yellow-300 transition-all text-sm uppercase tracking-wider">
             <i class="fas fa-lock mr-2 text-xs"></i>Staff Login
           </a>
           <a href="#demo" class="px-6 py-3 btn-luxury text-sm uppercase tracking-wider">
@@ -248,7 +248,7 @@
           <a href="#solutions" class="text-white/70 font-semibold py-2 border-b border-white/10">Solutions</a>
           <a href="#pricing" class="text-white/70 font-semibold py-2 border-b border-white/10">Pricing</a>
           <a href="#testimonials" class="text-white/70 font-semibold py-2 border-b border-white/10">Success Stories</a>
-          <a href="/admin/login" class="w-full px-6 py-3 border border-white/30 text-white font-bold rounded-xl text-center mt-2">Staff Login</a>
+          <a href="/master" class="w-full px-6 py-3 border border-white/30 text-white font-bold rounded-xl text-center mt-2">Staff Login</a>
           <a href="#demo" class="w-full py-3 btn-luxury text-center text-sm">Free Demo</a>
         </div>
       </div>
@@ -664,7 +664,7 @@
     <div class="container mx-auto px-6 lg:px-8">
       <div class="max-w-4xl mx-auto text-center text-white mb-10"><h2 class="text-3xl lg:text-4xl font-bold mb-3 playfair"><span class="diamond-text">Connect With Our</span> <span class="gold-gradient-text">Expert Team</span></h2></div>
       <div class="grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto mb-10">
-        <div class="text-center text-white"><div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3"><i class="fas fa-phone"></i></div><p class="text-sm font-bold">1-800-JEWEL-TAG</p><p class="text-white/60 text-xs">Mon–Fri, 8AM–8PM CT</p></div>
+        <div class="text-center text-white"><div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3"><i class="fas fa-phone"></i></div><p class="text-sm font-bold">+1 505-810-7222 </p><p class="text-sm font-bold">+1 203-850-0134</p><p class="text-white/60 text-xs">Mon–Fri, 10AM–6PM CST</p></div>
         <div class="text-center text-white"><div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3"><i class="fas fa-envelope"></i></div><p class="text-sm font-bold">info@jeweltag.us</p><p class="text-white/60 text-xs">Reply within 1 business day</p></div>
         <div class="text-center text-white"><div class="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-3"><i class="fas fa-comments"></i></div><p class="text-sm font-bold">Live Chat</p><p class="text-white/60 text-xs">Click the chat icon below</p></div>
       </div>
@@ -701,8 +701,8 @@
                 <div>
                     <h4 class="text-white font-bold text-sm mb-4">Company</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#" class="text-white/70 hover:text-amber-400 transition-colors">About Us</a></li>
-                        <li><a href="#contact" class="text-white/70 hover:text-amber-400 transition-colors">Contact</a></li>
+                        <li><a href="{{ route('about') }}" class="text-white/70 hover:text-amber-400 transition-colors">About Us</a></li>
+                        <li><a href="{{ route('contact') }}" class="text-white/70 hover:text-amber-400 transition-colors">Contact</a></li>
                         <li><a href="#" class="text-white/70 hover:text-amber-400 transition-colors">Blog</a></li>
                     </ul>
                 </div>

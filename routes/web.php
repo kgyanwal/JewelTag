@@ -67,3 +67,5 @@ Route::post('/contact', function (\Illuminate\Http\Request $request) {
 Route::get('/privacy-policy', [PageController::class, 'privacy'])->name('privacy');
 Route::get('/documentation', [PageController::class, 'documentation'])->name('docs');
 Route::get('/api-reference', [PageController::class, 'apiReference'])->name('api');
+Route::get('/about', [PageController::class, 'about'])->name('about');
+Route::get('/contact', [PageController::class, 'contact'])->name('contact');

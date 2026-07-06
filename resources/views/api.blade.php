@@ -395,7 +395,7 @@
                 <h3 class="font-bold text-[var(--onyx)] text-lg mb-1">Developer Support</h3>
                 <p class="text-[var(--ink-soft)] text-sm mb-3">Have questions about integrating with JewelTag? Our developer support team is here to help.</p>
                 <div class="flex flex-wrap gap-3">
-                    <a href="mailto:dev@jeweltag.us" class="text-[var(--brass-dim)] font-semibold text-sm hover:underline"><i class="fas fa-envelope mr-1"></i> dev@jeweltag.us</a>
+                    <a href="mailto:info@jeweltag.us" class="text-[var(--brass-dim)] font-semibold text-sm hover:underline"><i class="fas fa-envelope mr-1"></i> info@jeweltag.us</a>
                     <a href="/docs" class="text-[var(--brass-dim)] font-semibold text-sm hover:underline"><i class="fas fa-book mr-1"></i> Full Documentation</a>
                     <a href="https://status.jeweltag.us" class="text-[var(--brass-dim)] font-semibold text-sm hover:underline"><i class="fas fa-chart-line mr-1"></i> API Status</a>
                 </div>

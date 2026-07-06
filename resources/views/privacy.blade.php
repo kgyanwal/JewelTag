@@ -248,7 +248,7 @@
             <li class="flex items-start"><i class="fas fa-check-circle text-[var(--loupe-dim,#3E7C5A)] mt-0.5 mr-2 text-sm"></i> <span class="text-[var(--ink-soft)]"><strong>Portability:</strong> Receive your data in a structured format</span></li>
         </ul>
         <div class="bg-[rgba(184,134,59,0.06)] rounded-xl p-4 border border-[rgba(184,134,59,0.18)]">
-            <p class="text-sm"><i class="fas fa-envelope text-[var(--brass-dim)] mr-2"></i> To exercise your rights, contact us at <a href="mailto:privacy@jeweltag.us" class="text-[var(--brass-dim)] font-semibold hover:underline">privacy@jeweltag.us</a> or call <strong class="text-[var(--onyx)]">1-800-JEWEL-TAG</strong>.</p>
+            <p class="text-sm"><i class="fas fa-envelope text-[var(--brass-dim)] mr-2"></i> To exercise your rights, contact us at <a href="mailto:privacy@jeweltag.us" class="text-[var(--brass-dim)] font-semibold hover:underline">privacy@jeweltag.us</a> or call <strong class="text-[var(--onyx)]">+1 +1 505-810-7222</strong>.</p>
         </div>
     </div>
 
@@ -300,7 +300,7 @@
                     <p><i class="fas fa-building w-6 text-[var(--brass)]"></i> <strong class="text-[var(--onyx)]">JewelTag Systems Inc.</strong></p>
                     <p><i class="fas fa-map-marker-alt w-6 text-[var(--brass)]"></i>6600 Menaul Blvd NE Suite 6508<br>Albuquerque NM 87110</p>
                     <p><i class="fas fa-envelope w-6 text-[var(--brass)]"></i> <a href="mailto:privacy@jeweltag.us" class="text-[var(--brass-dim)] hover:underline">privacy@jeweltag.us</a></p>
-                    <p><i class="fas fa-phone w-6 text-[var(--brass)]"></i> <a href="tel:18005393582" class="text-[var(--brass-dim)] hover:underline">1-800-JEWEL-TAG</a></p>
+                    <p><i class="fas fa-phone w-6 text-[var(--brass)]"></i> <a href="tel:18005393582" class="text-[var(--brass-dim)] hover:underline">+1 +1 505-810-7222</a></p>
                 </div>
             </div>
             <div class="bg-[rgba(184,134,59,0.06)] rounded-xl p-6 border border-[rgba(184,134,59,0.22)]">

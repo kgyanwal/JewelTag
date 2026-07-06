@@ -102,7 +102,7 @@
                     </div>
                     <div style="font-size:10px;background:#f8fafc;padding:10px;border-radius:6px;border-left:3px solid {{ $receiptAccent }};color:#546e7a;line-height:1.5;">
                         <div style="margin-bottom:3px;"><i class="fas fa-map-marker-alt"></i> {{ optional($store)->street }}, {{ optional($store)->state }} {{ optional($store)->postcode }}</div>
-                        <div style="margin-bottom:3px;"><i class="fas fa-phone"></i> {{ optional($store)->phone ?? '505-810-7222' }} &nbsp;|&nbsp; <i class="fas fa-envelope"></i> {{ optional($store)->email ?? 'info@example.com' }}</div>
+                        <div style="margin-bottom:3px;"><i class="fas fa-phone"></i> {{ optional($store)->phone ?? '+1 505-810-7222' }} &nbsp;|&nbsp; <i class="fas fa-envelope"></i> {{ optional($store)->email ?? 'info@example.com' }}</div>
                     </div>
                 </td>
                 <td width="40%" valign="top" align="right">

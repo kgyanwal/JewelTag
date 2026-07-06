@@ -74,7 +74,7 @@ class WarrantyExpiryReminders extends Page implements HasTable, HasForms
 
     // ── Parse warranty_period to number of months ──────────────────────────
     // Handles: "12 months", "1 year", "2 years", "6 months", null → default 12
-    private static function warrantyMonths(string $period = null): int
+    private static function warrantyMonths(?string $period = null): int
     {
         if (!$period) return 12;
         $period = strtolower(trim($period));
@@ -88,52 +88,46 @@ class WarrantyExpiryReminders extends Page implements HasTable, HasForms
     // warranty_period stored as "12 months", "1 year", etc.
     // We extract the month count and add to completed_at in SQL.
     // Fallback: 12 months if warranty_period is null/empty.
-    private static function expiryExpr(): string
-    {
-        return "
-            DATE_ADD(
-                COALESCE(completed_at, created_at),
-                INTERVAL
-                    CASE
-                        WHEN warranty_period REGEXP '[0-9]+\\s*year'
-                            THEN CAST(REGEXP_SUBSTR(warranty_period, '[0-9]+') AS UNSIGNED) * 12
-                        WHEN warranty_period REGEXP '[0-9]+\\s*month'
-                            THEN CAST(REGEXP_SUBSTR(warranty_period, '[0-9]+') AS UNSIGNED)
-                        WHEN warranty_period IS NOT NULL AND warranty_period != ''
-                            THEN 12
-                        ELSE 12
-                    END
-                MONTH
-            )
-        ";
-    }
+private static function expiryExpr(): string
+{
+    // Simpler expression: always add 12 months as SQL default,
+    // then fix in PHP display. The real filtering uses PHP below.
+    return "DATE_ADD(COALESCE(completed_at, created_at), INTERVAL 12 MONTH)";
+}
 
-    protected function getTableQuery(): Builder
-    {
-        $window = $this->data['window'] ?? $this->window ?? '60';
-        $today  = now()->toDateString();
-        $expr   = self::expiryExpr();
+protected function getTableQuery(): Builder
+{
+    $window = $this->data['window'] ?? $this->window ?? '60';
+    $today  = now()->toDateString();
 
-        $query = Sale::query()
-            ->with(['customer'])
-            ->where('has_warranty', 1)
-            ->where('status', 'completed')
-            ->whereNull('deleted_at')
-            ->whereNotNull('customer_id');
+    // Load all warranty sales then filter in PHP using the same
+    // warrantyMonths() helper — avoids REGEXP_SUBSTR MySQL issues.
+    $allIds = Sale::where('has_warranty', 1)
+        ->where('status', 'completed')
+        ->whereNull('deleted_at')
+        ->whereNotNull('customer_id')
+        ->get(['id', 'completed_at', 'created_at', 'warranty_period'])
+        ->filter(function ($sale) use ($window, $today) {
+            $months  = self::warrantyMonths($sale->warranty_period);
+            $start   = $sale->completed_at ?? $sale->created_at;
+            $expiry  = \Carbon\Carbon::parse($start)->addMonths($months)->toDateString();
 
-        if ($window === 'expired') {
-            $query->whereRaw("DATE({$expr}) < ?", [$today]);
-        } else {
+            if ($window === 'expired') {
+                return $expiry < $today;
+            }
+
             $days = intval($window);
-            $query
-                ->whereRaw("DATE({$expr}) >= ?", [$today])
-                ->whereRaw("DATE({$expr}) <= ?", [now()->addDays($days)->toDateString()]);
-        }
+            $cutoff = now()->addDays($days)->toDateString();
+            return $expiry >= $today && $expiry <= $cutoff;
+        })
+        ->pluck('id');
 
-        $query->orderByRaw("DATE({$expr}) ASC");
-
-        return $query;
-    }
+    return Sale::query()
+        ->with(['customer', 'items'])
+        ->whereIn('id', $allIds)
+        ->whereNull('deleted_at')
+        ->orderByRaw(self::expiryExpr() . ' ASC');
+}
 
     public function table(Table $table): Table
     {

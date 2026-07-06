@@ -263,7 +263,7 @@ if ($hasRepair) {
                     </div>
                     <div style="font-size:9px;background:#f8fafc;padding:7px;border-radius:5px;border-left:3px solid {{ $receiptAccent }};color:#546e7a;line-height:1.5;">
                         <div style="margin-bottom:2px;"><i class="fas fa-map-marker-alt"></i> {{ optional($sale->store)->street }}, {{ optional($sale->store)->state }} {{ optional($sale->store)->postcode }}</div>
-                        <div style="margin-bottom:2px;"><i class="fas fa-phone"></i> {{ optional($sale->store)->phone ?? '505-810-7222' }} &nbsp;|&nbsp; <i class="fas fa-envelope"></i> {{ optional($sale->store)->email ?? 'info@example.com' }}</div>
+                        <div style="margin-bottom:2px;"><i class="fas fa-phone"></i> {{ optional($sale->store)->phone ?? '+1 505-810-7222' }} &nbsp;|&nbsp; <i class="fas fa-envelope"></i> {{ optional($sale->store)->email ?? 'info@example.com' }}</div>
                         <div><i class="fas fa-globe"></i> {{ str_replace(['http://','https://'], '', optional($sale->store)->domain_url ?? 'jeweltag.us') }}</div>
                     </div>
                 </td>

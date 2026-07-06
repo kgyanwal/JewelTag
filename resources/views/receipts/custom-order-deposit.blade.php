@@ -13,7 +13,7 @@
         // ── STORE INFO ─────────────────────────────────────────────────
         $store     = DB::table('stores')->first();
         $storeName = $store?->name ?? 'Diamond Square';
-        $storePhone= $store?->phone ?? ($settings['store_phone'] ?? '505-810-7222');
+        $storePhone= $store?->phone ?? ($settings['store_phone'] ?? '+1 505-810-7222');
         $storeEmail= $store?->email ?? ($settings['store_email'] ?? 'info@example.com');
         $storeAddr = trim(($store?->street ?? '') . ', ' . ($store?->state ?? '') . ' ' . ($store?->postcode ?? ''));
 

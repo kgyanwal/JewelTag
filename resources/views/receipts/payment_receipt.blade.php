@@ -116,7 +116,7 @@
                 </div>
                 <div style="font-size:10px;opacity:.7;margin-top:3px;">
                     {{ optional($sale->store)->street }}, {{ optional($sale->store)->state }}
-                    &nbsp;|&nbsp; {{ optional($sale->store)->phone ?? '505-810-7222' }}
+                    &nbsp;|&nbsp; {{ optional($sale->store)->phone ?? '+1 505-810-7222' }}
                 </div>
             </div>
             <div style="text-align:right;">
