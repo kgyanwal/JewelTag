@@ -265,13 +265,13 @@
         <div class="lg:w-1/2 mb-10 lg:mb-0 w-full" data-aos="fade-right">
           <div class="inline-flex items-center px-5 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-6 border border-white/20">
             <span class="w-2 h-2 rounded-full bg-amber-400 mr-2 animate-pulse"></span>
-            <span class="text-white/90 text-sm font-semibold tracking-wider">TRUSTED BY 750+ LUXURY JEWELERS WORLDWIDE</span>
+            <span class="text-white/90 text-sm font-semibold tracking-wider">A Leading Jewelry POS & CRM Application</span>
           </div>
           <h1 class="text-5xl lg:text-7xl font-black text-white mb-6 playfair leading-tight">
-            The <span class="gold-gradient-text">Ultimate Platform</span> for Jewelry Excellence
+            The <span class="gold-gradient-text">Ultimate Platform</span> for Jewelry Retails
           </h1>
           <p class="text-xl lg:text-2xl text-white/80 mb-8 leading-relaxed">
-            Transform your jewelry business with the world's most advanced inventory management, POS, CRM, and business intelligence platform designed exclusively for luxury retailers.
+            Transform your jewelry business with the world's most advanced inventory management, POS, CRM, and business intelligence platform designed exclusively for Jewelry retailers.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <a href="#demo" class="btn-luxury text-center"><i class="fas fa-play-circle mr-3"></i> Start 30-Day Trial</a>
@@ -374,20 +374,20 @@
         </div>
         <div class="luxury-card p-7" data-aos="fade-up" data-aos-delay="80">
           <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-2xl mb-5"><i class="fas fa-cash-register"></i></div>
-          <h3 class="text-xl font-bold mb-3">Luxury POS Suite</h3>
+          <h3 class="text-xl font-bold mb-3">Amazing Jewelry POS Suite</h3>
           <p class="text-gray-600 text-sm mb-4">Complete point-of-sale with integrated payments, layaway, and commission tracking.</p>
-          <ul class="space-y-2 text-sm"><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Custom Invoice Templates</li><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Multi-store Support</li></ul>
+          <ul class="space-y-2 text-sm"><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Custom Invoice Templates</li><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Multiple stores Support</li></ul>
         </div>
         <div class="luxury-card p-7" data-aos="fade-up" data-aos-delay="160">
           <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-2xl mb-5"><i class="fas fa-chart-line"></i></div>
-          <h3 class="text-xl font-bold mb-3">Business Intelligence</h3>
+          <h3 class="text-xl font-bold mb-3">Business Intelligence & Reporting</h3>
           <p class="text-gray-600 text-sm mb-4">Real-time dashboards, sales forecasting, and profit margin analysis.</p>
           <ul class="space-y-2 text-sm"><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Predictive Analytics</li><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>ROI Optimization</li></ul>
         </div>
         <div class="luxury-card p-7" data-aos="fade-up" data-aos-delay="0">
           <div class="w-14 h-14 gold-gradient rounded-xl flex items-center justify-center text-white text-2xl mb-5"><i class="fas fa-users"></i></div>
-          <h3 class="text-xl font-bold mb-3">VIP CRM</h3>
-          <p class="text-gray-600 text-sm mb-4">Client profiles, purchase history, and automated marketing for VIP customers.</p>
+          <h3 class="text-xl font-bold mb-3">AI Enabled CRM</h3>
+          <p class="text-gray-600 text-sm mb-4">Client profiles, purchase history, and automated marketing, image generation, text generation.</p>
           <ul class="space-y-2 text-sm"><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Anniversary Automation</li><li class="flex items-center"><i class="fas fa-check-circle text-emerald-600 mr-2 text-xs"></i>Wishlist Management</li></ul>
         </div>
         <div class="luxury-card p-7" data-aos="fade-up" data-aos-delay="80">
@@ -410,50 +410,50 @@
   <section id="gallery" class="py-20 bg-white">
     <div class="container mx-auto px-6 lg:px-8">
       <div class="text-center mb-12" data-aos="fade-up">
-        <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair"><span style="color:var(--deep-sapphire)">Managed</span> <span class="gold-gradient-text">Masterpieces</span></h2>
-        <p class="text-lg text-gray-600 max-w-3xl mx-auto">A glimpse of the exquisite pieces tracked, verified, and sold through the JewelTag ecosystem.</p>
+        <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair"><span style="color:var(--deep-sapphire)">All In</span> <span class="gold-gradient-text">One</span></h2>
+        <p class="text-lg text-gray-600 max-w-3xl mx-auto">A Complete Tech Solution for Jewelry Retailers.</p>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 lg:gap-6">
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="0">
           <img src="/jeweltag1.png?q=80&w=800&auto=format&fit=crop" alt="Diamond Ring" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Bridal Collection</span>
-            <span class="text-white font-semibold tracking-wider text-lg">GIA Certified Diamonds</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Technical Variation</span>
+            <span class="text-white font-semibold tracking-wider text-lg">POS, CRM, SMM, Repair, RFID</span>
           </div>
         </div>
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="100">
           <img src="/jeweltag2.png?q=80&w=800&auto=format&fit=crop" alt="Luxury Necklace" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">High Jewelry</span>
-            <span class="text-white font-semibold tracking-wider text-lg">Bespoke Pendants</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">We will take care of your product</span>
+            <span class="text-white font-semibold tracking-wider text-lg">You can focus on Sell With Feeling</span>
           </div>
         </div>
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="200">
           <img src="/jeweltag3.png?q=80&w=800&auto=format&fit=crop" alt="Luxury Watch" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Timepieces</span>
-            <span class="text-white font-semibold tracking-wider text-lg">Swiss Automatic Setup</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Application that shines</span>
+            <span class="text-white font-semibold tracking-wider text-lg">Like The Diamond's Sparkle</span>
           </div>
         </div>
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="0">
          <img src="/jeweltag4.png?q=80&w=800&auto=format&fit=crop" alt="Diamond Earrings" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Fine Gold</span>
-            <span class="text-white font-semibold tracking-wider text-lg">Premium Earring Sets</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Product Categorization</span>
+            <span class="text-white font-semibold tracking-wider text-lg">Department, type, weight, color</span>
           </div>
         </div>
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="100">
           <img src="/jeweltag5.png?q=80&w=800&auto=format&fit=crop" alt="Precious Stones" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Loose Stones</span>
-            <span class="text-white font-semibold tracking-wider text-lg">Sapphire & Ruby Inventory</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">JewelTag gives you a Smile</span>
+            <span class="text-white font-semibold tracking-wider text-lg">We are your technical problem solver</span>
           </div>
         </div>
         <div class="group relative overflow-hidden rounded-2xl aspect-square shadow-lg" data-aos="zoom-in" data-aos-delay="200">
           <img src="/jeweltag6.png?q=80&w=800&auto=format&fit=crop" alt="Vintage Rings" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
           <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
-            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Estate Jewelry</span>
-            <span class="text-white font-semibold tracking-wider text-lg">Vintage Curation Tracking</span>
+            <span class="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">Third Party App Integration</span>
+            <span class="text-white font-semibold tracking-wider text-lg">Peace of Mind</span>
           </div>
         </div>
       </div>
@@ -500,19 +500,19 @@
       <div class="text-center mb-12"><h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair"><span class="gold-gradient-text">Success Stories</span></h2><p class="text-lg text-gray-600">Trusted by leading jewelers worldwide</p></div>
       <div class="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
         <div class="bg-white p-7 rounded-2xl shadow-sm border border-amber-100" data-aos="fade-up" data-aos-delay="0">
-          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">SC</div><div><h4 class="font-bold">Sarah Chen</h4><p class="text-xs text-gray-500">CEO, Brilliance Diamonds</p></div></div>
-          <p class="text-gray-600 text-sm italic">"Inventory reconciliation reduced from 3 weeks to 2 days. Stock accuracy increased to 99.8%."</p>
-          <div class="mt-3 text-amber-600 font-bold text-sm">+42% Revenue</div>
+          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">SC</div><div><h4 class="font-bold">Sarah Bull</h4><p class="text-xs text-gray-500">Manager, Jewelry Store in Texas</p></div></div>
+          <p class="text-gray-600 text-sm italic">"Inventory reconciliation reduced from 3 weeks to 2 days. Easy to learn and detailed oriented application"</p>
+          <div class="mt-3 text-amber-600 font-bold text-sm">Time Saving</div>
         </div>
         <div class="bg-white p-7 rounded-2xl shadow-sm border border-amber-100" data-aos="fade-up" data-aos-delay="80">
-          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">MR</div><div><h4 class="font-bold">Michael Rodriguez</h4><p class="text-xs text-gray-500">Gold Standard Jewelers</p></div></div>
+          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">MR</div><div><h4 class="font-bold">Michael Rodriguez</h4><p class="text-xs text-gray-500">Manager, Jewelry Store in New Mexico</p></div></div>
           <p class="text-gray-600 text-sm italic">"Repair admin time reduced by 70%. Customer satisfaction increased from 82% to 98%."</p>
-          <div class="mt-3 text-amber-600 font-bold text-sm">+156% Repair Revenue</div>
+          <div class="mt-3 text-amber-600 font-bold text-sm">Easy Repair Tracking</div>
         </div>
         <div class="bg-white p-7 rounded-2xl shadow-sm border border-amber-100" data-aos="fade-up" data-aos-delay="160">
-          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">JW</div><div><h4 class="font-bold">James Wilson</h4><p class="text-xs text-gray-500">Heritage Jewelers</p></div></div>
-          <p class="text-gray-600 text-sm italic">"Sales increased 34% in 6 months. Profit margins improved by 8 percentage points."</p>
-          <div class="mt-3 text-amber-600 font-bold text-sm">+34% Sales Growth</div>
+          <div class="flex items-center mb-4"><div class="w-12 h-12 gold-gradient rounded-full flex items-center justify-center text-white mr-3 font-bold">JW</div><div><h4 class="font-bold">James Wilson</h4><p class="text-xs text-gray-500">Staff, Diamond Square</p></div></div>
+          <p class="text-gray-600 text-sm italic">"Easy UI. Great CRM and more customer support feature available. Social Media Post and Marketing is in-built with CRM"</p>
+          <div class="mt-3 text-amber-600 font-bold text-sm">The Best UI</div>
         </div>
       </div>
     </div>
@@ -701,7 +701,7 @@
                 <div>
                     <h4 class="text-white font-bold text-sm mb-4">Company</h4>
                     <ul class="space-y-2 text-xs">
-                        <li><a href="#" class="text-white/70 hover:text-amber-400 transition-colors">About</a></li>
+                        <li><a href="#" class="text-white/70 hover:text-amber-400 transition-colors">About Us</a></li>
                         <li><a href="#contact" class="text-white/70 hover:text-amber-400 transition-colors">Contact</a></li>
                         <li><a href="#" class="text-white/70 hover:text-amber-400 transition-colors">Blog</a></li>
                     </ul>
