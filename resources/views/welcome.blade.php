@@ -267,8 +267,8 @@
             <span class="w-2 h-2 rounded-full bg-amber-400 mr-2 animate-pulse"></span>
             <span class="text-white/90 text-sm font-semibold tracking-wider">A Leading Jewelry POS & CRM Application</span>
           </div>
-          <h1 class="text-5xl lg:text-7xl font-black text-white mb-6 playfair leading-tight">
-            The <span class="gold-gradient-text">Ultimate Platform</span> for Jewelry Retails
+          <h1 class="text-3xl lg:text-5xl font-black text-white mb-6 playfair leading-tight">
+            The <span class="gold-gradient-text">Ultimate Tech Platform</span> for Jewelry Retailers
           </h1>
           <p class="text-xl lg:text-2xl text-white/80 mb-8 leading-relaxed">
             Transform your jewelry business with the world's most advanced inventory management, POS, CRM, and business intelligence platform designed exclusively for Jewelry retailers.
