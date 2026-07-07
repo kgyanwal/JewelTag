@@ -4,65 +4,65 @@
     <meta charset="utf-8">
     <title>Repair Job Packet - {{ $repair->repair_no }}</title>
     <style>
-        @page { margin: 0.3in; size: Letter; }
+        @page { margin: 0.25in; size: Letter; }
         body {
             font-family: 'DejaVu Sans', Arial, sans-serif;
-            font-size: 11px; color: #000; line-height: 1.3;
+            font-size: 10px; color: #000; line-height: 1.2;
             margin: 0; padding: 0; background: white;
         }
         .page { page-break-after: always; clear: both; }
         .page:last-child { page-break-after: avoid; }
         .header {
-            text-align: center; margin-bottom: 8px; padding: 8px 6px;
+            text-align: center; margin-bottom: 5px; padding: 5px 6px;
             background: #ffffff; color: #1a6b65;
             border: 2px solid #249E94; border-radius: 6px;
         }
-        .brand-name { font-size: 22px; font-weight: 900; margin: 0 0 2px 0; letter-spacing: 1px; text-transform: uppercase; color: #1a6b65; }
-        .legal-name { font-size: 12px; font-weight: bold; margin: 0 0 3px 0; color: #249E94; }
-        .store-details { font-size: 9px; line-height: 1.2; color: #444; }
+        .brand-name { font-size: 18px; font-weight: 900; margin: 0 0 2px 0; letter-spacing: 1px; text-transform: uppercase; color: #1a6b65; }
+        .legal-name { font-size: 11px; font-weight: bold; margin: 0 0 2px 0; color: #249E94; }
+        .store-details { font-size: 8.5px; line-height: 1.15; color: #444; }
         .document-title {
-            text-align: center; font-size: 16px; font-weight: bold;
-            margin: 8px 0; padding: 6px 10px;
+            text-align: center; font-size: 14px; font-weight: bold;
+            margin: 5px 0; padding: 4px 10px;
             background: #ffffff; color: #1a6b65;
             border: 2px solid #249E94; border-radius: 4px; letter-spacing: 0.5px;
         }
-        .badge-row { text-align: center; margin-bottom: 6px; }
+        .badge-row { text-align: center; margin-bottom: 4px; }
         .badge {
-            display: inline-block; padding: 3px 12px; border-radius: 20px;
-            font-size: 9px; font-weight: 900; letter-spacing: 0.08em;
-            text-transform: uppercase; margin: 0 4px;
+            display: inline-block; padding: 2px 10px; border-radius: 20px;
+            font-size: 8.5px; font-weight: 900; letter-spacing: 0.08em;
+            text-transform: uppercase; margin: 0 3px;
         }
         .badge-warranty { background: #fef2f2; color: #dc2626; border: 1px solid #dc2626; }
         .badge-store    { background: #eff6ff; color: #0284c7; border: 1px solid #0284c7; }
         .meta-table {
-            width: 100%; margin-bottom: 6px; background: white; padding: 8px;
-            border: 1px solid #e0e0e0; border-radius: 4px; font-size: 10px;
+            width: 100%; margin-bottom: 4px; background: white; padding: 6px;
+            border: 1px solid #e0e0e0; border-radius: 4px; font-size: 9.5px;
             border-spacing: 0; border-collapse: collapse;
         }
-        .meta-table td { padding: 3px 6px; vertical-align: top; }
+        .meta-table td { padding: 2px 6px; vertical-align: top; }
         .right-align { text-align: right; color: #249E94; font-weight: bold; }
         .customer-box {
             background: #f9fefe; border: 1.5px solid #249E94;
-            padding: 7px 12px; margin: 6px 0; border-radius: 4px; font-size: 10px;
+            padding: 5px 10px; margin: 4px 0; border-radius: 4px; font-size: 9.5px;
         }
-        .customer-box .cust-name { font-size: 13px; font-weight: 900; text-transform: uppercase; color: #1a6b65; margin-bottom: 3px; }
-        .customer-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10px; }
+        .customer-box .cust-name { font-size: 12px; font-weight: 900; text-transform: uppercase; color: #1a6b65; margin-bottom: 2px; }
+        .customer-table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 9.5px; }
         .customer-table th {
-            border: none; padding: 8px 6px; background: #e8f5f4; color: #1a6b65;
-            font-weight: bold; font-size: 10px; text-align: left; border-bottom: 2px solid #249E94;
+            border: none; padding: 5px 6px; background: #e8f5f4; color: #1a6b65;
+            font-weight: bold; font-size: 9.5px; text-align: left; border-bottom: 2px solid #249E94;
         }
-        .customer-table td { border-bottom: 1px solid #e0e0e0; padding: 5px 6px; background: white; vertical-align: top; }
-        .total-row td { border-top: 2px solid #249E94 !important; background: #e8f5f3 !important; font-weight: bold; font-size: 11px; color: #1a6b65; }
-        .workshop-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10px; }
+        .customer-table td { border-bottom: 1px solid #e0e0e0; padding: 4px 6px; background: white; vertical-align: top; }
+        .total-row td { border-top: 2px solid #249E94 !important; background: #e8f5f3 !important; font-weight: bold; font-size: 10px; color: #1a6b65; }
+        .workshop-table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 9.5px; }
         .workshop-table th {
-            border: none; padding: 8px 6px; background: #e8f5f4; color: #1a6b65;
+            border: none; padding: 5px 6px; background: #e8f5f4; color: #1a6b65;
             font-weight: bold; text-align: left; border-bottom: 2px solid #249E94;
         }
-        .workshop-table td { border-bottom: 1px solid #e0e0e0; padding: 8px 6px; vertical-align: top; background: white; }
+        .workshop-table td { border-bottom: 1px solid #e0e0e0; padding: 5px 6px; vertical-align: top; background: white; }
         .workshop-table td.notes-col { background: #fffdf0 !important; }
         .service-badge {
-            display: inline-block; padding: 2px 7px; border-radius: 4px;
-            font-size: 8px; font-weight: 900; text-transform: uppercase;
+            display: inline-block; padding: 1px 6px; border-radius: 4px;
+            font-size: 7.5px; font-weight: 900; text-transform: uppercase;
             letter-spacing: 0.05em; margin: 1px 2px 1px 0;
         }
         .badge-job    { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
@@ -70,62 +70,41 @@
         .badge-sizing { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
         .badge-date   { background: #fdf4ff; color: #7e22ce; border: 1px solid #e9d5ff; }
         .status-pill {
-            display: inline-block; padding: 2px 8px; border-radius: 12px;
-            font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;
+            display: inline-block; padding: 1px 7px; border-radius: 12px;
+            font-size: 7.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;
         }
         .status-received  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
         .status-progress  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
         .status-ready     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
         .status-delivered { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
         .notes-section {
-            margin: 10px 0; border: 1.5px solid #249E94; padding: 10px;
-            background: #f9fefe; border-radius: 4px; min-height: 70px; font-size: 10px;
+            margin: 6px 0; border: 1.5px solid #249E94; padding: 6px 8px;
+            background: #f9fefe; border-radius: 4px; min-height: 40px; font-size: 9.5px;
         }
         .warranty-box {
-            background: #fff5f5; border: 2px dashed #dc2626; padding: 6px 10px;
+            background: #fff5f5; border: 2px dashed #dc2626; padding: 4px 10px;
             border-radius: 4px; text-align: center; color: #dc2626;
-            font-weight: 900; font-size: 12px; margin: 6px 0; letter-spacing: 0.05em;
+            font-weight: 900; font-size: 11px; margin: 4px 0; letter-spacing: 0.05em;
         }
-        .signatures { margin-top: 20px; }
+        .signatures { margin-top: 10px; }
         .signature-box {
             width: 45%; float: left; border-top: 2px solid #249E94;
-            padding-top: 10px; text-align: center; font-weight: bold; font-size: 10px; color: #1a6b65;
+            padding-top: 6px; text-align: center; font-weight: bold; font-size: 9.5px; color: #1a6b65;
         }
         .signature-box.right { float: right; }
         .clearfix::after { content: ""; display: table; clear: both; }
-        .divider { border: none; border-top: 1px dashed #249E94; margin: 8px 0; }
+        .divider { border: none; border-top: 1px dashed #249E94; margin: 5px 0; }
         .agreement-box {
-            margin-top: 14px; border: 1.5px solid #249E94; background: #f9fefe;
-            border-radius: 4px; padding: 10px 12px; font-size: 9.5px; line-height: 1.5; color: #333;
+            margin-top: 8px; border: 1.5px solid #249E94; background: #f9fefe;
+            border-radius: 4px; padding: 7px 10px; font-size: 9px; line-height: 1.35; color: #333;
         }
         .agreement-box .items-list {
-            margin: 6px 0; font-weight: 700; text-transform: uppercase; color: #1a6b65;
+            margin: 4px 0; font-weight: 700; text-transform: uppercase; color: #1a6b65;
         }
         .item-photo {
-            width: 70px; height: 70px; object-fit: cover; border-radius: 4px;
-            border: 1px solid #249E94; margin-top: 5px; display: block;
+            width: 45px; height: 45px; object-fit: cover; border-radius: 4px;
+            border: 1px solid #249E94; margin-top: 3px; display: inline-block;
         }
-        /* 🚀 NEW: Location + Ready status bar — large, visible from outside a sealed bag */
-        .location-ready-bar {
-            display: table; width: 100%; margin: 10px 0;
-            border: 3px solid #1a6b65; border-radius: 6px; background: #f9fefe;
-        }
-        .location-ready-bar .cell {
-            display: table-cell; vertical-align: middle; padding: 10px 14px;
-            text-align: center; border-right: 2px solid #1a6b65;
-        }
-        .location-ready-bar .cell:last-child { border-right: none; }
-        .location-ready-bar .label {
-            font-size: 9px; font-weight: 900; text-transform: uppercase;
-            letter-spacing: 0.08em; color: #1a6b65; display: block; margin-bottom: 3px;
-        }
-        .location-ready-bar .value {
-            font-size: 20px; font-weight: 900; color: #000;
-        }
-        .ready-yes { background: #f0fdf4 !important; }
-        .ready-yes .value { color: #166534; }
-        .ready-no { background: #fef2f2 !important; }
-        .ready-no .value { color: #dc2626; }
         @media print {
             .header, .document-title, .customer-table th, .workshop-table th {
                 -webkit-print-color-adjust: exact !important;
@@ -160,10 +139,23 @@
     ];
     $st = $statusMap[$repair->status] ?? ['label' => ucfirst($repair->status), 'class' => 'status-received'];
 
-    // Is the repair actually ready/done, for the bold workshop indicator
     $isReady = in_array($repair->status, ['ready', 'delivered']);
 
-    // Helper to render service/metal/sizing badges for a repair item
+    // Combine an item's main photo + any captured photos into one flat list,
+    // capped so a busy item can't blow out the row height.
+    $itemPhotos = function(array $item, int $limit = 4) {
+        $photos = [];
+        if (!empty($item['item_photo'])) {
+            $photos[] = $item['item_photo'];
+        }
+        if (!empty($item['captured_photos']) && is_array($item['captured_photos'])) {
+            foreach ($item['captured_photos'] as $p) {
+                $photos[] = $p;
+            }
+        }
+        return array_slice($photos, 0, $limit);
+    };
+
     $serviceInfo = function(array $item, bool $showBadges = true) {
         $parts = [];
         if (!empty($item['job_type'])) {
@@ -176,7 +168,7 @@
             && (!empty($item['current_size']) || !empty($item['target_size']))) {
             $from = $item['current_size'] ?? '?';
             $to   = $item['target_size']  ?? '?';
-            $parts[] = "<span class='service-badge badge-sizing'>Size: {$from} → {$to}</span>";
+            $parts[] = "<span class='service-badge badge-sizing'>Size: {$from} -&gt; {$to}</span>";
         }
         if (!empty($item['date_required'])) {
             $parts[] = "<span class='service-badge badge-date'>Due: " . \Carbon\Carbon::parse($item['date_required'])->format('m/d/Y') . "</span>";
@@ -204,7 +196,7 @@
 
     <div class="badge-row">
         @if($repair->is_warranty)
-            <span class="badge badge-warranty">★ WARRANTY REPAIR — NO CHARGE ★</span>
+            <span class="badge badge-warranty">&#9733; WARRANTY REPAIR — NO CHARGE &#9733;</span>
         @endif
         @if($repair->is_from_store_stock)
             <span class="badge badge-store">Store Purchase</span>
@@ -233,7 +225,7 @@
     </div>
 
     @if($repair->is_warranty)
-    <div class="warranty-box">⚠ WARRANTY REPAIR — Customer will NOT be charged ⚠</div>
+    <div class="warranty-box">&#9888; WARRANTY REPAIR — Customer will NOT be charged &#9888;</div>
     @endif
 
     <table class="customer-table">
@@ -253,29 +245,23 @@
                     @if($index === 0 && $repair->is_from_store_stock && $repair->originalProduct)
                         <strong>Stock #:</strong> {{ $repair->originalProduct->barcode }}<br>
                     @endif
-                    <div style="font-weight:700;font-size:11px;margin-top:2px;">
+                    <div style="font-weight:700;font-size:10px;margin-top:1px;">
                         {{ strtoupper($rItem['item_description'] ?? '') }}
                     </div>
-                    @if(!empty($rItem['item_photo']))
-    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
-         class="item-photo">
-@endif
-@if(!empty($rItem['captured_photos']) && is_array($rItem['captured_photos']))
-    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
-        @foreach($rItem['captured_photos'] as $camPhoto)
-            <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($camPhoto) }}"
-                 class="item-photo" style="width:55px;height:55px;">
-        @endforeach
-    </div>
-@endif
+                    @php $photos = $itemPhotos($rItem); @endphp
+                    @if(!empty($photos))
+                        <div style="margin-top:3px;">
+                            @foreach($photos as $photo)
+                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($photo) }}" class="item-photo">
+                            @endforeach
+                        </div>
+                    @endif
                 </td>
                 <td>
-                    {{-- Issue reported --}}
-                    <div style="margin-bottom:4px;">{{ $rItem['reported_issue'] ?? '—' }}</div>
-                    {{-- Service type / metal / sizing badges --}}
+                    <div style="margin-bottom:3px;">{{ $rItem['reported_issue'] ?? '—' }}</div>
                     @php $badges = $serviceInfo($rItem); @endphp
                     @if($badges)
-                        <div style="margin-top:4px;">{!! $badges !!}</div>
+                        <div style="margin-top:3px;">{!! $badges !!}</div>
                     @endif
                 </td>
                 <td style="text-align:right;">
@@ -309,9 +295,7 @@
         </tbody>
     </table>
 
-    <hr class="divider">
-
-    <div style="font-size:9px;color:#555;text-align:center;margin-top:6px;">
+    <div style="font-size:8.5px;color:#555;text-align:center;margin-top:4px;">
         Please keep this receipt. Present it when collecting your item.
         &nbsp;|&nbsp; <strong>{{ $repair->store?->phone ?? '' }}</strong>
     </div>
@@ -327,7 +311,7 @@
         I agree to the service described on the description and understand any estimated costs are subject to change upon any modification. I authorize {{ $repair->store?->legal_name ?? 'Diamond Square' }} to proceed with the work outlined above.
     </div>
 
-    <div class="signatures clearfix" style="margin-top:16px;">
+    <div class="signatures clearfix">
         <div class="signature-box">Customer Signature<br>Date: ___________</div>
         <div class="signature-box right">Staff Initials<br>Date: ___________</div>
     </div>
@@ -353,7 +337,7 @@
 
     <div class="badge-row">
         @if($repair->is_warranty)
-            <span class="badge badge-warranty">★ WARRANTY — NO CHARGE ★</span>
+            <span class="badge badge-warranty">&#9733; WARRANTY — NO CHARGE &#9733;</span>
         @endif
         @if($repair->is_from_store_stock)
             <span class="badge badge-store">Store Purchase</span>
@@ -369,21 +353,46 @@
         <tr>
             <td><strong>Status:</strong> <span class="status-pill {{ $st['class'] }}">{{ $st['label'] }}</span></td>
             <td>&nbsp;</td>
-            <td class="right-align" style="color:#94a3b8;font-size:9px;">Internal use only</td>
+            <td class="right-align" style="color:#94a3b8;font-size:8.5px;">Internal use only</td>
         </tr>
     </table>
 
-    {{-- 🚀 NEW: Location + Ready status bar — large, bold, readable from outside a sealed bag --}}
-    <div class="location-ready-bar">
-        <div class="cell" style="width:60%;">
-           <span class="label">Location</span>
-<span class="value">{{ $repair->repair_location ?? '— Not Set —' }}</span>
-        </div>
-        <div class="cell {{ $isReady ? 'ready-yes' : 'ready-no' }}" style="width:40%;">
-            <span class="label">Ready?</span>
-            <span class="value">{{ $isReady ? '✔ YES' : '✘ NO' }}</span>
-        </div>
-    </div>
+    {{-- ── LOCATION + READY CHECKBOX — tick with pen, no reprint needed ── --}}
+    <table style="width:100%;border-collapse:collapse;border:3px solid #1a6b65;margin:5px 0;">
+        <tr>
+            {{-- Location --}}
+            <td style="width:52%;padding:7px 10px;border-right:2px solid #1a6b65;vertical-align:middle;">
+                <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:3px;">Repair Location</div>
+                <div style="font-size:14px;font-weight:900;color:#000;">{{ $repair->repair_location ?: '— Not Set —' }}</div>
+            </td>
+            {{-- Checkboxes --}}
+            <td style="width:48%;padding:7px 10px;vertical-align:middle;">
+                <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:5px;text-align:center;">Mark When Ready</div>
+                <table style="width:100%;border-collapse:collapse;">
+                    <tr>
+                        {{-- NOT READY box --}}
+                        <td style="width:50%;text-align:center;padding-right:6px;">
+                            <table style="border:3px solid #dc2626;border-collapse:collapse;width:40px;height:40px;margin:0 auto 3px auto;{{ !$isReady ? 'background:#fef2f2;' : 'background:#fff;' }}">
+                                <tr><td style="text-align:center;vertical-align:middle;font-size:20px;font-weight:900;color:#dc2626;line-height:1;">
+                                    @if(!$isReady) X @endif
+                                </td></tr>
+                            </table>
+                            <div style="font-size:7.5px;font-weight:900;color:#dc2626;text-transform:uppercase;">Not Ready</div>
+                        </td>
+                        {{-- READY box --}}
+                        <td style="width:50%;text-align:center;padding-left:6px;border-left:1px solid #e5e7eb;">
+                            <table style="border:3px solid #166534;border-collapse:collapse;width:40px;height:40px;margin:0 auto 3px auto;{{ $isReady ? 'background:#f0fdf4;' : 'background:#fff;' }}">
+                                <tr><td style="text-align:center;vertical-align:middle;font-size:20px;font-weight:900;color:#166534;line-height:1;">
+                                    @if($isReady) OK @endif
+                                </td></tr>
+                            </table>
+                            <div style="font-size:7.5px;font-weight:900;color:#166534;text-transform:uppercase;">Ready</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 
     <div class="customer-box">
         <div class="cust-name">{{ $repair->customer->name }} {{ $repair->customer->last_name }}</div>
@@ -391,7 +400,7 @@
     </div>
 
     @if($repair->is_warranty)
-    <div class="warranty-box">⚠ WARRANTY REPAIR — DO NOT CHARGE CUSTOMER ⚠</div>
+    <div class="warranty-box">&#9888; WARRANTY REPAIR — DO NOT CHARGE CUSTOMER &#9888;</div>
     @endif
 
     <table class="workshop-table">
@@ -411,50 +420,71 @@
                     @if($index === 0 && $repair->is_from_store_stock && $repair->originalProduct)
                         <strong>Stock #:</strong> {{ $repair->originalProduct->barcode }}<br>
                     @endif
-                    <div style="font-size:11px;font-weight:700;margin-top:3px;text-transform:uppercase;">
+                    <div style="font-size:10px;font-weight:700;margin-top:2px;text-transform:uppercase;">
                         {{ $rItem['item_description'] ?? '' }}
                     </div>
-                   @if(!empty($rItem['item_photo']))
-    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($rItem['item_photo']) }}"
-         class="item-photo">
-@endif
-@if(!empty($rItem['captured_photos']) && is_array($rItem['captured_photos']))
-    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
-        @foreach($rItem['captured_photos'] as $camPhoto)
-            <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($camPhoto) }}"
-                 class="item-photo" style="width:55px;height:55px;">
-        @endforeach
-    </div>
-@endif
-                    @if(!empty($rItem['is_warranty']))
+                    @php $photos = $itemPhotos($rItem); @endphp
+                    @if(!empty($photos))
                         <div style="margin-top:3px;">
-                            <span style="background:#fef2f2;color:#dc2626;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:900;border:1px solid #dc2626;">WARRANTY</span>
+                            @foreach($photos as $photo)
+                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->path($photo) }}" class="item-photo">
+                            @endforeach
+                        </div>
+                    @endif
+                    @if(!empty($rItem['is_warranty']))
+                        <div style="margin-top:2px;">
+                            <span style="background:#fef2f2;color:#dc2626;padding:1px 5px;border-radius:3px;font-size:7.5px;font-weight:900;border:1px solid #dc2626;">WARRANTY</span>
                         </div>
                     @endif
                 </td>
                 <td>
-                    {{-- Issue reported --}}
-                    <div style="margin-bottom:5px;">
-                        <strong style="color:#1a6b65;font-size:9px;">ISSUE:</strong><br>
+                    <div style="margin-bottom:4px;">
+                        <strong style="color:#1a6b65;font-size:8.5px;">ISSUE:</strong>
                         {{ $rItem['reported_issue'] ?? '—' }}
                     </div>
-
-                    {{-- Service type / metal / sizing badges --}}
-                    @php $badges = $serviceInfo($rItem); @endphp
-                    @if($badges)
-                        <div style="margin-bottom:5px;">{!! $badges !!}</div>
-                    @endif
-
-                    {{-- Sizing detail (prominent for workshop) --}}
-                    @if(!empty($rItem['job_type']) && $rItem['job_type'] === 'Resize'
-                        && (!empty($rItem['current_size']) || !empty($rItem['target_size'])))
-                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:4px 8px;margin-top:4px;font-size:10px;">
-                            <strong style="color:#166534;">RESIZE:</strong>
-                            Size {{ $rItem['current_size'] ?? '?' }}
-                            <strong style="font-size:13px;color:#166534;">→</strong>
-                            Size {{ $rItem['target_size'] ?? '?' }}
-                        </div>
-                    @endif
+                   {{-- Multiple services support --}}
+@if(!empty($rItem['services']) && is_array($rItem['services']) && count($rItem['services']) > 0)
+    @foreach($rItem['services'] as $si => $svc)
+    <div style="margin-bottom:4px;padding:3px 6px;background:#f0fdf4;border-left:3px solid #166534;border-radius:0 4px 4px 0;font-size:9px;">
+        <strong style="color:#166534;font-size:9.5px;">{{ $si + 1 }}. {{ $svc['job_type'] ?? $svc['service_type'] ?? '—' }}</strong>
+        @if(!empty($svc['metal_type']))
+            <span style="color:#555;"> — {{ $svc['metal_type'] }}</span>
+        @endif
+        @if(!empty($svc['date_required']))
+            <span style="color:#7e22ce;"> | Due: {{ \Carbon\Carbon::parse($svc['date_required'])->format('m/d/Y') }}</span>
+        @endif
+        @if(!empty($svc['send_to']))
+            <span style="color:#b45309;font-weight:900;"> | &gt;&gt; {{ strtoupper($svc['send_to']) }}</span>
+        @endif
+        @if(!empty($svc['current_size']) || !empty($svc['target_size']))
+            <span style="background:#fff;border:1px solid #bbf7d0;border-radius:3px;padding:1px 5px;margin-left:3px;display:inline-block;">
+                Resize: {{ $svc['current_size'] ?? '?' }} -&gt; {{ $svc['target_size'] ?? '?' }}
+            </span>
+        @endif
+        @if(!empty($svc['job_instructions']))
+            <div style="color:#374151;margin-top:2px;font-style:italic;">{{ $svc['job_instructions'] }}</div>
+        @endif
+        @if(!empty($svc['estimated_cost']) && floatval($svc['estimated_cost']) > 0)
+            <span style="color:#1a6b65;font-weight:700;"> Est: ${{ number_format($svc['estimated_cost'], 2) }}</span>
+        @endif
+    </div>
+    @endforeach
+@else
+    {{-- Fallback for old single-service repairs --}}
+    @php $badges = $serviceInfo($rItem); @endphp
+    @if($badges)
+        <div style="margin-bottom:3px;">{!! $badges !!}</div>
+    @endif
+    @if(!empty($rItem['job_type']) && $rItem['job_type'] === 'Resize'
+        && (!empty($rItem['current_size']) || !empty($rItem['target_size'])))
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:3px 6px;margin-top:3px;font-size:9px;">
+            <strong style="color:#166534;">RESIZE:</strong>
+            Size {{ $rItem['current_size'] ?? '?' }}
+            -&gt;
+            Size {{ $rItem['target_size'] ?? '?' }}
+        </div>
+    @endif
+@endif
                 </td>
                 <td class="notes-col">&nbsp;</td>
             </tr>
@@ -462,11 +492,9 @@
         </tbody>
     </table>
 
-    {{-- ── JEWELER BENCH NOTES — pre-filled with instructions ── --}}
     <div class="notes-section">
         <strong style="color:#1a6b65;">JEWELER BENCH NOTES / WORK CARRIED OUT:</strong>
         @php
-            // Collect all instructions from items to pre-fill the bench notes section
             $allInstructions = collect($repairItems)
                 ->filter(fn($i) => !empty($i['reported_issue']) || !empty($i['job_type']))
                 ->map(function($item, $idx) {
@@ -475,7 +503,7 @@
                         $line .= strtoupper($item['job_type']);
                         if (!empty($item['metal_type'])) $line .= ' — ' . $item['metal_type'];
                         if ($item['job_type'] === 'Resize' && (!empty($item['current_size']) || !empty($item['target_size']))) {
-                            $line .= ' (Size ' . ($item['current_size'] ?? '?') . ' → ' . ($item['target_size'] ?? '?') . ')';
+                            $line .= ' (Size ' . ($item['current_size'] ?? '?') . ' -> ' . ($item['target_size'] ?? '?') . ')';
                         }
                     }
                     if (!empty($item['reported_issue'])) {
@@ -487,28 +515,23 @@
                 ->toArray();
         @endphp
         @if(!empty($allInstructions))
-            <div style="margin-top:6px;color:#374151;font-size:10px;line-height:1.6;">
+            <div style="margin-top:4px;color:#374151;font-size:9px;line-height:1.4;">
                 @foreach($allInstructions as $instruction)
                     <div>{{ $instruction }}</div>
                 @endforeach
             </div>
-            <div style="margin-top:8px;border-top:1px dashed #249E94;padding-top:6px;color:#94a3b8;font-size:9px;font-style:italic;">
-                Jeweler — please note any additional work performed below:
-            </div>
         @endif
-        <br><br>
     </div>
 
-    <div style="background:white;border:1px solid #e0e0e0;border-radius:4px;padding:8px 12px;margin:8px 0;font-size:10px;">
+    <div style="background:white;border:1px solid #e0e0e0;border-radius:4px;padding:6px 10px;margin:5px 0;font-size:9.5px;">
         <strong>MATERIALS USED:</strong>
-        <table style="width:100%;margin-top:5px;border-collapse:collapse;">
+        <table style="width:100%;margin-top:3px;border-collapse:collapse;">
             <tr>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Material</th>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Weight / Qty</th>
-                <th style="border-bottom:1px solid #e0e0e0;padding:3px 4px;text-align:left;color:#1a6b65;font-size:9px;">Notes</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:2px 4px;text-align:left;color:#1a6b65;font-size:8.5px;">Material</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:2px 4px;text-align:left;color:#1a6b65;font-size:8.5px;">Weight / Qty</th>
+                <th style="border-bottom:1px solid #e0e0e0;padding:2px 4px;text-align:left;color:#1a6b65;font-size:8.5px;">Notes</th>
             </tr>
-            <tr><td style="padding:7px 4px;">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-            <tr><td style="padding:7px 4px;border-top:1px solid #f0f0f0;">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr><td style="padding:5px 4px;">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
         </table>
     </div>
 
@@ -523,7 +546,7 @@
         This copy confirms the work order accepted by the customer. Retain on file with the item during repair.
     </div>
 
-    <div class="signatures clearfix" style="margin-top:16px;">
+    <div class="signatures clearfix">
         <div class="signature-box">Customer Signature<br>Date: ___________</div>
         <div class="signature-box right">Jeweler Signature<br>Date: ___________</div>
     </div>

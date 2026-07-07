@@ -164,7 +164,12 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->label('Phone Number')
                                 ->tel()
                                 ->prefix('+1')
-                                ->live(onBlur: true),
+                                ->placeholder('5051234567') // Optional: clarifies format
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(function () {
+                                    $this->resetPage();
+                                    $this->resetTable();
+                                }),
 
                             Select::make('payment_method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
@@ -290,12 +295,45 @@ CustomDatePicker::make('date_to')
                         )
                     )
                     ->when(
+    filled($this->data['phone'] ?? $this->phone),
+    function (Builder $query) {
+
+        $phone = preg_replace('/\D/', '', $this->data['phone'] ?? $this->phone);
+
+        $query->whereHas('customer', function ($customer) use ($phone) {
+            $customer->whereRaw("
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(phone,'-',''),
+                            ' ', ''),
+                        '(', ''),
+                    ')', ''),
+                '+','')
+                LIKE ?
+            ", ["%{$phone}%"]);
+        });
+    }
+)
+                    ->when(
                         $this->data['payment_method'] ?? $this->payment_method ?? null,
                         fn($q, $v) => $q->where('payment_method', $v)
                     )
                     ->when(
                         $this->data['job_type'] ?? $this->job_type ?? null,
-                        fn($q, $v) => $q->where('job_type', $v)
+                        function ($q, $v) {
+                            $q->where(function ($sub) use ($v) {
+                                // Legacy / simple sales: single job_type column on the sale itself
+                                $sub->where('job_type', $v)
+                                    // Current sales: one or more jobs stored in the special_jobs JSON array,
+                                    // each entry having its own job_type key — search inside that array too.
+                                    ->orWhereRaw(
+                                        "JSON_CONTAINS(JSON_EXTRACT(COALESCE(special_jobs, '[]'), '$[*].job_type'), JSON_QUOTE(?))",
+                                        [$v]
+                                    );
+                            });
+                        }
                     )
                     ->when(
                         $this->data['date_from'] ?? $this->date_from ?? null,
@@ -584,7 +622,7 @@ CustomDatePicker::make('date_to')
                                     ->schema([
                                         Placeholder::make('j_type')->label('Type')->content($record->job_type ?? '—'),
                                         Placeholder::make('j_metal')->label('Metal')->content($record->metal_type ?? '—'),
-                                        Placeholder::make('j_size')->label('Sizing')->content("{$record->current_size} ➔ {$record->target_size}"),
+                                        Placeholder::make('j_size')->label('Sizing')->content("{$record->current_size} -> {$record->target_size}"),
                                         Placeholder::make('j_notes')->label('Instructions')->content($record->job_instructions ?? '—'),
                                     ]),
 
