@@ -178,20 +178,20 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->afterStateUpdated(fn() => $this->resetTable()),
 
                             CustomDatePicker::make('date_from')
-    ->label('Date From')
-    ->displayFormat('m/d/Y')
-    ->live()
-    ->afterStateUpdated(function () {
-        $this->resetTable();
-    }),
+                                ->label('Date From')
+                                ->displayFormat('m/d/Y')
+                                ->live()
+                                ->afterStateUpdated(function () {
+                                    $this->resetTable();
+                                }),
 
-CustomDatePicker::make('date_to')
-    ->label('Date To')
-    ->displayFormat('m/d/Y')
-    ->live()
-    ->afterStateUpdated(function () {
-        $this->resetTable();
-    }),
+                            CustomDatePicker::make('date_to')
+                                ->label('Date To')
+                                ->displayFormat('m/d/Y')
+                                ->live()
+                                ->afterStateUpdated(function () {
+                                    $this->resetTable();
+                                }),
 
                             Select::make('job_type')
                                 ->label('Job Type')
@@ -206,29 +206,29 @@ CustomDatePicker::make('date_to')
                                 ->icon('heroicon-o-x-circle')
                                 ->color('gray')
                                 ->outlined()
-                              ->action(function () {
-    // Clear URL properties
-    $this->keyword = $this->invoice_number = $this->staff_name = null;
-    $this->first_name = $this->last_name = $this->phone = null;
-    $this->payment_method = $this->date_from = $this->date_to = $this->job_type = null;
+                                ->action(function () {
+                                    // Clear URL properties
+                                    $this->keyword = $this->invoice_number = $this->staff_name = null;
+                                    $this->first_name = $this->last_name = $this->phone = null;
+                                    $this->payment_method = $this->date_from = $this->date_to = $this->job_type = null;
 
-    // Clear form fields
-    $this->data = [
-        'keyword'        => null,
-        'invoice_number' => null,
-        'staff_name'     => null,
-        'first_name'     => null,
-        'last_name'      => null,
-        'phone'          => null,
-        'payment_method' => null,
-        'date_from'      => null,
-        'date_to'        => null,
-        'job_type'       => null,
-    ];
+                                    // Clear form fields
+                                    $this->data = [
+                                        'keyword'        => null,
+                                        'invoice_number' => null,
+                                        'staff_name'     => null,
+                                        'first_name'     => null,
+                                        'last_name'      => null,
+                                        'phone'          => null,
+                                        'payment_method' => null,
+                                        'date_from'      => null,
+                                        'date_to'        => null,
+                                        'job_type'       => null,
+                                    ];
 
-    $this->form->fill($this->data);
-    $this->resetTable();
-}),
+                                    $this->form->fill($this->data);
+                                    $this->resetTable();
+                                }),
                         ]),
                     ]),
             ]);
@@ -272,14 +272,14 @@ CustomDatePicker::make('date_to')
                         fn($q, $v) => $q->where('invoice_number', 'like', "%{$v}%")
                     )
                     ->when(
-    $this->data['staff_name'] ?? $this->staff_name ?? null,
-    fn($q, $v) => $q->where(function($sub) use ($v) {
-        $names = array_filter(explode(' ', trim($v)));
-        foreach ($names as $name) {
-            $sub->where('sales_person_list', 'like', "%{$name}%");
-        }
-    })
-)
+                        $this->data['staff_name'] ?? $this->staff_name ?? null,
+                        fn($q, $v) => $q->where(function ($sub) use ($v) {
+                            $names = array_filter(explode(' ', trim($v)));
+                            foreach ($names as $name) {
+                                $sub->where('sales_person_list', 'like', "%{$name}%");
+                            }
+                        })
+                    )
                     ->when(
                         $this->data['first_name'] ?? $this->first_name ?? null,
                         fn($q, $v) => $q->whereHas(
@@ -295,13 +295,13 @@ CustomDatePicker::make('date_to')
                         )
                     )
                     ->when(
-    filled($this->data['phone'] ?? $this->phone),
-    function (Builder $query) {
+                        filled($this->data['phone'] ?? $this->phone),
+                        function (Builder $query) {
 
-        $phone = preg_replace('/\D/', '', $this->data['phone'] ?? $this->phone);
+                            $phone = preg_replace('/\D/', '', $this->data['phone'] ?? $this->phone);
 
-        $query->whereHas('customer', function ($customer) use ($phone) {
-            $customer->whereRaw("
+                            $query->whereHas('customer', function ($customer) use ($phone) {
+                                $customer->whereRaw("
                 REPLACE(
                     REPLACE(
                         REPLACE(
@@ -313,9 +313,9 @@ CustomDatePicker::make('date_to')
                 '+','')
                 LIKE ?
             ", ["%{$phone}%"]);
-        });
-    }
-)
+                            });
+                        }
+                    )
                     ->when(
                         $this->data['payment_method'] ?? $this->payment_method ?? null,
                         fn($q, $v) => $q->where('payment_method', $v)
@@ -441,37 +441,43 @@ CustomDatePicker::make('date_to')
 
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
-                    ->getStateUsing(function ($record) {
-                        $isCustomDeposit = $record->has_trade_in
-                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+                   ->getStateUsing(function ($record) {
+    $isCustomDeposit = $record->has_trade_in
+        && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-                        $total = floatval($record->final_total);
-                        if ($isCustomDeposit) {
-                            $total += floatval($record->trade_in_value);
-                        }
+    $total = floatval($record->final_total);
+    if ($isCustomDeposit) {
+        $total += floatval($record->trade_in_value);
+    }
 
-                        $paid = floatval($record->payments->sum('amount'));
-                        if ($paid == 0 && floatval($record->amount_paid) > 0) {
-                            $paid = floatval($record->amount_paid);
-                        }
+    // Sum from all payment sources — never trust just one
+    $fromRelation   = floatval($record->payments->sum('amount'));
+    $fromColumn     = floatval($record->amount_paid);
+    $fromPayTable   = \DB::table('payments')
+                         ->where('sale_id', $record->id)
+                         ->sum('amount');
+    $fromSalePayments = \DB::table('sale_payments')
+                           ->where('sale_id', $record->id)
+                           ->sum('amount');;
 
-                        $balance = max(0, $total - $paid);
+    $paid    = max($fromRelation, $fromColumn, floatval($fromPayTable), floatval($fromSalePayments));
+    $balance = max(0, $total - $paid);
 
-                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+    $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+    $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-                        if ($balance > 0.01) {
-                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
-                        } else {
-                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-                        }
+    if ($balance > 0.01) {
+        $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+    } else {
+        $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+    }
 
-                        return new HtmlString($html);
-                    }),
+    return new HtmlString($html);
+}),
             ])
             ->actions([
-               \Filament\Tables\Actions\EditAction::make()
-    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
+                \Filament\Tables\Actions\EditAction::make()
+                    ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
 
                 Action::make('request_edit')
                     ->label('Request Edit')
@@ -650,57 +656,57 @@ CustomDatePicker::make('date_to')
                         ]),
                     ]),
 
-                    \Filament\Tables\Actions\ActionGroup::make([
-    Action::make('cancel_sale')
-        ->label('Cancel Sale')
-        ->icon('heroicon-o-x-circle')
-        ->color('danger')
-        ->visible(function (Sale $record) {
-            $user = Staff::user();
-            if (!$user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
-            return !in_array($record->status, ['cancelled', 'refunded', 'void']);
-        })
-        ->requiresConfirmation()
-        ->modalHeading('Cancel This Sale?')
-        ->modalDescription('This will mark the sale as cancelled and return items to stock.')
-        ->modalSubmitActionLabel('Yes, Cancel Sale')
-        ->action(function (Sale $record) {
-    foreach ($record->items as $saleItem) {
-        if (!$saleItem->product_item_id) continue;
-        $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
-        if ($productItem) {
-            $productItem->update([
-                'status'          => 'in_stock',
-                'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
-                'hold_reason'     => null,
-                'held_by_sale_id' => null,
-            ]);
-        }
-    }
-    $record->update([
-        'status'       => 'cancelled',
-        'balance_due'  => 0,
-        'completed_at' => null,
-    ]);
-            Notification::make()
-                ->title('Sale Cancelled')
-                ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
-                ->success()
-                ->send();
-        }),
+                \Filament\Tables\Actions\ActionGroup::make([
+                    Action::make('cancel_sale')
+                        ->label('Cancel Sale')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->visible(function (Sale $record) {
+                            $user = Staff::user();
+                            if (!$user?->hasAnyRole(['Superadmin', 'Administration'])) return false;
+                            return !in_array($record->status, ['cancelled', 'refunded', 'void']);
+                        })
+                        ->requiresConfirmation()
+                        ->modalHeading('Cancel This Sale?')
+                        ->modalDescription('This will mark the sale as cancelled and return items to stock.')
+                        ->modalSubmitActionLabel('Yes, Cancel Sale')
+                        ->action(function (Sale $record) {
+                            foreach ($record->items as $saleItem) {
+                                if (!$saleItem->product_item_id) continue;
+                                $productItem = \App\Models\ProductItem::find($saleItem->product_item_id);
+                                if ($productItem) {
+                                    $productItem->update([
+                                        'status'          => 'in_stock',
+                                        'qty'             => max(1, $productItem->qty + intval($saleItem->qty ?? 1)),
+                                        'hold_reason'     => null,
+                                        'held_by_sale_id' => null,
+                                    ]);
+                                }
+                            }
+                            $record->update([
+                                'status'       => 'cancelled',
+                                'balance_due'  => 0,
+                                'completed_at' => null,
+                            ]);
+                            Notification::make()
+                                ->title('Sale Cancelled')
+                                ->body("Sale {$record->invoice_number} cancelled and items returned to stock.")
+                                ->success()
+                                ->send();
+                        }),
 
-    Action::make('refund_sale')
-        ->label('Refund Sale')
-        ->icon('heroicon-o-arrow-uturn-left')
-        ->color('warning')
-        ->visible(fn(Sale $record) => $record->status === 'completed')
-        ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id]))
-        ->openUrlInNewTab(),
-])
-    ->icon('heroicon-m-ellipsis-vertical')
-    ->color('gray')
-    ->button(false)
-    ->extraAttributes(['class' => 'fi-dropdown-trigger flex cursor-pointer']),
+                    Action::make('refund_sale')
+                        ->label('Refund Sale')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('warning')
+                        ->visible(fn(Sale $record) => $record->status === 'completed')
+                        ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id]))
+                        ->openUrlInNewTab(),
+                ])
+                    ->icon('heroicon-m-ellipsis-vertical')
+                    ->color('gray')
+                    ->button(false)
+                    ->extraAttributes(['class' => 'fi-dropdown-trigger flex cursor-pointer']),
                 \Filament\Tables\Actions\ActionGroup::make([
                     \Filament\Tables\Actions\Action::make('printStandard')
                         ->label('Standard Receipt')
