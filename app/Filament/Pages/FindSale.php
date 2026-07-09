@@ -451,16 +451,21 @@ class FindSale extends Page implements HasForms, HasTable
     }
 
     // Sum from all payment sources — never trust just one
-    $fromRelation   = floatval($record->payments->sum('amount'));
-    $fromColumn     = floatval($record->amount_paid);
-    $fromPayTable   = \DB::table('payments')
-                         ->where('sale_id', $record->id)
-                         ->sum('amount');
-    $fromSalePayments = \DB::table('sale_payments')
-                           ->where('sale_id', $record->id)
-                           ->sum('amount');;
+   $fromPayments     = floatval(\DB::table('payments')
+                        ->where('sale_id', $record->id)
+                        ->sum('amount'));
 
-    $paid    = max($fromRelation, $fromColumn, floatval($fromPayTable), floatval($fromSalePayments));
+$fromSalePayments = floatval(\DB::table('sale_payments')
+                        ->where('sale_id', $record->id)
+                        ->whereNull('deleted_at')
+                        ->sum('amount'));
+
+$paid = $fromPayments + $fromSalePayments;
+
+// Fallback if both tables empty
+if ($paid == 0) {
+    $paid = floatval($record->amount_paid);
+}
     $balance = max(0, $total - $paid);
 
     $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
