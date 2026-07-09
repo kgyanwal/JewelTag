@@ -95,10 +95,11 @@ class ListProductItems extends ListRecords
                                     $alreadyExists = ProductItem::where('serial_number', $invoiceHash)->first();
 
                                     if ($alreadyExists) {
-                                        $set('duplicate_warning',
+                                        $set(
+                                            'duplicate_warning',
                                             "⛔ This invoice was already scanned on " .
-                                            $alreadyExists->created_at->format('M d, Y \a\t h:i A') .
-                                            ". You may still proceed but duplicates will be created."
+                                                $alreadyExists->created_at->format('M d, Y \a\t h:i A') .
+                                                ". You may still proceed but duplicates will be created."
                                         );
                                     }
 
@@ -127,7 +128,6 @@ class ListProductItems extends ListRecords
 
                                         $set('items_to_import', $stagingItems);
                                         $set('has_been_scanned', true);
-
                                     } catch (\Exception $e) {
                                         Notification::make()->title('Scan Failed')->body($e->getMessage())->danger()->send();
                                     }
@@ -137,11 +137,12 @@ class ListProductItems extends ListRecords
 
                             Placeholder::make('duplicate_warning')
                                 ->hiddenLabel()
-                                ->content(fn(\Filament\Forms\Get $get) => $get('duplicate_warning')
-                                    ? new \Illuminate\Support\HtmlString(
-                                        "<div class='p-3 bg-red-50 border border-red-300 rounded text-red-700 font-medium'>" .
-                                        $get('duplicate_warning') . "</div>"
-                                    ) : ''
+                                ->content(
+                                    fn(\Filament\Forms\Get $get) => $get('duplicate_warning')
+                                        ? new \Illuminate\Support\HtmlString(
+                                            "<div class='p-3 bg-red-50 border border-red-300 rounded text-red-700 font-medium'>" .
+                                                $get('duplicate_warning') . "</div>"
+                                        ) : ''
                                 )
                                 ->visible(fn(\Filament\Forms\Get $get) => filled($get('duplicate_warning'))),
 
@@ -234,7 +235,7 @@ class ListProductItems extends ListRecords
                     DB::transaction(function () use ($itemsToSave, $storeId, $supplierId, $invoiceHash, &$savedCount, &$isFirst) {
                         foreach ($itemsToSave as $item) {
                             $qty    = max(1, (int) ($item['qty'] ?? 1));
-                            
+
                             // Get prefix based on sub_department (fallback to metal_type if missing)
                             $prefixSource = $item['sub_department'] ?? $item['metal_type'] ?? null;
                             $prefix = ProductItemResource::getPrefixForSubDepartment($prefixSource);
@@ -246,9 +247,44 @@ class ListProductItems extends ListRecords
                                     'supplier_code'      => $item['supplier_code'],
                                     'custom_description' => $item['custom_description'],
                                     'cost_price'         => floatval($item['cost_price']),
-                                    'retail_price'       => floatval($item['cost_price']) * 2.5,
+                                    'retail_price'       => (function () use ($item) {
+                                        $dept  = $item['department'] ?? null;
+                                        $cost  = floatval($item['cost_price']);
+                                        $multi = 2.5; // default fallback
+
+                                        if ($dept) {
+                                            $depts = \App\Models\InventorySetting::where('key', 'departments')
+                                                ->first()?->value ?? [];
+                                            foreach ($depts as $d) {
+                                                if (is_array($d) && isset($d['name']) && $d['name'] === $dept) {
+                                                    $multi = floatval($d['multiplier'] ?? 2.5);
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        return round($cost * $multi, 2);
+                                    })(),
+                                    'web_price'          => (function () use ($item) {
+                                        $dept  = $item['department'] ?? null;
+                                        $cost  = floatval($item['cost_price']);
+                                        $multi = 2.5;
+
+                                        if ($dept) {
+                                            $depts = \App\Models\InventorySetting::where('key', 'departments')
+                                                ->first()?->value ?? [];
+                                            foreach ($depts as $d) {
+                                                if (is_array($d) && isset($d['name']) && $d['name'] === $dept) {
+                                                    $multi = floatval($d['multiplier'] ?? 2.5);
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        return round($cost * $multi, 2);
+                                    })(),
                                     'metal_type'         => $item['metal_type'] ?? null,
-                                    
+
                                     // 🚀 NEW FIELDS SAVED HERE
                                     'department'         => $item['department'] ?? null,
                                     'sub_department'     => $item['sub_department'] ?? null,
@@ -260,7 +296,7 @@ class ListProductItems extends ListRecords
                                     'barcode'            => ProductItemResource::generatePersistentBarcode($prefix),
                                     'rfid_code'          => strtoupper(bin2hex(random_bytes(4))),
                                     'status'             => 'staged',
-                                    
+
                                     // Hash stamped on first item only — blocks re-scanning same invoice
                                     'serial_number'      => ($isFirst && $invoiceHash) ? $invoiceHash : null,
                                 ]);

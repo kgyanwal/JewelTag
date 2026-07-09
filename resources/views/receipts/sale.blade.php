@@ -560,6 +560,12 @@ if ($hasRepair) {
                                     <td colspan="2"><strong>Completion:</strong> {{ \Carbon\Carbon::parse($job['date_required'])->format('M d, Y') }}</td>
                                 </tr>
                                 @endif
+                                @if(!empty($job['send_to']))
+<div class="job-detail">
+    <span class="job-label">Send To:</span>
+    <span class="job-value" style="font-weight:700;color:#b45309;">{{ $job['send_to'] }}</span>
+</div>
+@endif
                             </table>
                             @if(!empty($job['job_instructions']))
                             <div style="font-size:9px;color:#78350f;line-height:1.5;border-top:1px dashed #fef3c7;padding-top:4px;">

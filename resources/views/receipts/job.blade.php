@@ -313,6 +313,12 @@
                         <strong>{{ strtoupper($job['job_type'] ?? 'Job') }}</strong>
                         @if(!empty($job['metal_type'])) — {{ $job['metal_type'] }}@endif
                         @if(!empty($job['date_required'])) | Due: {{ \Carbon\Carbon::parse($job['date_required'])->format('m/d/Y') }}@endif
+                        @if(!empty($job['send_to']))
+    <span class="detail-item">
+        <span class="detail-label">Send To:</span>
+        <strong style="color:#b45309;">{{ $job['send_to'] }}</strong>
+    </span>
+@endif
                         @if(($job['job_type'] ?? '') === 'Resize' && (!empty($job['current_size']) || !empty($job['target_size'])))
                             <br>Size: {{ $job['current_size'] ?? '?' }} → {{ $job['target_size'] ?? '?' }}
                         @endif

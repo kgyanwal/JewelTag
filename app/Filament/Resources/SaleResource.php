@@ -826,21 +826,70 @@ class SaleResource extends Resource
                                     Repeater::make('special_jobs')
                                         ->label('')
                                         ->schema([
-                                            Select::make('applicable_item_indexes')
-                                                ->label('Apply this job to which items?')
-                                                ->multiple()
-                                                ->options(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $options = [];
-                                                    foreach (array_values($items) as $i => $item) {
-                                                        $desc = $item['custom_description'] ?? $item['stock_no_display'] ?? 'Item ' . ($i + 1);
-                                                        $options[$i] = ($i + 1) . '. ' . \Illuminate\Support\Str::limit($desc, 50);
-                                                    }
-                                                    return $options;
-                                                })
-                                                ->placeholder('Select items this job applies to...')
-                                                ->columnSpanFull()
-                                                ->live(),
+                                           Toggle::make('job_applies_to_store_item')
+    ->label('Was this item bought from our store?')
+    ->inline(false)
+    ->live()
+    ->columnSpanFull(),
+
+Select::make('store_item_id')
+    ->label('Search Store Stock No.')
+    ->placeholder('Search by stock number (G1234, D1001, N...)')
+    ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
+    ->required(fn(Get $get) => $get('job_applies_to_store_item'))
+    ->options(function () {
+        return \App\Models\ProductItem::query()
+            ->where('status', 'sold')
+            ->whereNotNull('barcode')
+            ->orderBy('barcode')
+            ->limit(200)
+            ->get()
+            ->mapWithKeys(fn($item) => [
+                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+            ]);
+    })
+    ->getSearchResultsUsing(function (string $search) {
+        return \App\Models\ProductItem::query()
+            ->where('status', 'sold')
+            ->where(function ($q) use ($search) {
+                $q->where('barcode', 'like', "%{$search}%")
+                    ->orWhere('custom_description', 'like', "%{$search}%");
+            })
+            ->limit(50)
+            ->get()
+            ->mapWithKeys(fn($item) => [
+                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+            ]);
+    })
+    ->getOptionLabelUsing(fn($value) =>
+        \App\Models\ProductItem::find($value)?->barcode . ' — ' .
+        \App\Models\ProductItem::find($value)?->custom_description
+    )
+    ->searchable()
+    ->live()
+    ->columnSpanFull(),
+
+Select::make('applicable_item_indexes')
+    ->label('Or, apply this job to an item in this sale')
+    ->multiple()
+    ->searchable()
+    ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
+    ->options(function (Get $get) {
+        $items = $get('../../items') ?? [];
+        $options = [];
+        foreach (array_values($items) as $i => $item) {
+            $stockNo = $item['stock_no_display'] ?? null;
+            $desc    = $item['custom_description'] ?? '';
+            $label   = $stockNo
+                ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
+                : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
+            $options[$i] = ($i + 1) . '. ' . $label;
+        }
+        return $options;
+    })
+    ->placeholder('Select items this job applies to...')
+    ->columnSpanFull()
+    ->live(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')
@@ -868,10 +917,39 @@ class SaleResource extends Resource
                                                     TextInput::make('current_size')->label('Current Size'),
                                                     TextInput::make('target_size')->label('Target Size'),
                                                 ]),
-                                            Textarea::make('job_instructions')
-                                                ->label('Bench Notes / Instructions')
-                                                ->columnSpanFull()
-                                                ->rows(2),
+                                         Textarea::make('job_instructions')
+    ->label('Bench Notes / Instructions')
+    ->columnSpanFull()
+    ->rows(2),
+Select::make('send_to')
+    ->label('Send To (Location)')
+    ->options(function () {
+        $locations = \App\Models\InventorySetting::where('key', 'repair_locations')
+            ->first()?->value ?? [];
+        return collect($locations)
+            ->mapWithKeys(fn($l) => [$l => $l])
+            ->toArray();
+    })
+    ->createOptionForm([
+        Forms\Components\TextInput::make('name')
+            ->label('New Location Name')
+            ->placeholder('e.g. Javier, Lubbock, Dallas Bench...')
+            ->required(),
+    ])
+    ->createOptionUsing(function (array $data) {
+        $setting = \App\Models\InventorySetting::firstOrCreate(
+            ['key' => 'repair_locations'],
+            ['value' => []]
+        );
+        $current   = $setting->value ?? [];
+        $current[] = $data['name'];
+        $setting->update(['value' => array_values(array_unique($current))]);
+        return $data['name'];
+    })
+    ->searchable()
+    ->placeholder('— Select or create location —')
+    ->native(false)
+    ->columnSpanFull(),
                                         ])
                                         ->columns(1)
                                         ->addActionLabel('+ Add Another Job')

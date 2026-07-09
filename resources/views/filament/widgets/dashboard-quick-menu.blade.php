@@ -202,7 +202,7 @@ $tzAbbreviation = $now->format('T');
                     <!-- Memo Inventory -->
                     <a href="/admin/memo-inventory" class="operation-card priority-card" style="background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af; border-color: #3b82f6;">
                         <div class="card-gem" style="background: #3b82f6;"></div>
-                        <img src="https://images.unsplash.com/photo-1747933509433-c58152c10ee7?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                        <img src="https://plus.unsplash.com/premium_photo-1681486928780-67d70f1ea3c2?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTd8fGpld2VscnklMjBzdG9yZXxlbnwwfHwwfHx8MA%3D%3D?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                         <div class="card-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -365,7 +365,7 @@ $tzAbbreviation = $now->format('T');
 
                             <a href="/admin/find-stock" class="operation-card onyx-card">
                                 <div class="card-gem"></div>
-                                <img src="https://images.unsplash.com/photo-1747933509433-c58152c10ee7?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
+                                <img src="https://plus.unsplash.com/premium_photo-1681276169450-4504a2442173?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8amV3ZWxyeSUyMHN0b3JlfGVufDB8fDB8fHww?w=400&q=70&auto=format&fit=crop" alt="" class="card-photo">
                                 <div class="card-icon">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

@@ -481,26 +481,37 @@ class CreateSale extends CreateRecord
 
                 $saleItemsArray = $sale->items->values();
 
-                foreach ($specialJobs as $job) {
+               foreach ($specialJobs as $job) {
                     if (empty($job['job_type'])) continue;
 
-                    // ── Get selected item indexes (or default to first item) ──
-                    $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
-                    if (empty($selectedIndexes)) {
-                        $selectedIndexes = [0];
+                    $itemDescription = null;
+
+                    // ── Path 1: job applies to a previously-sold store item (not in this cart) ──
+                    if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
+                        $storeItem = \App\Models\ProductItem::find($job['store_item_id']);
+                        if ($storeItem) {
+                            $itemDescription = $storeItem->barcode . ' — ' . ($storeItem->custom_description ?? '');
+                        }
                     }
 
-                    // ── Build description from only the selected items ────────
-                    $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
-                        return $saleItemsArray->get((int)$idx);
-                    })->filter();
-
-                    $itemDescription = $selectedItems->map(function ($item) {
-                        if ($item->productItem) {
-                            return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                    // ── Path 2: job applies to item(s) already in this sale's cart ──
+                    if (empty($itemDescription)) {
+                        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
+                        if (empty($selectedIndexes)) {
+                            $selectedIndexes = [0];
                         }
-                        return $item->custom_description ?? 'Item';
-                    })->filter()->implode(', ');
+
+                        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
+                            return $saleItemsArray->get((int)$idx);
+                        })->filter();
+
+                        $itemDescription = $selectedItems->map(function ($item) {
+                            if ($item->productItem) {
+                                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                            }
+                            return $item->custom_description ?? 'Item';
+                        })->filter()->implode(', ');
+                    }
 
                     if (empty($itemDescription)) {
                         $itemDescription = 'Item from Sale #' . $sale->invoice_number;
@@ -540,6 +551,7 @@ class CreateSale extends CreateRecord
                             'metal_type'       => $job['metal_type'] ?? null,
                             'current_size'     => $job['current_size'] ?? null,
                             'target_size'      => $job['target_size'] ?? null,
+                            'send_to'          => $job['send_to'] ?? null,
                             'job_instructions' => $job['job_instructions'] ?? null,
                             'date_required'    => $job['date_required'] ?? null,
                             'estimated_cost'   => 0,

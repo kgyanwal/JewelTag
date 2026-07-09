@@ -661,6 +661,8 @@ HTML
                 \App\Filament\Pages\LaybuyHealthReport::class,
                 \App\Filament\Pages\GrossMarginReport::class,
                 \App\Filament\Pages\WarrantyExpiryReminders::class,
+                \App\Filament\Pages\EodAmendmentRequests::class,
+                \App\Filament\Pages\RfidTracking::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,

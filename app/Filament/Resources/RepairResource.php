@@ -187,181 +187,258 @@ class RepairResource extends Resource
                         ]),
 
                     Section::make('Jewelry Items to Repair')
-                        ->description('Add all items brought in by the customer.')
+                        ->description('Add all items brought in by the customer. Each item can have its own photos, issues, and services.')
                         ->icon('heroicon-o-sparkles')
                         ->schema([
                             Repeater::make('items')
                                 ->label('')
                                 ->schema([
-                                    Grid::make(2)->schema([
-                                        Toggle::make('is_warranty')
-                                            ->label('Covered Under Warranty?')
-                                            ->helperText('Automatically sets costs to $0.00')
-                                            ->onColor('success')
-                                            ->inline(false)
-                                            ->live()
-                                            ->afterStateUpdated(function ($state, Forms\Set $set) {
-                                                if ($state) {
-                                                    $set('estimated_cost', 0);
-                                                    $set('final_cost', 0);
-                                                }
-                                            }),
 
-                                        Toggle::make('is_from_store_stock')
-                                            ->label('Was this bought from our store?')
-                                            ->inline(false)
-                                            ->live(),
-                                    ])->columnSpanFull(),
+                                    // ── SUB-GROUP 1: ITEM ORIGIN ─────────────────────
+                                    Section::make('Item Origin')
+                                        ->description('Where did this piece come from?')
+                                        ->icon('heroicon-o-tag')
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                Toggle::make('is_warranty')
+                                                    ->label('Covered Under Warranty?')
+                                                    ->helperText('Automatically sets costs to $0.00')
+                                                    ->onColor('success')
+                                                    ->inline(false)
+                                                    ->live()
+                                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                                        if ($state) {
+                                                            $set('estimated_cost', 0);
+                                                            $set('final_cost', 0);
+                                                        }
+                                                    }),
 
-                                    Select::make('original_product_id')
-                                        ->label('Search Store Stock No.')
-                                        ->placeholder('Search by stock number (G1234, R1001, N...)')
-                                        ->options(function () {
-                                            return \App\Models\ProductItem::query()
-                                                ->whereNotNull('barcode')
-                                                ->orderBy('barcode')
-                                                ->limit(200)
-                                                ->get()
-                                                ->mapWithKeys(fn($item) => [
-                                                    $item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"
-                                                ]);
-                                        })
-                                        ->getSearchResultsUsing(function (string $search) {
-                                            return \App\Models\ProductItem::query()
-                                                ->where(function ($q) use ($search) {
-                                                    $q->where('barcode', 'like', "%{$search}%")
-                                                        ->orWhere('custom_description', 'like', "%{$search}%");
+                                                Toggle::make('is_from_store_stock')
+                                                    ->label('Was this bought from our store?')
+                                                    ->inline(false)
+                                                    ->live(),
+                                            ]),
+
+                                            Select::make('original_product_id')
+                                                ->label('Search Store Stock No.')
+                                                ->placeholder('Search by stock number (G1234, R1001, N...)')
+                                                ->options(function () {
+                                                    return \App\Models\ProductItem::query()
+                                                        ->whereNotNull('barcode')
+                                                        ->orderBy('barcode')
+                                                        ->limit(200)
+                                                        ->get()
+                                                        ->mapWithKeys(fn($item) => [
+                                                            $item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"
+                                                        ]);
                                                 })
-                                                ->limit(50)
-                                                ->get()
-                                                ->mapWithKeys(fn($item) => [
-                                                    $item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"
-                                                ]);
-                                        })
-                                        ->getOptionLabelUsing(fn($value) =>
-                                            \App\Models\ProductItem::find($value)?->barcode . ' — ' .
-                                            \App\Models\ProductItem::find($value)?->custom_description
-                                        )
-                                        ->searchable()
-                                        ->live()
-                                        ->afterStateUpdated(function ($state, Forms\Set $set) {
-                                            if ($item = \App\Models\ProductItem::find($state)) {
-                                                $set('item_description', $item->custom_description ?? $item->barcode);
-                                            }
-                                        })
-                                        ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
-                                        ->columnSpanFull(),
-Forms\Components\FileUpload::make('item_photo')
-    ->label('Item Photo (Intake Condition) — Upload File')
-    ->image()
-    ->disk('public')
-    ->directory('repair-intake-photos')
-    ->visibility('public')
-    ->imageEditor()
-    ->imageEditorAspectRatios(['1:1', '4:3', null])
-    ->maxSize(5120)
-    ->helperText('Take a photo of the item as received — protects against later disputes about condition.')
-    ->extraInputAttributes(['capture' => 'environment'])
-    ->columnSpanFull(),
+                                                ->getSearchResultsUsing(function (string $search) {
+                                                    return \App\Models\ProductItem::query()
+                                                        ->where(function ($q) use ($search) {
+                                                            $q->where('barcode', 'like', "%{$search}%")
+                                                                ->orWhere('custom_description', 'like', "%{$search}%");
+                                                        })
+                                                        ->limit(50)
+                                                        ->get()
+                                                        ->mapWithKeys(fn($item) => [
+                                                            $item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"
+                                                        ]);
+                                                })
+                                                ->getOptionLabelUsing(fn($value) =>
+                                                    \App\Models\ProductItem::find($value)?->barcode . ' — ' .
+                                                    \App\Models\ProductItem::find($value)?->custom_description
+                                                )
+                                                ->searchable()
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                                    if ($item = \App\Models\ProductItem::find($state)) {
+                                                        $set('item_description', $item->custom_description ?? $item->barcode);
+                                                    }
+                                                })
+                                                ->visible(fn(Forms\Get $get) => $get('is_from_store_stock'))
+                                                ->columnSpanFull(),
+                                        ]),
 
-Forms\Components\Hidden::make('captured_photos')
-    ->default([])
-    ->dehydrated(true), // Crucial: This tells Filament to save this field
+                                    // ── SUB-GROUP 2: PHOTO DOCUMENTATION ─────────────
+                                    Section::make('Photo Documentation')
+                                        ->description('Capture the item\'s intake condition — protects against later disputes.')
+                                        ->icon('heroicon-o-camera')
+                                        ->collapsible()
+                                        ->schema([
+                                            Forms\Components\FileUpload::make('item_photo')
+                                                ->label('Item Photo (Intake Condition) — Upload File')
+                                                ->image()
+                                                ->disk('public')
+                                                ->directory('repair-intake-photos')
+                                                ->visibility('public')
+                                                ->imageEditor()
+                                                ->imageEditorAspectRatios(['1:1', '4:3', null])
+                                                ->maxSize(5120)
+                                                ->helperText('Take a photo of the item as received — protects against later disputes about condition.')
+                                                ->extraInputAttributes(['capture' => 'environment'])
+                                                ->columnSpanFull(),
 
-Placeholder::make('webcam_view')
-    ->live()
-    ->content(function (Forms\Get $get, $component) {
-        // captured_photos is a sibling field in the same repeater row
-        $photos    = $get('captured_photos') ?? [];
-        
-        // Ensure it's always an array (DB might return null or string)
-        if (!is_array($photos)) {
-            $photos = [];
-        }
+                                            Forms\Components\Hidden::make('captured_photos')
+                                                ->default([])
+                                                ->dehydrated(true), // Crucial: This tells Filament to save this field
 
-        $statePath = $component->getStatePath();
-        $fieldPath = str_replace('webcam_view', 'captured_photos', $statePath);
+                                            Placeholder::make('webcam_view')
+                                                ->label('')
+                                                ->live()
+                                                ->content(function (Forms\Get $get, $component) {
+                                                    // captured_photos is a sibling field in the same repeater row
+                                                    $photos    = $get('captured_photos') ?? [];
 
-        // Use a unique key based on statePath + photos count so Livewire
-        // re-mounts the component when the form is hydrated with real data
-        $key = md5($fieldPath . count($photos));
+                                                    // Ensure it's always an array (DB might return null or string)
+                                                    if (!is_array($photos)) {
+                                                        $photos = [];
+                                                    }
 
-        return new \Illuminate\Support\HtmlString(
-            \Illuminate\Support\Facades\Blade::render(
-                '<livewire:repair-webcam-capture :statePath="$statePath" :photos="$photos" :key="$key" />',
-                [
-                    'statePath' => $fieldPath,
-                    'photos'    => $photos,
-                    'key'       => $key,
-                ]
-            )
-        );
-    }),                         Grid::make(2)->schema([
-                                        Textarea::make('item_description')
-                                            ->label('Item Name / Description')
-                                            ->placeholder('e.g., 14k White Gold Diamond Engagement Ring')
-                                            ->required()->maxLength(3000)->rows(3),
+                                                    $statePath = $component->getStatePath();
+                                                    $fieldPath = str_replace('webcam_view', 'captured_photos', $statePath);
 
-                                        Textarea::make('reported_issue')
-                                            ->label('Issue Reported / Instructions')
-                                            ->placeholder('e.g., Needs sizing to 6.5, missing side stone...')
-                                            ->required()->rows(3),
-                                    ])->columnSpanFull(),
+                                                    // Use a unique key based on statePath + photos count so Livewire
+                                                    // re-mounts the component when the form is hydrated with real data
+                                                    $key = md5($fieldPath . count($photos));
 
-                                    // ── SERVICE TYPE & METAL ─────────────────────────────────
-                                    // Reuses SaleResource::getServiceTypeOptions() for consistency
-                                    Grid::make(4)->schema([
-                                        Select::make('job_type')
-                                            ->label('Service Type')
-                                            ->options(fn() => \App\Filament\Resources\SaleResource::getServiceTypeOptions())
-                                            ->placeholder('Select if applicable...')
-                                            ->nullable()
-                                            ->live()
-                                            ->columnSpan(2),
+                                                    return new \Illuminate\Support\HtmlString(
+                                                        \Illuminate\Support\Facades\Blade::render(
+                                                            '<livewire:repair-webcam-capture :statePath="$statePath" :photos="$photos" :key="$key" />',
+                                                            [
+                                                                'statePath' => $fieldPath,
+                                                                'photos'    => $photos,
+                                                                'key'       => $key,
+                                                            ]
+                                                        )
+                                                    );
+                                                }),
+                                        ]),
 
-                                        Select::make('metal_type')
-                                            ->label('Metal')
-                                            ->options([
-                                                '10k'      => '10k Gold',
-                                                '14k'      => '14k Gold',
-                                                '18k'      => '18k Gold',
-                                                'Platinum' => 'Platinum',
-                                                'Silver'   => 'Sterling Silver',
-                                                'Other'    => 'Other',
-                                            ])
-                                            ->placeholder('Select if applicable...')
-                                            ->nullable()
-                                            ->columnSpan(2),
+                                    // ── SUB-GROUP 3: DESCRIPTION & ISSUE ─────────────
+                                    Section::make('Description & Issue')
+                                        ->icon('heroicon-o-document-text')
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                Textarea::make('item_description')
+                                                    ->label('Item Name / Description')
+                                                    ->placeholder('e.g., 14k White Gold Diamond Engagement Ring')
+                                                    ->required()->maxLength(3000)->rows(3),
 
-                                        // ── SIZING (only shown when Resize is selected) ───────
-                                        TextInput::make('current_size')
-                                            ->label('Current Size')
-                                            ->placeholder('e.g. 7')
-                                            ->nullable()
-                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
-                                            ->columnSpan(1),
+                                                Textarea::make('reported_issue')
+                                                    ->label('Issue Reported / Instructions')
+                                                    ->placeholder('e.g., Needs sizing to 6.5, missing side stone...')
+                                                    ->required()->rows(3),
+                                            ]),
+                                        ]),
 
-                                        TextInput::make('target_size')
-                                            ->label('Target Size')
-                                            ->placeholder('e.g. 8.5')
-                                            ->nullable()
-                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
-                                            ->columnSpan(1),
+                                    // ── SUB-GROUP 4: SERVICES ────────────────────────
+                                    Section::make('Services Required')
+                                        ->description('Add one or more service line items for this piece (resize, solder, engraving, etc.)')
+                                        ->icon('heroicon-o-wrench-screwdriver')
+                                        ->collapsible()
+                                        ->schema([
+                                            // Reuses SaleResource::getServiceTypeOptions() for consistency
+                                            Repeater::make('services')
+                                                ->label('')
+                                                ->addActionLabel('+ Add Another Service')
+                                                ->defaultItems(1)
+                                                ->collapsible()
+                                                ->itemLabel(fn(array $state): string => ($state['job_type'] ?? 'New Service'))
+                                                ->schema([
+                                                    Grid::make(4)->schema([
+                                                        Select::make('job_type')
+                                                            ->label('Service Type')
+                                                            ->options(fn() => \App\Filament\Resources\SaleResource::getServiceTypeOptions())
+                                                            ->placeholder('Select if applicable...')
+                                                            ->nullable()
+                                                            ->live()
+                                                            ->columnSpan(2),
 
-                                        CustomDatePicker::make('date_required')
-                                            ->label('Completion Date')
-                                            ->displayFormat('M d, Y')
-                                            ->nullable()
-                                            ->columnSpan(fn(Forms\Get $get) => $get('job_type') === 'Resize' ? 2 : 2),
-                                    ])->columnSpanFull(),
+                                                        Select::make('metal_type')
+                                                            ->label('Metal')
+                                                            ->options([
+                                                                '10k'      => '10k Gold',
+                                                                '14k'      => '14k Gold',
+                                                                '18k'      => '18k Gold',
+                                                                'Platinum' => 'Platinum',
+                                                                'Silver'   => 'Sterling Silver',
+                                                                'Other'    => 'Other',
+                                                            ])
+                                                            ->placeholder('Select if applicable...')
+                                                            ->nullable()
+                                                            ->columnSpan(2),
 
-                                    Grid::make(2)->schema([
-                                        TextInput::make('estimated_cost')
-                                            ->label('Estimated Cost')->numeric()->prefix('$')->default(0)->nullable(),
-                                        TextInput::make('final_cost')
-                                            ->label('Final Cost')->numeric()->prefix('$')
-                                            ->helperText('Leave blank until repair is finished.'),
-                                    ])->columnSpanFull(),
+                                                        TextInput::make('current_size')
+                                                            ->label('Current Size')
+                                                            ->placeholder('e.g. 7')
+                                                            ->nullable()
+                                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
+                                                            ->columnSpan(1),
+
+                                                        TextInput::make('target_size')
+                                                            ->label('Target Size')
+                                                            ->placeholder('e.g. 8.5')
+                                                            ->nullable()
+                                                            ->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize')
+                                                            ->columnSpan(1),
+
+                                                        CustomDatePicker::make('date_required')
+                                                            ->label('Completion Date')
+                                                            ->displayFormat('M d, Y')
+                                                            ->nullable()
+                                                            ->columnSpan(fn(Forms\Get $get) => $get('job_type') === 'Resize' ? 2 : 2),
+                                                    ])->columnSpanFull(),
+
+                                                    Textarea::make('job_instructions')
+                                                        ->label('Bench Notes / Instructions')
+                                                        ->columnSpanFull()
+                                                        ->rows(2),
+
+                                                    Select::make('send_to')
+                                                        ->label('Send To (Location)')
+                                                        ->options(function () {
+                                                            $locations = \App\Models\InventorySetting::where('key', 'repair_locations')
+                                                                ->first()?->value ?? [];
+                                                            return collect($locations)
+                                                                ->mapWithKeys(fn($l) => [$l => $l])
+                                                                ->toArray();
+                                                        })
+                                                        ->createOptionForm([
+                                                            Forms\Components\TextInput::make('name')
+                                                                ->label('New Location Name')
+                                                                ->placeholder('e.g. Javier, Lubbock, Dallas Bench...')
+                                                                ->required(),
+                                                        ])
+                                                        ->createOptionUsing(function (array $data) {
+                                                            $setting = \App\Models\InventorySetting::firstOrCreate(
+                                                                ['key' => 'repair_locations'],
+                                                                ['value' => []]
+                                                            );
+                                                            $current   = $setting->value ?? [];
+                                                            $current[] = $data['name'];
+                                                            $setting->update(['value' => array_values(array_unique($current))]);
+                                                            return $data['name'];
+                                                        })
+                                                        ->searchable()
+                                                        ->placeholder('— Select or create location —')
+                                                        ->native(false)
+                                                        ->columnSpanFull(),
+                                                ])
+                                                ->columnSpanFull(),
+                                        ]),
+
+                                    // ── SUB-GROUP 5: COST ESTIMATE ───────────────────
+                                    Section::make('Cost Estimate')
+                                        ->icon('heroicon-o-currency-dollar')
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                TextInput::make('estimated_cost')
+                                                    ->label('Estimated Cost')->numeric()->prefix('$')->default(0)->nullable(),
+                                                TextInput::make('final_cost')
+                                                    ->label('Final Cost')->numeric()->prefix('$')
+                                                    ->helperText('Leave blank until repair is finished.'),
+                                            ]),
+                                        ]),
                                 ])
                                 ->defaultItems(1)
                                 ->addActionLabel('+ Add Another Jewelry Item')
@@ -374,6 +451,7 @@ Placeholder::make('webcam_view')
                 Group::make()->columnSpan(['lg' => 4])->schema([
 
                     Section::make('Staff Assignment')
+                        ->description('Who is handling this ticket?')
                         ->icon('heroicon-o-identification')
                         ->schema([
                             Hidden::make('sales_person_id'),
@@ -398,6 +476,7 @@ Placeholder::make('webcam_view')
                         ]),
 
                     Section::make('Repair Tracking')
+                        ->description('Drop-off, pickup, and repair location details.')
                         ->icon('heroicon-o-map-pin')->collapsible()
                         ->schema([
                             Grid::make(2)->schema([
