@@ -114,6 +114,7 @@ class SaleResource extends Resource
 
         return $form
             ->schema([
+                
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)
                         ->disabled($isLocked)
@@ -1295,9 +1296,18 @@ Select::make('send_to')
 
                             Section::make('Receipt Customization')
                                 ->schema([
-                                    Textarea::make('notes')
-                                        ->label('Receipt Notes / Warranty')
-                                        ->rows(3),
+                                 Textarea::make('notes')
+    ->label('Customer Notes')
+    ->helperText('Visible to customer on receipts')
+    ->rows(2),
+
+Textarea::make('internal_notes')
+    ->label('🔒 Internal Notes (Staff Only)')
+    ->helperText('Private — never shown to customer on any receipt or printout')
+    ->rows(2)
+    ->extraAttributes([
+        'style' => 'background:#fffbeb;border-color:#f59e0b;',
+    ]),
                                 ]),
 
                             Placeholder::make('validation_alert')
@@ -1320,6 +1330,44 @@ Select::make('send_to')
                     Group::make()->columnSpan(4)
                         ->disabled($isLocked)
                         ->schema([
+                            Placeholder::make('internal_notes_display')
+    ->hiddenLabel()
+    ->content(function (\Filament\Forms\Get $get) {
+        $note = $get('internal_notes');
+        if (!$note) return '';
+        return new \Illuminate\Support\HtmlString("
+            <div style='
+                background: #fffbeb;
+                border: 1.5px solid #f59e0b;
+                border-left: 5px solid #f59e0b;
+                border-radius: 8px;
+                padding: 12px 16px;
+                margin-top: 4px;
+            '>
+                <div style='
+                    font-size: 11px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.06em;
+                    color: #92400e;
+                    margin-bottom: 6px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                '>
+                    ⚠️ Internal Notes (Staff Only)
+                </div>
+                <div style='
+                    font-size: 13px;
+                    color: #78350f;
+                    line-height: 1.5;
+                    white-space: pre-wrap;
+                '>" . e($note) . "</div>
+            </div>
+        ");
+    })
+    ->live()
+    ->columnSpanFull(),
                             Section::make('Customer & Personnel')
                                 ->description('Select a customer first to load profile and credits.')
                                 ->schema([
