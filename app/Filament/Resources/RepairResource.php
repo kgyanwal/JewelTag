@@ -714,23 +714,27 @@ class RepairResource extends Resource
                 ->toggleable(),
 Tables\Columns\TextColumn::make('origin')
     ->label('ORIGIN')
-    ->badge()
-    ->color(fn (string $state): string => match ($state) {
-        'POS SALE'  => 'info',
-        'EXCHANGE'  => 'warning',
-        default     => 'gray',
-    })
+    ->html() // 🚀 Allows custom sub-text HTML below the manual badge
     ->getStateUsing(function ($record) {
         if (empty($record->sale_id)) {
             return 'DIRECT';
         }
 
-        // Optional: If you track exchanges in your sale items description or notes
-        $saleNotes = strtolower($record->sale?->notes ?? '');
-        $hasExchangeItem = $record->sale?->items->contains(fn($item) => 
-            str_contains(strtolower($item->custom_description ?? ''), 'exchange') || 
-            str_contains(strtolower($item->custom_description ?? ''), 'return')
-        );
+        // 🚀 CRITICAL FIX: Fetch the sale notes and description directly to prevent relation lazy-loading fails
+        $saleData = \Illuminate\Support\Facades\DB::table('sales')
+            ->where('id', $record->sale_id)
+            ->select('notes')
+            ->first();
+
+        $saleNotes = strtolower($saleData?->notes ?? '');
+        
+        $hasExchangeItem = \Illuminate\Support\Facades\DB::table('sale_items')
+            ->where('sale_id', $record->sale_id)
+            ->where(function ($q) {
+                $q->where('custom_description', 'like', '%exchange%')
+                  ->orWhere('custom_description', 'like', '%return%');
+            })
+            ->exists();
 
         if ($hasExchangeItem || str_contains($saleNotes, 'exchange')) {
             return 'EXCHANGE';
@@ -738,10 +742,37 @@ Tables\Columns\TextColumn::make('origin')
 
         return 'POS SALE';
     })
-    ->formatStateUsing(fn (string $state) => match ($state) {
-        'POS SALE' => '🛒 POS SALE',
-        'EXCHANGE' => '🔄 EXCHANGE',
-        default    => '🛠️ DIRECT INTAKE',
+    ->formatStateUsing(function (string $state, $record) {
+        // Build beautiful manual badge classes matching Filament's design system
+        $badgeClass = match ($state) {
+            'POS SALE'  => 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+            'EXCHANGE'  => 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+            default     => 'bg-gray-50 text-gray-700 dark:bg-gray-500/10 dark:text-gray-400 border-gray-200 dark:border-gray-500/20',
+        };
+
+        $badgeLabel = match ($state) {
+            'POS SALE' => '🛒 POS SALE',
+            'EXCHANGE' => '🔄 EXCHANGE',
+            default    => '🛠️ DIRECT INTAKE',
+        };
+
+        $html = "<div><span class='inline-flex items-center gap-x-1 rounded-md px-2 py-0.5 text-xs font-medium border {$badgeClass}'>{$badgeLabel}</span></div>";
+
+        // 🚀 BULLETPROOF INVOICE LOOKUP: Pull directly from the database table if $record->sale is not eager loaded
+        if (!empty($record->sale_id)) {
+            $invoiceNumber = $record->sale?->invoice_number 
+                ?? \Illuminate\Support\Facades\DB::table('sales')->where('id', $record->sale_id)->value('invoice_number');
+
+            if ($invoiceNumber) {
+                $html .= "
+                    <div class='text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-1 tracking-tight pl-0.5 block' style='display: block !important;'>
+                        Inv #{$invoiceNumber}
+                    </div>
+                ";
+            }
+        }
+
+        return new \Illuminate\Support\HtmlString($html);
     })
     ->grow(false)
     ->toggleable(),
