@@ -267,7 +267,27 @@ class FindStock extends Page implements HasForms, HasTable
 
         return $query
             ->when($f['stock_number'] ?? null, fn($q, $v) => $q->where('barcode', 'like', "%{$v}%"))
-            ->when($f['description'] ?? null,  fn($q, $v) => $q->where('custom_description', 'like', "%{$v}%"))
+           ->when($f['description'] ?? null, function ($q, $v) {
+    $q->where(function ($q2) use ($v) {
+        $q2->where('custom_description', 'like', "%{$v}%")
+            ->orWhere('barcode', 'like', "%{$v}%")
+            ->orWhere('metal_type', 'like', "%{$v}%")
+            ->orWhere('shape', 'like', "%{$v}%")
+            ->orWhere('color', 'like', "%{$v}%")
+            ->orWhere('clarity', 'like', "%{$v}%")
+            ->orWhere('cut', 'like', "%{$v}%")
+            ->orWhere('category', 'like', "%{$v}%")
+            ->orWhere('department', 'like', "%{$v}%")
+            ->orWhere('sub_department', 'like', "%{$v}%")
+            ->orWhere('certificate_number', 'like', "%{$v}%")
+            ->orWhere('supplier_code', 'like', "%{$v}%")
+            ->orWhere('serial_number', 'like', "%{$v}%")
+            ->orWhere('rfid_code', 'like', "%{$v}%")
+            ->orWhereHas('supplier', function ($q3) use ($v) {
+                $q3->where('company_name', 'like', "%{$v}%");
+            });
+    });
+})
             ->when($f['status'] ?? null,        fn($q, $v) => $q->where('status', $v))
             ->when($f['department'] ?? null,    fn($q, $v) => $q->where('department', $v))
             ->when($f['sub_department'] ?? null, fn($q, $v) => $q->where('sub_department', $v))
