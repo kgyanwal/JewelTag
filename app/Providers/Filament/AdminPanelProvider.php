@@ -627,6 +627,7 @@ HTML
                 \App\Filament\Resources\SalePaymentResource::class,
                 \App\Filament\Resources\StockTransferResource::class,
                 \App\Filament\Resources\SupportTicketResource::class,
+                \App\Filament\Resources\ExchangeResource::class,
             ])
             ->pages([
                 \App\Filament\Pages\Dashboard::class,

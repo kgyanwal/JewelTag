@@ -119,7 +119,7 @@ class EditSale extends EditRecord
         ];
     }
 
-  protected function mutateFormDataBeforeFill(array $data): array
+    protected function mutateFormDataBeforeFill(array $data): array
     {
         $record = $this->record;
 
@@ -136,13 +136,13 @@ class EditSale extends EditRecord
             $splits = [];
 
             foreach ($allDbPayments as $p) {
-    $splits[] = [
-        'method'           => strtoupper(trim($p->method)),
-        'amount'           => floatval($p->amount),
-        'payment_target'   => $p->custom_order_id ? 'custom' : 'regular',
-        'is_prior_deposit' => (bool) $p->custom_order_id,
-    ];
-}
+                $splits[] = [
+                    'method'           => strtoupper(trim($p->method)),
+                    'amount'           => floatval($p->amount),
+                    'payment_target'   => $p->custom_order_id ? 'custom' : 'regular',
+                    'is_prior_deposit' => (bool) $p->custom_order_id,
+                ];
+            }
 
             foreach ($salePayments as $p) {
                 $splits[] = [
@@ -176,10 +176,10 @@ class EditSale extends EditRecord
                         $data['items'][$key]['sold_price']          = $customOrder->quoted_price;
                         $data['items'][$key]['sale_price_override'] = $item['sale_price_override'] ?? $customOrder->quoted_price;
                         $data['items'][$key]['qty']                 = 1;
-                        
+
                         // 🚀 SYSTEM PERSISTENCE FIX
                         $data['items'][$key]['is_tax_free'] = (bool) $customOrder->is_tax_free;
-                        
+
                         if ((bool) $customOrder->is_tax_free) {
                             $data['items'][$key]['tax_amount'] = 0;
                         }
@@ -247,9 +247,9 @@ class EditSale extends EditRecord
 
         // Add custom deposit values back into base validations
         $baseDeposit = collect($data['split_payments'] ?? [])
-    ->where('payment_target', 'custom')
-    ->filter(fn($p) => empty($p['is_prior_deposit']))
-    ->sum(fn($p) => (float)($p['amount'] ?? 0));
+            ->where('payment_target', 'custom')
+            ->filter(fn($p) => empty($p['is_prior_deposit']))
+            ->sum(fn($p) => (float)($p['amount'] ?? 0));
 
         $balance = round($finalTotal - ($totalPaid + $baseDeposit), 2);
 
@@ -266,7 +266,7 @@ class EditSale extends EditRecord
         return $data;
     }
 
-  protected function afterSave(): void
+    protected function afterSave(): void
     {
         $sale = $this->record->fresh();
 
@@ -278,8 +278,6 @@ class EditSale extends EditRecord
             $customOrder   = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
             // 1. Existing POS payments in DB
-            // 🚀 CRITICAL FIX: Removed `where('paid_at', '>=')` clause. 
-            // We MUST fetch historical custom deposits so we don't accidentally duplicate them!
             $existingDirectPayments = $sale->payments()->get();
             $existingSalePayments   = $sale->salePayments()->get();
 
@@ -301,7 +299,6 @@ class EditSale extends EditRecord
             $delta = round($formTotal - $totalAlreadyInDb, 2);
 
             if ($delta > 0) {
-                // Build lookup of ALL existing payments (both tables)
                 $existingByMethod = [];
                 foreach ($existingDirectPayments as $ep) {
                     $key = strtoupper(trim($ep->method));
@@ -342,65 +339,64 @@ class EditSale extends EditRecord
                 }
 
             } elseif ($delta < 0) {
-                // Deletes the most recent payment if they reduced the overall total
                 $sale->payments()
                     ->latest('paid_at')
                     ->first()
                     ?->delete();
             }
 
-            // Sync the databases with correct sums
             if ($customOrder) {
                 $allCustomPaid = Payment::where('custom_order_id', $customOrder->id)->sum('amount');
                 $dbTax         = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
                 $taxRate       = $customOrder->is_tax_free ? 0 : floatval($dbTax) / 100;
                 $orderTotal    = floatval($customOrder->quoted_price) * (1 + $taxRate);
 
-               $newCoBal = round(max(0, $orderTotal - $allCustomPaid), 2);
+                $newCoBal = round(max(0, $orderTotal - $allCustomPaid), 2);
 
-$customOrder->update([
-    'amount_paid' => round($allCustomPaid, 2),
-    'balance_due' => $newCoBal,
-    'status'      => $newCoBal <= 0.01 ? 'completed' : $customOrder->status,
-    'sale_id'     => $sale->id,
-]);
+                $customOrder->update([
+                    'amount_paid' => round($allCustomPaid, 2),
+                    'balance_due' => $newCoBal,
+                    'status'      => $newCoBal <= 0.01 ? 'completed' : $customOrder->status,
+                    'sale_id'     => $sale->id,
+                ]);
 
-if ($newCoBal <= 0.01 && $customOrder->status !== 'completed') {
-    Notification::make()
-        ->title('Custom Order Completed')
-        ->body("Order #{$customOrder->order_no} is now fully paid.")
-        ->success()
-        ->send();
-}
+                if ($newCoBal <= 0.01 && $customOrder->status !== 'completed') {
+                    Notification::make()
+                        ->title('Custom Order Completed')
+                        ->body("Order #{$customOrder->order_no} is now fully paid.")
+                        ->success()
+                        ->send();
+                }
             }
 
             $finalTotalPaid = $sale->payments()->sum('amount');
+            $sale->update(['amount_paid' => $finalTotalPaid]);
+
             // ── Sync linked Laybuy if exists ──────────────────────────────────
-$laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
+            $laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
             if ($laybuy) {
                 $totalSalePaid = Payment::where('sale_id', $sale->id)->sum('amount');
                 $laybuyBal     = round(max(0, floatval($laybuy->total_amount) - $totalSalePaid), 2);
- 
+         
                 $laybuy->update([
                     'amount_paid'    => round($totalSalePaid, 2),
                     'balance_due'    => $laybuyBal,
                     'status'         => $laybuyBal <= 0.01 ? 'completed' : 'in_progress',
                     'last_paid_date' => now(),
                 ]);
- 
-                // ── KEY FIX: Log new payments into laybuy_payments so ledger shows them ──
+         
                 if ($delta > 0) {
                     $newPayments = Payment::where('sale_id', $sale->id)
                         ->where('paid_at', '>=', now()->subSeconds(60))
                         ->get();
- 
+         
                     foreach ($newPayments as $np) {
                         $alreadyLogged = \App\Models\LaybuyPayment::where('laybuy_id', $laybuy->id)
                             ->where('amount', $np->amount)
                             ->where('payment_method', $np->method)
                             ->where('created_at', '>=', now()->subSeconds(60))
                             ->exists();
- 
+         
                         if (!$alreadyLogged) {
                             \App\Models\LaybuyPayment::create([
                                 'laybuy_id'      => $laybuy->id,
@@ -412,8 +408,7 @@ $laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
                         }
                     }
                 }
- 
-                // Release items to sold if fully paid
+         
                 if ($laybuyBal <= 0.01) {
                     foreach ($sale->items as $saleItem) {
                         if ($saleItem->product_item_id) {
@@ -424,9 +419,98 @@ $laybuy = \App\Models\Laybuy::where('sale_id', $sale->id)->first();
                     }
                 }
             }
- 
-            $finalTotalPaid = $sale->payments()->sum('amount');
-            $sale->update(['amount_paid' => $finalTotalPaid]);
+
+            // 🚀 CRITICAL REPAIR FLOW: PROCESS SPECIAL REPAIR JOBS ON EDIT SAVE
+            $specialJobs = $data['special_jobs'] ?? [];
+            if (!empty($specialJobs) && is_array($specialJobs)) {
+                $saleItemsArray = $sale->items->values();
+                $updatedJobsLedger = [];
+
+                foreach ($specialJobs as $job) {
+                    if (empty($job['job_type'])) continue;
+
+                    // Skip if repair record already exists
+                    if (!empty($job['repair_id'])) {
+                        $updatedJobsLedger[] = $job;
+                        continue;
+                    }
+
+                    $itemDescription = null;
+
+                    if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
+                        $storeItem = \App\Models\ProductItem::find($job['store_item_id']);
+                        if ($storeItem) {
+                            $itemDescription = $storeItem->barcode . ' — ' . ($storeItem->custom_description ?? '');
+                        }
+                    }
+
+                    if (empty($itemDescription)) {
+                        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
+                        if (empty($selectedIndexes)) $selectedIndexes = [0];
+
+                        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
+                            return $saleItemsArray->get((int)$idx);
+                        })->filter();
+
+                        $itemDescription = $selectedItems->map(function ($item) {
+                            if ($item->productItem) {
+                                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                            }
+                            return $item->custom_description ?? 'Item';
+                        })->filter()->implode(', ');
+                    }
+
+                    if (empty($itemDescription)) {
+                        $itemDescription = 'Item from Sale #' . $sale->invoice_number;
+                    }
+
+                    $datePrefix = now()->format('ymd');
+                    $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
+                    while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
+                        $sequence++;
+                    }
+                    $repairNo = $datePrefix . '-' . $sequence;
+
+                    $newRepair = \App\Models\Repair::create([
+                        'sale_id'              => $sale->id,
+                        'repair_no'            => $repairNo,
+                        'customer_id'          => $sale->customer_id,
+                        'store_id'             => $sale->store_id,
+                        'staff_id'             => auth()->id(),
+                        'sales_person_list'    => is_array($sale->sales_person_list) ? $sale->sales_person_list : [$sale->sales_person_list],
+                        'status'               => 'received',
+                        'item_description'     => $itemDescription,
+                        'reported_issue'       => $job['job_type']
+                            . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
+                            . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
+                            . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
+                        'repair_notes'         => $job['job_instructions'] ?? null,
+                        'customer_pickup_date' => $job['date_required'] ?? null,
+                        'estimated_cost'       => 0,
+                        'final_cost'           => null,
+                        'items'                => [[
+                            'item_description' => $itemDescription,
+                            'reported_issue'   => $job['job_type'],
+                            'job_type'         => $job['job_type'],
+                            'metal_type'       => $job['metal_type'] ?? null,
+                            'current_size'     => $job['current_size'] ?? null,
+                            'target_size'      => $job['target_size'] ?? null,
+                            'send_to'          => $job['send_to'] ?? null,
+                            'job_instructions' => $job['job_instructions'] ?? null,
+                            'date_required'    => $job['date_required'] ?? null,
+                            'estimated_cost'   => 0,
+                            'final_cost'       => null,
+                        ]],
+                    ]);
+
+                    // Store the newly generated ID into this row array item
+                    $job['repair_id'] = $newRepair->id;
+                    $updatedJobsLedger[] = $job;
+                }
+
+                // Update the parent record columns without breaking data cycles
+                $sale->updateQuietly(['special_jobs' => $updatedJobsLedger]);
+            }
  
             \Filament\Notifications\Notification::make()
                 ->title('Sale Payments Updated')

@@ -158,4 +158,12 @@ public function paymentReceipt(Request $request, $record, string $source, int $p
 
     return view('receipts.payment_receipt', compact('sale', 'payment', 'source'));
 }
+
+public function printExchange(\App\Models\Exchange $exchange)
+{
+    $exchange->load(['customer', 'store', 'originalSale', 'newSale.items.productItem', 'requester', 'approver']);
+    $pdf = Pdf::loadView('receipts.exchanges_receipt', compact('exchange'));
+    $pdf->setPaper('letter', 'portrait');
+    return $pdf->stream("EXCHANGE_{$exchange->exchange_no}.pdf");
+}
 }

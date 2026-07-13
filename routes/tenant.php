@@ -58,7 +58,12 @@ Route::get('/custom-order-receipt/{customOrder}', [ReceiptController::class, 'cu
 Route::get('/laybuys/{laybuy}/print', [ReceiptController::class, 'printLaybuy'])
     ->name('laybuy.print')
     ->middleware(['auth']);
-    
+    Route::get('/exchanges/{exchange}/print', function (\App\Models\Exchange $exchange) {
+    $exchange->load(['customer', 'store', 'originalSale', 'newSale.items.productItem', 'requester', 'approver']);
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('receipts.exchanges_receipt', compact('exchange'));
+    $pdf->setPaper('letter', 'portrait');
+    return $pdf->stream("EXCHANGE_{$exchange->exchange_no}.pdf");
+})->name('exchange.print')->middleware(['auth']);
     // Label Layouts
     Route::prefix('label-layout')->group(function () {
         Route::post('/set-defaults', [LabelLayoutController::class, 'setDefaultLayout']);

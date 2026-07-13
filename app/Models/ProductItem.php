@@ -68,6 +68,7 @@ class ProductItem extends Model
         'gallery_images',
         'shopify_product_id',
 'shopify_inventory_item_id',
+'product_videos',
 
     ];
 
@@ -83,6 +84,7 @@ class ProductItem extends Model
         'retail_price' => 'decimal:2',
         'web_price' => 'decimal:2',
         'gallery_images' => 'array',
+        'product_videos' => 'array',
     ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty

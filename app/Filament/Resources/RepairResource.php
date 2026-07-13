@@ -712,7 +712,39 @@ class RepairResource extends Resource
                     : '<span style="color:#9ca3af;">—</span>'
                 )->html()->grow(false)
                 ->toggleable(),
+Tables\Columns\TextColumn::make('origin')
+    ->label('ORIGIN')
+    ->badge()
+    ->color(fn (string $state): string => match ($state) {
+        'POS SALE'  => 'info',
+        'EXCHANGE'  => 'warning',
+        default     => 'gray',
+    })
+    ->getStateUsing(function ($record) {
+        if (empty($record->sale_id)) {
+            return 'DIRECT';
+        }
 
+        // Optional: If you track exchanges in your sale items description or notes
+        $saleNotes = strtolower($record->sale?->notes ?? '');
+        $hasExchangeItem = $record->sale?->items->contains(fn($item) => 
+            str_contains(strtolower($item->custom_description ?? ''), 'exchange') || 
+            str_contains(strtolower($item->custom_description ?? ''), 'return')
+        );
+
+        if ($hasExchangeItem || str_contains($saleNotes, 'exchange')) {
+            return 'EXCHANGE';
+        }
+
+        return 'POS SALE';
+    })
+    ->formatStateUsing(fn (string $state) => match ($state) {
+        'POS SALE' => '🛒 POS SALE',
+        'EXCHANGE' => '🔄 EXCHANGE',
+        default    => '🛠️ DIRECT INTAKE',
+    })
+    ->grow(false)
+    ->toggleable(),
             Tables\Columns\TextColumn::make('sale.invoice_number')
                 ->label('SALE')->placeholder('—')
                 ->formatStateUsing(fn($state) => $state

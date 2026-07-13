@@ -114,7 +114,7 @@ class SaleResource extends Resource
 
         return $form
             ->schema([
-                
+
                 Grid::make(12)->schema([
                     Group::make()->columnSpan(8)
                         ->disabled($isLocked)
@@ -165,7 +165,7 @@ class SaleResource extends Resource
 
                                                 // 3. Append the new regular item using the unique UUID as the key
                                                 // This prevents it from wiping out the Custom Order, which also uses a UUID key!
-                                              $currentItems[$newItemId] = [
+                                                $currentItems[$newItemId] = [
                                                     'product_item_id'          => $item->id,
                                                     'repair_id'                => null,
                                                     'custom_order_id'           => null,
@@ -509,7 +509,7 @@ class SaleResource extends Resource
                                             ]);
                                             $data['custom_order_id'] = $customOrder->id;
                                         }
-                                       $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
+                                        $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
                                         $data['is_non_stock']     = (bool) ($data['is_non_stock'] ?? false);
                                         unset($data['is_new_custom_order'], $data['new_custom_data'], $data['stock_no_display_persist']);
                                         return $data;
@@ -553,7 +553,7 @@ class SaleResource extends Resource
                                             ]);
                                             $data['custom_order_id'] = $customOrder->id;
                                         }
-                                       $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
+                                        $data['stock_no_display'] = $data['stock_no_display_persist'] ?? ($data['stock_no_display'] ?? null);
                                         $data['is_non_stock']     = (bool) ($data['is_non_stock'] ?? false);
                                         unset($data['is_new_custom_order'], $data['new_custom_data'], $data['stock_no_display_persist']);
                                         return $data;
@@ -827,70 +827,71 @@ class SaleResource extends Resource
                                     Repeater::make('special_jobs')
                                         ->label('')
                                         ->schema([
-                                           Toggle::make('job_applies_to_store_item')
-    ->label('Was this item bought from our store?')
-    ->inline(false)
-    ->live()
-    ->columnSpanFull(),
+                                            Toggle::make('job_applies_to_store_item')
+                                                ->label('Was this item bought from our store?')
+                                                ->inline(false)
+                                                ->live()
+                                                ->columnSpanFull(),
 
-Select::make('store_item_id')
-    ->label('Search Store Stock No.')
-    ->placeholder('Search by stock number (G1234, D1001, N...)')
-    ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
-    ->required(fn(Get $get) => $get('job_applies_to_store_item'))
-    ->options(function () {
-        return \App\Models\ProductItem::query()
-            ->where('status', 'sold')
-            ->whereNotNull('barcode')
-            ->orderBy('barcode')
-            ->limit(200)
-            ->get()
-            ->mapWithKeys(fn($item) => [
-                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-            ]);
-    })
-    ->getSearchResultsUsing(function (string $search) {
-        return \App\Models\ProductItem::query()
-            ->where('status', 'sold')
-            ->where(function ($q) use ($search) {
-                $q->where('barcode', 'like', "%{$search}%")
-                    ->orWhere('custom_description', 'like', "%{$search}%");
-            })
-            ->limit(50)
-            ->get()
-            ->mapWithKeys(fn($item) => [
-                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-            ]);
-    })
-    ->getOptionLabelUsing(fn($value) =>
-        \App\Models\ProductItem::find($value)?->barcode . ' — ' .
-        \App\Models\ProductItem::find($value)?->custom_description
-    )
-    ->searchable()
-    ->live()
-    ->columnSpanFull(),
+                                            Select::make('store_item_id')
+                                                ->label('Search Store Stock No.')
+                                                ->placeholder('Search by stock number (G1234, D1001, N...)')
+                                                ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
+                                                ->required(fn(Get $get) => $get('job_applies_to_store_item'))
+                                                ->options(function () {
+                                                    return \App\Models\ProductItem::query()
+                                                        ->where('status', 'sold')
+                                                        ->whereNotNull('barcode')
+                                                        ->orderBy('barcode')
+                                                        ->limit(200)
+                                                        ->get()
+                                                        ->mapWithKeys(fn($item) => [
+                                                            $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                                                        ]);
+                                                })
+                                                ->getSearchResultsUsing(function (string $search) {
+                                                    return \App\Models\ProductItem::query()
+                                                        ->where('status', 'sold')
+                                                        ->where(function ($q) use ($search) {
+                                                            $q->where('barcode', 'like', "%{$search}%")
+                                                                ->orWhere('custom_description', 'like', "%{$search}%");
+                                                        })
+                                                        ->limit(50)
+                                                        ->get()
+                                                        ->mapWithKeys(fn($item) => [
+                                                            $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
+                                                        ]);
+                                                })
+                                                ->getOptionLabelUsing(
+                                                    fn($value) =>
+                                                    \App\Models\ProductItem::find($value)?->barcode . ' — ' .
+                                                        \App\Models\ProductItem::find($value)?->custom_description
+                                                )
+                                                ->searchable()
+                                                ->live()
+                                                ->columnSpanFull(),
 
-Select::make('applicable_item_indexes')
-    ->label('Or, apply this job to an item in this sale')
-    ->multiple()
-    ->searchable()
-    ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
-    ->options(function (Get $get) {
-        $items = $get('../../items') ?? [];
-        $options = [];
-        foreach (array_values($items) as $i => $item) {
-            $stockNo = $item['stock_no_display'] ?? null;
-            $desc    = $item['custom_description'] ?? '';
-            $label   = $stockNo
-                ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
-                : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
-            $options[$i] = ($i + 1) . '. ' . $label;
-        }
-        return $options;
-    })
-    ->placeholder('Select items this job applies to...')
-    ->columnSpanFull()
-    ->live(),
+                                            Select::make('applicable_item_indexes')
+                                                ->label('Or, apply this job to an item in this sale')
+                                                ->multiple()
+                                                ->searchable()
+                                                ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
+                                                ->options(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $options = [];
+                                                    foreach (array_values($items) as $i => $item) {
+                                                        $stockNo = $item['stock_no_display'] ?? null;
+                                                        $desc    = $item['custom_description'] ?? '';
+                                                        $label   = $stockNo
+                                                            ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
+                                                            : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
+                                                        $options[$i] = ($i + 1) . '. ' . $label;
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->placeholder('Select items this job applies to...')
+                                                ->columnSpanFull()
+                                                ->live(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')
@@ -918,39 +919,39 @@ Select::make('applicable_item_indexes')
                                                     TextInput::make('current_size')->label('Current Size'),
                                                     TextInput::make('target_size')->label('Target Size'),
                                                 ]),
-                                         Textarea::make('job_instructions')
-    ->label('Bench Notes / Instructions')
-    ->columnSpanFull()
-    ->rows(2),
-Select::make('send_to')
-    ->label('Send To (Location)')
-    ->options(function () {
-        $locations = \App\Models\InventorySetting::where('key', 'repair_locations')
-            ->first()?->value ?? [];
-        return collect($locations)
-            ->mapWithKeys(fn($l) => [$l => $l])
-            ->toArray();
-    })
-    ->createOptionForm([
-        Forms\Components\TextInput::make('name')
-            ->label('New Location Name')
-            ->placeholder('e.g. Javier, Lubbock, Dallas Bench...')
-            ->required(),
-    ])
-    ->createOptionUsing(function (array $data) {
-        $setting = \App\Models\InventorySetting::firstOrCreate(
-            ['key' => 'repair_locations'],
-            ['value' => []]
-        );
-        $current   = $setting->value ?? [];
-        $current[] = $data['name'];
-        $setting->update(['value' => array_values(array_unique($current))]);
-        return $data['name'];
-    })
-    ->searchable()
-    ->placeholder('— Select or create location —')
-    ->native(false)
-    ->columnSpanFull(),
+                                            Textarea::make('job_instructions')
+                                                ->label('Bench Notes / Instructions')
+                                                ->columnSpanFull()
+                                                ->rows(2),
+                                            Select::make('send_to')
+                                                ->label('Send To (Location)')
+                                                ->options(function () {
+                                                    $locations = \App\Models\InventorySetting::where('key', 'repair_locations')
+                                                        ->first()?->value ?? [];
+                                                    return collect($locations)
+                                                        ->mapWithKeys(fn($l) => [$l => $l])
+                                                        ->toArray();
+                                                })
+                                                ->createOptionForm([
+                                                    Forms\Components\TextInput::make('name')
+                                                        ->label('New Location Name')
+                                                        ->placeholder('e.g. Javier, Lubbock, Dallas Bench...')
+                                                        ->required(),
+                                                ])
+                                                ->createOptionUsing(function (array $data) {
+                                                    $setting = \App\Models\InventorySetting::firstOrCreate(
+                                                        ['key' => 'repair_locations'],
+                                                        ['value' => []]
+                                                    );
+                                                    $current   = $setting->value ?? [];
+                                                    $current[] = $data['name'];
+                                                    $setting->update(['value' => array_values(array_unique($current))]);
+                                                    return $data['name'];
+                                                })
+                                                ->searchable()
+                                                ->placeholder('— Select or create location —')
+                                                ->native(false)
+                                                ->columnSpanFull(),
                                         ])
                                         ->columns(1)
                                         ->addActionLabel('+ Add Another Job')
@@ -970,75 +971,75 @@ Select::make('send_to')
                                         ->live()
                                         ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                     Grid::make(2)
-            ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-            ->schema([
-                Toggle::make('trade_in_bought_from_store')
-                    ->label('Was this item originally bought from our store?')
-                    ->live()
-                    ->columnSpanFull(),
+                                        ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                        ->schema([
+                                            Toggle::make('trade_in_bought_from_store')
+                                                ->label('Was this item originally bought from our store?')
+                                                ->live()
+                                                ->columnSpanFull(),
 
-                // 🚀 Choose tagged vs non-tag right under the "bought from store" toggle
-                Select::make('trade_in_match_type')
-                    ->label('Item Type')
-                    ->options([
-                        'tagged'  => 'Tagged Item (has barcode)',
-                        'non_tag' => 'Non-Tag Item (no barcode)',
-                    ])
-                    ->default('tagged')
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store'))
-                    ->required(fn(Get $get) => $get('trade_in_bought_from_store'))
-                    ->live()
-                    ->afterStateUpdated(fn(Set $set) => $set('trade_in_original_product_item_id', null))
-                    ->columnSpanFull(),
+                                            // 🚀 Choose tagged vs non-tag right under the "bought from store" toggle
+                                            Select::make('trade_in_match_type')
+                                                ->label('Item Type')
+                                                ->options([
+                                                    'tagged'  => 'Tagged Item (has barcode)',
+                                                    'non_tag' => 'Non-Tag Item (no barcode)',
+                                                ])
+                                                ->default('tagged')
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store'))
+                                                ->required(fn(Get $get) => $get('trade_in_bought_from_store'))
+                                                ->live()
+                                                ->afterStateUpdated(fn(Set $set) => $set('trade_in_original_product_item_id', null))
+                                                ->columnSpanFull(),
 
-                // ── TAGGED ITEM PATH (barcode search) ──────────────────
-                Select::make('trade_in_original_product_item_id')
-                    ->label('Original Stock #')
-                    ->placeholder('Search by stock number...')
-                    ->helperText('Only items already sold can be selected — in-stock items have not left the store yet.')
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
-                    ->required(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
-                    ->searchable()
-                    ->getSearchResultsUsing(function (string $search) {
-                        return \App\Models\ProductItem::withTrashed()
-                            ->where('barcode', 'like', "%{$search}%")
-                            ->where('status', 'sold')
-                            ->limit(30)
-                            ->get()
-                            ->mapWithKeys(fn($item) => [
-                                $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
-                            ]);
-                    })
-                    ->getOptionLabelUsing(fn($value) => optional(
-                        \App\Models\ProductItem::withTrashed()->find($value),
-                        fn($item) => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
-                    ))
-                    ->live()
-                    ->afterStateUpdated(function ($state, Set $set) {
-                        if (!$state) return;
-                        $item = \App\Models\ProductItem::withTrashed()->find($state);
-                        if ($item && $item->status !== 'sold') {
-                            $set('trade_in_original_product_item_id', null);
-                            Notification::make()
-                                ->title('Item Not Eligible')
-                                ->body("Stock #{$item->barcode} is currently '{$item->status}' — only sold items can be selected as a trade-in match.")
-                                ->danger()
-                                ->send();
-                        }
-                    })
-                    ->columnSpanFull(),
+                                            // ── TAGGED ITEM PATH (barcode search) ──────────────────
+                                            Select::make('trade_in_original_product_item_id')
+                                                ->label('Original Stock #')
+                                                ->placeholder('Search by stock number...')
+                                                ->helperText('Only items already sold can be selected — in-stock items have not left the store yet.')
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
+                                                ->required(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged')
+                                                ->searchable()
+                                                ->getSearchResultsUsing(function (string $search) {
+                                                    return \App\Models\ProductItem::withTrashed()
+                                                        ->where('barcode', 'like', "%{$search}%")
+                                                        ->where('status', 'sold')
+                                                        ->limit(30)
+                                                        ->get()
+                                                        ->mapWithKeys(fn($item) => [
+                                                            $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+                                                        ]);
+                                                })
+                                                ->getOptionLabelUsing(fn($value) => optional(
+                                                    \App\Models\ProductItem::withTrashed()->find($value),
+                                                    fn($item) => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description, 40)
+                                                ))
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, Set $set) {
+                                                    if (!$state) return;
+                                                    $item = \App\Models\ProductItem::withTrashed()->find($state);
+                                                    if ($item && $item->status !== 'sold') {
+                                                        $set('trade_in_original_product_item_id', null);
+                                                        Notification::make()
+                                                            ->title('Item Not Eligible')
+                                                            ->body("Stock #{$item->barcode} is currently '{$item->status}' — only sold items can be selected as a trade-in match.")
+                                                            ->danger()
+                                                            ->send();
+                                                    }
+                                                })
+                                                ->columnSpanFull(),
 
-                Placeholder::make('original_stock_verification')
-                    ->hiddenLabel()
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged' && $get('trade_in_original_product_item_id'))
-                    ->content(function (Get $get) {
-                        $item = \App\Models\ProductItem::withTrashed()->find($get('trade_in_original_product_item_id'));
-                        if (!$item) {
-                            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Stock item not found.</div>");
-                        }
+                                            Placeholder::make('original_stock_verification')
+                                                ->hiddenLabel()
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'tagged' && $get('trade_in_original_product_item_id'))
+                                                ->content(function (Get $get) {
+                                                    $item = \App\Models\ProductItem::withTrashed()->find($get('trade_in_original_product_item_id'));
+                                                    if (!$item) {
+                                                        return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Stock item not found.</div>");
+                                                    }
 
-                        if ($item->status !== 'sold') {
-                            return new HtmlString("
+                                                    if ($item->status !== 'sold') {
+                                                        return new HtmlString("
                                 <div class='p-3 bg-red-50 border border-red-200 rounded-lg text-sm'>
                                     <div class='font-black text-red-800 mb-1'>⚠️ Not Eligible: {$item->barcode}</div>
                                     <div class='text-red-700 text-xs mt-1'>
@@ -1046,17 +1047,17 @@ Select::make('send_to')
                                     </div>
                                 </div>
                             ");
-                        }
+                                                    }
 
-                        $originalSaleItem = \App\Models\SaleItem::where('product_item_id', $item->id)
-                            ->with('sale')
-                            ->latest()
-                            ->first();
+                                                    $originalSaleItem = \App\Models\SaleItem::where('product_item_id', $item->id)
+                                                        ->with('sale')
+                                                        ->latest()
+                                                        ->first();
 
-                        $soldDate  = $originalSaleItem?->sale?->created_at?->format('M d, Y') ?? 'No prior sale on record';
-                        $soldPrice = $originalSaleItem ? '$' . number_format($originalSaleItem->sold_price ?? 0, 2) : '—';
+                                                    $soldDate  = $originalSaleItem?->sale?->created_at?->format('M d, Y') ?? 'No prior sale on record';
+                                                    $soldPrice = $originalSaleItem ? '$' . number_format($originalSaleItem->sold_price ?? 0, 2) : '—';
 
-                        return new HtmlString("
+                                                    return new HtmlString("
                             <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
                                 <div class='font-black text-blue-800 mb-1'>✓ Verified: {$item->barcode}</div>
                                 <div class='text-blue-700'>{$item->custom_description}</div>
@@ -1065,147 +1066,147 @@ Select::make('send_to')
                                 </div>
                             </div>
                         ");
-                    })
-                    ->columnSpanFull(),
+                                                })
+                                                ->columnSpanFull(),
 
-                // ── NON-TAG ITEM PATH (search modal) ────────────────────
-                Hidden::make('trade_in_original_sale_item_id'),
+                                            // ── NON-TAG ITEM PATH (search modal) ────────────────────
+                                            Hidden::make('trade_in_original_sale_item_id'),
 
-                Placeholder::make('non_tag_trade_in_picker')
-                    ->hiddenLabel()
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
-                    ->content(function (Get $get) {
-                        $selectedId = $get('trade_in_original_sale_item_id');
-                        if (!$selectedId) {
-                            return new HtmlString("<div style='padding:10px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;'>No item selected yet — use the search button below.</div>");
-                        }
-                        return new HtmlString("<div style='padding:6px 0;font-size:11px;color:#6b7280;'>Item selected. Use the search button to change it.</div>");
-                    })
-                    ->columnSpanFull(),
+                                            Placeholder::make('non_tag_trade_in_picker')
+                                                ->hiddenLabel()
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                                                ->content(function (Get $get) {
+                                                    $selectedId = $get('trade_in_original_sale_item_id');
+                                                    if (!$selectedId) {
+                                                        return new HtmlString("<div style='padding:10px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#854d0e;'>No item selected yet — use the search button below.</div>");
+                                                    }
+                                                    return new HtmlString("<div style='padding:6px 0;font-size:11px;color:#6b7280;'>Item selected. Use the search button to change it.</div>");
+                                                })
+                                                ->columnSpanFull(),
 
-                \Filament\Forms\Components\Actions::make([
-                    FormAction::make('search_non_tag_trade_in')
-                        ->label('🔍 Search Non-Tag Sales History')
-                        ->color('info')
-                        ->outlined()
-                        ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
-                        ->modalHeading('Search Non-Tag Item History')
-                        ->modalWidth('4xl')
-                        ->modalSubmitActionLabel('Use Selected Item')
-                        ->form([
-                            Grid::make(4)->schema([
-                                TextInput::make('search_description')
-                                    ->label('Description Contains')
-                                    ->placeholder('e.g. engraved pendant')
-                                    ->live(onBlur: true),
-                                TextInput::make('search_customer')
-                                    ->label('Customer Name')
-                                    ->placeholder('e.g. Jane Smith')
-                                    ->live(onBlur: true),
-                                CustomDatePicker::make('search_date_from')
-                                    ->label('Sold From')
-                                    ->live(),
-                                CustomDatePicker::make('search_date_to')
-                                    ->label('Sold To')
-                                    ->live(),
-                            ]),
-                            Grid::make(2)->schema([
-                                TextInput::make('search_price_min')
-                                    ->label('Min Price')
-                                    ->numeric()
-                                    ->prefix('$')
-                                    ->live(onBlur: true),
-                                TextInput::make('search_price_max')
-                                    ->label('Max Price')
-                                    ->numeric()
-                                    ->prefix('$')
-                                    ->live(onBlur: true),
-                            ]),
-                            \Filament\Forms\Components\Radio::make('selected_sale_item_id')
-                                ->label('Matching Items')
-                                ->options(function (Get $get) {
-                                    $query = \App\Models\SaleItem::query()
-                                        ->where('is_non_stock', true)
-                                        ->whereNull('product_item_id')
-                                        ->whereNull('custom_order_id')
-                                        ->whereNull('repair_id')
-                                        ->whereHas('sale', fn($q) => $q->where('status', '!=', 'cancelled'))
-                                        ->with('sale.customer');
+                                            \Filament\Forms\Components\Actions::make([
+                                                FormAction::make('search_non_tag_trade_in')
+                                                    ->label('🔍 Search Non-Tag Sales History')
+                                                    ->color('info')
+                                                    ->outlined()
+                                                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                                                    ->modalHeading('Search Non-Tag Item History')
+                                                    ->modalWidth('4xl')
+                                                    ->modalSubmitActionLabel('Use Selected Item')
+                                                    ->form([
+                                                        Grid::make(4)->schema([
+                                                            TextInput::make('search_description')
+                                                                ->label('Description Contains')
+                                                                ->placeholder('e.g. engraved pendant')
+                                                                ->live(onBlur: true),
+                                                            TextInput::make('search_customer')
+                                                                ->label('Customer Name')
+                                                                ->placeholder('e.g. Jane Smith')
+                                                                ->live(onBlur: true),
+                                                            CustomDatePicker::make('search_date_from')
+                                                                ->label('Sold From')
+                                                                ->live(),
+                                                            CustomDatePicker::make('search_date_to')
+                                                                ->label('Sold To')
+                                                                ->live(),
+                                                        ]),
+                                                        Grid::make(2)->schema([
+                                                            TextInput::make('search_price_min')
+                                                                ->label('Min Price')
+                                                                ->numeric()
+                                                                ->prefix('$')
+                                                                ->live(onBlur: true),
+                                                            TextInput::make('search_price_max')
+                                                                ->label('Max Price')
+                                                                ->numeric()
+                                                                ->prefix('$')
+                                                                ->live(onBlur: true),
+                                                        ]),
+                                                        \Filament\Forms\Components\Radio::make('selected_sale_item_id')
+                                                            ->label('Matching Items')
+                                                            ->options(function (Get $get) {
+                                                                $query = \App\Models\SaleItem::query()
+                                                                    ->where('is_non_stock', true)
+                                                                    ->whereNull('product_item_id')
+                                                                    ->whereNull('custom_order_id')
+                                                                    ->whereNull('repair_id')
+                                                                    ->whereHas('sale', fn($q) => $q->where('status', '!=', 'cancelled'))
+                                                                    ->with('sale.customer');
 
-                                    if ($desc = $get('search_description')) {
-                                        $query->where('custom_description', 'like', "%{$desc}%");
-                                    }
+                                                                if ($desc = $get('search_description')) {
+                                                                    $query->where('custom_description', 'like', "%{$desc}%");
+                                                                }
 
-                                    if ($cust = $get('search_customer')) {
-                                        $query->whereHas('sale.customer', function ($q) use ($cust) {
-                                            $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$cust}%"]);
-                                        });
-                                    }
+                                                                if ($cust = $get('search_customer')) {
+                                                                    $query->whereHas('sale.customer', function ($q) use ($cust) {
+                                                                        $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$cust}%"]);
+                                                                    });
+                                                                }
 
-                                    if ($from = $get('search_date_from')) {
-                                        $query->whereDate('created_at', '>=', $from);
-                                    }
+                                                                if ($from = $get('search_date_from')) {
+                                                                    $query->whereDate('created_at', '>=', $from);
+                                                                }
 
-                                    if ($to = $get('search_date_to')) {
-                                        $query->whereDate('created_at', '<=', $to);
-                                    }
+                                                                if ($to = $get('search_date_to')) {
+                                                                    $query->whereDate('created_at', '<=', $to);
+                                                                }
 
-                                    if ($min = $get('search_price_min')) {
-                                        $query->where(fn($q) => $q->where('sale_price_override', '>=', $min)->orWhere('sold_price', '>=', $min));
-                                    }
+                                                                if ($min = $get('search_price_min')) {
+                                                                    $query->where(fn($q) => $q->where('sale_price_override', '>=', $min)->orWhere('sold_price', '>=', $min));
+                                                                }
 
-                                    if ($max = $get('search_price_max')) {
-                                        $query->where(fn($q) => $q->where('sale_price_override', '<=', $max)->orWhere('sold_price', '<=', $max));
-                                    }
+                                                                if ($max = $get('search_price_max')) {
+                                                                    $query->where(fn($q) => $q->where('sale_price_override', '<=', $max)->orWhere('sold_price', '<=', $max));
+                                                                }
 
-                                    return $query->latest('created_at')
-                                        ->limit(50)
-                                        ->get()
-                                        ->mapWithKeys(function ($saleItem) {
-                                            $date  = $saleItem->created_at?->format('M d, Y');
-                                            $price = $saleItem->sale_price_override ?: $saleItem->sold_price;
-                                            $cust  = $saleItem->sale?->customer
-                                                ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
-                                                : 'Unknown';
-                                            $inv   = $saleItem->sale?->invoice_number ?? '—';
-                                            $label = "{$saleItem->custom_description} — \${$price} — {$cust} — {$date} (Inv #{$inv})";
-                                            return [$saleItem->id => $label];
-                                        });
-                                })
-                                ->live()
-                                ->columnSpanFull(),
-                        ])
-                        ->action(function (array $data, Set $set) {
-                            if (!empty($data['selected_sale_item_id'])) {
-                                $set('trade_in_original_sale_item_id', $data['selected_sale_item_id']);
-                                Notification::make()
-                                    ->title('Item Matched')
-                                    ->body('Non-tag sale record linked as trade-in match.')
-                                    ->success()
-                                    ->send();
-                            }
-                        }),
-                ])
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
-                    ->columnSpanFull(),
+                                                                return $query->latest('created_at')
+                                                                    ->limit(50)
+                                                                    ->get()
+                                                                    ->mapWithKeys(function ($saleItem) {
+                                                                        $date  = $saleItem->created_at?->format('M d, Y');
+                                                                        $price = $saleItem->sale_price_override ?: $saleItem->sold_price;
+                                                                        $cust  = $saleItem->sale?->customer
+                                                                            ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
+                                                                            : 'Unknown';
+                                                                        $inv   = $saleItem->sale?->invoice_number ?? '—';
+                                                                        $label = "{$saleItem->custom_description} — \${$price} — {$cust} — {$date} (Inv #{$inv})";
+                                                                        return [$saleItem->id => $label];
+                                                                    });
+                                                            })
+                                                            ->live()
+                                                            ->columnSpanFull(),
+                                                    ])
+                                                    ->action(function (array $data, Set $set) {
+                                                        if (!empty($data['selected_sale_item_id'])) {
+                                                            $set('trade_in_original_sale_item_id', $data['selected_sale_item_id']);
+                                                            Notification::make()
+                                                                ->title('Item Matched')
+                                                                ->body('Non-tag sale record linked as trade-in match.')
+                                                                ->success()
+                                                                ->send();
+                                                        }
+                                                    }),
+                                            ])
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag')
+                                                ->columnSpanFull(),
 
-                Placeholder::make('non_tag_trade_in_verification')
-                    ->hiddenLabel()
-                    ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag' && $get('trade_in_original_sale_item_id'))
-                    ->content(function (Get $get) {
-                        $saleItem = \App\Models\SaleItem::with('sale.customer')->find($get('trade_in_original_sale_item_id'));
-                        if (!$saleItem) {
-                            return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Original sale record not found.</div>");
-                        }
+                                            Placeholder::make('non_tag_trade_in_verification')
+                                                ->hiddenLabel()
+                                                ->visible(fn(Get $get) => $get('trade_in_bought_from_store') && $get('trade_in_match_type') === 'non_tag' && $get('trade_in_original_sale_item_id'))
+                                                ->content(function (Get $get) {
+                                                    $saleItem = \App\Models\SaleItem::with('sale.customer')->find($get('trade_in_original_sale_item_id'));
+                                                    if (!$saleItem) {
+                                                        return new HtmlString("<div class='p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm font-medium'>Original sale record not found.</div>");
+                                                    }
 
-                        $soldDate  = $saleItem->created_at?->format('M d, Y') ?? '—';
-                        $soldPrice = '$' . number_format($saleItem->sale_price_override ?: $saleItem->sold_price ?? 0, 2);
-                        $customerName = $saleItem->sale?->customer
-                            ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
-                            : 'Unknown';
-                        $invoice = $saleItem->sale?->invoice_number ?? '—';
+                                                    $soldDate  = $saleItem->created_at?->format('M d, Y') ?? '—';
+                                                    $soldPrice = '$' . number_format($saleItem->sale_price_override ?: $saleItem->sold_price ?? 0, 2);
+                                                    $customerName = $saleItem->sale?->customer
+                                                        ? trim($saleItem->sale->customer->name . ' ' . ($saleItem->sale->customer->last_name ?? ''))
+                                                        : 'Unknown';
+                                                    $invoice = $saleItem->sale?->invoice_number ?? '—';
 
-                        return new HtmlString("
+                                                    return new HtmlString("
                             <div class='p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm'>
                                 <div class='font-black text-blue-800 mb-1'>✓ Verified Non-Tag Item</div>
                                 <div class='text-blue-700'>{$saleItem->custom_description}</div>
@@ -1215,26 +1216,26 @@ Select::make('send_to')
                                 </div>
                             </div>
                         ");
-                    })
-                    ->columnSpanFull(),
+                                                })
+                                                ->columnSpanFull(),
 
-                TextInput::make('trade_in_value')
-                    ->label('Trade-In Value (Deduction)')
-                    ->numeric()
-                    ->prefix('$')
-                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-                TextInput::make('trade_in_receipt_no')
-                    ->label('Trade-In Tracking #')
-                    ->default(fn() => 'TRD-' . date('Ymd-His'))
-                    ->readOnly(),
-                Textarea::make('trade_in_description')
-                    ->label('Item Description')
-                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                    ->columnSpanFull()
-                    ->rows(2),
-            ]),
+                                            TextInput::make('trade_in_value')
+                                                ->label('Trade-In Value (Deduction)')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                ->live(onBlur: true)
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                            TextInput::make('trade_in_receipt_no')
+                                                ->label('Trade-In Tracking #')
+                                                ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                                ->readOnly(),
+                                            Textarea::make('trade_in_description')
+                                                ->label('Item Description')
+                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                ->columnSpanFull()
+                                                ->rows(2),
+                                        ]),
                                 ]),
 
                             Section::make('Warranty')
@@ -1296,18 +1297,18 @@ Select::make('send_to')
 
                             Section::make('Receipt Customization')
                                 ->schema([
-                                 Textarea::make('notes')
-    ->label('Customer Notes')
-    ->helperText('Visible to customer on receipts')
-    ->rows(2),
+                                    Textarea::make('notes')
+                                        ->label('Customer Notes')
+                                        ->helperText('Visible to customer on receipts')
+                                        ->rows(2),
 
-Textarea::make('internal_notes')
-    ->label('🔒 Internal Notes (Staff Only)')
-    ->helperText('Private — never shown to customer on any receipt or printout')
-    ->rows(2)
-    ->extraAttributes([
-        'style' => 'background:#fffbeb;border-color:#f59e0b;',
-    ]),
+                                    Textarea::make('internal_notes')
+                                        ->label('🔒 Internal Notes (Staff Only)')
+                                        ->helperText('Private — never shown to customer on any receipt or printout')
+                                        ->rows(2)
+                                        ->extraAttributes([
+                                            'style' => 'background:#fffbeb;border-color:#f59e0b;',
+                                        ]),
                                 ]),
 
                             Placeholder::make('validation_alert')
@@ -1330,12 +1331,40 @@ Textarea::make('internal_notes')
                     Group::make()->columnSpan(4)
                         ->disabled($isLocked)
                         ->schema([
+
+                            Placeholder::make('sale_created_at_header')
+                                ->hiddenLabel()
+                                ->visible(fn(string $operation) => $operation === 'edit')
+                                ->content(function (?Sale $record) {
+                                    if (!$record || !$record->created_at) return '';
+
+                                    $date = $record->created_at->timezone(config('app.timezone'))->format('F d, Y');
+                                    $time = $record->created_at->timezone(config('app.timezone'))->format('h:i A');
+
+                                    return new HtmlString("
+                    <div style='
+                        background: #0B3D3C; 
+                        border: 1px solid #C9A24B; 
+                        border-radius: 10px; 
+                        padding: 12px 16px; 
+                        margin-bottom: 12px;
+                        box-shadow: 0 2px 8px rgba(11,61,60,0.15);
+                    '>
+                        <div style='font-size: 10px; font-weight: 700; uppercase tracking-wider text-transform: uppercase; color: #E4CD8E; margin-bottom: 2px;'>
+                            📅 Record Creation Date
+                        </div>
+                        <div style='font-size: 15px; font-weight: 800; color: #F8F6F1;'>
+                            {$date} <span style='font-size: 12px; font-weight: 500; color: #E4CD8E; margin-left: 4px;'>at {$time}</span>
+                        </div>
+                    </div>
+                ");
+                                }),
                             Placeholder::make('internal_notes_display')
-    ->hiddenLabel()
-    ->content(function (\Filament\Forms\Get $get) {
-        $note = $get('internal_notes');
-        if (!$note) return '';
-        return new \Illuminate\Support\HtmlString("
+                                ->hiddenLabel()
+                                ->content(function (\Filament\Forms\Get $get) {
+                                    $note = $get('internal_notes');
+                                    if (!$note) return '';
+                                    return new \Illuminate\Support\HtmlString("
             <div style='
                 background: #fffbeb;
                 border: 1.5px solid #f59e0b;
@@ -1365,9 +1394,9 @@ Textarea::make('internal_notes')
                 '>" . e($note) . "</div>
             </div>
         ");
-    })
-    ->live()
-    ->columnSpanFull(),
+                                })
+                                ->live()
+                                ->columnSpanFull(),
                             Section::make('Customer & Personnel')
                                 ->description('Select a customer first to load profile and credits.')
                                 ->schema([

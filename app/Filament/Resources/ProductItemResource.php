@@ -614,7 +614,18 @@ class ProductItemResource extends Resource
                 ->helperText('Extra angles, hallmark shots, certificate photos — up to 6 images.')
                 ->columnSpan(1),
         ]),
- 
+ \Filament\Forms\Components\FileUpload::make('product_videos')
+    ->label('Product Videos')
+    ->multiple()
+    ->maxFiles(3)
+    ->maxSize(102400)
+    ->directory('product-items/videos')
+    ->disk('public')
+    ->visibility('public')
+    ->nullable()
+    ->reorderable()
+    ->helperText('Upload up to 3 product videos (MP4, MOV recommended). Max 100MB each.')
+    ->columnSpanFull(),
         // AI DESCRIBE button — calls Claude API to generate description from primary image
         \Filament\Forms\Components\Actions::make([
             \Filament\Forms\Components\Actions\Action::make('ai_describe')
