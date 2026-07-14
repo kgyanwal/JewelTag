@@ -874,116 +874,111 @@ class FindStock extends Page implements HasForms, HasTable
                         ->action(fn(ProductItem $record, array $data) =>
                         $this->executeReleaseFromLaybuy($record, $data)),
 
-                    // 🚀 SHOPIFY: INDIVIDUAL ITEM SYNC ──────────────────────────────────────────
-                    TableAction::make('push_to_shopify')
-                        ->label('Push to Shopify')
-                        ->icon('heroicon-o-arrow-up-tray')
-                        ->color('success')
-                        ->requiresConfirmation()
-                        ->modalHeading('Push to Shopify Store?')
-                        ->modalDescription('This will create or update this item on your Shopify storefront.')
-                        ->action(function (ProductItem $record) {
-                            $service = app(\App\Services\ShopifyService::class);
+                   // 🚀 SHOPIFY: INDIVIDUAL ITEM SYNC ──────────────────────────────────────────
+TableAction::make('push_to_shopify')
+    ->label('Push to Shopify')
+    ->icon('heroicon-o-arrow-up-tray')
+    ->color('success')
+    ->requiresConfirmation()
+    ->modalHeading('Push to Shopify Store?')
+    ->modalDescription('This will create or update this item on your Shopify storefront.')
+    ->action(function (ProductItem $record) {
+        $service = app(\App\Services\ShopifyService::class);
 
-                            $images = [];
-                            $primaryImage = is_array($record->primary_image)
-                                ? (array_values($record->primary_image)[0] ?? null)
-                                : $record->primary_image;
+        $images = [];
+        $primaryImage = is_array($record->primary_image)
+            ? (array_values($record->primary_image)[0] ?? null)
+            : $record->primary_image;
 
-                            if ($primaryImage && is_string($primaryImage)) {
-                                $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
-                                if (file_exists($fullPath)) {
-                                    $images[] = [
-                                        'attachment' => base64_encode(file_get_contents($fullPath)),
-                                        'filename'   => basename($primaryImage),
-                                    ];
-                                }
-                            }
+        if ($primaryImage && is_string($primaryImage)) {
+            $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($primaryImage);
+            if (file_exists($fullPath)) {
+                $images[] = [
+                    'attachment' => base64_encode(file_get_contents($fullPath)),
+                    'filename'   => basename($primaryImage),
+                ];
+            }
+        }
 
-                            $galleryImages = $record->gallery_images;
-                            if (is_array($galleryImages)) {
-                                foreach ($galleryImages as $galleryImage) {
-                                    if (!is_string($galleryImage)) continue;
-                                    $galleryFullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($galleryImage);
-                                    if (file_exists($galleryFullPath)) {
-                                        $images[] = [
-                                            'attachment' => base64_encode(file_get_contents($galleryFullPath)),
-                                            'filename'   => basename($galleryImage),
-                                        ];
-                                    }
-                                }
-                            }
+        $galleryImages = $record->gallery_images;
+        if (is_array($galleryImages)) {
+            foreach ($galleryImages as $galleryImage) {
+                if (!is_string($galleryImage)) continue;
+                $galleryFullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($galleryImage);
+                if (file_exists($galleryFullPath)) {
+                    $images[] = [
+                        'attachment' => base64_encode(file_get_contents($galleryFullPath)),
+                        'filename'   => basename($galleryImage),
+                    ];
+                }
+            }
+        }
 
-                            $payload = [
-                                'title'        => $record->custom_description ?? $record->barcode,
-                                'body_html'    => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
-                                'vendor'       => $record->store?->name ?? 'JewelTag',
-                                'product_type' => $record->category ?? $record->department ?? 'Jewelry',
-                                'tags' => implode(',', array_filter([
-                                    'jeweltag-instore',
-                                    'in-store-stock',
-                                    $record->metal_type,
-                                    $record->category,
-                                    $record->sub_department,
-                                    $record->barcode,
-                                ])),
-                                'images'    => $images,
-                                'variants'  => [[
-                                    'price'                => $record->web_price ?? $record->retail_price,
-                                    'sku'                  => $record->barcode,
-                                    'inventory_management' => 'shopify',
-                                    'inventory_quantity'   => $record->qty ?? 1,
-                                    'weight'               => floatval($record->gross_weight ?? 0),
-                                    'weight_unit'          => 'g',
-                                ]],
-                            ];
+        $payload = [
+            'title'        => $record->custom_description ?? $record->barcode,
+            'body_html'    => "<p>" . ($record->custom_description ?? 'No description available.') . "</p>",
+            'vendor'       => $record->store?->name ?? 'JewelTag',
+            'product_type' => $record->category ?? $record->department ?? 'Jewelry',
+            'tags' => implode(',', array_filter([
+                'jeweltag-instore',
+                'in-store-stock',
+                'this-is-krish',
+                $record->metal_type,
+                $record->category,
+                $record->sub_department,
+                $record->barcode,
+            ])),
+            'images'    => $images,
+            'variants'  => [[
+                'price'                => $record->web_price ?? $record->retail_price,
+                'sku'                  => $record->barcode,
+                'inventory_management' => 'shopify',
+                'inventory_quantity'   => $record->qty ?? 1,
+                'weight'               => floatval($record->gross_weight ?? 0),
+                'weight_unit'          => 'g',
+            ]],
+        ];
 
-                            try {
-                                if ($record->shopify_product_id) {
-                                    $result = $service->updateProduct($record->shopify_product_id, $payload);
-                                    $bodyText = "Item {$record->barcode} updated successfully.";
-                                } else {
-                                    $result = $service->createProduct($payload);
-                                    $record->update([
-                                        'shopify_product_id'        => $result['id'],
-                                        'shopify_inventory_item_id' => $result['variants'][0]['inventory_item_id'] ?? null,
-                                    ]);
-                                    $bodyText = "Item {$record->barcode} is now live on your store.";
-                                }
+        try {
+            if ($record->shopify_product_id) {
+                $result = $service->updateProduct($record->shopify_product_id, $payload);
+                $bodyText = "Item {$record->barcode} updated successfully.";
+            } else {
+                $result = $service->createProduct($payload);
+                $record->update([
+                    'shopify_product_id'        => $result['id'],
+                    'shopify_inventory_item_id' => $result['variants'][0]['inventory_item_id'] ?? null,
+                ]);
+                $bodyText = "Item {$record->barcode} is now live on your store.";
+            }
 
-                                $videos = $record->product_videos ?? [];
-                                if (!empty($videos) && is_array($videos)) {
-                                    $shopifyId = $record->shopify_product_id ?? ($result['id'] ?? null);
-                                    if ($shopifyId) {
-                                        $service->attachVideosFromProductItem((string) $shopifyId, $videos);
-                                    }
-                                }
+            // ✅ FIXED: Only processing the GraphQL video upload chain once!
+            $shopifyId = $record->shopify_product_id ?? ($result['id'] ?? null);
+            $videos    = $record->product_videos ?? [];
+            
+            if ($shopifyId && !empty($videos) && is_array($videos)) {
+                try {
+                    $service->attachVideosFromProductItem((string) $shopifyId, $videos);
+                    $bodyText .= ' + ' . count($videos) . ' video(s) uploaded.';
+                } catch (\Exception $ve) {
+                    \Illuminate\Support\Facades\Log::warning('Shopify video attach failed: ' . $ve->getMessage());
+                }
+            }
 
-                               // Attach videos via GraphQL after REST product push
-$shopifyId = $record->shopify_product_id ?? ($result['id'] ?? null);
-$videos    = $record->product_videos ?? [];
-if ($shopifyId && !empty($videos) && is_array($videos)) {
-    try {
-        $service->attachVideosFromProductItem((string) $shopifyId, $videos);
-        $bodyText .= ' + ' . count($videos) . ' video(s) uploaded.';
-    } catch (\Exception $ve) {
-        \Illuminate\Support\Facades\Log::warning('Shopify video attach failed: ' . $ve->getMessage());
-    }
-}
+            Notification::make()
+                ->title('Pushed to Shopify')
+                ->body($bodyText)
+                ->success()
+                ->send();
 
-Notification::make()
-    ->title('Pushed to Shopify')
-    ->body($bodyText)
-    ->success()
-    ->send();
-                            } catch (\Exception $e) {
-                                Notification::make()
-                                    ->title('Shopify Sync Failed')
-                                    ->body($e->getMessage())
-                                    ->danger()
-                                    ->send();
-                            }
-                        }),
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('Shopify Sync Failed')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }),
 
                     TableAction::make('remove_from_shopify')
                         ->label('Remove from Shopify')

@@ -5,10 +5,9 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ExchangeResource\Pages;
 use App\Models\Exchange;
 use App\Models\Sale;
-use App\Models\Customer;
 use App\Models\ProductItem;
 use App\Models\CustomOrder;
-use App\Forms\Components\CustomDatePicker;
+use App\Models\Repair;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -17,852 +16,906 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Filament\Forms\Components\{Section, Grid, Select, TextInput, Placeholder, Hidden, Toggle, Textarea, Repeater, Checkbox};
 use Filament\Forms\Components\Actions\Action as FormAction;
+use App\Forms\Components\CustomDatePicker;
 
 class ExchangeResource extends Resource
 {
-    protected static ?string $model = Exchange::class;
+    protected static ?string $model         = Exchange::class;
     protected static ?string $navigationIcon  = 'heroicon-o-arrow-path-rounded-square';
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $navigationLabel = 'Exchanges';
     protected static ?int    $navigationSort  = 4;
 
+    // ── TOTALS ENGINE — mirrors SaleResource::updateTotals ─────────────────
+    public static function updateExchangeTotals(Get $get, Set $set): void
+    {
+        $newItems = $get('new_items_form') ?? [];
+        $dbTax    = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate  = floatval($dbTax) / 100;
+
+        $subtotal = 0;
+        $tax      = 0;
+
+        foreach ($newItems as $item) {
+            $qty       = intval($item['qty'] ?? 1);
+            $lineTotal = floatval($item['sale_price_override'] ?? 0);
+            if ($lineTotal <= 0) {
+                $lineTotal = (floatval($item['sold_price'] ?? 0) * $qty) - floatval($item['discount_amount'] ?? 0);
+            }
+            $subtotal += $lineTotal;
+            if (empty($item['is_tax_free'])) {
+                $tax += $lineTotal * $taxRate;
+            }
+        }
+
+        $newTotal    = round($subtotal + $tax, 2);
+        $totalCredit = floatval($get('total_credit') ?? 0);
+        $difference  = round($newTotal - $totalCredit, 2);
+
+        $set('new_items_subtotal_display', number_format($subtotal, 2, '.', ''));
+        $set('new_items_tax_display',      number_format($tax,      2, '.', ''));
+        $set('new_sale_amount',            number_format($newTotal, 2, '.', ''));
+        $set('difference_amount',          number_format($difference, 2, '.', ''));
+
+        if ($difference > 0.009)      $set('exchange_type', 'upgrade');
+        elseif ($difference < -0.009) $set('exchange_type', 'downgrade');
+        else                          $set('exchange_type', 'same_value');
+
+        // Auto-fill amount_received if not yet set
+        $currentReceived = $get('amount_received');
+        if (($currentReceived === null || $currentReceived === '' || floatval($currentReceived) == 0) && $difference > 0.009) {
+            $set('amount_received', number_format($difference, 2, '.', ''));
+        }
+    }
+
     public static function form(Form $form): Form
     {
         return $form->schema([
 
-            // ── BANNER: status ──────────────────────────────────────────
-            Forms\Components\Placeholder::make('status_banner')
-                ->hiddenLabel()
-                ->columnSpanFull()
+            // ── STATUS BANNER ────────────────────────────────────────────────
+            Placeholder::make('status_banner')
+                ->hiddenLabel()->columnSpanFull()
                 ->content(function ($record) {
                     if (!$record) return '';
                     $colors = [
-                        'pending_approval' => ['bg' => '#fffbeb', 'border' => '#f59e0b', 'text' => '#92400e', 'icon' => '⏳'],
-                        'approved'         => ['bg' => '#eff6ff', 'border' => '#3b82f6', 'text' => '#1e40af', 'icon' => '✅'],
-                        'completed'        => ['bg' => '#f0fdf4', 'border' => '#22c55e', 'text' => '#166534', 'icon' => '🎉'],
-                        'rejected'         => ['bg' => '#fef2f2', 'border' => '#ef4444', 'text' => '#991b1b', 'icon' => '❌'],
-                        'cancelled'        => ['bg' => '#f9fafb', 'border' => '#9ca3af', 'text' => '#374151', 'icon' => '🚫'],
+                        'pending_approval' => ['bg'=>'#fffbeb','border'=>'#f59e0b','text'=>'#92400e','icon'=>'⏳'],
+                        'approved'         => ['bg'=>'#eff6ff','border'=>'#3b82f6','text'=>'#1e40af','icon'=>'✅'],
+                        'completed'        => ['bg'=>'#f0fdf4','border'=>'#22c55e','text'=>'#166534','icon'=>'🎉'],
+                        'rejected'         => ['bg'=>'#fef2f2','border'=>'#ef4444','text'=>'#991b1b','icon'=>'❌'],
                     ];
                     $c = $colors[$record->status] ?? $colors['pending_approval'];
-                    return new HtmlString("
-                        <div style='background:{$c['bg']};border:1.5px solid {$c['border']};border-left:5px solid {$c['border']};border-radius:8px;padding:12px 16px;'>
-                            <div style='font-size:13px;font-weight:800;color:{$c['text']};'>{$c['icon']} Exchange #{$record->exchange_no} — " . ucfirst(str_replace('_', ' ', $record->status)) . "</div>
-                        </div>
-                    ");
+                    return new HtmlString("<div style='background:{$c['bg']};border:1.5px solid {$c['border']};border-left:5px solid {$c['border']};border-radius:8px;padding:12px 16px;'>
+                        <div style='font-size:13px;font-weight:800;color:{$c['text']};'>{$c['icon']} Exchange #{$record->exchange_no} — " . ucfirst(str_replace('_', ' ', $record->status)) . "</div>
+                    </div>");
                 }),
 
-            Forms\Components\Grid::make(12)->schema([
+            Grid::make(12)->schema([
 
+                // ══ LEFT: Customer + Returned + New Items ═════════════════════
                 Forms\Components\Group::make()->columnSpan(8)->schema([
 
-                    // ── SECTION 1: Customer & Original Sale ─────────────────
-                    Forms\Components\Section::make('Customer & Original Sale')
-                        ->icon('heroicon-o-shopping-bag')
-                        ->schema([
-                            Forms\Components\Select::make('customer_id')
-                                ->label('Customer')
-                                ->relationship('customer', 'name')
-                                ->getOptionLabelFromRecordUsing(fn($record) =>
-                                    trim($record->name . ' ' . ($record->last_name ?? '')) .
-                                    ($record->phone ? ' — ' . $record->phone : '')
-                                )
-                                ->searchable(['name', 'last_name', 'phone'])
-                                ->preload()
-                                ->required()
-                                ->live()
-                                ->afterStateUpdated(fn(Set $set) => $set('original_sale_id', null)),
+                    // ── CUSTOMER ──────────────────────────────────────────────
+                    Section::make('Customer')->icon('heroicon-o-user')->schema([
+                        Select::make('customer_id')
+                            ->label('Customer')
+                            ->relationship('customer', 'name')
+                            ->getOptionLabelFromRecordUsing(fn($record) =>
+                                trim($record->name . ' ' . ($record->last_name ?? '')) . ($record->phone ? ' — ' . $record->phone : ''))
+                            ->searchable(['name','last_name','phone'])
+                            ->preload()->required()->live()
+                            ->afterStateUpdated(fn(Set $set) => $set('original_sale_id', null))
+                            ->columnSpanFull(),
+                    ]),
 
-                            Forms\Components\Select::make('original_sale_id')
-                                ->label('Original Sale (Invoice)')
-                                ->options(function (Get $get) {
-                                    $customerId = $get('customer_id');
-                                    if (!$customerId) return [];
-                                    return Sale::where('customer_id', $customerId)
-                                        ->where('status', 'completed')
-                                        ->orderByDesc('completed_at')
-                                        ->get()
-                                        ->mapWithKeys(fn($s) =>
-                                            [$s->id => $s->invoice_number . ' — $' . number_format($s->final_total, 2) . ' (' . ($s->completed_at ? \Carbon\Carbon::parse($s->completed_at)->format('M d, Y') : 'N/A') . ')']
-                                        );
-                                })
-                                ->searchable()
-                                ->required()
-                                ->live()
-                                ->afterStateUpdated(function (Get $get, Set $set, $state) {
-                                    if (!$state) return;
-                                    $sale = Sale::with(['items.productItem'])->find($state);
-                                    if (!$sale) return;
-                                    $items = $sale->items->where('is_non_stock', false)->whereNotNull('product_item_id')->map(fn($si) => [
+                    // ── RETURNED ITEMS ────────────────────────────────────────
+                    Section::make('Item(s) Being Returned')->icon('heroicon-o-arrow-uturn-left')->schema([
+
+                        Forms\Components\Radio::make('returned_source')
+                            ->label('Where was the item purchased?')
+                            ->options(['our_store'=>'🏪 From our store','outside'=>'🌐 Not from our store (manual)'])
+                            ->default('our_store')->live()->columnSpanFull()
+                            ->afterStateUpdated(fn(Set $set) => [$set('original_sale_id', null), $set('returned_items_form', [])]),
+
+                        Select::make('original_sale_id')
+                            ->label('Search Invoice / Job Number')
+                            ->options(function (Get $get) {
+                                $cid = $get('customer_id');
+                                if (!$cid) return [];
+                                return Sale::where('customer_id', $cid)->where('status','completed')
+                                    ->orderByDesc('completed_at')->get()
+                                    ->mapWithKeys(fn($s) => [$s->id =>
+                                        $s->invoice_number . ' — $' . number_format($s->final_total, 2) .
+                                        ' (' . ($s->completed_at ? \Carbon\Carbon::parse($s->completed_at)->format('M d, Y') : 'N/A') . ')']);
+                            })
+                            ->searchable()->live()
+                            ->visible(fn(Get $get) => $get('returned_source') === 'our_store')
+                            ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                if (!$state) return;
+                                $sale = Sale::with(['items.productItem'])->find($state);
+                                if (!$sale) return;
+                                $items = $sale->items->whereNotNull('product_item_id')
+                                    ->map(fn($si) => [
+                                        'item_source'     => 'stock',
                                         'sale_item_id'    => $si->id,
                                         'product_item_id' => $si->product_item_id,
-                                        'description'     => $si->productItem?->custom_description ?? $si->custom_description ?? 'Item',
+                                        'description'     => $si->custom_description ?? $si->productItem?->custom_description ?? 'Item',
                                         'stock_no'        => $si->productItem?->barcode ?? '—',
-                                        'original_price'  => floatval($si->sale_price_override ?? ($si->sold_price * $si->qty)),
-                                        'credit_amount'   => floatval($si->sale_price_override ?? ($si->sold_price * $si->qty)),
+                                        'original_price'  => floatval($si->sold_price * ($si->qty ?? 1)),
+                                        'credit_amount'   => floatval($si->sold_price * ($si->qty ?? 1)),
                                         'returning'       => true,
                                     ])->values()->toArray();
-                                    $set('returned_items_form', $items);
+                                $set('returned_items_form', $items);
+                                $total = collect($items)->sum(fn($i) => floatval($i['credit_amount'] ?? 0));
+                                $set('total_credit', number_format($total, 2, '.', ''));
+                                self::updateExchangeTotals($get, $set);
+                            })
+                            ->helperText('Select customer first')->columnSpanFull(),
+
+                        // Sale items preview
+                        Placeholder::make('sale_items_preview')->hiddenLabel()->columnSpanFull()
+                            ->visible(fn(Get $get) => $get('returned_source') === 'our_store' && filled($get('original_sale_id')))
+                            ->content(function (Get $get) {
+                                $sale = Sale::with(['items.productItem'])->find($get('original_sale_id'));
+                                if (!$sale) return '';
+                                $rows = $sale->items->map(fn($si) =>
+                                    "<tr><td style='padding:5px 10px;font-family:monospace;font-weight:700;color:#0369a1;'>" . ($si->productItem?->barcode ?? '—') . "</td>
+                                    <td style='padding:5px 10px;color:#374151;'>" . Str::limit($si->custom_description ?? '', 45) . "</td>
+                                    <td style='padding:5px 10px;font-weight:700;color:#059669;text-align:right;'>\$" . number_format($si->sold_price * ($si->qty ?? 1), 2) . "</td></tr>"
+                                )->implode('');
+                                return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;overflow:hidden;'>
+                                    <div style='padding:8px 12px;background:#dcfce7;font-size:11px;font-weight:800;color:#065f46;'>📦 Items in Invoice " . $sale->invoice_number . "</div>
+                                    <table style='width:100%;border-collapse:collapse;font-size:12px;'><tbody>{$rows}</tbody></table></div>");
+                            }),
+
+                        Repeater::make('returned_items_form')->label('Returned Items')->columnSpanFull()
+                            ->schema([
+                                Toggle::make('returning')->label('Include')->default(true)->live()->inline(false),
+                                TextInput::make('stock_no')->label('Stock #')->disabled()
+                                    ->visible(fn(Get $get) => ($get('item_source') ?? 'stock') === 'stock'),
+                                TextInput::make('description')->label('Description')
+                                    ->disabled(fn(Get $get) => ($get('item_source') ?? 'stock') === 'stock')->columnSpan(2),
+                                TextInput::make('original_price')->label('Original Price')->prefix('$')->disabled()
+                                    ->visible(fn(Get $get) => ($get('item_source') ?? 'stock') === 'stock'),
+                                TextInput::make('credit_amount')->label('Credit ($)')->prefix('$')->numeric()->required()
+                                    ->live(debounce:400)
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        $total = collect($get('../../returned_items_form') ?? [])
+                                            ->filter(fn($i) => !empty($i['returning']))
+                                            ->sum(fn($i) => floatval($i['credit_amount'] ?? 0));
+                                        $set('../../total_credit', number_format($total, 2, '.', ''));
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+                                Hidden::make('item_source')->default('stock'),
+                                Hidden::make('sale_item_id'),
+                                Hidden::make('product_item_id'),
+                            ])
+                            ->columns(3)->reorderable(false)
+                            ->deletable(fn(Get $get) => $get('returned_source') === 'outside')
+                            ->addable(fn(Get $get) => $get('returned_source') === 'outside')
+                            ->addActionLabel('+ Add Returned Item')
+                            ->itemLabel(fn(array $state) =>
+                                ($state['stock_no'] ?? ($state['description'] ?? 'Item')) . ' — Credit: $' . number_format($state['credit_amount'] ?? 0, 2))
+                            ->visible(fn(Get $get) =>
+                                ($get('returned_source') === 'our_store' && filled($get('original_sale_id'))) ||
+                                $get('returned_source') === 'outside')
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                $total = collect($state)->filter(fn($i) => !empty($i['returning']))->sum(fn($i) => floatval($i['credit_amount'] ?? 0));
+                                $set('total_credit', number_format($total, 2, '.', ''));
+                                self::updateExchangeTotals($get, $set);
+                            }),
+                    ]),
+
+                    // ── NEW ITEMS — mirrors SaleResource stock selection ───────
+                    Section::make('New Item(s) Customer is Taking')->icon('heroicon-o-shopping-cart')
+                        ->visible(fn(Get $get) => 
+                            ($get('returned_source') === 'our_store' && filled($get('original_sale_id'))) ||
+                            $get('returned_source') === 'outside'
+                        )
+                        ->description('Search stock, add non-tag items, or create a custom order — same as Quick Sale')->schema([
+
+                        // Stock search row
+                        Grid::make(4)->schema([
+                            Select::make('current_item_search')
+                                ->label('Select Stock #')
+                                ->searchable()->dehydrated(false)
+                                ->getSearchResultsUsing(fn(string $search) => ProductItem::where('status','in_stock')
+                                    ->where(fn($q) => $q->where('barcode','like',"%{$search}%")->orWhere('custom_description','like',"%{$search}%"))
+                                    ->limit(30)->get()
+                                    ->mapWithKeys(fn($i) => [$i->id => "{$i->barcode} — " . Str::limit($i->custom_description ?? '', 35) . " (\${$i->retail_price})"]))
+                                ->live()
+                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                    if (!$state) return;
+                                    $item = ProductItem::find($state);
+                                    if (!$item) return;
+                                    $qty = $get('current_item_qty') ?? 1;
+                                    $lineTotal = $item->retail_price * $qty;
+
+                                    $rows = $get('new_items_form') ?? [];
+                                    $newId = (string) Str::uuid();
+                                    $rows[$newId] = [
+                                        'selection_type'        => 'stock',
+                                        'product_item_id'       => $item->id,
+                                        'stock_no_display'      => $item->barcode,
+                                        'stock_no_display_persist' => $item->barcode,
+                                        'custom_description'    => $item->custom_description ?? $item->barcode,
+                                        'qty'                   => $qty,
+                                        'sold_price'            => $item->retail_price,
+                                        'sale_price_override'   => $lineTotal,
+                                        'discount_percent'      => 0,
+                                        'discount_amount'       => 0,
+                                        'is_tax_free'           => false,
+                                        'custom_order_id'       => null,
+                                        'is_new_custom_order'   => false,
+                                    ];
+                                    $set('new_items_form', $rows);
+                                    $set('current_item_search', null);
+                                    $set('current_item_qty', 1);
                                     self::updateExchangeTotals($get, $set);
                                 })
-                                ->helperText('Only completed sales shown'),
-                        ])->columns(2),
-
-                    // ── SECTION 2: Items Being Returned ─────────────────────
-                    Forms\Components\Section::make('Items Being Returned')
-                        ->icon('heroicon-o-arrow-uturn-left')
-                        ->description('Select which items the customer is returning and set the credit amount for each')
-                        ->schema([
-                            Forms\Components\Repeater::make('returned_items_form')
-                                ->label('Returned Items')
-                                ->schema([
-                                    Forms\Components\Toggle::make('returning')->label('Include')->default(true)->live()->inline(false),
-                                    Forms\Components\TextInput::make('stock_no')->label('Stock #')->disabled(),
-                                    Forms\Components\TextInput::make('description')->label('Description')->disabled()->columnSpan(2),
-                                    Forms\Components\TextInput::make('original_price')->label('Original Price')->prefix('$')->disabled(),
-                                    Forms\Components\TextInput::make('credit_amount')
-                                        ->label('Credit Amount ($)')
-                                        ->prefix('$')
-                                        ->numeric()
-                                        ->required()
-                                        ->live(onBlur: true)
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set))
-                                        ->helperText('Staff can adjust — default is what customer paid'),
-                                    Forms\Components\Hidden::make('sale_item_id'),
-                                    Forms\Components\Hidden::make('product_item_id'),
-                                ])
-                                ->columns(3)
-                                ->reorderable(false)
-                                ->deletable(false)
-                                ->addable(false)
-                                ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set))
-                                ->itemLabel(fn(array $state) => ($state['stock_no'] ?? '?') . ' — ' . Str::limit($state['description'] ?? '', 40)),
+                                ->columnSpan(3),
+                            TextInput::make('current_item_qty')->label('Qty')->numeric()->default(1)->dehydrated(false)->live(),
                         ]),
 
-                    // ── SECTION 3: New Item(s) Being Taken ───────────────────
-                    Forms\Components\Section::make('New Item(s) Being Taken')
-                        ->icon('heroicon-o-shopping-cart')
-                        ->description('Search stock, add a non-tag item, or create/link a custom order — same as Quick Sale')
-                        ->headerActions([])
-                        ->schema([
+                        // Action buttons — Non-Tag + Custom Order
+                        Forms\Components\Actions::make([
 
-                            // ── Quick add row: stock search + qty ───────────
-                            Forms\Components\Grid::make(4)->schema([
-                                Forms\Components\Select::make('current_stock_search')
-                                    ->label('Select Stock #')
-                                    ->placeholder('Search barcode / description...')
-                                    ->searchable()
-                                    ->dehydrated(false)
-                                    ->getSearchResultsUsing(fn(string $search) => ProductItem::where('status', 'in_stock')
-                                        ->where(function ($q) use ($search) {
-                                            $q->where('barcode', 'like', "%{$search}%")
-                                                ->orWhere('custom_description', 'like', "%{$search}%");
-                                        })
-                                        ->limit(30)
-                                        ->get()
-                                        ->mapWithKeys(fn($i) => [$i->id => "{$i->barcode} — {$i->custom_description} (\${$i->retail_price})"]))
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        if (!$state) return;
-                                        $item = ProductItem::find($state);
-                                        if (!$item) return;
-                                        $qty = $get('current_stock_qty') ?? 1;
-
-                                        $rows = $get('new_items_form') ?? [];
-                                        $rows[] = [
-                                            'selection_type'   => 'stock',
-                                            'product_item_id'  => $item->id,
-                                            'stock_no_display' => $item->barcode,
-                                            'description'       => $item->custom_description ?? $item->barcode,
-                                            'qty'               => $qty,
-                                            'price'             => $item->retail_price,
-                                            'discount_percent'  => 0,
-                                            'discount_amount'   => 0,
-                                            'sale_price'        => $item->retail_price * $qty,
-                                            'is_tax_free'       => false,
-                                        ];
-                                        $set('new_items_form', $rows);
-                                        $set('current_stock_search', null);
-                                        $set('current_stock_qty', 1);
-                                        self::updateExchangeTotals($get, $set);
-                                    })
-                                    ->columnSpan(3),
-
-                                Forms\Components\TextInput::make('current_stock_qty')
-                                    ->label('Qty')
-                                    ->numeric()
-                                    ->default(1)
-                                    ->dehydrated(false),
-                            ]),
-
-                            // ── Quick add buttons: Non-Tag / New Custom Order ──
-                            Forms\Components\Actions::make([
-
-                                FormAction::make('add_non_tag_item')
-                                    ->label('+ Non-Tag Item')
-                                    ->color('gray')
-                                    ->outlined()
-                                    ->icon('heroicon-o-plus-circle')
-                                    ->modalHeading('Add Non-Tag Item')
-                                    ->modalWidth('lg')
-                                    ->modalSubmitActionLabel('Add to Exchange')
-                                    ->form([
-                                        Forms\Components\TextInput::make('description')
-                                            ->label('Description')
-                                            ->required()
-                                            ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\TextInput::make('price')->label('Unit Price')->numeric()->prefix('$')->required()->default(0),
-                                            Forms\Components\TextInput::make('qty')->label('Qty')->numeric()->required()->default(1),
-                                        ]),
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\TextInput::make('discount_percent')->label('Discount %')->numeric()->suffix('%')->default(0),
-                                            Forms\Components\Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false),
-                                        ]),
-                                    ])
-                                    ->action(function (array $data, Get $get, Set $set) {
-                                        $price     = floatval($data['price'] ?? 0);
-                                        $qty       = intval($data['qty'] ?? 1);
-                                        $discPct   = floatval($data['discount_percent'] ?? 0);
-                                        $lineTotal = $price * $qty;
-                                        $discAmt   = $lineTotal * ($discPct / 100);
-
-                                        $rows = $get('new_items_form') ?? [];
-                                        $rows[] = [
-                                            'selection_type'   => 'non_tag',
-                                            'description'      => $data['description'],
-                                            'qty'               => $qty,
-                                            'price'             => $price,
-                                            'discount_percent'  => $discPct,
-                                            'discount_amount'   => $discAmt,
-                                            'sale_price'        => $lineTotal - $discAmt,
-                                            'is_tax_free'       => $data['is_tax_free'] ?? false,
-                                        ];
-                                        $set('new_items_form', $rows);
-                                        self::updateExchangeTotals($get, $set);
-                                    }),
-
-                                // ── + New Custom Order: creates a REAL CustomOrder record now ──
-                                FormAction::make('create_new_custom_order')
-                                    ->label('+ New Custom Order')
-                                    ->color('success')
-                                    ->outlined()
-                                    ->icon('heroicon-o-paint-brush')
-                                    ->modalHeading('Design New Custom Piece')
-                                    ->modalWidth('3xl')
-                                    ->modalSubmitActionLabel('Create & Add to Exchange')
-                                    ->form([
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\Select::make('product_name')
-                                                ->label('What are we making?')
-                                                ->options(fn() => CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())
-                                                ->searchable()
-                                                ->createOptionForm([Forms\Components\TextInput::make('new_product_name')->required()->label('New Product Name')])
-                                                ->createOptionUsing(fn($data) => $data['new_product_name'])
-                                                ->required(),
-                                            Forms\Components\Select::make('metal_type')
-                                                ->label('Metal Type')
-                                                ->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'platinum' => 'Platinum', 'silver' => 'Silver', 'other' => 'Other'])
-                                                ->default('14k')
-                                                ->required(),
-                                        ]),
-                                        Forms\Components\Grid::make(3)->schema([
-                                            Forms\Components\TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur: true),
-                                            Forms\Components\TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->default(0)->live(onBlur: true),
-                                            Forms\Components\TextInput::make('custom_deposit_amount')->label('Deposit Toward Difference ($)')->numeric()->prefix('$')->default(0)
-                                                ->helperText('Optional — if the customer pays part of the difference now'),
-                                        ]),
-                                        Forms\Components\Grid::make(2)->schema([
-                                            Forms\Components\Select::make('deposit_method')
-                                                ->label('Deposit Payment Method')
-                                                ->options(fn() => SaleResource::getPaymentOptions())
-                                                ->default('VISA'),
-                                            Forms\Components\Toggle::make('is_tax_free')->label('Tax Free Order?')->default(false)->inline(false),
-                                        ]),
-                                       Forms\Components\DatePicker::make('due_date')
-    ->label('Promised By Date')
-    ->displayFormat('m/d/Y')
-    ->native(false) // Gives you the premium calendar dropdown style
-    ->required(),
-                                        Forms\Components\Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
-                                    ])
-                                    ->action(function (array $data, Get $get, Set $set) {
-                                        $price   = floatval($data['quoted_price']);
-                                        $discPct = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
-                                        $discAmt = $price * $discPct / 100;
-                                        $finalPrice = max(0, $price - $discAmt);
-                                        $isTaxFree = $data['is_tax_free'] ?? false;
-
-                                        // 🚀 Create the REAL custom order record now — shows up immediately in Custom Order Resource
-                                        $customOrder = CustomOrder::create([
-                                            'customer_id'      => $get('customer_id'),
-                                            'staff_id'         => auth()->id(),
-                                            'order_type'       => 'custom',
-                                            'product_name'     => $data['product_name'],
-                                            'metal_type'       => $data['metal_type'],
-                                            'quoted_price'     => $price,
-                                            'discount_percent' => $discPct,
-                                            'discount_amount'  => $discAmt,
-                                            'due_date'         => $data['due_date'] ?? null,
-                                            'design_notes'     => $data['design_notes'] ?? null,
-                                            'status'           => 'in_production',
-                                            'is_tax_free'      => $isTaxFree,
-                                            'amount_paid'      => 0,
-                                            'balance_due'      => $finalPrice,
-                                            'items'            => [[
-                                                'product_name' => $data['product_name'],
-                                                'metal_type'   => $data['metal_type'],
-                                                'quoted_price' => $price,
-                                                'design_notes' => $data['design_notes'] ?? null,
-                                                'is_tax_free'  => $isTaxFree,
-                                            ]],
-                                        ]);
-
-                                        $rows = $get('new_items_form') ?? [];
-                                        $rows[] = [
-                                            'selection_type'  => 'custom_order',
-                                            'custom_order_id' => $customOrder->id,
-                                            'description'      => "Custom {$customOrder->product_name} (#{$customOrder->id})",
-                                            'qty'               => 1,
-                                            'price'             => $price,
-                                            'discount_percent'  => $discPct,
-                                            'discount_amount'   => $discAmt,
-                                            'sale_price'        => $finalPrice,
-                                            'is_tax_free'       => $isTaxFree,
-                                        ];
-                                        $set('new_items_form', $rows);
-
-                                        // Record deposit toward the difference, if any
-                                        $deposit = floatval($data['custom_deposit_amount'] ?? 0);
-                                        if ($deposit > 0) {
-                                            \App\Models\Payment::create([
-                                                'custom_order_id' => $customOrder->id,
-                                                'amount'          => $deposit,
-                                                'method'          => strtoupper($data['deposit_method'] ?? 'CASH'),
-                                                'paid_at'         => now(),
-                                                'store_id'        => auth()->user()->store_id ?? \App\Models\Store::first()?->id ?? 1,
-                                            ]);
-                                            $customOrder->update([
-                                                'amount_paid' => $deposit,
-                                                'balance_due' => max(0, $finalPrice - $deposit),
-                                            ]);
-
-                                            $set('is_split_payment', true);
-                                            $splits = $get('split_payments') ?? [];
-                                            $splits[] = ['method' => $data['deposit_method'] ?? 'CASH', 'amount' => $deposit];
-                                            $set('split_payments', $splits);
-
-                                            Notification::make()
-                                                ->title('Custom Order Created')
-                                                ->body("Order #{$customOrder->id} created with a \$" . number_format($deposit, 2) . ' deposit recorded.')
-                                                ->success()
-                                                ->send();
-                                        } else {
-                                            Notification::make()
-                                                ->title('Custom Order Created')
-                                                ->body("Order #{$customOrder->id} created and added to this exchange.")
-                                                ->success()
-                                                ->send();
-                                        }
-
-                                        self::updateExchangeTotals($get, $set);
-                                    }),
-
-                                // ── Link an EXISTING custom order instead of creating new ──
-                                FormAction::make('link_existing_custom_order')
-                                    ->label('🔗 Link Existing Custom Order')
-                                    ->color('info')
-                                    ->outlined()
-                                    ->icon('heroicon-o-link')
-                                    ->modalWidth('lg')
-                                    ->form([
-                                        Forms\Components\Select::make('custom_order_id')
-                                            ->label('Select Custom Order')
-                                            ->options(function (Get $get) {
-                                                $customerId = $get('../../customer_id');
-                                                if (!$customerId) return [];
-                                                return CustomOrder::where('customer_id', $customerId)
-                                                    ->whereIn('status', ['pending', 'in_production'])
-                                                    ->get()
-                                                    ->mapWithKeys(fn($c) => [$c->id => "#{$c->id} — {$c->product_name} (Bal: \$" . number_format($c->balance_due, 2) . ')']);
-                                            })
-                                            ->required()
-                                            ->searchable(),
-                                    ])
-                                    ->action(function (array $data, Get $get, Set $set) {
-                                        $co = CustomOrder::find($data['custom_order_id']);
-                                        if (!$co) return;
-                                        $finalPrice = max(0, floatval($co->quoted_price) - floatval($co->discount_amount ?? 0));
-
-                                        $rows = $get('new_items_form') ?? [];
-                                        $rows[] = [
-                                            'selection_type'  => 'custom_order',
-                                            'custom_order_id' => $co->id,
-                                            'description'      => "Custom {$co->product_name} (#{$co->id})",
-                                            'qty'               => 1,
-                                            'price'             => $co->quoted_price,
-                                            'discount_percent'  => $co->discount_percent ?? 0,
-                                            'discount_amount'   => $co->discount_amount ?? 0,
-                                            'sale_price'        => $finalPrice,
-                                            'is_tax_free'       => (bool) $co->is_tax_free,
-                                        ];
-                                        $set('new_items_form', $rows);
-                                        self::updateExchangeTotals($get, $set);
-                                    }),
-                            ]),
-
-                            // ── Repeater showing added rows (editable discount/qty) ──
-                            Forms\Components\Repeater::make('new_items_form')
-                                ->label('Items in this Exchange')
-                                ->schema([
-                                    Forms\Components\Hidden::make('selection_type'),
-                                    Forms\Components\Hidden::make('product_item_id'),
-                                    Forms\Components\Hidden::make('custom_order_id'),
-                                    Forms\Components\Hidden::make('stock_no_display'),
-
-                                    Forms\Components\TextInput::make('description')
-                                        ->label('Item')
-                                        ->columnSpan(3)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order'),
-
-                                    Forms\Components\TextInput::make('qty')
-                                        ->numeric()
-                                        ->default(1)
-                                        ->live(onBlur: true)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::recalcLine($get, $set)),
-
-                                    Forms\Components\TextInput::make('price')
-                                        ->label('Unit Price')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->live(onBlur: true)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::recalcLine($get, $set)),
-
-                                    Forms\Components\TextInput::make('discount_percent')
-                                        ->label('Disc %')
-                                        ->numeric()
-                                        ->suffix('%')
-                                        ->default(0)
-                                        ->live(onBlur: true)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('price') ?? 0);
-                                            $qty   = intval($get('qty') ?? 1);
-                                            $line  = $price * $qty;
-                                            $pct   = min(100, max(0, floatval($state ?? 0)));
-                                            $discAmt = $line * $pct / 100;
-                                            $set('discount_amount', round($discAmt, 2));
-                                            $set('sale_price', round($line - $discAmt, 2));
-                                            self::updateExchangeTotals($get, $set);
-                                        }),
-
-                                    Forms\Components\TextInput::make('discount_amount')
-                                        ->label('Disc $')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->default(0)
-                                        ->live(onBlur: true)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('price') ?? 0);
-                                            $qty   = intval($get('qty') ?? 1);
-                                            $line  = $price * $qty;
-                                            $discAmt = min($line, max(0, floatval($state ?? 0)));
-                                            $pct = $line > 0 ? round(($discAmt / $line) * 100, 2) : 0;
-                                            $set('discount_percent', $pct);
-                                            $set('sale_price', round($line - $discAmt, 2));
-                                            self::updateExchangeTotals($get, $set);
-                                        }),
-
-                                    Forms\Components\TextInput::make('sale_price')
-                                        ->label('Sale Price (final)')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->live(onBlur: true)
-                                        ->readOnly(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                            $price = floatval($get('price') ?? 0);
-                                            $qty   = intval($get('qty') ?? 1);
-                                            $line  = $price * $qty;
-                                            $final = min($line, max(0, floatval($state ?? 0)));
-                                            $discAmt = $line - $final;
-                                            $pct = $line > 0 ? round(($discAmt / $line) * 100, 2) : 0;
-                                            $set('discount_amount', round($discAmt, 2));
-                                            $set('discount_percent', $pct);
-                                            self::updateExchangeTotals($get, $set);
-                                        }),
-
-                                    Forms\Components\Checkbox::make('is_tax_free')
-                                        ->label('No Tax')
-                                        ->disabled(fn(Get $get) => $get('selection_type') === 'custom_order')
-                                        ->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set)),
-                                ])
-                                ->columns(4)
-                                ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set))
-                                ->addable(false)
-                                ->reorderable(false)
-                                ->itemLabel(fn(array $state) => strtoupper($state['selection_type'] ?? 'item') . ' — ' . Str::limit($state['description'] ?? '', 30)),
-                        ]),
-
-                    // ── SECTION 4: Reason & Notes ────────────────────────────
-                    Forms\Components\Section::make('Reason & Notes')
-                        ->icon('heroicon-o-chat-bubble-left-right')
-                        ->schema([
-                            Forms\Components\Textarea::make('reason')
-                                ->label("Customer's Reason for Exchange")
-                                ->required()
-                                ->rows(2)
-                                ->columnSpanFull(),
-                            Forms\Components\Textarea::make('staff_notes')
-                                ->label('Internal Staff Notes')
-                                ->rows(2)
-                                ->columnSpanFull(),
-                            Forms\Components\Textarea::make('rejection_reason')
-                                ->label('Rejection Reason (if rejected)')
-                                ->rows(2)
-                                ->columnSpanFull()
-                                ->visible(fn($record) => $record?->status === 'rejected'),
-                        ]),
-                ]),
-
-                // ── RIGHT COLUMN: Financials & Payment ──────────────────────
-                Forms\Components\Group::make()->columnSpan(4)->schema([
-
-                    Forms\Components\Section::make('Exchange Summary')
-                        ->icon('heroicon-o-arrows-right-left')
-                        ->schema([
-                            Forms\Components\TextInput::make('total_credit')
-                                ->label('Total Credit')
-                                ->prefix('$')
-                                ->readOnly()
-                                ->extraInputAttributes(['class' => 'font-bold text-danger-600']),
-
-                            Forms\Components\TextInput::make('new_sale_amount')
-                                ->label('New Item(s) Total (incl. tax)')
-                                ->prefix('$')
-                                ->readOnly()
-                                ->extraInputAttributes(['class' => 'font-bold text-success-600']),
-
-                            Forms\Components\Select::make('exchange_type')
-                                ->label('Exchange Type')
-                                ->options([
-                                    'same_value' => '↔️ Same Value',
-                                    'upgrade'    => '⬆️ Upgrade',
-                                    'downgrade'  => '⬇️ Downgrade',
-                                ])
-                                ->disabled()
-                                ->dehydrated(true),
-
-                            Forms\Components\TextInput::make('difference_amount')
-                                ->label('Difference')
-                                ->prefix('$')
-                                ->readOnly()
-                                ->helperText('Positive = customer pays, Negative = store refunds'),
-                        ]),
-
-                    Forms\Components\Section::make('Payment for Difference')
-                        ->icon('heroicon-o-credit-card')
-                        ->visible(fn(Get $get) => abs(floatval($get('difference_amount') ?? 0)) > 0.009)
-                        ->schema([
-                            Forms\Components\Toggle::make('is_split_payment')
-                                ->label('Split Payment')
-                                ->live()
-                                ->columnSpanFull(),
-
-                            Forms\Components\Select::make('difference_payment_method')
-                                ->label('Payment Method')
-                                ->options(fn() => SaleResource::getPaymentOptions() + ['STORE_CREDIT' => 'Store Credit', 'N/A' => 'N/A'])
-                                ->visible(fn(Get $get) => !$get('is_split_payment'))
-                                ->required(fn(Get $get) => !$get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0),
-
-                            Forms\Components\Repeater::make('split_payments')
-                                ->label('Payment Breakdown')
-                                ->visible(fn(Get $get) => $get('is_split_payment'))
-                                ->schema([
-                                    Forms\Components\Grid::make(2)->schema([
-                                        Forms\Components\Select::make('method')
-                                            ->options(fn() => SaleResource::getPaymentOptions())
-                                            ->required(),
-                                        Forms\Components\TextInput::make('amount')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->required(),
+                            FormAction::make('add_non_tag')
+                                ->label('+ Non-Tag Item')->color('gray')->outlined()->icon('heroicon-o-plus-circle')
+                                ->modalHeading('Add Non-Tag Item')->modalWidth('lg')->modalSubmitActionLabel('Add to Exchange')
+                                ->form([
+                                    TextInput::make('description')->label('Description')->required()
+                                        ->placeholder('e.g. Engraving, Cleaning Fee, Labour Charge'),
+                                    Grid::make(2)->schema([
+                                        TextInput::make('price')->label('Unit Price')->numeric()->prefix('$')->required()->default(0),
+                                        TextInput::make('qty')->label('Qty')->numeric()->required()->default(1),
+                                    ]),
+                                    Grid::make(2)->schema([
+                                        TextInput::make('discount_percent')->label('Discount %')->numeric()->suffix('%')->default(0),
+                                        Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false),
                                     ]),
                                 ])
-                                ->addActionLabel('+ Add Payment Method')
-                                ->reorderable(false)
-                                ->defaultItems(1),
+                                ->action(function (array $data, Get $get, Set $set) {
+                                    $price     = floatval($data['price'] ?? 0);
+                                    $qty       = intval($data['qty'] ?? 1);
+                                    $discPct   = floatval($data['discount_percent'] ?? 0);
+                                    $lineTotal = $price * $qty;
+                                    $discAmt   = $lineTotal * ($discPct / 100);
+                                    $final     = $lineTotal - $discAmt;
+
+                                    $rows  = $get('new_items_form') ?? [];
+                                    $newId = (string) Str::uuid();
+                                    $rows[$newId] = [
+                                        'selection_type'      => 'non_tag',
+                                        'product_item_id'     => null,
+                                        'custom_order_id'     => null,
+                                        'is_new_custom_order' => false,
+                                        'stock_no_display'    => 'NON-TAG',
+                                        'stock_no_display_persist' => 'NON-TAG',
+                                        'custom_description'  => $data['description'],
+                                        'qty'                 => $qty,
+                                        'sold_price'          => $price,
+                                        'sale_price_override' => $final,
+                                        'discount_percent'    => $discPct,
+                                        'discount_amount'     => $discAmt,
+                                        'is_tax_free'         => $data['is_tax_free'] ?? false,
+                                    ];
+                                    $set('new_items_form', $rows);
+                                    self::updateExchangeTotals($get, $set);
+                                }),
+
+                            FormAction::make('create_custom_order')
+                                ->label('+ New Custom Order')->color('success')->outlined()->icon('heroicon-o-paint-brush')
+                                ->modalHeading('Design New Custom Piece')->modalWidth('3xl')->modalSubmitActionLabel('Add to Exchange')
+                                ->form([
+                                    Grid::make(2)->schema([
+                                        Select::make('product_name')->label('What are we making?')
+                                            ->options(fn() => CustomOrder::whereNotNull('product_name')->pluck('product_name','product_name')->unique())
+                                            ->searchable()
+                                            ->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])
+                                            ->createOptionUsing(fn($data) => $data['new_product_name'])->required(),
+                                        Select::make('metal_type')->label('Metal Type')
+                                            ->options(['10k'=>'10k Gold','14k'=>'14k Gold','18k'=>'18k Gold','platinum'=>'Platinum','silver'=>'Silver','other'=>'Other'])
+                                            ->default('14k')->required(),
+                                    ]),
+                                    Grid::make(3)->schema([
+                                        TextInput::make('quoted_price')->label('Total Item Price')->numeric()->prefix('$')->required()->live(onBlur:true)
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                $price = floatval($state ?? 0);
+                                                $discAmt = min($price, floatval($get('discount_amount') ?? 0));
+                                                $pct = $price > 0 ? round(($discAmt/$price)*100,2) : 0;
+                                                $set('discount_amount', round($discAmt,2));
+                                                $set('discount_percent', $pct);
+                                                $set('sale_price_display', round($price-$discAmt,2));
+                                            }),
+                                        Placeholder::make('total_with_tax')->label('Total (w/ Tax)')
+                                            ->content(function (Get $get) {
+                                                $quoted   = floatval($get('quoted_price') ?? 0);
+                                                $discAmt  = min($quoted, floatval($get('discount_amount') ?? 0));
+                                                $discounted = $quoted - $discAmt;
+                                                $taxRate = $get('is_tax_free') ? 0 : floatval(DB::table('site_settings')->where('key','tax_rate')->value('value') ?? 7.63) / 100;
+                                                return new HtmlString("<div class='text-2xl font-black text-gray-900 mt-1'>$" . number_format($discounted*(1+$taxRate),2) . "</div>");
+                                            }),
+                                        TextInput::make('custom_deposit_amount')->label('Deposit Now')->numeric()->prefix('$')->default(0)
+                                            ->helperText('Amount paid toward this order today'),
+                                    ]),
+                                    Grid::make(3)->schema([
+                                        TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->default(0)->minValue(0)->maxValue(100)->live(onBlur:true)
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                $price = floatval($get('quoted_price') ?? 0);
+                                                $pct   = min(100, max(0, floatval($state ?? 0)));
+                                                $disc  = $price * $pct / 100;
+                                                $set('discount_amount', round($disc,2));
+                                                $set('sale_price_display', round($price-$disc,2));
+                                            }),
+                                        TextInput::make('discount_amount')->label('Disc $')->numeric()->prefix('$')->default(0)->live(onBlur:true)
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                $price   = floatval($get('quoted_price') ?? 0);
+                                                $discAmt = min($price, max(0, floatval($state ?? 0)));
+                                                $pct     = $price > 0 ? round(($discAmt/$price)*100,2) : 0;
+                                                $set('discount_percent', $pct);
+                                                $set('sale_price_display', round($price-$discAmt,2));
+                                            }),
+                                        TextInput::make('sale_price_display')->label('Sale Price')->numeric()->prefix('$')->default(0)->dehydrated(false)->live(onBlur:true)
+                                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                $price = floatval($get('quoted_price') ?? 0);
+                                                $sp    = min($price, max(0, floatval($state ?? 0)));
+                                                $disc  = $price - $sp;
+                                                $pct   = $price > 0 ? round(($disc/$price)*100,2) : 0;
+                                                $set('discount_amount', round($disc,2));
+                                                $set('discount_percent', $pct);
+                                            }),
+                                    ]),
+                                    Grid::make(3)->schema([
+                                        Select::make('deposit_method')->label('Deposit Payment Method')
+                                            ->options(fn() => SaleResource::getPaymentOptions())->default('CASH')->required(),
+                                        Placeholder::make('spacer')->label('')->content(''),
+                                        Toggle::make('is_tax_free')->label('Tax Free?')->default(false)->inline(false)->live(),
+                                    ]),
+                                    Forms\Components\DatePicker::make('due_date') ->label('Promised By Date') ->displayFormat('m/d/Y') ->native(false), // Gives you the premium calendar dropdown style ->required(),
+                                    Textarea::make('design_notes')->label('Design Notes & Instructions')->rows(2),
+                                ])
+                                ->action(function (array $data, Get $get, Set $set) {
+                                    $price   = floatval($data['quoted_price']);
+                                    $discPct = min(100, max(0, floatval($data['discount_percent'] ?? 0)));
+                                    $discAmt = min($price, max(0, floatval($data['discount_amount'] ?? ($price*$discPct/100))));
+                                    $discPct = $price > 0 ? round(($discAmt/$price)*100,2) : $discPct;
+                                    $afterDiscount = max(0, $price - $discAmt);
+                                    $isTaxFree = $data['is_tax_free'] ?? false;
+                                    $deposit   = floatval($data['custom_deposit_amount'] ?? 0);
+                                    $method    = $data['deposit_method'] ?? 'CASH';
+
+                                    // Store as draft — actual CustomOrder created on Exchange completion
+                                    $draftId = (string) Str::uuid();
+                                    $data['draft_id']         = $draftId;
+                                    $data['discount_percent'] = $discPct;
+                                    $data['discount_amount']  = $discAmt;
+
+                                    $rows = $get('new_items_form') ?? [];
+                                    $rows[$draftId] = [
+                                        'selection_type'        => 'custom_order',
+                                        'product_item_id'       => null,
+                                        'custom_order_id'       => null, // created on completion
+                                        'is_new_custom_order'   => true,
+                                        'new_custom_data'       => json_encode($data),
+                                        'stock_no_display'      => 'NEW CUSTOM',
+                                        'stock_no_display_persist' => 'NEW CUSTOM',
+                                        'custom_description'    => "CUSTOM Order: {$data['product_name']}\nMetal: {$data['metal_type']}\n" . ($data['design_notes'] ?? ''),
+                                        'qty'                   => 1,
+                                        'sold_price'            => $afterDiscount,
+                                        'sale_price_override'   => $afterDiscount, // pre-tax; tax added by totals engine
+                                        'discount_percent'      => $discPct,
+                                        'discount_amount'       => $discAmt,
+                                        'is_tax_free'           => $isTaxFree,
+                                    ];
+                                    $set('new_items_form', $rows);
+
+                                    // If deposit — add as split payment row
+                                    if ($deposit > 0) {
+                                        $set('is_split_payment', true);
+                                        $splits = $get('split_payments') ?? [];
+                                        $splits[$draftId] = ['method'=>$method,'amount'=>$deposit];
+                                        $set('split_payments', $splits);
+                                    }
+
+                                    self::updateExchangeTotals($get, $set);
+                                }),
                         ]),
 
-                    Forms\Components\Section::make('Link New Sale')
-                        ->schema([
-                            Forms\Components\Select::make('new_sale_id')
-                                ->label('New Sale (auto-created on complete)')
-                                ->options(fn(Get $get) =>
-                                    Sale::where('customer_id', $get('customer_id'))
-                                        ->where('status', 'completed')
-                                        ->whereDate('created_at', '>=', now()->subDays(7))
-                                        ->orderByDesc('created_at')
-                                        ->pluck('invoice_number', 'id')
-                                )
-                                ->searchable()
-                                ->nullable()
-                                ->helperText('Leave blank — a Sale record is created automatically when the exchange is approved and completed.'),
-                        ]),
+                        // New items bill repeater — mirrors SaleResource items repeater
+                        Repeater::make('new_items_form')->label('Items in this Exchange')
+                            ->hidden(function (Get $get) {
+                                $items = $get('new_items_form') ?? [];
+                                
+                                // 🚀 THE FIX: Filter out completely empty initialized items. 
+                                // If the item doesn't have a selection_type, it's just a blank structural layout row.
+                                $hasRealItems = collect($items)->contains(fn ($item) => filled($item['selection_type'] ?? null));
+                                
+                                return !$hasRealItems;
+                            })
+                            ->schema([
+                                Hidden::make('selection_type'),
+                                Hidden::make('product_item_id'),
+                                Hidden::make('custom_order_id'),
+                                Hidden::make('is_new_custom_order')->default(false),
+                                Hidden::make('new_custom_data'),
+                                Hidden::make('stock_no_display_persist'),
+
+                                TextInput::make('stock_no_display')->label('Item')->readOnly()->dehydrated(false)
+                                    ->extraInputAttributes(fn($state) => ['class' => str_contains($state ?? '', 'CUSTOM') ? 'text-blue-600 font-bold bg-blue-50' : ''])
+                                    ->columnSpan(2),
+
+                                Textarea::make('custom_description')->label('Description')->rows(2)->autosize(false)
+                                    ->extraInputAttributes(['style'=>'max-height:55px;overflow-y:auto;resize:none;'])
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(3),
+
+                                TextInput::make('qty')->numeric()->default(1)->live(onBlur:true)
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(1)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        $price   = floatval($get('sold_price') ?? 0);
+                                        $pct     = floatval($get('discount_percent') ?? 0);
+                                        $line    = $price * intval($state ?? 1);
+                                        $discAmt = $line * $pct / 100;
+                                        $set('discount_amount', number_format($discAmt, 2, '.', ''));
+                                        $set('sale_price_override', number_format($line - $discAmt, 2, '.', ''));
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+
+                                TextInput::make('sold_price')->label('Price')->numeric()->live(onBlur:true)
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(2)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        $qty  = intval($get('qty') ?? 1);
+                                        $pct  = floatval($get('discount_percent') ?? 0);
+                                        $line = floatval($state) * $qty;
+                                        $disc = $line * $pct / 100;
+                                        $set('discount_amount', number_format($disc, 2, '.', ''));
+                                        $set('sale_price_override', number_format($line - $disc, 2, '.', ''));
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+
+                                TextInput::make('sale_price_override')->label('Sale Price')->live(onBlur:true)
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(2)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        $price = floatval($get('sold_price') ?? 0);
+                                        $qty   = intval($get('qty') ?? 1);
+                                        $orig  = $price * $qty;
+                                        $final = floatval($state ?? 0);
+                                        if ($orig > 0) {
+                                            $disc = $orig - $final;
+                                            $pct  = ($disc/$orig)*100;
+                                            $set('discount_amount', number_format($disc,2,'.','')); 
+                                            $set('discount_percent', number_format($pct,2,'.','')); 
+                                        }
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+
+                                TextInput::make('discount_percent')->label('Disc %')->numeric()->suffix('%')->default(0)->live(onBlur:true)
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(2)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        $price = floatval($get('sold_price') ?? 0);
+                                        $qty   = intval($get('qty') ?? 1);
+                                        $line  = $price * $qty;
+                                        $pct   = floatval($state ?? 0);
+                                        $disc  = $line * $pct / 100;
+                                        $set('discount_amount', number_format($disc,2,'.','')); 
+                                        $set('sale_price_override', number_format($line-$disc,2,'.','')); 
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+
+                                TextInput::make('discount_amount')->label('Disc $')->numeric()->prefix('$')->default(0)->live(onBlur:true)
+                                    ->readOnly(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(2)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        $price = floatval($get('sold_price') ?? 0);
+                                        $qty   = intval($get('qty') ?? 1);
+                                        $line  = $price * $qty;
+                                        $disc  = floatval($state ?? 0);
+                                        if ($line > 0) $set('discount_percent', number_format(($disc/$line)*100,2,'.','')); 
+                                        $set('sale_price_override', number_format($line-$disc,2,'.','')); 
+                                        self::updateExchangeTotals($get, $set);
+                                    }),
+
+                                Checkbox::make('is_tax_free')->label('No Tax')->default(false)->live()
+                                    ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                    ->columnSpan(1)
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set)),
+                            ])
+                            ->columns(12)->addable(false)->reorderable(false)->deletable(true)->live()
+                            ->defaultItems(0) // Ensure no auto-added empty rows on load
+                            ->afterStateUpdated(fn(Get $get, Set $set) => self::updateExchangeTotals($get, $set)),
+                    ]),
+
+                    // ── REASON & NOTES ────────────────────────────────────────
+                    Section::make('Reason & Notes')->icon('heroicon-o-chat-bubble-left-right')->schema([
+                        Textarea::make('reason')->label("Customer's Reason")->required()->rows(2)->columnSpanFull(),
+                        Textarea::make('staff_notes')->label('Internal Staff Notes')->rows(2)->columnSpanFull(),
+                        Textarea::make('rejection_reason')->label('Rejection Reason')->rows(2)->columnSpanFull()
+                            ->visible(fn($record) => $record?->status === 'rejected'),
+                    ]),
+                ]),
+
+                // ══ RIGHT: Financial Summary + Payment ════════════════════════
+                Forms\Components\Group::make()->columnSpan(4)->schema([
+
+                    Section::make('Exchange Summary')->icon('heroicon-o-arrows-right-left')->schema([
+                        TextInput::make('total_credit')->label('Total Credit ($)')->prefix('$')->readOnly()
+                            ->extraInputAttributes(['class'=>'font-bold text-danger-600']),
+                        TextInput::make('new_sale_amount')->label('New Items Total (incl. tax)')->prefix('$')->readOnly()
+                            ->extraInputAttributes(['class'=>'font-bold text-success-600']),
+                        Select::make('exchange_type')->label('Exchange Type')
+                            ->options(['same_value'=>'↔️ Same Value','upgrade'=>'⬆️ Upgrade','downgrade'=>'⬇️ Downgrade'])
+                            ->disabled()->dehydrated(true),
+                        Placeholder::make('difference_display')->label('Difference')->live()
+                            ->content(function (Get $get) {
+                                $diff = floatval($get('difference_amount') ?? 0);
+                                if ($diff > 0.009)
+                                    return new HtmlString("<span style='font-size:1.4rem;font-weight:900;color:#059669;'>+\$" . number_format($diff,2) . "<br><small style='font-size:0.75rem;'>Customer pays this</small></span>");
+                                if ($diff < -0.009)
+                                    return new HtmlString("<span style='font-size:1.4rem;font-weight:900;color:#B8463F;'>-\$" . number_format(abs($diff),2) . "<br><small style='font-size:0.75rem;'>Store refunds this</small></span>");
+                                return new HtmlString("<span style='font-size:1.4rem;font-weight:900;color:#059669;'>\$0.00 ↔ Same Value</span>");
+                            }),
+                        TextInput::make('difference_amount')->label('Difference ($)')->prefix('$')->numeric()->disabled(),
+                    ]),
+
+                    // ── PAYMENT FOR DIFFERENCE (mirrors SaleResource) ──────────
+                    Section::make('Payment for Difference')->icon('heroicon-o-credit-card')
+                        ->visible(fn(Get $get) => abs(floatval($get('difference_amount') ?? 0)) > 0.009)->schema([
+
+                        Placeholder::make('display_difference_due')->label('Amount to Collect')
+                            ->visible(fn(Get $get) => floatval($get('difference_amount') ?? 0) > 0.009)->live()
+                            ->content(function (Get $get) {
+                                $diff = floatval($get('difference_amount') ?? 0);
+                                return new HtmlString("<div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
+                                    <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($diff,2) . "</span></div>");
+                            }),
+
+                        Toggle::make('is_split_payment')->label('Split Payment')->live()->columnSpanFull()
+                            ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                if ($state && empty($get('split_payments'))) {
+                                    $diff = floatval($get('difference_amount') ?? 0);
+                                    if ($diff > 0) $set('split_payments', [['method'=>$get('difference_payment_method') ?? 'CASH','amount'=>number_format($diff,2,'.','')] ]);
+                                }
+                            }),
+
+                        // Single payment
+                        Select::make('difference_payment_method')->label('Payment Method')
+                            ->options(fn() => SaleResource::getPaymentOptions() + ['STORE_CREDIT'=>'Store Credit'])
+                            ->visible(fn(Get $get) => !$get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0.009)
+                            ->live(),
+
+                        TextInput::make('amount_received')->label('Amount Received')->numeric()->prefix('$')
+                            ->live(onBlur:true)
+                            ->visible(fn(Get $get) => !$get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0.009)
+                            ->helperText(function (Get $get) {
+                                $diff     = floatval($get('difference_amount') ?? 0);
+                                $received = floatval($get('amount_received') ?? 0);
+                                $rem      = max(0, $diff - $received);
+                                $color    = $rem <= 0.009 ? '#16a34a' : '#dc2626';
+                                $label    = $rem <= 0.009 ? '✅ $0.00' : '$'.number_format($rem,2);
+                                return new HtmlString("<strong style='color:{$color};'>Remaining: {$label}</strong>");
+                            })
+                            ->hintAction(
+                                FormAction::make('fill_diff')->label('Collect Remaining')->icon('heroicon-o-banknotes')->color('success')
+                                    ->action(fn(Get $get, Set $set) => $set('amount_received', number_format(floatval($get('difference_amount') ?? 0),2,'.','')))
+                            ),
+
+                        // Change given
+                        Placeholder::make('change_given_display')->label('Change Given')->live()
+                            ->visible(fn(Get $get) => !$get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0.009)
+                            ->content(function (Get $get) {
+                                $change = max(0, floatval($get('amount_received') ?? 0) - floatval($get('difference_amount') ?? 0));
+                                if ($change > 0.009)
+                                    return new HtmlString("<span style='font-size:1.2rem;font-weight:900;color:#2563eb;'>\$" . number_format($change,2) . "</span>");
+                                return new HtmlString("<span style='color:#94a3b8;'>$0.00</span>");
+                            }),
+
+                        // Split repeater
+                        Repeater::make('split_payments')->label('Payment Breakdown')
+                            ->visible(fn(Get $get) => $get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0.009)
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    Select::make('method')->options(fn() => SaleResource::getPaymentOptions())->required(),
+                                    TextInput::make('amount')->numeric()->prefix('$')->required()->live(onBlur:true)
+                                        ->hintAction(
+                                            FormAction::make('fill_remaining')->label('Fill Remaining')->icon('heroicon-o-banknotes')->color('success')
+                                                ->visible(fn(Get $get) => floatval($get('amount') ?? 0) == 0)
+                                                ->action(function (Get $get, Set $set) {
+                                                    $diff = floatval($get('../../difference_amount') ?? 0);
+                                                    $sum  = collect($get('../../split_payments') ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0));
+                                                    $set('amount', number_format(max(0,$diff-$sum),2,'.','')); 
+                                                })
+                                        ),
+                                ]),
+                            ])
+                            ->addActionLabel('+ Add Payment Method')->reorderable(false)->defaultItems(0)->live()
+                            ->columnSpanFull(),
+
+                        // Split remaining
+                        Placeholder::make('split_remaining')->label('Remaining Balance')->live()
+                            ->visible(fn(Get $get) => $get('is_split_payment') && floatval($get('difference_amount') ?? 0) > 0.009)
+                            ->content(function (Get $get) {
+                                $diff = floatval($get('difference_amount') ?? 0);
+                                $sum  = collect($get('split_payments') ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0));
+                                $rem  = $diff - $sum;
+                                $color = abs($rem) < 0.009 ? '#16a34a' : '#0284c7';
+                                return new HtmlString("<span style='font-size:1.1rem;font-weight:900;color:{$color};'>\$" . number_format(max(0,$rem),2) . "</span>");
+                            }),
+                    ]),
+
+                    // ── STAFF ──────────────────────────────────────────────────
+                    Section::make('Staff')->schema([
+                        Select::make('sales_person_list')->label('Sales Staff')->multiple()
+                            ->options(fn() => \App\Models\User::orderBy('name')->pluck('name','name')->toArray())
+                            ->default(fn() => [\Illuminate\Support\Facades\Session::get('active_staff_name') ?? auth()->user()->name])
+                            ->required()->columnSpanFull(),
+                    ]),
+
+                    // Hidden fields
+                    Hidden::make('total_credit')->default(0),
+                    Hidden::make('new_sale_amount')->default(0),
+                    Hidden::make('difference_amount')->default(0),
+                    Hidden::make('new_items_subtotal_display'),
+                    Hidden::make('new_items_tax_display'),
                 ]),
             ]),
-
         ]);
     }
-
-    /**
-     * Recalculate a single new_items_form row's discount/sale_price when qty or price changes.
-     */
-    protected static function recalcLine(Get $get, Set $set): void
-    {
-        $price = floatval($get('price') ?? 0);
-        $qty   = intval($get('qty') ?? 1);
-        $line  = $price * $qty;
-        $pct   = floatval($get('discount_percent') ?? 0);
-        $discAmt = $line * $pct / 100;
-        $set('discount_amount', round($discAmt, 2));
-        $set('sale_price', round($line - $discAmt, 2));
-        self::updateExchangeTotals($get, $set);
-    }
-
-    // ── TOTALS ENGINE ──────────────────────────────────────────────────────
-    public static function updateExchangeTotals(Get $get, Set $set): void
-    {
-        $returned = collect($get('returned_items_form') ?? []);
-        $totalCredit = $returned->filter(fn($i) => !empty($i['returning']))->sum(fn($i) => floatval($i['credit_amount'] ?? 0));
-
-        $newItems = collect($get('new_items_form') ?? []);
-        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate = floatval($dbTax) / 100;
-
-        $newSubtotal = 0;
-        $newTax = 0;
-        foreach ($newItems as $item) {
-            $lineTotal = floatval($item['sale_price'] ?? 0);
-            $newSubtotal += $lineTotal;
-            if (empty($item['is_tax_free'])) {
-                $newTax += $lineTotal * $taxRate;
-            }
-        }
-
-        $newTotal = $newSubtotal + $newTax;
-        $difference = $newTotal - $totalCredit;
-
-        $set('total_credit', number_format($totalCredit, 2, '.', ''));
-        $set('new_sale_amount', number_format($newTotal, 2, '.', ''));
-        $set('difference_amount', number_format($difference, 2, '.', ''));
-
-        if ($difference > 0.009) {
-            $set('exchange_type', 'upgrade');
-        } elseif ($difference < -0.009) {
-            $set('exchange_type', 'downgrade');
-        } else {
-            $set('exchange_type', 'same_value');
-        }
-    }
-
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('exchange_no')->label('Exchange #')->weight('bold')->color('primary')->searchable(),
-                Tables\Columns\TextColumn::make('customer.name')
-                    ->label('Customer')
-                    ->getStateUsing(fn($record) => trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? '')))
-                    ->searchable(['customers.name', 'customers.last_name'])
-                    ->description(fn($record) => $record->customer?->phone ?? ''),
+                Tables\Columns\TextColumn::make('customer.name')->label('Customer')
+                   ->getStateUsing(fn($record) => trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? '')))
+                   ->description(fn($record) => $record->customer?->phone ?? ''),
                 Tables\Columns\TextColumn::make('originalSale.invoice_number')->label('Original Invoice')->badge()->color('gray'),
-                Tables\Columns\TextColumn::make('exchange_type')
-                    ->label('Type')
-                    ->formatStateUsing(fn($state) => match ($state) {
-                        'upgrade'    => '⬆️ Upgrade',
-                        'downgrade'  => '⬇️ Downgrade',
-                        'same_value' => '↔️ Same Value',
-                        default      => ucfirst($state),
-                    }),
-                Tables\Columns\TextColumn::make('total_credit')->label('Credit')->formatStateUsing(fn($state) => '$' . number_format($state, 2))->color('warning'),
-                Tables\Columns\TextColumn::make('difference_amount')
-                    ->label('Difference')
+                Tables\Columns\TextColumn::make('exchange_type')->label('Type')->badge()
+                    ->formatStateUsing(fn($state) => match($state) { 'upgrade'=>'⬆️ Upgrade','downgrade'=>'⬇️ Downgrade','same_value'=>'↔️ Same Value',default=>ucfirst($state??'') })
+                    ->color(fn($state) => match($state) { 'upgrade'=>'success','downgrade'=>'danger',default=>'gray' }),
+                Tables\Columns\TextColumn::make('total_credit')->label('Credit')
+                    ->formatStateUsing(fn($state) => '$'.number_format($state,2))->color('warning'),
+                Tables\Columns\TextColumn::make('difference_amount')->label('Difference')->html()
                     ->formatStateUsing(function ($state) {
-                        $amt   = floatval($state);
-                        $color = $amt > 0 ? '#059669' : ($amt < 0 ? '#B8463F' : '#64748b');
-                        $label = $amt > 0 ? '+$' . number_format($amt, 2) : ($amt < 0 ? '-$' . number_format(abs($amt), 2) : '$0.00');
-                        return new HtmlString("<span style='color:{$color};font-weight:700;'>{$label}</span>");
-                    })->html(),
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
-                    ->color(fn($record) => $record->getStatusColor())
-                    ->formatStateUsing(fn($state) => ucfirst(str_replace('_', ' ', $state))),
-                Tables\Columns\TextColumn::make('requester.name')->label('By')->size('sm')->color('gray'),
+                        $amt = floatval($state);
+                        $color=$amt>0?'#059669':($amt<0?'#B8463F':'#64748b');
+                        $label=$amt>0?'+$'.number_format($amt,2):($amt<0?'-$'.number_format(abs($amt),2):'$0.00');
+                        return "<span style='color:{$color};font-weight:700;'>{$label}</span>";
+                    }),
+                Tables\Columns\TextColumn::make('status')->badge()
+                    ->color(fn($state) => match($state) { 'pending_approval'=>'warning','approved'=>'info','completed'=>'success','rejected'=>'danger',default=>'gray' })
+                    ->formatStateUsing(fn($state) => ucfirst(str_replace('_',' ',$state??''))),
                 Tables\Columns\TextColumn::make('created_at')->label('Date')->date('M d, Y')->sortable()->color('gray'),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('status')->options([
-                    'pending_approval' => 'Pending Approval',
-                    'approved'         => 'Approved',
-                    'completed'        => 'Completed',
-                    'rejected'         => 'Rejected',
-                    'cancelled'        => 'Cancelled',
-                ]),
-                Tables\Filters\SelectFilter::make('exchange_type')->options([
-                    'upgrade' => 'Upgrade', 'downgrade' => 'Downgrade', 'same_value' => 'Same Value',
-                ]),
+                Tables\Filters\SelectFilter::make('status')->options(['pending_approval'=>'Pending','approved'=>'Approved','completed'=>'Completed','rejected'=>'Rejected']),
+                Tables\Filters\SelectFilter::make('exchange_type')->options(['upgrade'=>'Upgrade','downgrade'=>'Downgrade','same_value'=>'Same Value']),
             ])
             ->actions([
-                Tables\Actions\Action::make('approve')
-                    ->label('Approve')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                Tables\Actions\Action::make('approve')->label('Approve')->icon('heroicon-o-check-circle')->color('success')
+                    ->visible(fn($record) => $record->status==='pending_approval' && auth()->user()->hasAnyRole(['Superadmin','Administration','Manager']))
                     ->requiresConfirmation()
                     ->action(function ($record) {
-                        $record->update(['status' => 'approved', 'approved_by' => auth()->id(), 'approved_at' => now()]);
-                        Notification::make()->title('Exchange Approved ✅')->success()->sendToDatabase($record->requester);
-                        Notification::make()->title('Exchange Approved')->success()->send();
+                        $record->update(['status'=>'approved','approved_by'=>auth()->id(),'approved_at'=>now()]);
+                        Notification::make()->title('Exchange Approved ✅')->success()->send();
+                        if ($record->requester) Notification::make()->title('Exchange Approved')->body("Exchange {$record->exchange_no} approved.")->success()->sendToDatabase($record->requester);
                     }),
 
-                Tables\Actions\Action::make('complete')
-                    ->label('Mark Complete')
-                    ->icon('heroicon-o-flag')
-                    ->color('info')
-                    ->visible(fn($record) => $record->status === 'approved')
+                Tables\Actions\Action::make('complete')->label('Complete & Create Sale')->icon('heroicon-o-flag')->color('info')
+                    ->visible(fn($record) => $record->status==='approved')
+                    ->requiresConfirmation()
+                    ->modalHeading('Complete Exchange?')
+                    ->modalDescription('This will return traded-in items to stock, mark new items as sold, and create a Sale record.')
                     ->action(fn($record) => static::completeExchange($record)),
 
-                Tables\Actions\Action::make('reject')
-                    ->label('Reject')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                    ->form([Forms\Components\Textarea::make('rejection_reason')->required()->rows(2)])
+                Tables\Actions\Action::make('reject')->label('Reject')->icon('heroicon-o-x-circle')->color('danger')
+                    ->visible(fn($record) => $record->status==='pending_approval' && auth()->user()->hasAnyRole(['Superadmin','Administration','Manager']))
+                    ->form([Textarea::make('rejection_reason')->required()->rows(2)])
                     ->action(function ($record, array $data) {
-                        $record->update(['status' => 'rejected', 'approved_by' => auth()->id(), 'rejection_reason' => $data['rejection_reason']]);
-                        Notification::make()->title('Exchange Rejected')->danger()->sendToDatabase($record->requester);
+                        $record->update(['status'=>'rejected','approved_by'=>auth()->id(),'rejection_reason'=>$data['rejection_reason']]);
                         Notification::make()->title('Exchange Rejected')->warning()->send();
                     }),
 
-                Tables\Actions\Action::make('print')
-                    ->label('Print Receipt')
-                    ->icon('heroicon-o-printer')
-                    ->color('gray')
-                    ->url(fn($record) => route('exchange.print', $record))
-                    ->openUrlInNewTab(),
-
+                Tables\Actions\Action::make('print')->label('Print Receipt')->icon('heroicon-o-printer')->color('gray')
+                    ->url(fn($record) => route('exchange.print', $record))->openUrlInNewTab(),
                 Tables\Actions\EditAction::make(),
             ])
-            ->defaultSort('created_at', 'desc')
-            ->striped();
+            ->defaultSort('created_at','desc')->striped();
     }
 
-    /**
-     * Core completion logic: creates the Sale (custom orders/deposits are already created
-     * at add-time via the modals above), returns traded-in items to stock, deducts new
-     * stock items from inventory, and links everything back to the exchange.
-     */
     public static function completeExchange($record): void
     {
         DB::transaction(function () use ($record) {
+            $storeId = $record->store_id ?? auth()->user()->store_id ?? 1;
             $newItemsRaw = $record->new_items ?? [];
+            $dbTax   = DB::table('site_settings')->where('key','tax_rate')->value('value') ?? 7.63;
+            $taxRate = floatval($dbTax) / 100;
 
-            $saleItems = [];
-            $newCustomOrderId = null;
+            $saleItems         = [];
+            $newCustomOrderId  = null;
+            $saleSubtotal      = 0;
+            $saleTax           = 0;
 
             foreach ($newItemsRaw as $item) {
-                if (($item['selection_type'] ?? null) === 'custom_order' && !empty($item['custom_order_id'])) {
-                    $newCustomOrderId = $item['custom_order_id'];
+                $type      = $item['selection_type'] ?? 'non_tag';
+                $qty       = intval($item['qty'] ?? 1);
+                $lineTotal = floatval($item['sale_price_override'] ?? 0);
+                if ($lineTotal <= 0) $lineTotal = floatval($item['sold_price'] ?? 0) * $qty;
+                $isTaxFree = (bool)($item['is_tax_free'] ?? false);
+                $itemTax   = $isTaxFree ? 0 : $lineTotal * $taxRate;
+                $saleSubtotal += $lineTotal;
+                $saleTax      += $itemTax;
+
+                if ($type === 'custom_order' && !empty($item['is_new_custom_order'])) {
+                    // Create the CustomOrder NOW (not before — prevents doubling)
+                    $coData = is_string($item['new_custom_data'] ?? null) ? json_decode($item['new_custom_data'], true) : ($item['new_custom_data'] ?? []);
+                    $coPrice   = floatval($coData['quoted_price'] ?? $lineTotal);
+                    $coDiscAmt = floatval($coData['discount_amount'] ?? 0);
+                    $coAfter   = max(0, $coPrice - $coDiscAmt);
+                    $coTaxRate = ($coData['is_tax_free'] ?? false) ? 0 : $taxRate;
+                    $coGrand   = $coAfter * (1 + $coTaxRate);
+                    $deposit   = floatval($coData['custom_deposit_amount'] ?? 0);
+
+                    $co = CustomOrder::create([
+                        'customer_id'      => $record->customer_id,
+                        'staff_id'         => auth()->id(),
+                        'order_type'       => 'custom',
+                        'product_name'     => $coData['product_name'] ?? 'Custom',
+                        'metal_type'       => $coData['metal_type'] ?? '14k',
+                        'quoted_price'     => $coPrice,
+                        'discount_percent' => floatval($coData['discount_percent'] ?? 0),
+                        'discount_amount'  => $coDiscAmt,
+                        'due_date'         => $coData['due_date'] ?? null,
+                        'design_notes'     => $coData['design_notes'] ?? null,
+                        'status'           => 'in_production',
+                        'is_tax_free'      => $coData['is_tax_free'] ?? false,
+                        'amount_paid'      => $deposit,
+                        'balance_due'      => max(0, $coGrand - $deposit),
+                        'items'            => [['product_name'=>$coData['product_name']??'Custom','metal_type'=>$coData['metal_type']??'14k','quoted_price'=>$coPrice]],
+                    ]);
+                    $newCustomOrderId = $co->id;
+
+                    // Record deposit payment if any
+                    if ($deposit > 0) {
+                        \App\Models\Payment::create([
+                            'custom_order_id' => $co->id,
+                            'amount'          => $deposit,
+                            'method'          => strtoupper($coData['deposit_method'] ?? 'CASH'),
+                            'paid_at'         => now(),
+                            'store_id'        => $storeId,
+                        ]);
+                    }
+
                     $saleItems[] = [
-                        'custom_order_id'     => $item['custom_order_id'],
-                        'custom_description'  => $item['description'] ?? 'Custom Order',
+                        'custom_order_id'     => $co->id,
+                        'custom_description'  => "CUSTOM Order: {$co->product_name}",
                         'qty'                 => 1,
-                        'sold_price'          => floatval($item['price'] ?? 0),
-                        'sale_price_override' => floatval($item['sale_price'] ?? $item['price'] ?? 0),
-                        'discount_percent'    => floatval($item['discount_percent'] ?? 0),
-                        'discount_amount'     => floatval($item['discount_amount'] ?? 0),
-                        'is_tax_free'         => (bool) ($item['is_tax_free'] ?? false),
+                        'sold_price'          => $coAfter,
+                        'sale_price_override' => $lineTotal,
+                        'discount_percent'    => floatval($coData['discount_percent'] ?? 0),
+                        'discount_amount'     => $coDiscAmt,
+                        'is_tax_free'         => (bool)($coData['is_tax_free'] ?? false),
                         'is_non_stock'        => false,
+                        'stock_no_display'    => 'CUSTOM #' . $co->id,
                     ];
-                } elseif (($item['selection_type'] ?? null) === 'stock' && !empty($item['product_item_id'])) {
+
+                } elseif ($type === 'stock' && !empty($item['product_item_id'])) {
                     $saleItems[] = [
                         'product_item_id'     => $item['product_item_id'],
-                        'custom_description'  => $item['description'] ?? null,
-                        'qty'                 => intval($item['qty'] ?? 1),
-                        'sold_price'          => floatval($item['price'] ?? 0),
-                        'sale_price_override' => floatval($item['sale_price'] ?? $item['price'] ?? 0),
+                        'custom_description'  => $item['custom_description'] ?? null,
+                        'qty'                 => $qty,
+                        'sold_price'          => floatval($item['sold_price'] ?? 0),
+                        'sale_price_override' => $lineTotal,
                         'discount_percent'    => floatval($item['discount_percent'] ?? 0),
                         'discount_amount'     => floatval($item['discount_amount'] ?? 0),
-                        'is_tax_free'         => (bool) ($item['is_tax_free'] ?? false),
+                        'is_tax_free'         => $isTaxFree,
                         'is_non_stock'        => false,
+                        'stock_no_display'    => $item['stock_no_display'] ?? null,
                     ];
+                    // Mark new stock item as sold
+                    ProductItem::where('id', $item['product_item_id'])->update(['status'=>'sold']);
+
                 } else {
                     $saleItems[] = [
-                        'custom_description'  => $item['description'] ?? 'Non-Tag Item',
-                        'qty'                 => intval($item['qty'] ?? 1),
-                        'sold_price'          => floatval($item['price'] ?? 0),
-                        'sale_price_override' => floatval($item['sale_price'] ?? $item['price'] ?? 0),
+                        'custom_description'  => $item['custom_description'] ?? 'Item',
+                        'qty'                 => $qty,
+                        'sold_price'          => floatval($item['sold_price'] ?? 0),
+                        'sale_price_override' => $lineTotal,
                         'discount_percent'    => floatval($item['discount_percent'] ?? 0),
                         'discount_amount'     => floatval($item['discount_amount'] ?? 0),
-                        'is_tax_free'         => (bool) ($item['is_tax_free'] ?? false),
+                        'is_tax_free'         => $isTaxFree,
                         'is_non_stock'        => true,
+                        'stock_no_display'    => 'NON-TAG',
                     ];
                 }
             }
 
+            $saleGrandTotal = round($saleSubtotal + $saleTax, 2);
+            $totalCredit    = floatval($record->total_credit);
+
+            // Money customer paid (difference only — credit handled as payment row)
+            $collectedNow = $record->is_split_payment
+                ? collect($record->split_payments ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0))
+                : floatval($record->amount_received ?? $record->difference_amount ?? 0);
+
+            // Create the Sale record
             $sale = Sale::create([
-                'customer_id'        => $record->customer_id,
-                'store_id'           => $record->store_id,
-                'sales_person_list'  => [auth()->user()->name],
-                'final_total'        => $record->new_sale_amount,
-                'subtotal'           => $record->new_items_subtotal,
-                'tax_amount'         => $record->new_items_tax,
-                'status'             => 'completed',
-                'payment_method'     => $record->is_split_payment ? 'split' : ($record->difference_payment_method ?? 'CASH'),
-                'is_split_payment'   => (bool) $record->is_split_payment,
-                'completed_at'       => now(),
-                'invoice_number'     => 'EX-' . $record->exchange_no,
-                'notes'              => 'Created from Exchange #' . $record->exchange_no,
+                'customer_id'       => $record->customer_id,
+                'store_id'          => $storeId,
+                'invoice_number'    => 'EX-' . $record->exchange_no,
+                'subtotal'          => $saleSubtotal,
+                'tax_amount'        => $saleTax,
+                'final_total'       => $saleGrandTotal,
+                'amount_paid'       => round($totalCredit + $collectedNow, 2),
+                'balance_due'       => max(0, round($saleGrandTotal - $totalCredit - $collectedNow, 2)),
+                'payment_method'    => $record->is_split_payment ? 'split' : ($record->difference_payment_method ?? 'CASH'),
+                'is_split_payment'  => (bool)$record->is_split_payment,
+                'status'            => 'completed',
+                'completed_at'      => now(),
+                'has_trade_in'      => 1,
+                'trade_in_value'    => $totalCredit,
+                'trade_in_description' => 'Exchange credit — ' . $record->exchange_no,
+                'sales_person_list' => is_array($record->sales_person_list ?? null)
+                    ? implode(',', $record->sales_person_list)
+                    : ($record->sales_person_list ?? auth()->user()->name),
+                'notes'             => 'Created from Exchange #' . $record->exchange_no,
             ]);
 
             foreach ($saleItems as $si) {
-                $sale->items()->create($si);
+                $sale->items()->create(array_merge($si, ['store_id' => $storeId]));
             }
 
-            // Record payment(s) for the difference (if customer owes money) — deposits taken
-            // at custom-order-creation time are NOT re-charged here, only the remaining difference.
-            $difference = floatval($record->difference_amount);
+            // Record exchange credit as payment (so SaleResource balance shows correctly)
+            if ($totalCredit > 0.009) {
+                \App\Models\Payment::create([
+                    'sale_id'  => $sale->id,
+                    'amount'   => round($totalCredit, 2),
+                    'method'   => 'EXCHANGE_CREDIT',
+                    'paid_at'  => now(),
+                    'store_id' => $storeId,
+                ]);
+            }
+
+            // Record difference payments
+            $difference = floatval($record->difference_amount ?? 0);
             if ($difference > 0.009) {
                 if ($record->is_split_payment) {
                     foreach ($record->split_payments ?? [] as $p) {
                         if (floatval($p['amount'] ?? 0) <= 0) continue;
                         \App\Models\Payment::create([
                             'sale_id'  => $sale->id,
-                            'amount'   => $p['amount'],
-                            'method'   => strtoupper($p['method']),
+                            'amount'   => floatval($p['amount']),
+                            'method'   => strtoupper($p['method'] ?? 'CASH'),
                             'paid_at'  => now(),
-                            'store_id' => $record->store_id,
+                            'store_id' => $storeId,
                         ]);
                     }
                 } else {
-                    \App\Models\Payment::create([
-                        'sale_id'  => $sale->id,
-                        'amount'   => $difference,
-                        'method'   => strtoupper($record->difference_payment_method ?? 'CASH'),
-                        'paid_at'  => now(),
-                        'store_id' => $record->store_id,
-                    ]);
+                    $collected = floatval($record->amount_received ?? $difference);
+                    if ($collected > 0) {
+                        \App\Models\Payment::create([
+                            'sale_id'  => $sale->id,
+                            'amount'   => $collected,
+                            'method'   => strtoupper($record->difference_payment_method ?? 'CASH'),
+                            'paid_at'  => now(),
+                            'store_id' => $storeId,
+                        ]);
+                    }
                 }
+            }
+
+            // Link custom order to sale
+            if ($newCustomOrderId) {
+                CustomOrder::where('id', $newCustomOrderId)->update(['sale_id' => $sale->id]);
             }
 
             // Return traded-in items to stock
@@ -872,35 +925,16 @@ class ExchangeResource extends Resource
                 }
             }
 
-            // Deduct new stock items from inventory
-            foreach ($saleItems as $si) {
-                if (!empty($si['product_item_id'])) {
-                    $pi = ProductItem::lockForUpdate()->find($si['product_item_id']);
-                    if ($pi) {
-                        $newQty = max(0, $pi->qty - intval($si['qty'] ?? 1));
-                        $pi->update(['qty' => $newQty, 'status' => $newQty === 0 ? 'sold' : 'in_stock']);
-                    }
-                }
-            }
-
-            // Link the custom order to this sale so it shows in Custom Order Resource's history
-            if ($newCustomOrderId) {
-                CustomOrder::where('id', $newCustomOrderId)->update(['sale_id' => $sale->id]);
-            }
-
             $record->update([
-                'status'              => 'completed',
-                'completed_at'        => now(),
-                'new_sale_id'         => $sale->id,
-                'new_custom_order_id' => $newCustomOrderId,
+                'status'       => 'completed',
+                'completed_at' => now(),
+                'new_sale_id'  => $sale->id,
             ]);
         });
 
-        Notification::make()
-            ->title('Exchange Completed 🎉')
-            ->body("Exchange {$record->exchange_no} completed. New sale created and inventory updated.")
-            ->success()
-            ->send();
+        Notification::make()->title('Exchange Completed 🎉')
+            ->body("Sale record created. Inventory updated.")
+            ->success()->send();
     }
 
     public static function getPages(): array

@@ -30,65 +30,41 @@ class Exchange extends Model
         'rejection_reason',
         'approved_at',
         'completed_at',
-          'new_items',
-    'new_items_subtotal',
-    'new_items_tax',
-    'new_custom_order_id',
-    'new_repair_id',
-    'is_split_payment',
-    'split_payments',
+        'new_items',
+        'new_items_subtotal',
+        'new_items_tax',
+        'new_custom_order_id',
+        'new_repair_id',
+        'is_split_payment',
+        'split_payments',
+        'amount_received',
+        'sales_person_list',
+        'returned_source',
     ];
 
     protected $casts = [
-        'returned_items'  => 'array',
-        'total_credit'    => 'decimal:2',
-        'new_sale_amount' => 'decimal:2',
+        'returned_items'   => 'array',
+        'new_items'        => 'array',
+        'split_payments'   => 'array',
+        'is_split_payment' => 'boolean',
+        'total_credit'     => 'decimal:2',
+        'new_sale_amount'  => 'decimal:2',
+        'new_items_subtotal' => 'decimal:2',
+        'new_items_tax'    => 'decimal:2',
         'difference_amount' => 'decimal:2',
-        'approved_at'     => 'datetime',
-        'completed_at'    => 'datetime',
-          'returned_items'   => 'array',
-    'new_items'        => 'array',
-    'split_payments'   => 'array',
-    'is_split_payment' => 'boolean',
+        'amount_received'  => 'decimal:2',
+        'approved_at'      => 'datetime',
+        'completed_at'     => 'datetime',
     ];
 
-    public function customer(): BelongsTo
-    {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function store(): BelongsTo
-    {
-        return $this->belongsTo(Store::class);
-    }
-
-    public function requester(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'requested_by');
-    }
-public function newCustomOrder()
-{
-    return $this->belongsTo(\App\Models\CustomOrder::class, 'new_custom_order_id');
-}
-
-public function newRepair()
-{
-    return $this->belongsTo(\App\Models\Repair::class, 'new_repair_id');
-}
-    public function approver(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'approved_by');
-    }
-
-    public function originalSale(): BelongsTo
-    {
-        return $this->belongsTo(Sale::class, 'original_sale_id');
-    }
-
-    public function newSale(): BelongsTo
-    {
-        return $this->belongsTo(Sale::class, 'new_sale_id');
-    }
+    public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
+    public function store(): BelongsTo    { return $this->belongsTo(Store::class); }
+    public function requester(): BelongsTo { return $this->belongsTo(User::class, 'requested_by'); }
+    public function approver(): BelongsTo  { return $this->belongsTo(User::class, 'approved_by'); }
+    public function originalSale(): BelongsTo { return $this->belongsTo(Sale::class, 'original_sale_id'); }
+    public function newSale(): BelongsTo   { return $this->belongsTo(Sale::class, 'new_sale_id'); }
+    public function newCustomOrder(): BelongsTo { return $this->belongsTo(CustomOrder::class, 'new_custom_order_id'); }
+    public function newRepair(): BelongsTo { return $this->belongsTo(Repair::class, 'new_repair_id'); }
 
     public function getExchangeTypeLabel(): string
     {
@@ -96,7 +72,7 @@ public function newRepair()
             'upgrade'    => '⬆️ Upgrade (Customer pays difference)',
             'downgrade'  => '⬇️ Downgrade (Store refunds difference)',
             'same_value' => '↔️ Same Value Exchange',
-            default      => ucfirst($this->exchange_type),
+            default      => ucfirst($this->exchange_type ?? ''),
         };
     }
 
@@ -112,7 +88,6 @@ public function newRepair()
         };
     }
 
-    // Generate unique exchange number
     public static function generateExchangeNo(): string
     {
         $prefix = 'EX-' . now()->format('ymd') . '-';
@@ -122,31 +97,23 @@ public function newRepair()
         }
         return $prefix . $count;
     }
-    protected static function booted(): void
-{
-    static::creating(function (Exchange $exchange) {
-        if (empty($exchange->exchange_no)) {
-            $exchange->exchange_no = static::generateExchangeNo();
-        }
-        if (empty($exchange->requested_by)) {
-            $exchange->requested_by = auth()->id();
-        }
-        if (empty($exchange->store_id)) {
-            $exchange->store_id = auth()->user()->store_id
-                ?? \App\Models\Store::first()?->id
-                ?? 1;
-        }
-        if (empty($exchange->status)) {
-            $exchange->status = 'pending_approval';
-        }
-        // Calculate difference
-        $exchange->difference_amount = floatval($exchange->new_sale_amount) - floatval($exchange->total_credit);
 
-        // Auto exchange type from difference
-        $diff = floatval($exchange->difference_amount);
-        if ($diff > 0)       $exchange->exchange_type = 'upgrade';
-        elseif ($diff < 0)   $exchange->exchange_type = 'downgrade';
-        // if exactly 0, keep whatever was set (same_value)
-    });
-}
+    protected static function booted(): void
+    {
+        static::creating(function (Exchange $exchange) {
+            if (empty($exchange->exchange_no))
+                $exchange->exchange_no = static::generateExchangeNo();
+            if (empty($exchange->requested_by))
+                $exchange->requested_by = auth()->id();
+            if (empty($exchange->store_id))
+                $exchange->store_id = auth()->user()->store_id ?? \App\Models\Store::first()?->id ?? 1;
+            if (empty($exchange->status))
+                $exchange->status = 'pending_approval';
+
+            $diff = floatval($exchange->new_sale_amount) - floatval($exchange->total_credit);
+            $exchange->difference_amount = $diff;
+            if ($diff > 0.009)      $exchange->exchange_type = 'upgrade';
+            elseif ($diff < -0.009) $exchange->exchange_type = 'downgrade';
+        });
+    }
 }

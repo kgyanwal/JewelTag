@@ -42,6 +42,45 @@
     $customer = $exchange->customer;
     $diff     = floatval($exchange->difference_amount);
     $newItems = $exchange->new_items ?? [];
+
+    // Build a lookup of original sale items by sale_item_id / product_item_id
+    // so we can recover stock_no / description if they weren't persisted on the
+    // returned_items row itself (e.g. if a mutateFormDataBeforeSave step on the
+    // Exchange page only copied a subset of keys from returned_items_form).
+    $originalItemsById = collect();
+    if ($exchange->originalSale) {
+        $exchange->originalSale->loadMissing('items.productItem');
+        foreach ($exchange->originalSale->items as $si) {
+            $originalItemsById->put('sale_item:' . $si->id, $si);
+            if ($si->product_item_id) {
+                $originalItemsById->put('product_item:' . $si->product_item_id, $si);
+            }
+        }
+    }
+
+    $resolveReturnedItem = function (array $item) use ($originalItemsById) {
+        $stockNo     = $item['stock_no'] ?? null;
+        $description = $item['description'] ?? null;
+
+        if (empty($stockNo) || $stockNo === '—' || empty($description)) {
+            $match = null;
+            if (!empty($item['sale_item_id'])) {
+                $match = $originalItemsById->get('sale_item:' . $item['sale_item_id']);
+            }
+            if (!$match && !empty($item['product_item_id'])) {
+                $match = $originalItemsById->get('product_item:' . $item['product_item_id']);
+            }
+            if ($match) {
+                $stockNo     = $stockNo ?: ($match->productItem?->barcode ?? '—');
+                $description = $description ?: ($match->custom_description ?? $match->productItem?->custom_description ?? '—');
+            }
+        }
+
+        return [
+            'stock_no'    => $stockNo ?: '—',
+            'description' => $description ?: '—',
+        ];
+    };
 @endphp
 
 <div class="header">
@@ -100,10 +139,11 @@
     <tbody>
         @foreach($exchange->returned_items ?? [] as $i => $item)
         @if(!empty($item['returning']))
+        @php $resolved = $resolveReturnedItem($item); @endphp
         <tr>
             <td>{{ $i + 1 }}</td>
-            <td><strong>{{ $item['stock_no'] ?? '—' }}</strong></td>
-            <td>{{ $item['description'] ?? '—' }}</td>
+            <td><strong>{{ $resolved['stock_no'] }}</strong></td>
+            <td>{{ $resolved['description'] }}</td>
             <td style="text-align:right;" class="credit">(${{ number_format($item['credit_amount'] ?? 0, 2) }})</td>
         </tr>
         @endif

@@ -680,7 +680,7 @@ class SaleResource extends Resource
 
                                         Textarea::make('custom_description')
                                             ->label('Description')
-                                            ->maxLength(200)
+                                            ->maxLength(500)
                                             ->rows(2)
                                             ->autosize(false)
                                             ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
