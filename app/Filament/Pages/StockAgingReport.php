@@ -21,6 +21,7 @@ class StockAgingReport extends Page implements HasForms
     protected static ?string $navigationIcon = 'heroicon-o-clock';
     protected static ?string $navigationGroup = 'Analytics & Reports';
     protected static ?string $navigationLabel = '🕰️ Stock Aging';
+    
     protected static string $view = 'filament.pages.stock-aging-report';
 
     public ?array $data = [];

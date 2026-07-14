@@ -851,7 +851,7 @@ class ExchangeResource extends Resource
             $sale = Sale::create([
                 'customer_id'       => $record->customer_id,
                 'store_id'          => $storeId,
-                'invoice_number'    => 'EX-' . $record->exchange_no,
+               'invoice_number'    => $record->exchange_no,
                 'subtotal'          => $saleSubtotal,
                 'tax_amount'        => $saleTax,
                 'final_total'       => $saleGrandTotal,

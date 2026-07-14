@@ -1,15 +1,16 @@
 <x-filament-panels::page>
     @php $stats = $this->getStats(); @endphp
 
-    <div class="flex flex-col gap-4">
+    <div class="flex flex-col gap-6">
 
-      {{-- ── FILTER BAR ─────────────────────────────────────────────────── --}}
-        <div class="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800 p-4 relative" style="overflow: visible; z-index: 50;">
+        {{-- ── FILTER BAR ─────────────────────────────────────────────────── --}}
+        {{-- Cleaned up outer card classes and safely lowered z-index --}}
+        <div class="relative" style="overflow: visible; z-index: 10;">
             {{ $this->form }}
         </div>
+
         {{-- ── STAT CARDS ─────────────────────────────────────────────────── --}}
         <div class="flex flex-wrap items-stretch gap-3">
-
             {{-- Viewing --}}
             <div class="flex flex-col justify-center px-4 py-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm min-w-[180px]">
                 <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Viewing</p>
