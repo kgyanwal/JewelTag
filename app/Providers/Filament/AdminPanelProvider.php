@@ -400,16 +400,39 @@ div[id*="global-search"] p {
     background: #ffffff !important;
     border: 1px solid rgba(11,61,60,0.10) !important;
 }
-.fi-ta-header-cell {
+/* ── TABLE HEADER ROW — full width, consistent pine background ── */
+.fi-ta-ctn table thead,
+.fi-ta-ctn table thead tr,
+.fi-ta-ctn table thead th {
     background: var(--jt-pine) !important;
+    border-bottom: none !important;
+}
+
+.fi-ta-header-cell,
+.fi-ta-ctn table thead th {
     font-size: 0.7rem !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.07em !important;
     color: var(--jt-gold-soft) !important;
-    border-bottom: none !important;
 }
-.fi-ta-header-cell * { color: var(--jt-gold-soft) !important; }
+
+.fi-ta-header-cell *,
+.fi-ta-ctn table thead th * {
+    color: var(--jt-gold-soft) !important;
+}
+
+/* Actions column label injection (only if empty) */
+.fi-ta-actions-header-cell {
+    position: relative !important;
+}
+.fi-ta-actions-header-cell::after {
+    content: "ACTIONS" !important;
+    color: var(--jt-gold-soft) !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.07em !important;
+}
 .fi-ta-row { border-bottom: 1px solid rgba(11,61,60,0.06) !important; transition: background 80ms linear !important; }
 .fi-ta-row:hover { background: rgba(201,162,75,0.07) !important; }
 
@@ -664,11 +687,13 @@ HTML
                 \App\Filament\Pages\WarrantyExpiryReminders::class,
                 \App\Filament\Pages\EodAmendmentRequests::class,
                 \App\Filament\Pages\RfidTracking::class,
+                \App\Filament\Pages\ExchangedCustomOrdersReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
                 \App\Filament\Widgets\DashboardQuickMenu::class,
                 \App\Filament\Widgets\ScrapGoldCalculator::class,
+                
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -730,7 +755,10 @@ HTML
                     ->label('Switch Associate PIN')
                     ->icon('heroicon-o-arrows-right-left')
                     ->color('warning')
-                    ->url(fn(): string => route('filament.admin.pages.pin-code-auth', ['switch' => true])),
+                    ->url(fn(): string => route('filament.admin.pages.pin-code-auth', [
+        'switch' => true,
+        'redirect' => request()->fullUrl(),
+    ])),
 
                 'settings' => MenuItem::make()
                     ->label('Store Settings')

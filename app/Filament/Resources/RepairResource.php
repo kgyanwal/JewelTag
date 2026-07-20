@@ -259,7 +259,44 @@ class RepairResource extends Resource
                                                 ->columnSpanFull(),
                                         ]),
 
-                                    // ── SUB-GROUP 2: PHOTO DOCUMENTATION ─────────────
+                                    // ── SUB-GROUP 2: COST ESTIMATE (moved to top, highlighted) ──
+                                    Section::make('💲 Cost Estimate')
+                                        ->description('Enter the price for this item\'s repair. This is shown prominently so it\'s never missed.')
+                                        ->icon('heroicon-o-currency-dollar')
+                                        ->extraAttributes([
+                                            'style' => 'background:#fef2f2;border:2px solid #dc2626;border-radius:10px;',
+                                        ])
+                                        ->schema([
+                                            Grid::make(2)->schema([
+                                                TextInput::make('estimated_cost')
+                                                    ->label('Estimated Cost')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->default(0)
+                                                    ->nullable()
+                                                    ->extraInputAttributes([
+                                                        'style' => 'font-size:20px;font-weight:800;color:#b91c1c;height:48px;',
+                                                    ])
+                                                    ->extraAttributes([
+                                                        'class' => 'font-bold',
+                                                    ]),
+
+                                                TextInput::make('final_cost')
+                                                    ->label('Final Cost')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->helperText('Leave blank until repair is finished.')
+                                                    ->extraInputAttributes([
+                                                        'style' => 'font-size:20px;font-weight:800;color:#b91c1c;height:48px;',
+                                                    ])
+                                                    ->extraAttributes([
+                                                        'class' => 'font-bold',
+                                                    ]),
+                                            ]),
+                                        ])
+                                        ->columnSpanFull(),
+
+                                    // ── SUB-GROUP 3: PHOTO DOCUMENTATION ─────────────
                                     Section::make('Photo Documentation')
                                         ->description('Capture the item\'s intake condition — protects against later disputes.')
                                         ->icon('heroicon-o-camera')
@@ -314,7 +351,7 @@ class RepairResource extends Resource
                                                 }),
                                         ]),
 
-                                    // ── SUB-GROUP 3: DESCRIPTION & ISSUE ─────────────
+                                    // ── SUB-GROUP 4: DESCRIPTION & ISSUE ─────────────
                                     Section::make('Description & Issue')
                                         ->icon('heroicon-o-document-text')
                                         ->schema([
@@ -331,7 +368,7 @@ class RepairResource extends Resource
                                             ]),
                                         ]),
 
-                                    // ── SUB-GROUP 4: SERVICES ────────────────────────
+                                    // ── SUB-GROUP 5: SERVICES ────────────────────────
                                     Section::make('Services Required')
                                         ->description('Add one or more service line items for this piece (resize, solder, engraving, etc.)')
                                         ->icon('heroicon-o-wrench-screwdriver')
@@ -425,19 +462,6 @@ class RepairResource extends Resource
                                                         ->columnSpanFull(),
                                                 ])
                                                 ->columnSpanFull(),
-                                        ]),
-
-                                    // ── SUB-GROUP 5: COST ESTIMATE ───────────────────
-                                    Section::make('Cost Estimate')
-                                        ->icon('heroicon-o-currency-dollar')
-                                        ->schema([
-                                            Grid::make(2)->schema([
-                                                TextInput::make('estimated_cost')
-                                                    ->label('Estimated Cost')->numeric()->prefix('$')->default(0)->nullable(),
-                                                TextInput::make('final_cost')
-                                                    ->label('Final Cost')->numeric()->prefix('$')
-                                                    ->helperText('Leave blank until repair is finished.'),
-                                            ]),
                                         ]),
                                 ])
                                 ->defaultItems(1)

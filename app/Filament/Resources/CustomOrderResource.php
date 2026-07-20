@@ -34,10 +34,26 @@ class CustomOrderResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
+            // ── EXCHANGED / VOIDED BANNER ──
+            Placeholder::make('exchanged_banner')
+                ->hiddenLabel()
+                ->columnSpanFull()
+                ->visible(fn(?CustomOrder $record) => $record?->status === 'exchanged')
+                ->content(new HtmlString('
+                    <div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+                        <strong style="color:#991b1b;font-size:14px;">⚠️ This Custom Order has been Voided / Exchanged.</strong>
+                        <p style="color:#b91c1c;font-size:12px;margin-top:4px;">It is permanently locked and can no longer be edited. Please refer to the linked Exchange record or linked Sale for details.</p>
+                    </div>
+                ')),
+
             Grid::make(12)->schema([
 
                 // ── LEFT COLUMN ───────────────────────────────────────
-                Group::make()->columnSpan(['lg' => 8])->schema([
+                // ── LEFT COLUMN ───────────────────────────────────────
+                Group::make()
+                    ->columnSpan(['lg' => 8])
+                    ->disabled(fn(?CustomOrder $record) => $record?->status === 'exchanged')
+                    ->schema([
 
                     Section::make('Customer & Assignment')
                         ->description('Assign this custom piece to a customer and sales rep.')
@@ -690,7 +706,11 @@ class CustomOrderResource extends Resource
                 ]),
 
                 // ── RIGHT COLUMN ──────────────────────────────────────
-                Group::make()->columnSpan(['lg' => 4])->schema([
+                // ── RIGHT COLUMN ──────────────────────────────────────
+                Group::make()
+                    ->columnSpan(['lg' => 4])
+                    ->disabled(fn(?CustomOrder $record) => $record?->status === 'exchanged')
+                    ->schema([
 
                     Section::make('Financials & Status')
                         ->icon('heroicon-o-banknotes')
@@ -971,7 +991,7 @@ class CustomOrderResource extends Resource
                                     ");
                                 }),
 
-                            Select::make('status')
+                           Select::make('status')
                                 ->options([
                                     'draft'         => 'Draft',
                                     'quoted'        => 'Quoted',
@@ -979,6 +999,7 @@ class CustomOrderResource extends Resource
                                     'in_production' => 'In Production',
                                     'received'      => 'Ready for Pickup',
                                     'completed'     => 'Picked Up / Completed',
+                                    'exchanged'     => 'Voided / Exchanged 🔄',
                                 ])
                                 ->default('draft')
                                 ->live()
@@ -1183,7 +1204,7 @@ class CustomOrderResource extends Resource
     ->grow(false),
 
 
-  Tables\Columns\TextColumn::make('workflow_hint')
+ Tables\Columns\TextColumn::make('workflow_hint')
     ->label('NEXT ACTION')
     ->getStateUsing(function (CustomOrder $record) {
         return match($record->status) {
@@ -1193,11 +1214,26 @@ class CustomOrderResource extends Resource
             'in_production' => 'ready|Mark Ready for Pickup',
             'received'      => 'sale|Convert to Sale →',
             'completed'     => 'done|Fully Completed ✅',
+            'exchanged'     => 'voided|Voided / Exchanged 🔄',
             default         => 'none|—',
         };
     })
     ->formatStateUsing(function ($state, CustomOrder $record) {
         [$type, $label] = explode('|', $state, 2);
+
+        // ── If exchanged/voided, show locked pill ──
+        if ($type === 'voided') {
+            return new \Illuminate\Support\HtmlString("
+                <span style='display:inline-flex;flex-direction:column;
+                             background:#fef2f2;color:#991b1b;
+                             border:1px solid #fecaca;
+                             border-radius:6px;padding:3px 10px;
+                             white-space:nowrap;line-height:1.4;
+                             font-size:10px;font-weight:700;'>
+                    {$label}
+                </span>
+            ");
+        }
 
         // ── If completed AND already has a linked sale, show "Converted" pill ──
         if ($type === 'done' && $record->sale_id) {
@@ -1226,12 +1262,13 @@ class CustomOrderResource extends Resource
             ");
         }
 
-        $configs = [
+       $configs = [
             'approve'    => ['#7c3aed', '#f5f3ff', '#ddd6fe', '⚡'],
             'production' => ['#b45309', '#fffbeb', '#fde68a', '🔧'],
             'ready'      => ['#0369a1', '#f0f9ff', '#bae6fd', '📦'],
             'sale'       => ['#15803d', '#f0fdf4', '#bbf7d0', '🛒'],
             'done'       => ['#6b7280', '#f9fafb', '#e5e7eb', '✅'],
+            'voided'     => ['#991b1b', '#fef2f2', '#fecaca', '🔄'],
             'none'       => ['#9ca3af', '#f9fafb', '#e5e7eb', '—'],
         ];
 
@@ -1325,8 +1362,10 @@ class CustomOrderResource extends Resource
                         'stock_modify' => 'Modify Stock',
                     ]),
             ])
-            ->actions([
-                Tables\Actions\EditAction::make()->iconButton(),
+           ->actions([
+                Tables\Actions\EditAction::make()
+                    ->iconButton()
+                    ->visible(fn(CustomOrder $record) => !in_array($record->status, ['completed', 'exchanged'])),
 
                 Tables\Actions\Action::make('createSaleNow')
                     ->label('🛒 Create Sale')
@@ -1334,7 +1373,7 @@ class CustomOrderResource extends Resource
                     ->color('success')
                     ->button()
                     ->size('sm')
-                    ->visible(fn(CustomOrder $record) => floatval($record->balance_due) <= 0.01 && !$record->sale_id)
+                    ->visible(fn(CustomOrder $record) => floatval($record->balance_due) <= 0.01 && !$record->sale_id && $record->status !== 'exchanged')
                     ->modalHeading('✅ Order Fully Paid — Enter Staff PIN')
                     ->modalDescription('Enter your PIN to verify and create the sale.')
                     ->modalSubmitActionLabel('Verify & Create Sale')
@@ -1365,14 +1404,14 @@ class CustomOrderResource extends Resource
                             ->send();
                     }),
 
-                Tables\Actions\Action::make('recordPayment')
+              Tables\Actions\Action::make('recordPayment')
                     ->label('Add Deposit')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
                     ->button()
                     ->size('sm')
                     ->visible(function (CustomOrder $record) {
-                        if (in_array($record->status, ['completed', 'cancelled'])) return false;
+                        if (in_array($record->status, ['completed', 'cancelled', 'exchanged'])) return false;
 
                         $isTaxFree  = (bool)($record->is_tax_free ?? false);
                         $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;

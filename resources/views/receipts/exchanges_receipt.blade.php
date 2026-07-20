@@ -43,10 +43,6 @@
     $diff     = floatval($exchange->difference_amount);
     $newItems = $exchange->new_items ?? [];
 
-    // Build a lookup of original sale items by sale_item_id / product_item_id
-    // so we can recover stock_no / description if they weren't persisted on the
-    // returned_items row itself (e.g. if a mutateFormDataBeforeSave step on the
-    // Exchange page only copied a subset of keys from returned_items_form).
     $originalItemsById = collect();
     if ($exchange->originalSale) {
         $exchange->originalSale->loadMissing('items.productItem');
@@ -155,7 +151,7 @@
     </tbody>
 </table>
 
-{{-- NEW ITEMS (rendered directly from exchange->new_items, works whether or not the Sale has been created yet) --}}
+{{-- NEW ITEMS --}}
 <div class="section-title">✅ New Item(s) Taken</div>
 <table class="items">
     <thead>
@@ -170,18 +166,20 @@
         @foreach($newItems as $i => $item)
         @php
             $qty  = intval($item['qty'] ?? 1);
-            $unit = floatval($item['sale_price'] ?? $item['price'] ?? 0);
-            $line = ($item['selection_type'] ?? null) === 'custom_order' ? $unit : ($unit * $qty);
+            $line = (isset($item['sale_price_override']) && floatval($item['sale_price_override']) > 0)
+                ? floatval($item['sale_price_override'])
+                : floatval($item['sold_price'] ?? 0) * $qty;
             $typeLabel = match($item['selection_type'] ?? null) {
-                'stock' => 'STOCK — ' . ($item['stock_no_display'] ?? ''),
+                'stock' => 'STOCK — ' . ($item['stock_no_display_persist'] ?? $item['stock_no_display'] ?? ''),
                 'custom_order' => 'CUSTOM ORDER',
                 default => 'NON-TAG',
             };
+            $description = $item['custom_description'] ?? '—';
         @endphp
         <tr>
             <td>{{ $i + 1 }}</td>
             <td><span class="badge-type">{{ $typeLabel }}</span></td>
-            <td>{{ $item['description'] ?? '—' }} @if($qty > 1) &times;{{ $qty }} @endif @if(!empty($item['is_tax_free'])) <em style="color:#888;">(tax free)</em> @endif</td>
+            <td>{{ $description }} @if($qty > 1) &times;{{ $qty }} @endif @if(!empty($item['is_tax_free'])) <em style="color:#888;">(tax free)</em> @endif</td>
             <td style="text-align:right;color:#059669;font-weight:700;">${{ number_format($line, 2) }}</td>
         </tr>
         @endforeach
@@ -242,7 +240,7 @@
 </div>
 
 <div style="text-align:center;font-size:8.5px;color:#555;margin-top:12px;border-top:1px dashed #ccc;padding-top:6px;">
-    Thank you for shopping at {{ $store?->name ?? 'JewelTag' }}. Please retain this receipt for your records.<br>
+    Thank you for shopping at {{ $store?->name ?? 'JeewelTag' }}. Please retain this receipt for your records.<br>
     {{ $store?->phone ?? '' }} | {{ $store?->email ?? '' }}
 </div>
 

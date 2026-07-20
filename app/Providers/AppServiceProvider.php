@@ -23,7 +23,8 @@ use Livewire\Livewire;
 use Stancl\Tenancy\Events\TenantCreated;
 use Stancl\Tenancy\Events\TenancyInitialized;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
-
+use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
+use App\Http\Responses\LoginResponse;
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -31,9 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Bind the native interface to your custom intended-redirect class
+        $this->app->singleton(LoginResponseContract::class, LoginResponse::class);
     }
-
     /**
      * Bootstrap any application services.
      */

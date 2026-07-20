@@ -17,61 +17,75 @@ class PinCodeAuth extends Page
 
     public $pin_code = '';
 
-   public function mount()
-{
-    // 🚀 THE FIX: If 'switch' is in the URL, clear the staff session 
-    // so the associate can enter a NEW pin.
-    if (request()->has('switch')) {
-        Session::forget(['active_staff_id', 'active_staff_name', 'active_staff_role', 'pin_verified_at']);
-        return; 
-    }
+    // 🚀 Livewire property to persist the redirect target across the AJAX verify() call
+    public $redirectTo = null;
 
-    // Otherwise, standard behavior: if already pinned in, go to dashboard
-    if (Session::has('active_staff_id')) {
-        return redirect()->to('/admin');
+    public function mount()
+    {
+        // Capture the redirect target from the query string on initial page load
+        $target = request()->query('redirect');
+        if ($target && filter_var($target, FILTER_VALIDATE_URL)) {
+            $this->redirectTo = $target;
+        }
+
+        // If 'switch' is in the URL, clear the staff session so the associate can enter a NEW pin.
+        if (request()->has('switch')) {
+            Session::forget(['active_staff_id', 'active_staff_name', 'active_staff_role', 'pin_verified_at']);
+            return;
+        }
+
+        // Otherwise, standard behavior: if already pinned in, honor redirect or go to dashboard
+        if (Session::has('active_staff_id')) {
+            if ($this->redirectTo) {
+                return redirect()->to($this->redirectTo);
+            }
+            return redirect()->to('/admin');
+        }
     }
-}
 
     public static function shouldRegisterNavigation(): bool
     {
-        return false; 
+        return false;
     }
 
-public function verify()
-{
-    $staff = User::where('pin_code', $this->pin_code)
-        ->where('is_active', true)
-        ->first();
+    public function verify()
+    {
+        $staff = User::where('pin_code', $this->pin_code)
+            ->where('is_active', true)
+            ->first();
 
-    if (!$staff) {
-        $this->pin_code = ''; // Clear input on failure
-        Notification::make()->title('Invalid PIN')->danger()->send();
-        return;
+        if (!$staff) {
+            $this->pin_code = ''; // Clear input on failure
+            Notification::make()->title('Invalid PIN')->danger()->send();
+            return;
+        }
+
+        // 1. Clear the old staff data first
+        Session::forget(['active_staff_id', 'active_staff_name', 'active_staff_role', 'pin_verified_at']);
+
+        // 2. Regenerate the session ID
+        Session::regenerate();
+
+        // 3. Put the NEW associate data
+        Session::put([
+            'active_staff_id' => $staff->id,
+            'active_staff_name' => $staff->name,
+            'active_staff_role' => optional($staff->roles->first())->name ?? 'Staff',
+            'pin_verified_at' => now(),
+        ]);
+
+        Notification::make()
+            ->title("Terminal Session: {$staff->name}")
+            ->success()
+            ->send();
+
+        // 🚀 Use the Livewire property (captured in mount()), not request()->query()
+        if ($this->redirectTo) {
+            return redirect()->to($this->redirectTo);
+        }
+
+        return redirect()->to('/admin');
     }
-
-    // 1. 🚀 CRITICAL FIX: Clear the old staff data first
-    Session::forget(['active_staff_id', 'active_staff_name', 'active_staff_role', 'pin_verified_at']);
-    
-    // 2. 🚀 CRITICAL FIX: Regenerate the session ID 
-    // This prevents "sticky" session data from the previous associate
-    Session::regenerate();
-
-    // 3. Put the NEW associate data
-    Session::put([
-        'active_staff_id' => $staff->id,
-        'active_staff_name' => $staff->name,
-        'active_staff_role' => optional($staff->roles->first())->name ?? 'Staff',
-        'pin_verified_at' => now(), 
-    ]);
-
-    Notification::make()
-        ->title("Terminal Session: {$staff->name}")
-        ->success()
-        ->send();
-
-    // Use a hard redirect to ensure the middleware picks up the new session immediately
-    return redirect()->to(url('/admin'));
-}
 
     public function logoutMaster()
     {

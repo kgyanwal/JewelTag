@@ -269,29 +269,32 @@ class ProductItemResource extends Resource
                             Grid::make(12)->schema([
                                 Radio::make('creation_mode')
                                     ->label('Stock Type')
-                                    ->options(['new' => 'New Stock', 'trade_in' => 'Trade-In'])
+                                    ->options([
+                                        'new'                    => 'New Stock',
+                                        'trade_in'                => 'Trade-In',
+                                        'exchanged_custom_order'  => 'Exchanged Custom Order',
+                                    ])
                                     ->default(fn($record) => $record?->is_trade_in ? 'trade_in' : 'new')
                                     ->required(fn($livewire) => $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem)
-
                                     ->inline()->live()->dehydrated(false)
                                     ->columnSpan(4),
 
                                 Select::make('original_trade_in_no')
-    ->label('Tracking #')
-    ->placeholder('Search TRD-...')
-    ->options(function () {
-        $used = \App\Models\ProductItem::whereNotNull('original_trade_in_no')
-            ->pluck('original_trade_in_no')
-            ->toArray();
-        return \App\Models\Sale::where('has_trade_in', 1)
-            ->whereNotNull('trade_in_receipt_no')
-            ->where('trade_in_receipt_no', '!=', '')
-            ->whereNotIn('trade_in_receipt_no', $used)
-            ->latest()
-            ->pluck('trade_in_receipt_no', 'trade_in_receipt_no')
-            ->filter()
-            ->toArray();
-    })
+                                    ->label('Tracking #')
+                                    ->placeholder('Search TRD-...')
+                                    ->options(function () {
+                                        $used = \App\Models\ProductItem::whereNotNull('original_trade_in_no')
+                                            ->pluck('original_trade_in_no')
+                                            ->toArray();
+                                        return \App\Models\Sale::where('has_trade_in', 1)
+                                            ->whereNotNull('trade_in_receipt_no')
+                                            ->where('trade_in_receipt_no', '!=', '')
+                                            ->whereNotIn('trade_in_receipt_no', $used)
+                                            ->latest()
+                                            ->pluck('trade_in_receipt_no', 'trade_in_receipt_no')
+                                            ->filter()
+                                            ->toArray();
+                                    })
                                     ->visible(fn(Get $get) => $get('creation_mode') === 'trade_in')
                                     ->required(function (Get $get, $livewire) {
                                         return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem
@@ -310,7 +313,66 @@ class ProductItemResource extends Resource
                                         }
                                     })->columnSpan(8),
                             ]),
+                            Select::make('source_custom_order_id')
+                                ->label('Select Exchanged Custom Order')
+                                ->placeholder('Search order # or product name...')
+                                ->options(function () {
+                                    $alreadyConverted = \App\Models\ProductItem::whereNotNull('source_custom_order_id')
+                                        ->pluck('source_custom_order_id')
+                                        ->toArray();
 
+                                    return \App\Models\CustomOrder::where('status', 'exchanged')
+                                        ->whereNotIn('id', $alreadyConverted)
+                                        ->latest()
+                                        ->get()
+                                        ->mapWithKeys(fn($co) => [
+                                            $co->id => "#{$co->order_no} — {$co->product_name} ({$co->metal_type}) — \$" . number_format($co->quoted_price, 2)
+                                        ]);
+                                })
+                                ->visible(fn(Get $get) => $get('creation_mode') === 'exchanged_custom_order')
+                                ->required(function (Get $get, $livewire) {
+                                    return $livewire instanceof \App\Filament\Resources\ProductItemResource\Pages\CreateProductItem
+                                        && $get('creation_mode') === 'exchanged_custom_order';
+                                })
+                                ->searchable()
+                                ->live()
+                                ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                    if (!$state) return;
+                                    $co = \App\Models\CustomOrder::find($state);
+                                    if (!$co) return;
+
+                                    $set('custom_description', "Returned custom order: {$co->product_name}");
+                                    $set('department', 'Custom');
+                                    $set('sub_department', 'Custom');
+                                    $set('category', 'Custom');
+                                    $set('metal_type', $co->metal_type);
+                                    $set('cost_price', floatval($co->amount_paid));
+                                    $set('retail_price', floatval($co->quoted_price));
+                                    $set('qty', 1);
+                                    $set('is_trade_in', false);
+                                    $set('is_memo', false);
+                                    $set('supplier_id', $co->supplier_id ?? null);
+
+                                    $prefix = \App\Filament\Resources\ProductItemResource::getPrefixForSubDepartment('Custom');
+                                    $set('barcode', \App\Filament\Resources\ProductItemResource::generatePersistentBarcode($prefix));
+
+                                    Notification::make()->title('Custom Order Loaded')->body("Order #{$co->order_no} details filled in.")->success()->send();
+                                })
+                                ->columnSpan(8),
+
+                            Placeholder::make('co_source_check')
+                                ->content(function (Get $get) {
+                                    if (!$get('source_custom_order_id')) return 'Select a custom order to load its details.';
+                                    $co = \App\Models\CustomOrder::find($get('source_custom_order_id'));
+                                    if (!$co) return '';
+                                    return new \Illuminate\Support\HtmlString(
+                                        "<div class='p-2 bg-purple-50 border border-purple-200 rounded text-purple-700 text-sm font-medium'>
+                ✓ Order #{$co->order_no} — {$co->product_name} — Status: " . ucfirst($co->status) . "
+            </div>"
+                                    );
+                                })
+                                ->visible(fn(Get $get) => $get('creation_mode') === 'exchanged_custom_order' && $get('source_custom_order_id'))
+                                ->columnSpanFull(),
                             Placeholder::make('trade_in_check')
                                 ->content(function (Get $get) {
                                     if (! $get('original_trade_in_no')) return 'Select a tracking number to verify.';
@@ -556,7 +618,7 @@ class ProductItemResource extends Resource
                     Hidden::make('certificate_number')->default(''),
                     Hidden::make('certificate_agency')->default(''),
                     Hidden::make('is_lab_grown')->default(false),
-
+                    Hidden::make('source_custom_order_id')->dehydrated(true),
                     Hidden::make('shape')->default(''),
                     Hidden::make('color')->default(''),
                     Hidden::make('clarity')->default(''),
@@ -581,138 +643,137 @@ class ProductItemResource extends Resource
                     TextInput::make('serial_number')->columnSpan(4),
                     TextInput::make('component_qty')->numeric()->default(1)->columnSpan(4),
                 ]),
-                Section::make('Item Photos')
-    ->description('Upload photos of this item. The first image is used on receipts, stock transfers, and the customer portal.')
-    ->icon('heroicon-o-camera')
-    ->collapsible()
-    ->schema([
-        Grid::make(2)->schema([
- 
-            // PRIMARY IMAGE — shown everywhere
-          FileUpload::make('primary_image')
-    ->disk('public')
-    ->directory('product-items/primary')
-    ->visibility('public')
-    ->storeFileNamesIn('primary_image_filename')
-                ->visibility('public')
-                ->maxSize(5120)           // 5MB
-                ->nullable()
-                ->helperText('Main display photo — shown on receipts, stock cards, and transfers.')
-                ->columnSpan(1),
- 
-            // GALLERY — up to 6 extra shots
-            FileUpload::make('gallery_images')
-                ->label('Additional Photos (Gallery)')
-                ->image()
-                ->multiple()
-                ->maxFiles(6)
-                ->reorderable()
-                ->directory('product-items/gallery')
-                ->visibility('public')
-                ->maxSize(5120)
-                ->nullable()
-                ->helperText('Extra angles, hallmark shots, certificate photos — up to 6 images.')
-                ->columnSpan(1),
-        ]),
- \Filament\Forms\Components\FileUpload::make('product_videos')
-    ->label('Product Videos')
-    ->multiple()
-    ->maxFiles(3)
-    ->maxSize(102400)
-    ->directory('product-items/videos')
-    ->disk('public')
-    ->visibility('public')
-    ->nullable()
-    ->reorderable()
-    ->helperText('Upload up to 3 product videos (MP4, MOV recommended). Max 100MB each.')
-    ->columnSpanFull(),
-        // AI DESCRIBE button — calls Claude API to generate description from primary image
-        \Filament\Forms\Components\Actions::make([
-            \Filament\Forms\Components\Actions\Action::make('ai_describe')
-                ->label('✨ AI Generate Description from Photo')
-                ->icon('heroicon-o-sparkles')
-                ->color('warning')
-                ->outlined()
-                ->visible(fn(\Filament\Forms\Get $get) => !empty($get('primary_image')))
-               ->action(function (\Filament\Forms\Get $get, \Filament\Forms\Set $set) {
+            Section::make('Item Photos')
+                ->description('Upload photos of this item. The first image is used on receipts, stock transfers, and the customer portal.')
+                ->icon('heroicon-o-camera')
+                ->collapsible()
+                ->schema([
+                    Grid::make(2)->schema([
 
-    $imagePath = $get('primary_image');
-    if (!$imagePath) return;
+                        // PRIMARY IMAGE — shown everywhere
+                        FileUpload::make('primary_image')
+                            ->disk('public')
+                            ->directory('product-items/primary')
+                            ->visibility('public')
+                            ->storeFileNamesIn('primary_image_filename')
+                            ->visibility('public')
+                            ->maxSize(5120)           // 5MB
+                            ->nullable()
+                            ->helperText('Main display photo — shown on receipts, stock cards, and transfers.')
+                            ->columnSpan(1),
 
-    // Handle FileUpload returning array or string
-    if (is_array($imagePath)) {
-        $imagePath = array_values($imagePath)[0] ?? null;
-    }
-    if (!$imagePath || !is_string($imagePath)) return;
+                        // GALLERY — up to 6 extra shots
+                        FileUpload::make('gallery_images')
+                            ->label('Additional Photos (Gallery)')
+                            ->image()
+                            ->multiple()
+                            ->maxFiles(6)
+                            ->reorderable()
+                            ->directory('product-items/gallery')
+                            ->visibility('public')
+                            ->maxSize(5120)
+                            ->nullable()
+                            ->helperText('Extra angles, hallmark shots, certificate photos — up to 6 images.')
+                            ->columnSpan(1),
+                    ]),
+                    \Filament\Forms\Components\FileUpload::make('product_videos')
+                        ->label('Product Videos')
+                        ->multiple()
+                        ->maxFiles(3)
+                        ->maxSize(102400)
+                        ->directory('product-items/videos')
+                        ->disk('public')
+                        ->visibility('public')
+                        ->nullable()
+                        ->reorderable()
+                        ->helperText('Upload up to 3 product videos (MP4, MOV recommended). Max 100MB each.')
+                        ->columnSpanFull(),
+                    // AI DESCRIBE button — calls Claude API to generate description from primary image
+                    \Filament\Forms\Components\Actions::make([
+                        \Filament\Forms\Components\Actions\Action::make('ai_describe')
+                            ->label('✨ AI Generate Description from Photo')
+                            ->icon('heroicon-o-sparkles')
+                            ->color('warning')
+                            ->outlined()
+                            ->visible(fn(\Filament\Forms\Get $get) => !empty($get('primary_image')))
+                            ->action(function (\Filament\Forms\Get $get, \Filament\Forms\Set $set) {
 
-    try {
-    // Handle FileUpload returning array or string
-    if (is_array($imagePath)) {
-        $imagePath = array_values($imagePath)[0] ?? null;
-    }
-    if (!$imagePath || !is_string($imagePath)) return;
+                                $imagePath = $get('primary_image');
+                                if (!$imagePath) return;
 
-    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($imagePath);
+                                // Handle FileUpload returning array or string
+                                if (is_array($imagePath)) {
+                                    $imagePath = array_values($imagePath)[0] ?? null;
+                                }
+                                if (!$imagePath || !is_string($imagePath)) return;
 
-    if (!file_exists($fullPath)) {
-        \Filament\Notifications\Notification::make()
-            ->title('Image Not Found')
-            ->body('The uploaded image could not be found. Try re-uploading.')
-            ->danger()->send();
-        return;
-    }
+                                try {
+                                    // Handle FileUpload returning array or string
+                                    if (is_array($imagePath)) {
+                                        $imagePath = array_values($imagePath)[0] ?? null;
+                                    }
+                                    if (!$imagePath || !is_string($imagePath)) return;
 
-    $imageData = base64_encode(file_get_contents($fullPath));
-    $mimeType  = mime_content_type($fullPath);
-    $apiKey    = env('GEMINI_API_KEY');
+                                    $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($imagePath);
 
-    // Use Gemini Vision (same API key as CustomOrderResource)
-    $response = \Illuminate\Support\Facades\Http::withHeaders([
-        'Content-Type' => 'application/json',
-    ])->timeout(30)->post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$apiKey}",
-        [
-            'contents' => [[
-                'parts' => [
-                    [
-                        'inline_data' => [
-                            'mime_type' => $mimeType,
-                            'data'      => $imageData,
-                        ],
-                    ],
-                    [
-                        'text' => 'You are a jewelry store assistant. Look at this jewelry photo and write a short, professional product description in 1-2 sentences. Focus on the visible metal type, style, and key features. Be concise and factual. Output only the description, no preamble.',
-                    ],
-                ],
-            ]],
-        ]
-    );
+                                    if (!file_exists($fullPath)) {
+                                        \Filament\Notifications\Notification::make()
+                                            ->title('Image Not Found')
+                                            ->body('The uploaded image could not be found. Try re-uploading.')
+                                            ->danger()->send();
+                                        return;
+                                    }
 
-    $body = $response->json();
-    $desc = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
- 
-                        if ($desc) {
-                            $existing = $get('custom_description');
-                            if (empty($existing)) {
-                                $set('custom_description', trim($desc));
-                            }
-                            \Filament\Notifications\Notification::make()
-                                ->title('AI Description Generated')
-                                ->body('Description has been filled in. Review and edit as needed.')
-                                ->success()
-                                ->send();
-                        }
- 
-                    } catch (\Exception $e) {
-                        \Filament\Notifications\Notification::make()
-                            ->title('AI Generation Failed')
-                            ->body('Could not generate description: ' . $e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
-        ]),
-    ]),
+                                    $imageData = base64_encode(file_get_contents($fullPath));
+                                    $mimeType  = mime_content_type($fullPath);
+                                    $apiKey    = env('GEMINI_API_KEY');
+
+                                    // Use Gemini Vision (same API key as CustomOrderResource)
+                                    $response = \Illuminate\Support\Facades\Http::withHeaders([
+                                        'Content-Type' => 'application/json',
+                                    ])->timeout(30)->post(
+                                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$apiKey}",
+                                        [
+                                            'contents' => [[
+                                                'parts' => [
+                                                    [
+                                                        'inline_data' => [
+                                                            'mime_type' => $mimeType,
+                                                            'data'      => $imageData,
+                                                        ],
+                                                    ],
+                                                    [
+                                                        'text' => 'You are a jewelry store assistant. Look at this jewelry photo and write a short, professional product description in 1-2 sentences. Focus on the visible metal type, style, and key features. Be concise and factual. Output only the description, no preamble.',
+                                                    ],
+                                                ],
+                                            ]],
+                                        ]
+                                    );
+
+                                    $body = $response->json();
+                                    $desc = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+                                    if ($desc) {
+                                        $existing = $get('custom_description');
+                                        if (empty($existing)) {
+                                            $set('custom_description', trim($desc));
+                                        }
+                                        \Filament\Notifications\Notification::make()
+                                            ->title('AI Description Generated')
+                                            ->body('Description has been filled in. Review and edit as needed.')
+                                            ->success()
+                                            ->send();
+                                    }
+                                } catch (\Exception $e) {
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('AI Generation Failed')
+                                        ->body('Could not generate description: ' . $e->getMessage())
+                                        ->danger()
+                                        ->send();
+                                }
+                            }),
+                    ]),
+                ]),
         ]);
     }
 

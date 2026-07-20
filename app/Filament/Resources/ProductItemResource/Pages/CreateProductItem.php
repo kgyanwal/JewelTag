@@ -161,39 +161,72 @@ class CreateProductItem extends CreateRecord
         ];
     }
 
-    protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
-    {
-        $qty = (int) ($data['qty'] ?? 1);
-        $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
-        $tradeInNo = $data['original_trade_in_no'] ?? null;
-        $department = $data['department'] ?? '';
-        $subDepartment = $data['sub_department'] ?? '';
+   protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model
+{
+    $qty = (int) ($data['qty'] ?? 1);
+    $storeId = $data['store_id'] ?? \App\Models\Store::first()?->id;
+    $tradeInNo = $data['original_trade_in_no'] ?? null;
+    $sourceCoId = $data['source_custom_order_id'] ?? null;
+    $department = $data['department'] ?? '';
+    $subDepartment = $data['sub_department'] ?? '';
 
-        $isRepair = str_contains(strtolower($department), 'repair');
+    $isRepair = str_contains(strtolower($department), 'repair');
 
-        unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
+    unset($data['print_options'], $data['creation_mode'], $data['qty'], $data['enable_rfid_tracking']);
 
-        $dynamicPrefix = ProductItemResource::getPrefixForSubDepartment($subDepartment);
-        $firstRecord = null;
+    $dynamicPrefix = ProductItemResource::getPrefixForSubDepartment($subDepartment);
+    $firstRecord = null;
 
-        for ($i = 0; $i < $qty; $i++) {
-            $itemData = $data;
-            $itemData['store_id'] = $storeId;
-            $itemData['is_trade_in'] = ($tradeInNo !== null);
-            $itemData['original_trade_in_no'] = $tradeInNo;
-            $itemData['web_item'] = $itemData['web_item'] ?? false;
-            $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
+    for ($i = 0; $i < $qty; $i++) {
+        $itemData = $data;
+        $itemData['store_id'] = $storeId;
+        $itemData['is_trade_in'] = ($tradeInNo !== null);
+        $itemData['original_trade_in_no'] = $tradeInNo;
+        $itemData['source_custom_order_id'] = $sourceCoId;
+        $itemData['web_item'] = $itemData['web_item'] ?? false;
+        $itemData['barcode'] = ProductItemResource::generatePersistentBarcode($dynamicPrefix);
 
-            if (!$isRepair) {
-                $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
-            } else {
-                $itemData['rfid_code'] = null;
-            }
-
-            $record = static::getModel()::create($itemData);
-            if ($i === 0) $firstRecord = $record;
+        if (!$isRepair) {
+            $itemData['rfid_code'] = strtoupper(bin2hex(random_bytes(4)));
+        } else {
+            $itemData['rfid_code'] = null;
         }
 
-        return $firstRecord;
+        $record = static::getModel()::create($itemData);
+        if ($i === 0) $firstRecord = $record;
     }
+
+    // Prevent re-conversion of the same custom order
+    if ($sourceCoId) {
+        \App\Models\CustomOrder::where('id', $sourceCoId)->update([
+            'design_notes' => \Illuminate\Support\Facades\DB::raw(
+                "CONCAT(COALESCE(design_notes, ''), '\n[Converted to stock item {$firstRecord->barcode} on " . now()->format('M d, Y') . "]')"
+            ),
+        ]);
+    }
+
+    return $firstRecord;
+}
+
+protected function mutateFormDataBeforeFill(array $data): array
+{
+    if (request()->has('source_custom_order_id')) {
+        $coId = request()->get('source_custom_order_id');
+        $co = \App\Models\CustomOrder::find($coId);
+        if ($co) {
+            $data['creation_mode']            = 'exchanged_custom_order';
+            $data['source_custom_order_id']   = $co->id;
+            $data['custom_description']       = "Returned custom order: {$co->product_name}";
+            $data['department']               = 'Custom';
+            $data['sub_department']           = 'Custom';
+            $data['category']                 = 'Custom';
+            $data['metal_type']               = $co->metal_type;
+            $data['cost_price']               = floatval($co->amount_paid);
+            $data['retail_price']             = floatval($co->quoted_price);
+            $data['qty']                      = 1;
+            $data['supplier_id']              = $co->supplier_id ?? null;
+        }
+    }
+    return $data;
+}
 }
