@@ -68,10 +68,22 @@ class ExchangeResource extends Resource
         elseif ($difference < -0.009) $set('exchange_type', 'downgrade');
         else                          $set('exchange_type', 'same_value');
 
-        $currentReceived = $get('amount_received');
-        if (($currentReceived === null || $currentReceived === '' || floatval($currentReceived) == 0)
-            && $difference > 0.009) {
-            $set('amount_received', number_format($difference, 2, '.', ''));
+        // 🚀 FIX: always keep amount_received synced to the current difference
+        // when NOT using split payment. Previously this only auto-filled ONCE
+        // (the "sticky" bug) — if the person changed an item's price afterward,
+        // amount_received and Remaining stayed frozen at the old value even
+        // though "Amount to Collect" correctly showed the new difference.
+        // Now it recalculates every time totals change, assuming full collection
+        // by default. Staff can still manually type a different (partial) amount
+        // after that — but changing the cart resets that assumption, which is
+        // the safer default.
+        $isSplit = filter_var($get('is_split_payment') ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (!$isSplit) {
+            if ($difference > 0.009) {
+                $set('amount_received', number_format($difference, 2, '.', ''));
+            } else {
+                $set('amount_received', '0.00');
+            }
         }
     }
 
@@ -862,197 +874,197 @@ class ExchangeResource extends Resource
     }
 
     public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
-            Tables\Columns\TextColumn::make('exchange_no')
-                ->label('Exchange #')
-                ->weight('bold')
-                ->color('primary')
-                ->searchable()
-                ->icon('heroicon-o-arrow-path-rounded-square')
-                ->copyable()
-                ->copyMessage('Exchange # copied'),
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('exchange_no')
+                    ->label('Exchange #')
+                    ->weight('bold')
+                    ->color('primary')
+                    ->searchable()
+                    ->icon('heroicon-o-arrow-path-rounded-square')
+                    ->copyable()
+                    ->copyMessage('Exchange # copied'),
 
-            Tables\Columns\TextColumn::make('customer.name')
-                ->label('Customer')
-                ->getStateUsing(fn($record) => trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? '')))
-                ->description(fn($record) => $record->customer?->phone ?? '')
-                ->searchable(query: function ($query, string $search) {
-                    return $query->whereHas('customer', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                          ->orWhere('last_name', 'like', "%{$search}%")
-                          ->orWhere('phone', 'like', "%{$search}%");
-                    });
-                })
-                ->icon('heroicon-o-user')
-                ->weight('semibold'),
+                Tables\Columns\TextColumn::make('customer.name')
+                    ->label('Customer')
+                    ->getStateUsing(fn($record) => trim(($record->customer?->name ?? '') . ' ' . ($record->customer?->last_name ?? '')))
+                    ->description(fn($record) => $record->customer?->phone ?? '')
+                    ->searchable(query: function ($query, string $search) {
+                        return $query->whereHas('customer', function ($q) use ($search) {
+                            $q->where('name', 'like', "%{$search}%")
+                              ->orWhere('last_name', 'like', "%{$search}%")
+                              ->orWhere('phone', 'like', "%{$search}%");
+                        });
+                    })
+                    ->icon('heroicon-o-user')
+                    ->weight('semibold'),
 
-            Tables\Columns\TextColumn::make('source')
-                ->label('Source')
-                ->badge()
-                ->getStateUsing(fn($record) => filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN) ? 'custom_order' : 'stock_sale')
-                ->formatStateUsing(fn($state) => $state === 'custom_order' ? '✨ Custom Order' : '🏪 Stock Sale')
-                ->color(fn($state) => $state === 'custom_order' ? 'purple' : 'gray'),
+                Tables\Columns\TextColumn::make('source')
+                    ->label('Source')
+                    ->badge()
+                    ->getStateUsing(fn($record) => filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN) ? 'custom_order' : 'stock_sale')
+                    ->formatStateUsing(fn($state) => $state === 'custom_order' ? '✨ Custom Order' : '🏪 Stock Sale')
+                    ->color(fn($state) => $state === 'custom_order' ? 'purple' : 'gray'),
 
-            Tables\Columns\TextColumn::make('originalSale.invoice_number')
-                ->label('Original Invoice')
-                ->badge()
-                ->color('gray')
-                ->placeholder('—')
-                ->toggleable(),
+                Tables\Columns\TextColumn::make('originalSale.invoice_number')
+                    ->label('Original Invoice')
+                    ->badge()
+                    ->color('gray')
+                    ->placeholder('—')
+                    ->toggleable(),
 
-            Tables\Columns\TextColumn::make('exchange_type')
-                ->label('Type')
-                ->badge()
-                ->formatStateUsing(fn($state) => match($state) {
-                    'upgrade'    => '⬆️ Upgrade',
-                    'downgrade'  => '⬇️ Downgrade',
-                    'same_value' => '↔️ Same Value',
-                    default      => ucfirst($state ?? ''),
-                })
-                ->color(fn($state) => match($state) {
-                    'upgrade'   => 'success',
-                    'downgrade' => 'danger',
-                    default     => 'gray',
-                }),
+                Tables\Columns\TextColumn::make('exchange_type')
+                    ->label('Type')
+                    ->badge()
+                    ->formatStateUsing(fn($state) => match($state) {
+                        'upgrade'    => '⬆️ Upgrade',
+                        'downgrade'  => '⬇️ Downgrade',
+                        'same_value' => '↔️ Same Value',
+                        default      => ucfirst($state ?? ''),
+                    })
+                    ->color(fn($state) => match($state) {
+                        'upgrade'   => 'success',
+                        'downgrade' => 'danger',
+                        default     => 'gray',
+                    }),
 
-            Tables\Columns\TextColumn::make('total_credit')
-                ->label('Credit')
-                ->formatStateUsing(fn($state) => '$' . number_format($state, 2))
-                ->color('warning')
-                ->weight('semibold')
-                ->alignEnd(),
+                Tables\Columns\TextColumn::make('total_credit')
+                    ->label('Credit')
+                    ->formatStateUsing(fn($state) => '$' . number_format($state, 2))
+                    ->color('warning')
+                    ->weight('semibold')
+                    ->alignEnd(),
 
-            Tables\Columns\TextColumn::make('new_sale_amount')
-                ->label('New Total')
-                ->formatStateUsing(fn($state) => '$' . number_format($state, 2))
-                ->color('success')
-                ->weight('semibold')
-                ->alignEnd()
-                ->toggleable(),
+                Tables\Columns\TextColumn::make('new_sale_amount')
+                    ->label('New Total')
+                    ->formatStateUsing(fn($state) => '$' . number_format($state, 2))
+                    ->color('success')
+                    ->weight('semibold')
+                    ->alignEnd()
+                    ->toggleable(),
 
-            Tables\Columns\TextColumn::make('difference_amount')
-                ->label('Difference')
-                ->html()
-                ->alignEnd()
-                ->formatStateUsing(function ($state) {
-                    $amt   = floatval($state);
-                    $color = $amt > 0 ? '#059669' : ($amt < 0 ? '#B8463F' : '#64748b');
-                    $label = $amt > 0
-                        ? '+$' . number_format($amt, 2)
-                        : ($amt < 0 ? '-$' . number_format(abs($amt), 2) : '$0.00');
-                    return "<span style='color:{$color};font-weight:800;'>{$label}</span>";
-                }),
+                Tables\Columns\TextColumn::make('difference_amount')
+                    ->label('Difference')
+                    ->html()
+                    ->alignEnd()
+                    ->formatStateUsing(function ($state) {
+                        $amt   = floatval($state);
+                        $color = $amt > 0 ? '#059669' : ($amt < 0 ? '#B8463F' : '#64748b');
+                        $label = $amt > 0
+                            ? '+$' . number_format($amt, 2)
+                            : ($amt < 0 ? '-$' . number_format(abs($amt), 2) : '$0.00');
+                        return "<span style='color:{$color};font-weight:800;'>{$label}</span>";
+                    }),
 
-            Tables\Columns\TextColumn::make('status')
-                ->badge()
-                ->color(fn($state) => match($state) {
-                    'pending_approval' => 'warning',
-                    'approved'         => 'info',
-                    'completed'        => 'success',
-                    'rejected'         => 'danger',
-                    'exchanged'        => 'purple',
-                    default            => 'gray',
-                })
-                ->formatStateUsing(fn($state) => match($state) {
-                    'exchanged'         => '🔄 Exchanged',
-                    'pending_approval'  => '⏳ Pending',
-                    'approved'          => '✅ Approved',
-                    'completed'         => '🎉 Completed',
-                    'rejected'          => '❌ Rejected',
-                    default             => ucfirst(str_replace('_', ' ', $state ?? '')),
-                }),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->color(fn($state) => match($state) {
+                        'pending_approval' => 'warning',
+                        'approved'         => 'info',
+                        'completed'        => 'success',
+                        'rejected'         => 'danger',
+                        'exchanged'        => 'purple',
+                        default            => 'gray',
+                    })
+                    ->formatStateUsing(fn($state) => match($state) {
+                        'exchanged'         => '🔄 Exchanged',
+                        'pending_approval'  => '⏳ Pending',
+                        'approved'          => '✅ Approved',
+                        'completed'         => '🎉 Completed',
+                        'rejected'          => '❌ Rejected',
+                        default             => ucfirst(str_replace('_', ' ', $state ?? '')),
+                    }),
 
-            Tables\Columns\TextColumn::make('requester.name')
-                ->label('Requested By')
-                ->icon('heroicon-o-user-circle')
-                ->color('gray')
-                ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('requester.name')
+                    ->label('Requested By')
+                    ->icon('heroicon-o-user-circle')
+                    ->color('gray')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-            Tables\Columns\TextColumn::make('created_at')
-                ->label('Date')
-                ->date('M d, Y')
-                ->description(fn($record) => $record->created_at?->format('h:i A'))
-                ->sortable()
-                ->color('gray'),
-        ])
-        ->filters([
-            Tables\Filters\SelectFilter::make('status')
-                ->options([
-                    'pending_approval' => 'Pending',
-                    'approved'         => 'Approved',
-                    'completed'        => 'Completed',
-                    'rejected'         => 'Rejected',
-                    'exchanged'        => 'Exchanged',
-                ]),
-            Tables\Filters\SelectFilter::make('exchange_type')
-                ->options([
-                    'upgrade'    => 'Upgrade',
-                    'downgrade'  => 'Downgrade',
-                    'same_value' => 'Same Value',
-                ]),
-            Tables\Filters\TernaryFilter::make('from_custom_order')
-                ->label('Custom Order Exchange')
-                ->placeholder('All Sources')
-                ->trueLabel('Custom Order Only')
-                ->falseLabel('Stock Sale Only'),
-        ])
-        ->actions([
-            Tables\Actions\Action::make('approve')
-                ->label('Approve')
-                ->icon('heroicon-o-check-circle')
-                ->color('success')
-                ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                ->requiresConfirmation()
-                ->action(function ($record) {
-                    $record->update(['status' => 'approved', 'approved_by' => auth()->id(), 'approved_at' => now()]);
-                    Notification::make()->title('Exchange Approved ✅')->success()->send();
-                    if ($record->requester) {
-                        Notification::make()
-                            ->title('Exchange Approved')
-                            ->body("Exchange {$record->exchange_no} approved.")
-                            ->success()
-                            ->sendToDatabase($record->requester);
-                    }
-                }),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Date')
+                    ->date('M d, Y')
+                    ->description(fn($record) => $record->created_at?->format('h:i A'))
+                    ->sortable()
+                    ->color('gray'),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')
+                    ->options([
+                        'pending_approval' => 'Pending',
+                        'approved'         => 'Approved',
+                        'completed'        => 'Completed',
+                        'rejected'         => 'Rejected',
+                        'exchanged'        => 'Exchanged',
+                    ]),
+                Tables\Filters\SelectFilter::make('exchange_type')
+                    ->options([
+                        'upgrade'    => 'Upgrade',
+                        'downgrade'  => 'Downgrade',
+                        'same_value' => 'Same Value',
+                    ]),
+                Tables\Filters\TernaryFilter::make('from_custom_order')
+                    ->label('Custom Order Exchange')
+                    ->placeholder('All Sources')
+                    ->trueLabel('Custom Order Only')
+                    ->falseLabel('Stock Sale Only'),
+            ])
+            ->actions([
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                    ->requiresConfirmation()
+                    ->action(function ($record) {
+                        $record->update(['status' => 'approved', 'approved_by' => auth()->id(), 'approved_at' => now()]);
+                        Notification::make()->title('Exchange Approved ✅')->success()->send();
+                        if ($record->requester) {
+                            Notification::make()
+                                ->title('Exchange Approved')
+                                ->body("Exchange {$record->exchange_no} approved.")
+                                ->success()
+                                ->sendToDatabase($record->requester);
+                        }
+                    }),
 
-            Tables\Actions\Action::make('complete')
-                ->label('Complete & Create Sale')
-                ->icon('heroicon-o-flag')
-                ->color('info')
-                ->visible(fn($record) => $record->status === 'approved')
-                ->requiresConfirmation()
-                ->modalHeading('Complete Exchange?')
-                ->modalDescription('This will void the custom order (if applicable), update inventory, and create a Sale record with $0 balance.')
-                ->action(fn($record) => static::completeExchange($record)),
+                Tables\Actions\Action::make('complete')
+                    ->label('Complete & Create Sale')
+                    ->icon('heroicon-o-flag')
+                    ->color('info')
+                    ->visible(fn($record) => $record->status === 'approved')
+                    ->requiresConfirmation()
+                    ->modalHeading('Complete Exchange?')
+                    ->modalDescription('This will void the custom order (if applicable), update inventory, and create a Sale record with $0 balance.')
+                    ->action(fn($record) => static::completeExchange($record)),
 
-            Tables\Actions\Action::make('reject')
-                ->label('Reject')
-                ->icon('heroicon-o-x-circle')
-                ->color('danger')
-                ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                ->form([Textarea::make('rejection_reason')->required()->rows(2)])
-                ->action(function ($record, array $data) {
-                    $record->update(['status' => 'rejected', 'approved_by' => auth()->id(), 'rejection_reason' => $data['rejection_reason']]);
-                    Notification::make()->title('Exchange Rejected')->warning()->send();
-                }),
+                Tables\Actions\Action::make('reject')
+                    ->label('Reject')
+                    ->icon('heroicon-o-x-circle')
+                    ->color('danger')
+                    ->visible(fn($record) => $record->status === 'pending_approval' && auth()->user()->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                    ->form([Textarea::make('rejection_reason')->required()->rows(2)])
+                    ->action(function ($record, array $data) {
+                        $record->update(['status' => 'rejected', 'approved_by' => auth()->id(), 'rejection_reason' => $data['rejection_reason']]);
+                        Notification::make()->title('Exchange Rejected')->warning()->send();
+                    }),
 
-            Tables\Actions\Action::make('print')
-                ->label('Print Receipt')
-                ->icon('heroicon-o-printer')
-                ->color('gray')
-                ->url(fn($record) => route('exchange.print', $record))
-                ->openUrlInNewTab(),
+                Tables\Actions\Action::make('print')
+                    ->label('Print Receipt')
+                    ->icon('heroicon-o-printer')
+                    ->color('gray')
+                    ->url(fn($record) => route('exchange.print', $record))
+                    ->openUrlInNewTab(),
 
-            Tables\Actions\EditAction::make()
-                ->visible(fn($record) => !in_array($record->status, ['completed', 'exchanged'])),
-        ])
-        ->defaultSort('created_at', 'desc')
-        ->striped()
-        ->paginated([10, 25, 50, 100])
-        ->poll('30s');
-}
+                Tables\Actions\EditAction::make()
+                    ->visible(fn($record) => !in_array($record->status, ['completed', 'exchanged'])),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->striped()
+            ->paginated([10, 25, 50, 100])
+            ->poll('30s');
+    }
 
     public static function completeExchange($record): void
     {
@@ -1063,8 +1075,7 @@ class ExchangeResource extends Resource
             $taxRate         = floatval($dbTax) / 100;
 
             // ── The ORIGINAL custom order being voided ─────────────────────
-            $fromCustomOrder = filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN);
-            $origCoId        = $record->custom_order_id ?? null;  // ← CORRECT field
+           $origCoId = $record->custom_order_id ?? null;
 
             $itemInProd  = filter_var($record->co_item_in_production ?? true,  FILTER_VALIDATE_BOOLEAN);
             $itemArrived = filter_var($record->co_item_arrived       ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -1136,25 +1147,27 @@ class ExchangeResource extends Resource
                 : ($record->sales_person_list ?? auth()->user()->name);
 
             // ── Create Sale — always balance_due = 0 ───────────────────────
-            $sale = Sale::create([
-                'customer_id'          => $record->customer_id,
-                'store_id'             => $storeId,
-                'invoice_number'       => $record->exchange_no,
-                'subtotal'             => $saleSubtotal,
-                'tax_amount'           => $saleTax,
-                'final_total'          => $saleGrandTotal,
-                'amount_paid'          => $saleGrandTotal,
-                'balance_due'          => 0,
-                'payment_method'       => $record->is_split_payment ? 'split' : ($record->difference_payment_method ?? 'EXCHANGE_CREDIT'),
-                'is_split_payment'     => (bool)$record->is_split_payment,
-                'status'               => 'completed',
-                'completed_at'         => now(),
-                'has_trade_in'         => 1,
-                'trade_in_value'       => $totalCredit,
-                'trade_in_description' => 'Exchange credit — ' . $record->exchange_no,
-                'sales_person_list'    => $salesPersonList,
-                'notes'                => 'Created from Exchange #' . $record->exchange_no,
-            ]);
+         $fromCustomOrder = filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN);
+
+$sale = Sale::create([
+    'customer_id'          => $record->customer_id,
+    'store_id'             => $storeId,
+    'invoice_number'       => $record->exchange_no,
+    'subtotal'             => $saleSubtotal,
+    'tax_amount'           => $saleTax,
+    'final_total'          => $saleGrandTotal,
+    'amount_paid'          => $saleGrandTotal,
+    'balance_due'          => 0,
+    'payment_method'       => $record->is_split_payment ? 'split' : ($record->difference_payment_method ?? 'EXCHANGE_CREDIT'),
+    'is_split_payment'     => (bool)$record->is_split_payment,
+    'status'               => 'completed',
+    'completed_at'         => now(),
+    'has_trade_in'         => $totalCredit > 0 ? 1 : 0,
+    'trade_in_value'       => $totalCredit,
+    'trade_in_description' => $totalCredit > 0 ? 'Exchange credit — ' . $record->exchange_no : null,
+    'sales_person_list'    => $salesPersonList,
+    'notes'                => 'Created from Exchange #' . $record->exchange_no,
+]);
 
             foreach ($saleItems as $si) {
                 $sale->items()->create(array_merge($si, ['store_id' => $storeId]));
@@ -1190,12 +1203,68 @@ class ExchangeResource extends Resource
                 $origCo = CustomOrder::find($origCoId);
                 if ($origCo) {
                     $origCo->update([
-                        'status'       => 'exchanged',   // ← this is what locks it in CustomOrderResource
+                        'status'       => 'exchanged',
                         'sale_id'      => $sale->id,
-                        'balance_due'  => 0,             // write off remaining balance
+                        'balance_due'  => 0,
                         'design_notes' => ($origCo->design_notes ?? '')
                             . "\n[VOID/EXCHANGED via Exchange #{$record->exchange_no} on " . now()->format('M d, Y') . "]",
                     ]);
+
+                    // ── Create a completed "deposit sale" so the original ─────
+                    // ── custom order's sales staff still get credit in MySalesReport ─
+                    $origDepositPaid = round(\App\Models\Payment::where('custom_order_id', $origCo->id)->sum('amount'), 2);
+                    if ($origDepositPaid <= 0) $origDepositPaid = floatval($origCo->amount_paid ?? 0);
+
+                    if ($origDepositPaid > 0.009 && !$origCo->sale_id_for_deposit_credit) {
+                        $origStaffIds = $origCo->sales_person_list;
+                        if (is_string($origStaffIds)) {
+                            $decoded = json_decode($origStaffIds, true);
+                            $origStaffIds = is_array($decoded) ? $decoded : [];
+                        }
+                        if (empty($origStaffIds) || !is_array($origStaffIds)) {
+                            $origStaffIds = $origCo->staff_id ? [$origCo->staff_id] : [];
+                        }
+                        $origStaffNames = \App\Models\User::whereIn('id', $origStaffIds)->pluck('name')->toArray();
+                        if (empty($origStaffNames)) {
+                            $origStaffNames = [$origCo->staff?->name ?? auth()->user()->name ?? 'Unknown'];
+                        }
+
+                        $isTaxFree  = filter_var($origCo->is_tax_free ?? false, FILTER_VALIDATE_BOOLEAN);
+                        $depositPreTax = $isTaxFree ? $origDepositPaid : round($origDepositPaid / (1 + $taxRate), 2);
+                        $depositTax    = round($origDepositPaid - $depositPreTax, 2);
+
+                        $depositSale = Sale::create([
+                            'customer_id'          => $record->customer_id,
+                            'store_id'             => $storeId,
+                            'invoice_number'       => 'EXV-' . $record->exchange_no,
+                            'subtotal'             => $depositPreTax,
+                            'tax_amount'           => $depositTax,
+                            'final_total'          => $origDepositPaid,
+                            'amount_paid'          => $origDepositPaid,
+                            'balance_due'          => 0,
+                            'payment_method'       => 'EXCHANGE_VOID_CREDIT',
+                            'is_split_payment'     => false,
+                            'status'               => 'completed',
+                            'completed_at'         => $origCo->created_at ?? now(),
+                            'sales_person_list'    => implode(',', $origStaffNames),
+                            'notes'                => "Deposit credit for voided Custom Order #{$origCo->order_no} — exchanged via {$record->exchange_no}",
+                        ]);
+
+                        $depositSale->items()->create([
+                            'custom_order_id'     => $origCo->id,
+                            'custom_description'  => "Voided Custom Order — {$origCo->product_name}",
+                            'qty'                 => 1,
+                            'sold_price'          => $depositPreTax,
+                            'sale_price_override' => $depositPreTax,
+                            'is_tax_free'         => $isTaxFree,
+                            'is_non_stock'        => true,
+                            'discount_percent'    => 0,
+                            'discount_amount'     => 0,
+                            'store_id'            => $storeId,
+                        ]);
+
+                        $origCo->update(['sale_id_for_deposit_credit' => $depositSale->id]);
+                    }
 
                     // If item arrived at store → add back to stock
                     if (!$itemInProd && $itemArrived) {
