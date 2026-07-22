@@ -1143,11 +1143,16 @@ class ExchangeResource extends Resource
                 ? collect($record->split_payments ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0))
                 : floatval($record->amount_received ?? $record->difference_amount ?? 0);
             $salesPersonList = is_array($record->sales_person_list ?? null)
-                ? implode(',', $record->sales_person_list)
-                : ($record->sales_person_list ?? auth()->user()->name);
+    ? array_values(array_filter($record->sales_person_list))
+    : (is_string($record->sales_person_list) && $record->sales_person_list !== ''
+        ? array_map('trim', explode(',', $record->sales_person_list))
+        : [auth()->user()->name]);
 
             // ── Create Sale — always balance_due = 0 ───────────────────────
-         $fromCustomOrder = filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN);
+       $fromCustomOrder   = filter_var($record->from_custom_order ?? false, FILTER_VALIDATE_BOOLEAN);
+$differenceAmount  = floatval($record->difference_amount ?? 0);
+$incrementalPreTax = round($differenceAmount / (1 + $taxRate), 2);
+$tradeInValue       = round($saleSubtotal - $incrementalPreTax, 2);
 
 $sale = Sale::create([
     'customer_id'          => $record->customer_id,
@@ -1162,9 +1167,9 @@ $sale = Sale::create([
     'is_split_payment'     => (bool)$record->is_split_payment,
     'status'               => 'completed',
     'completed_at'         => now(),
-    'has_trade_in'         => $totalCredit > 0 ? 1 : 0,
-    'trade_in_value'       => $totalCredit,
-    'trade_in_description' => $totalCredit > 0 ? 'Exchange credit — ' . $record->exchange_no : null,
+    'has_trade_in'         => $tradeInValue > 0 ? 1 : 0,
+    'trade_in_value'       => $tradeInValue,
+    'trade_in_description' => $tradeInValue > 0 ? 'Exchange credit — ' . $record->exchange_no : null,
     'sales_person_list'    => $salesPersonList,
     'notes'                => 'Created from Exchange #' . $record->exchange_no,
 ]);
@@ -1234,21 +1239,21 @@ $sale = Sale::create([
                         $depositTax    = round($origDepositPaid - $depositPreTax, 2);
 
                         $depositSale = Sale::create([
-                            'customer_id'          => $record->customer_id,
-                            'store_id'             => $storeId,
-                            'invoice_number'       => 'EXV-' . $record->exchange_no,
-                            'subtotal'             => $depositPreTax,
-                            'tax_amount'           => $depositTax,
-                            'final_total'          => $origDepositPaid,
-                            'amount_paid'          => $origDepositPaid,
-                            'balance_due'          => 0,
-                            'payment_method'       => 'EXCHANGE_VOID_CREDIT',
-                            'is_split_payment'     => false,
-                            'status'               => 'completed',
-                            'completed_at'         => $origCo->created_at ?? now(),
-                            'sales_person_list'    => implode(',', $origStaffNames),
-                            'notes'                => "Deposit credit for voided Custom Order #{$origCo->order_no} — exchanged via {$record->exchange_no}",
-                        ]);
+    'customer_id'          => $record->customer_id,
+    'store_id'             => $storeId,
+    'invoice_number'       => 'EXV-' . $record->exchange_no,
+    'subtotal'             => $depositPreTax,
+    'tax_amount'           => $depositTax,
+    'final_total'          => $origDepositPaid,
+    'amount_paid'          => $origDepositPaid,
+    'balance_due'          => 0,
+    'payment_method'       => 'EXCHANGE_VOID_CREDIT',
+    'is_split_payment'     => false,
+    'status'               => 'completed',
+    'completed_at'         => $origCo->created_at ?? now(),
+    'sales_person_list'    => $origStaffNames,
+    'notes'                => "Deposit credit for voided Custom Order #{$origCo->order_no} — exchanged via {$record->exchange_no}",
+]);
 
                         $depositSale->items()->create([
                             'custom_order_id'     => $origCo->id,

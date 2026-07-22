@@ -618,7 +618,7 @@ class ProductItemResource extends Resource
                     Hidden::make('certificate_number')->default(''),
                     Hidden::make('certificate_agency')->default(''),
                     Hidden::make('is_lab_grown')->default(false),
-                    Hidden::make('source_custom_order_id')->dehydrated(true),
+                   
                     Hidden::make('shape')->default(''),
                     Hidden::make('color')->default(''),
                     Hidden::make('clarity')->default(''),

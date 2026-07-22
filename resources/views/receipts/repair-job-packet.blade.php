@@ -364,6 +364,23 @@
                 print-color-adjust: exact !important;
             }
         }
+        .check-icon {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    position: relative;
+}
+
+.check-icon .mark {
+    position: absolute;
+    left: 9px;
+    top: 4px;
+    width: 8px;
+    height: 16px;
+    border-bottom: 3px solid;
+    border-right: 3px solid;
+    transform: rotate(45deg);
+}
     </style>
 </head>
 
@@ -611,51 +628,94 @@
             </tr>
         </table>
 
-        {{-- ── LOCATION + READY CHECKBOX — tick with pen, no reprint needed ── --}}
-     {{-- ── LOCATION + READY CHECKBOX — tick with pen, no reprint needed ── --}}
-<table style="width:100%;border-collapse:collapse;border:3px solid #1a6b65;margin:5px 0;">
+        {{-- ── LOCATION + READY CHECKBOX ── --}}
+        <table style="width:100%;border-collapse:collapse;border:3px solid #1a6b65;margin:5px 0;">
+            <tr>
+                {{-- Location --}}
+                <td style="width:52%;padding:7px 10px;border-right:2px solid #1a6b65;vertical-align:middle;">
+                    <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:3px;">Repair Location</div>
+                    <div style="font-size:14px;font-weight:900;color:#000;">{{ $repair->repair_location ?: '— Not Set —' }}</div>
+                </td>
+                {{-- Mark When Ready checkboxes --}}
+                <td style="width:48%;padding:7px 10px;vertical-align:middle;">
+                    <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:6px;text-align:center;">Mark When Ready</div>
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr>
+                            {{-- NO box --}}
+                            <td style="width:50%;text-align:center;padding-right:8px;">
+                                <table style="border-collapse:collapse;margin:0 auto 4px auto;">
+                                    <tr>
+                                        <td style="vertical-align:middle;padding-right:8px;">
+                                            <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #dc2626;background:#fff;"></div>
+                                        </td>
+                                        <td style="vertical-align:middle;font-size:11px;font-weight:900;color:#dc2626;">NO</td>
+                                    </tr>
+                                </table>
+                            </td>
+                            {{-- YES box --}}
+                            <td style="width:50%;text-align:center;padding-left:8px;border-left:1px solid #e5e7eb;">
+                                <table style="border-collapse:collapse;margin:0 auto 4px auto;">
+                                    <tr>
+                                        <td style="vertical-align:middle;padding-right:8px;">
+                                            <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #166534;background:#fff;"></div>
+                                        </td>
+                                        <td style="vertical-align:middle;font-size:11px;font-weight:900;color:#166534;">YES</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+
+       {{-- ── CALL / TEXT CONTACT SECTION ── --}}
+<table style="width:100%;border-collapse:collapse;border:2px solid #1a6b65;margin:5px 0;">
     <tr>
-        {{-- Location --}}
-        <td style="width:52%;padding:7px 10px;border-right:2px solid #1a6b65;vertical-align:middle;">
-            <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:3px;">Repair Location</div>
-            <div style="font-size:14px;font-weight:900;color:#000;">{{ $repair->repair_location ?: '— Not Set —' }}</div>
+        <td style="width:40%;padding:6px 10px;border-right:2px solid #1a6b65;vertical-align:middle;">
+            <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:3px;">Customer Contact</div>
+            <div style="font-size:11px;font-weight:700;color:#000;">{{ $repair->customer->phone ?? 'No phone on file' }}</div>
         </td>
-        {{-- Checkboxes --}}
-        <td style="width:48%;padding:7px 10px;vertical-align:middle;">
-            <div style="font-size:7.5px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1a6b65;margin-bottom:6px;text-align:center;">Mark When Ready</div>
+        <td style="width:60%;padding:6px 10px;vertical-align:middle;">
             <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                    {{-- NO box --}}
-                <td style="width:50%;text-align:center;padding-right:8px;">
-    <table style="border-collapse:collapse;margin:0 auto 4px auto;">
-        <tr>
-          <td style="vertical-align:middle;padding-right:8px;">
-    <div style="
-        display:inline-block;
-        width:28px;
-        height:28px;
-        border:2.5px solid #dc2626;
-        background:#fff;
-    "></div>
-</td>
-            <td style="vertical-align:middle;font-size:11px;font-weight:900;color:#dc2626;">NO</td>
-        </tr>
-    </table>
-</td>
-                    {{-- YES box --}}
-                    <td style="width:50%;text-align:center;padding-left:8px;border-left:1px solid #e5e7eb;">
-                        <table style="border-collapse:collapse;margin:0 auto 4px auto;">
+                    {{-- CALL box --}}
+                    <td style="width:50%;text-align:center;padding-right:8px;">
+                        <table style="border-collapse:collapse;margin:0 auto 3px auto;">
                             <tr>
-                               <td style="vertical-align:middle;padding-right:8px;">
-    <div style="
-        display:inline-block;
-        width:28px;
-        height:28px;
-        border:2.5px solid #166534;
-        background:#fff;
-    "></div>
-</td>
-                                <td style="vertical-align:middle;font-size:11px;font-weight:900;color:#166534;">YES</td>
+                                <td style="vertical-align:middle;padding-right:6px;">
+                                    @if($repair->customer_called)
+                                    <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #166534;background:#f0fdf4;">
+                                        <div class="check-icon"><div class="mark" style="border-color:#166534;"></div></div>
+                                    </div>
+                                    @else
+                                    <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #166534;background:#fff;"></div>
+                                    @endif
+                                </td>
+                                <td style="vertical-align:middle;">
+                                    <div style="font-size:11px;font-weight:900;color:#166534;">Call</div>
+                                    <div style="font-size:7.5px;color:#555;">Customer answered</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                    {{-- TEXT box --}}
+                    <td style="width:50%;text-align:center;padding-left:8px;border-left:1px solid #e5e7eb;">
+                        <table style="border-collapse:collapse;margin:0 auto 3px auto;">
+                            <tr>
+                                <td style="vertical-align:middle;padding-right:6px;">
+                                    @if($repair->customer_texted)
+                                    <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #0284c7;background:#f0f9ff;">
+                                        <div class="check-icon"><div class="mark" style="border-color:#0284c7;"></div></div>
+                                    </div>
+                                    @else
+                                    <div style="display:inline-block;width:28px;height:28px;border:2.5px solid #0284c7;background:#fff;"></div>
+                                    @endif
+                                </td>
+                                <td style="vertical-align:middle;">
+                                    <div style="font-size:11px;font-weight:900;color:#0284c7;">Text</div>
+                                    <div style="font-size:7.5px;color:#555;">No answer — texted</div>
+                                </td>
                             </tr>
                         </table>
                     </td>

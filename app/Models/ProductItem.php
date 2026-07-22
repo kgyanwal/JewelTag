@@ -69,7 +69,7 @@ class ProductItem extends Model
         'shopify_product_id',
 'shopify_inventory_item_id',
 'product_videos',
-
+'source_custom_order_id',
     ];
 
     protected $casts = [
@@ -85,6 +85,7 @@ class ProductItem extends Model
         'web_price' => 'decimal:2',
         'gallery_images' => 'array',
         'product_videos' => 'array',
+        'source_custom_order_id' => 'integer',
     ];
 
     // 🔹 ADVANCED: Automatically determine status based on Qty
