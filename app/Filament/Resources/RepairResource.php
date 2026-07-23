@@ -467,9 +467,11 @@ class RepairResource extends Resource
                                     $anyFinal   = false;
                                     $rows = '';
 
-                                    foreach ($items as $idx => $item) {
-                                        $desc     = Str::limit($item['item_description'] ?? ('Item '.($idx+1)), 28);
-                                        $services = $item['services'] ?? [];
+                                    $itemNumber = 0;
+foreach ($items as $item) {
+    $itemNumber++;
+    $desc     = Str::limit($item['item_description'] ?? ('Item '.$itemNumber), 28);
+    $services = $item['services'] ?? [];
                                         $itemEst  = 0;
                                         $itemFin  = 0;
                                         $hasF     = false;
