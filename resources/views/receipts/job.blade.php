@@ -304,9 +304,28 @@
                     @foreach($sale->special_jobs as $job)
                     @php
                         $applicableIndexes = $job['applicable_item_indexes'] ?? [];
-                        $appliesToThisItem = empty($applicableIndexes)
-                            || in_array($index, $applicableIndexes)
-                            || in_array((string)$index, $applicableIndexes);
+                        $storeItemId       = $job['store_item_id'] ?? null;
+
+                        // Does storeItemId match ANY item actually in this sale?
+                        $storeItemExistsInSale = false;
+                        if (!empty($storeItemId)) {
+                            foreach ($sale->items as $checkItem) {
+                                if ((int) $checkItem->product_item_id === (int) $storeItemId) {
+                                    $storeItemExistsInSale = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!empty($storeItemId) && $storeItemExistsInSale) {
+                            $appliesToThisItem = ((int) $item->product_item_id === (int) $storeItemId);
+                        } elseif (!empty($applicableIndexes)) {
+                            $appliesToThisItem = in_array($index, $applicableIndexes) || in_array((string) $index, $applicableIndexes);
+                        } else {
+                            // Neither signal usable — fall back to showing on all items
+                            // so the note is never silently lost.
+                            $appliesToThisItem = true;
+                        }
                     @endphp
                     @if($appliesToThisItem)
                     <div class="instructions" style="margin-top:6px;">

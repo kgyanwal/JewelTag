@@ -833,65 +833,87 @@ class SaleResource extends Resource
                                                 ->live()
                                                 ->columnSpanFull(),
 
-                                            Select::make('store_item_id')
-                                                ->label('Search Store Stock No.')
-                                                ->placeholder('Search by stock number (G1234, D1001, N...)')
-                                                ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
-                                                ->required(fn(Get $get) => $get('job_applies_to_store_item'))
-                                                ->options(function () {
-                                                    return \App\Models\ProductItem::query()
-                                                        ->where('status', 'sold')
-                                                        ->whereNotNull('barcode')
-                                                        ->orderBy('barcode')
-                                                        ->limit(200)
-                                                        ->get()
-                                                        ->mapWithKeys(fn($item) => [
-                                                            $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-                                                        ]);
-                                                })
-                                                ->getSearchResultsUsing(function (string $search) {
-                                                    return \App\Models\ProductItem::query()
-                                                        ->where('status', 'sold')
-                                                        ->where(function ($q) use ($search) {
-                                                            $q->where('barcode', 'like', "%{$search}%")
-                                                                ->orWhere('custom_description', 'like', "%{$search}%");
-                                                        })
-                                                        ->limit(50)
-                                                        ->get()
-                                                        ->mapWithKeys(fn($item) => [
-                                                            $item->id => "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40)
-                                                        ]);
-                                                })
-                                                ->getOptionLabelUsing(
-                                                    fn($value) =>
-                                                    \App\Models\ProductItem::find($value)?->barcode . ' — ' .
-                                                        \App\Models\ProductItem::find($value)?->custom_description
-                                                )
-                                                ->searchable()
-                                                ->live()
-                                                ->columnSpanFull(),
+                                           Select::make('store_item_id')
+    ->label('Which item in this sale?')
+    ->placeholder('Select from items in this sale...')
+    ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
+    ->required(fn(Get $get) => $get('job_applies_to_store_item'))
+    ->options(function (Get $get) {
+        // Only offer items ACTUALLY in this sale's cart, keyed by
+        // product_item_id. This guarantees store_item_id can never
+        // point to an item outside the current sale — the source of
+        // the bug where notes silently applied to every item because
+        // the picked stock number belonged to a totally different sale.
+        $items = $get('../../items') ?? [];
+        $options = [];
+        foreach ($items as $item) {
+            $pid = $item['product_item_id'] ?? null;
+            if (!$pid) continue; // skip non-tag / custom items — they have no product_item_id
+            $stockNo = $item['stock_no_display'] ?? '';
+            $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 40);
+            $options[$pid] = trim("{$stockNo} — {$desc}");
+        }
+        return $options;
+    })
+    ->searchable()
+    ->live()
+    ->columnSpanFull(),
 
-                                            Select::make('applicable_item_indexes')
-                                                ->label('Or, apply this job to an item in this sale')
-                                                ->multiple()
-                                                ->searchable()
-                                                ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
-                                                ->options(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $options = [];
-                                                    foreach (array_values($items) as $i => $item) {
-                                                        $stockNo = $item['stock_no_display'] ?? null;
-                                                        $desc    = $item['custom_description'] ?? '';
-                                                        $label   = $stockNo
-                                                            ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
-                                                            : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
-                                                        $options[$i] = ($i + 1) . '. ' . $label;
-                                                    }
-                                                    return $options;
-                                                })
-                                                ->placeholder('Select items this job applies to...')
-                                                ->columnSpanFull()
-                                                ->live(),
+                                           Select::make('applicable_item_indexes')
+    ->label('Or, apply this job to an item in this sale')
+    ->multiple()
+    ->searchable()
+    ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
+    ->options(function (Get $get) {
+        $items = $get('../../items') ?? [];
+        $options = [];
+        foreach (array_values($items) as $i => $item) {
+            $stockNo = $item['stock_no_display'] ?? null;
+            $desc    = $item['custom_description'] ?? '';
+            $label   = $stockNo
+                ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
+                : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
+            $options[$i] = ($i + 1) . '. ' . $label;
+        }
+        return $options;
+    })
+    ->placeholder('Select items this job applies to...')
+    ->required(fn(Get $get) => !$get('job_applies_to_store_item'))
+    ->columnSpanFull()
+    ->live(),
+
+Placeholder::make('job_target_confirmation')
+    ->hiddenLabel()
+    ->live()
+    ->content(function (Get $get) {
+        $appliesToStore = $get('job_applies_to_store_item');
+        $storeItemId    = $get('store_item_id');
+        $indexes        = $get('applicable_item_indexes') ?? [];
+        $items          = $get('../../items') ?? [];
+
+        if ($appliesToStore && $storeItemId) {
+            $item = \App\Models\ProductItem::find($storeItemId);
+            $label = $item ? "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40) : 'Unknown item';
+            return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$label}</strong></div>");
+        }
+
+        if (!empty($indexes)) {
+            $labels = [];
+            foreach ($indexes as $idx) {
+                $item = array_values($items)[$idx] ?? null;
+                if ($item) {
+                    $stockNo = $item['stock_no_display'] ?? '';
+                    $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 30);
+                    $labels[] = trim("{$stockNo} {$desc}");
+                }
+            }
+            $joined = implode(', ', $labels);
+            return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$joined}</strong></div>");
+        }
+
+        return new HtmlString("<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:700;'>⚠️ No item selected yet — this job will NOT print on any item until you pick one above.</div>");
+    })
+    ->columnSpanFull(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')

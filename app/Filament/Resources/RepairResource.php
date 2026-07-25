@@ -163,20 +163,20 @@ class RepairResource extends Resource
                                         ->icon('heroicon-o-tag')
                                         ->schema([
                                             Grid::make(2)->schema([
-                                                Toggle::make('is_warranty')
-                                                    ->label('Covered Under Warranty?')
-                                                    ->helperText('Automatically sets all service costs to $0.00')
-                                                    ->onColor('success')->inline(false)->live()
-                                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
-                                                        if ($state) {
-                                                            // Zero out all service costs via the services array
-                                                            $set('services', collect($set('services') ?? [])->map(function ($svc) {
-                                                                $svc['estimated_cost'] = 0;
-                                                                $svc['final_cost']     = 0;
-                                                                return $svc;
-                                                            })->toArray());
-                                                        }
-                                                    }),
+                                               Toggle::make('is_warranty')
+    ->label('Covered Under Warranty?')
+    ->helperText('Automatically sets all service costs to $0.00')
+    ->onColor('success')->inline(false)->live()
+    ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+        if ($state) {
+            // Zero out all service costs via the services array
+            $set('services', collect($get('services') ?? [])->map(function ($svc) {
+                $svc['estimated_cost'] = 0;
+                $svc['final_cost']     = 0;
+                return $svc;
+            })->toArray());
+        }
+    }),
                                                 Toggle::make('is_from_store_stock')->label('Was this bought from our store?')->inline(false)->live(),
                                             ]),
                                             Select::make('original_product_id')
