@@ -598,9 +598,8 @@ foreach ($items as $item) {
                     ->label('DATE')->date('m/d/y')->sortable()->size('sm')->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('repair_no')
-                    ->label('JOB #')->searchable()
-                    ->formatStateUsing(fn($state) => '#'.substr(preg_replace('/[^0-9]/','', $state),-4))
-                    ->weight('bold')->copyable()->grow(false)->toggleable(),
+    ->label('JOB #')->searchable()
+    ->weight('bold')->copyable()->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('customer.last_name')
                     ->label('CUSTOMER')->searchable(['last_name','name'])

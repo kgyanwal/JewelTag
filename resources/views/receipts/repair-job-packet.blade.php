@@ -475,11 +475,19 @@
         </div>
 
         <table class="meta-table">
-            <tr>
-                <td width="33%"><strong>Repair #:</strong> {{ $repair->repair_no }}</td>
-                <td width="34%"><strong>Sales Assistant:</strong> {{ $repair->dropped_by ?? 'N/A' }}</td>
-                <td class="right-align" width="33%">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</td>
-            </tr>
+        <tr>
+    <td width="33%"><strong>Repair #:</strong> {{ $repair->repair_no }}</td>
+    <td width="34%"><strong>Sales Assistant:</strong> {{ $repair->dropped_by ?? 'N/A' }}</td>
+    <td class="right-align" width="33%">{{ $repair->store?->legal_name ?? 'Diamond Square' }}</td>
+</tr>
+@if($repair->sale_id)
+<tr>
+    <td colspan="3">
+        <strong>Job No.:</strong>
+        {{ \App\Models\Sale::find($repair->sale_id)?->invoice_number ?? '—' }}
+    </td>
+</tr>
+@endif
             <tr>
                 <td><strong>Date Received:</strong> {{ $repair->created_at->format('m/d/Y') }}</td>
                 <td><strong>Status:</strong> <span class="status-pill {{ $st['class'] }}">{{ $st['label'] }}</span></td>
@@ -618,6 +626,14 @@
         <table class="meta-table">
             <tr>
                 <td width="33%"><strong>Repair #:</strong> {{ $repair->repair_no }}</td>
+                @if($repair->sale_id)
+<tr>
+    <td colspan="3">
+        <strong>Job No.:</strong>
+        {{ \App\Models\Sale::find($repair->sale_id)?->invoice_number ?? '—' }}
+    </td>
+</tr>
+@endif
                 <td width="34%"><strong>Staff:</strong> {{ $repair->dropped_by ?? 'N/A' }}</td>
                 <td class="right-align" width="33%">Date In: {{ $repair->created_at->format('m/d/Y') }}</td>
             </tr>
