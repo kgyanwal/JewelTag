@@ -159,7 +159,7 @@ class ZebraPrinterService
                 return false;
             }
 
-            $timeout = 10;
+           $timeout = 10;
             $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, $timeout);
 
             if (!$socket) {
@@ -171,12 +171,26 @@ class ZebraPrinterService
             stream_set_timeout($socket, $timeout);
 
             $length = strlen($combinedZpl);
-            $chunkSize = 8192; 
+            $chunkSize = 8192;
+            $written = 0;
             for ($i = 0; $i < $length; $i += $chunkSize) {
-                fwrite($socket, substr($combinedZpl, $i, $chunkSize));
+                $bytesWritten = fwrite($socket, substr($combinedZpl, $i, $chunkSize));
+                if ($bytesWritten === false) {
+                    Log::error("Zebra socket write failed mid-stream at offset {$i}");
+                    break;
+                }
+                $written += $bytesWritten;
+            }
+
+            if ($written < $length) {
+                Log::warning("Zebra print incomplete: wrote {$written} of {$length} bytes");
             }
 
             fflush($socket);
+            // Let the printer fully consume the buffer before we tear down the
+            // connection — closing immediately after fflush can truncate the
+            // job on some Zebra firmware, producing a blank/partial label.
+            usleep(200000); // 200ms
             fclose($socket);
 
             $this->logPrint($records, $printType, 'success');
@@ -211,15 +225,60 @@ class ZebraPrinterService
     }
 
     public function setDefaultLayout() {
-        $defaults = [
-            'stock_no' => ['x_pos' => 60, 'y_pos' => 6, 'height' => 0, 'width' => 0, 'font_size' => 15, 'is_bold' => true],
-            'desc'     => ['x_pos' => 60, 'y_pos' => 90, 'height' => 0, 'width' => 0, 'font_size' => 12, 'is_bold' => false],
-            'barcode'  => ['x_pos' => 60, 'y_pos' => 40, 'height' => 40, 'width' => 1, 'font_size' => 1, 'is_bold' => false],
-            'price'    => ['x_pos' => 60, 'y_pos' => 20, 'height' => 0, 'width' => 0, 'font_size' => 15, 'is_bold' => true],
-            'dwmtmk'   => ['x_pos' => 60, 'y_pos' => 24, 'height' => 0, 'width' => 0, 'font_size' => 12, 'is_bold' => false],
-            'deptcat'  => ['x_pos' => 60, 'y_pos' => 26, 'height' => 0, 'width' => 0, 'font_size' => 12, 'is_bold' => false],
-            'rfid'     => ['x_pos' => 60, 'y_pos' => 135, 'height' => 0, 'width' => 0, 'font_size' => 12, 'is_bold' => false],
+        // Label canvas: PW900 x LL150 (3in x 0.5in @ 300dpi)
+        $labelHeight = 150;
+        $marginTop   = (int) round($labelHeight * 0.06);   // ~9 dots
+        $marginBot   = (int) round($labelHeight * 0.06);   // ~9 dots
+        $usableH     = $labelHeight - $marginTop - $marginBot;
+
+        // Rows stacked in the left text column: stock_no, desc, price, dwmtmk
+        // Ratio of usable height each row consumes (must sum to <= 1)
+        $rows = [
+            'stock_no' => ['ratio' => 0.20, 'font_ratio' => 0.16, 'bold' => true],
+            'desc'     => ['ratio' => 0.28, 'font_ratio' => 0.12, 'bold' => false],
+            'price'    => ['ratio' => 0.24, 'font_ratio' => 0.16, 'bold' => true],
+            'dwmtmk'   => ['ratio' => 0.28, 'font_ratio' => 0.10, 'bold' => false],
         ];
+
+        $defaults = [];
+        $cursorY  = $marginTop;
+
+        foreach ($rows as $field => $cfg) {
+            $slotHeight = (int) round($usableH * $cfg['ratio']);
+            $fontSize   = max(10, (int) round($labelHeight * $cfg['font_ratio']));
+
+            $defaults[$field] = [
+                'x_pos'     => 20,
+                'y_pos'     => $cursorY,
+                'font_size' => $fontSize,
+                'is_bold'   => $cfg['bold'],
+                'height'    => 0,
+                'width'     => 0,
+            ];
+
+            $cursorY += $slotHeight;
+        }
+
+        // RFID / category share the last line (rarely both printed at once)
+        $lastLineY = $labelHeight - $marginBot - (int) round($labelHeight * 0.10);
+        $defaults['rfid'] = [
+            'x_pos' => 20, 'y_pos' => $lastLineY,
+            'font_size' => max(10, (int) round($labelHeight * 0.09)),
+            'is_bold' => false, 'height' => 0, 'width' => 0,
+        ];
+        $defaults['deptcat'] = [
+            'x_pos' => 20, 'y_pos' => $lastLineY,
+            'font_size' => max(10, (int) round($labelHeight * 0.09)),
+            'is_bold' => false, 'height' => 0, 'width' => 0,
+        ];
+
+        // Barcode sits in its own right-side column
+        $defaults['barcode'] = [
+            'x_pos' => 400, 'y_pos' => (int) round($labelHeight * 0.20),
+            'font_size' => 1, 'is_bold' => false,
+            'height' => (int) round($labelHeight * 0.40), 'width' => 2,
+        ];
+
         foreach ($defaults as $fieldId => $data) {
             LabelLayout::updateOrCreate(['field_id' => $fieldId], $data);
         }

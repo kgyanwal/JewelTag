@@ -124,15 +124,46 @@ class AdminPanelProvider extends PanelProvider
 
     window.addEventListener('zebra-print', event => {
         const zpl = event.detail.zpl;
-        if (typeof BrowserPrint === 'undefined') return alert("Please start Zebra Browser Print software.");
+        if (!zpl || !zpl.trim()) {
+            alert("Nothing to print — ZPL was empty.");
+            return;
+        }
+        if (typeof BrowserPrint === 'undefined') {
+            alert("Please start Zebra Browser Print software.");
+            return;
+        }
+
+        // Always re-query devices fresh — never trust a cached/stale device handle,
+        // especially after another app (e.g. OnSwim) may have used the same printer.
         BrowserPrint.getLocalDevices(function(devices) {
-            const printer = devices.find(d => d.name.includes('192.168.1.60'));
-            if (printer) {
-                printer.send(zpl, () => console.log("Sent to ZD621R"), (err) => alert("Printer Error: " + err));
-            } else {
-                BrowserPrint.getDefaultDevice("printer", (d) => d.send(zpl));
+            const printer = devices.find(d => d.name.includes('192.168.1.60'))
+                || devices[0];
+
+            if (!printer) {
+                alert("No printer found. Check that the Zebra printer is powered on and reachable.");
+                return;
             }
-        }, () => {}, "printer");
+
+            // Small settle delay avoids sending into a printer that just finished
+            // handling a prior job from another application (buffer not yet clear).
+            setTimeout(() => {
+                printer.send(
+                    zpl,
+                    () => console.log("Sent to " + printer.name),
+                    (err) => {
+                        console.error("Print failed, retrying once:", err);
+                        // one automatic retry — covers the exact "blank until I switch apps" case
+                        setTimeout(() => {
+                            printer.send(
+                                zpl,
+                                () => console.log("Retry succeeded"),
+                                (err2) => alert("Printer Error (after retry): " + err2)
+                            );
+                        }, 500);
+                    }
+                );
+            }, 150);
+        }, () => alert("Could not reach Zebra Browser Print service."), "printer");
     });
 
     setInterval(updatePrinterStatus, 8000);

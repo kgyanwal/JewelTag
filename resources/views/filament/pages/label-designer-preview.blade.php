@@ -111,7 +111,7 @@ x-init="$nextTick(() => {
 
         {{-- RIGHT PANEL: Official Rendering --}}
         <div class="w-full lg:w-2/5 bg-white rounded-[1.5rem] flex flex-col items-center justify-center border-[10px] border-[#1e293b] shadow-2xl relative min-h-full">
-            <span class="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] py-4">Official ZPL Rendering</span>
+            <span class="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] py-4">ZPL Rendering</span>
             <div class="flex-grow flex items-center justify-center p-8">
                 <img :src="labelPreview" class="max-w-full h-auto rounded shadow-lg border border-slate-50 transition-all duration-300" alt="ZPL Output">
             </div>
