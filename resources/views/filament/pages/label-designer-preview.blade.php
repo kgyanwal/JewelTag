@@ -20,7 +20,7 @@
             zpl += `^FO${this.fields[id+'_x']},${this.fields[id+'_y']}^A0N,${h},${w}^FD${this.fields[id+'_val']}^FS`;
         });
         zpl += `^FO${this.fields.barcode_x},${this.fields.barcode_y}^BY${this.fields.barcode_width},2.0^BCN,${this.fields.barcode_height},N,N,N,N^FD${this.fields.barcode_val}^FS^XZ`;
-        return 'https://api.labelary.com/v1/printers/12dpmm/labels/900x150/0/' + encodeURIComponent(zpl);
+        return 'https://api.labelary.com/v1/printers/12dpmm/labels/3x0.5/0/' + encodeURIComponent(zpl);
     }
 }"
 x-init="$nextTick(() => {
