@@ -96,7 +96,12 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn() => <<<'HTML'
+                function () {
+                    $printerIp = \Illuminate\Support\Facades\DB::table('site_settings')
+                        ->where('key', 'zebra_printer_ip')
+                        ->value('value') ?? '';
+
+                    return <<<HTML
 <script>
     document.documentElement.classList.add('light');
     document.documentElement.classList.remove('dark');
@@ -122,12 +127,13 @@ class AdminPanelProvider extends PanelProvider
         });
     }
 
-    function jtNotify(title, body, color = 'success') {
+    function jtNotify(title, body, color) {
+        color = color || 'success';
         const el = document.createElement('div');
         el.textContent = title + (body ? (' — ' + body) : '');
         el.style.cssText = `
             position:fixed; top:20px; right:20px; z-index:99999;
-            background:${color === 'success' ? '#0F7A5C' : '#B8463F'};
+            background:\${color === 'success' ? '#0F7A5C' : '#B8463F'};
             color:#fff; padding:12px 18px; border-radius:10px;
             font-family:Inter,sans-serif; font-size:13px; font-weight:600;
             box-shadow:0 8px 24px rgba(0,0,0,0.25);
@@ -151,9 +157,31 @@ class AdminPanelProvider extends PanelProvider
                 return;
             }
 
+            // This store's configured printer IP, injected server-side from
+            // site_settings so each tenant targets their own printer.
+            const configuredIp = '{$printerIp}';
+
             BrowserPrint.getLocalDevices(function(devices) {
-                const printer = devices.find(d => d.name.includes('192.168.1.60'))
-                    || devices[0];
+                // Prefer the device matching this store's configured IP
+                // (checked against uid, since name usually doesn't contain it).
+                let printer = null;
+
+                if (configuredIp) {
+                    printer = devices.find(d =>
+                        (d.uid && d.uid.includes(configuredIp)) ||
+                        (d.name && d.name.includes(configuredIp))
+                    );
+                }
+
+                // Next best: any network-connected printer, rather than a
+                // local driver copy that may not be the physically wired unit.
+                if (!printer) {
+                    printer = devices.find(d => d.connection === 'network');
+                }
+
+                if (!printer) {
+                    printer = devices[0];
+                }
 
                 if (!printer) {
                     jtNotify("No printer found", "Check that the Zebra printer is powered on and reachable.", "danger");
@@ -673,7 +701,8 @@ section.fi-section > .fi-section-header {
 }
 
 </style>
-HTML
+HTML;
+                }
             )
             ->resources([
                 \App\Filament\Resources\StoreResource::class,
@@ -737,13 +766,13 @@ HTML
                 \App\Filament\Pages\EodAmendmentRequests::class,
                 \App\Filament\Pages\RfidTracking::class,
                 \App\Filament\Pages\ExchangedCustomOrdersReport::class,
-                 \App\Filament\Pages\PrintHistory::class,
+                \App\Filament\Pages\PrintHistory::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
                 \App\Filament\Widgets\DashboardQuickMenu::class,
                 \App\Filament\Widgets\ScrapGoldCalculator::class,
-                
+
             ])
             ->middleware([
                 EncryptCookies::class,
