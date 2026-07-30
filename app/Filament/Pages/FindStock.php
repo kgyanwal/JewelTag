@@ -1115,15 +1115,40 @@ TableAction::make('push_to_shopify')
                     ->action(function (EloquentCollection $records, BulkAction $action) {
                         $service     = new ZebraPrinterService();
                         $combinedZpl = "";
+                        $skipped     = 0;
 
                         foreach ($records as $record) {
-                            $combinedZpl .= $service->getZplCode($record);
+                            $zpl = $service->getZplCode($record, false); // barcode tags, not RFID
+                            if (empty(trim($zpl))) {
+                                $skipped++;
+                                continue;
+                            }
+                            $combinedZpl .= $zpl;
                         }
 
-                        $this->dispatch('print-zpl-locally', zpl: $combinedZpl);
+                        if (empty(trim($combinedZpl))) {
+                            Notification::make()
+                                ->title('Nothing to print')
+                                ->body('No valid label data could be generated for the selected items.')
+                                ->danger()
+                                ->send();
+                            $action->deselectRecordsAfterCompletion();
+                            return;
+                        }
+
+                        // Must match the listener in AdminPanelProvider exactly
+                        $this->dispatch('zebra-print', zpl: $combinedZpl);
+
+                        if ($skipped > 0) {
+                            Notification::make()
+                                ->title("Printed with {$skipped} skipped")
+                                ->body("{$skipped} item(s) had no printable data and were skipped.")
+                                ->warning()
+                                ->send();
+                        }
+
                         $action->deselectRecordsAfterCompletion();
                     }),
-
                 // 🚀 SHOPIFY: BULK SYNC ACTION ──────────────────────────────────────────────
                 BulkAction::make('bulk_push_shopify')
                     ->label('Push to Shopify')
