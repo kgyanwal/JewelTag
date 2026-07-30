@@ -264,10 +264,9 @@ class ZebraRfidService
      */
     protected function normalizeEpc(string $epc): string
     {
-        // Remove spaces, uppercase
+        // Remove spaces, uppercase, pad to 24 hex chars — must match encoding format in ZebraPrinterService
         $clean = strtoupper(str_replace(' ', '', $epc));
-        // Strip leading zeros if short code stored without them
-        return ltrim($clean, '0') ?: '0';
+        return str_pad($clean, 24, '0', STR_PAD_LEFT);
     }
 
     // ── LLRP Binary Message Builders ─────────────────────────────────────────

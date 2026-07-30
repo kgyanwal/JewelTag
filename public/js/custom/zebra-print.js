@@ -1,4 +1,4 @@
-window.addEventListener('trigger-zebra-print', event => {
+window.addEventListener('zebra-print', event => {
     // 1. Safe Check for BrowserPrint and Configuration
     if (typeof BrowserPrint !== 'undefined') {
         

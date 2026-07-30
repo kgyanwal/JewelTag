@@ -688,6 +688,7 @@ HTML
                 \App\Filament\Pages\EodAmendmentRequests::class,
                 \App\Filament\Pages\RfidTracking::class,
                 \App\Filament\Pages\ExchangedCustomOrdersReport::class,
+                 \App\Filament\Pages\PrintHistory::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,

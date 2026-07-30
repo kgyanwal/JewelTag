@@ -143,6 +143,8 @@ class ZebraPrinterService
 
     public function bulkPrintJewelryTags($records, $useRFID = true) 
     {
+        $printType = count($records) > 1 ? 'bulk' : ($useRFID ? 'rfid' : 'barcode');
+
         try {
             $combinedZpl = "";
             foreach ($records as $record) {
@@ -152,13 +154,17 @@ class ZebraPrinterService
                 }
             }
 
-            if (empty(trim($combinedZpl))) return false;
+            if (empty(trim($combinedZpl))) {
+                $this->logPrint($records, $printType, 'failed', 'No ZPL generated');
+                return false;
+            }
 
             $timeout = 10;
             $socket = @fsockopen($this->ZEBRA_PRINTER_IP, 9100, $errno, $errstr, $timeout);
 
             if (!$socket) {
                 Log::error("Zebra Bulk Connection Failed: $errstr ($errno)");
+                $this->logPrint($records, $printType, 'failed', "$errstr ($errno)");
                 return false;
             }
 
@@ -172,10 +178,35 @@ class ZebraPrinterService
 
             fflush($socket);
             fclose($socket);
+
+            $this->logPrint($records, $printType, 'success');
             return true;
         } catch (\Exception $e) {
             Log::error("Zebra Bulk Print Error: " . $e->getMessage());
+            $this->logPrint($records, $printType, 'failed', $e->getMessage());
             return false;
+        }
+    }
+
+    protected function logPrint($records, string $printType, string $status, ?string $errorMessage = null): void
+    {
+        try {
+            $user = auth()->user();
+            foreach ($records as $record) {
+                \App\Models\PrintLog::create([
+                    'product_item_id' => $record->id ?? null,
+                    'barcode'         => $record->barcode ?? null,
+                    'rfid_code'       => $record->rfid_code ?? null,
+                    'print_type'      => $printType,
+                    'printer_ip'      => $this->ZEBRA_PRINTER_IP,
+                    'user_id'         => $user?->id,
+                    'user_name'       => $user?->username ?? $user?->name,
+                    'status'          => $status,
+                    'error_message'   => $errorMessage,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error("PrintLog write failed: " . $e->getMessage());
         }
     }
 
