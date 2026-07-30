@@ -91,8 +91,8 @@ class AdminPanelProvider extends PanelProvider
             ->font('Inter')
             ->maxContentWidth(MaxWidth::Full)
             ->assets([
+                Js::make('interactjs', 'https://cdn.jsdelivr.net/npm/interactjs@1.10.27/dist/interact.min.js'),
                 Js::make('zebra-library', asset('js/zebra-lib.js')),
-                Js::make('zebra-print-logic', asset('js/custom/zebra-print.js')),
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
@@ -122,49 +122,63 @@ class AdminPanelProvider extends PanelProvider
         });
     }
 
-    window.addEventListener('zebra-print', event => {
-        const zpl = event.detail.zpl;
-        if (!zpl || !zpl.trim()) {
-            alert("Nothing to print — ZPL was empty.");
-            return;
-        }
-        if (typeof BrowserPrint === 'undefined') {
-            alert("Please start Zebra Browser Print software.");
-            return;
-        }
+    function jtNotify(title, body, color = 'success') {
+        const el = document.createElement('div');
+        el.textContent = title + (body ? (' — ' + body) : '');
+        el.style.cssText = `
+            position:fixed; top:20px; right:20px; z-index:99999;
+            background:${color === 'success' ? '#0F7A5C' : '#B8463F'};
+            color:#fff; padding:12px 18px; border-radius:10px;
+            font-family:Inter,sans-serif; font-size:13px; font-weight:600;
+            box-shadow:0 8px 24px rgba(0,0,0,0.25);
+            animation: jt-toast-in 200ms ease-out;
+        `;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3500);
+    }
 
-        // Always re-query devices fresh — never trust a cached/stale device handle,
-        // especially after another app (e.g. OnSwim) may have used the same printer.
-        BrowserPrint.getLocalDevices(function(devices) {
-            const printer = devices.find(d => d.name.includes('192.168.1.60'))
-                || devices[0];
+    if (!window.__jtZebraListenerAttached) {
+        window.__jtZebraListenerAttached = true;
 
-            if (!printer) {
-                alert("No printer found. Check that the Zebra printer is powered on and reachable.");
+        window.addEventListener('zebra-print', event => {
+            const zpl = event.detail.zpl;
+            if (!zpl || !zpl.trim()) {
+                jtNotify("Nothing to print", "ZPL was empty.", "danger");
+                return;
+            }
+            if (typeof BrowserPrint === 'undefined') {
+                jtNotify("Zebra app not running", "Please start Zebra Browser Print software.", "danger");
                 return;
             }
 
-            // Small settle delay avoids sending into a printer that just finished
-            // handling a prior job from another application (buffer not yet clear).
-            setTimeout(() => {
-                printer.send(
-                    zpl,
-                    () => console.log("Sent to " + printer.name),
-                    (err) => {
-                        console.error("Print failed, retrying once:", err);
-                        // one automatic retry — covers the exact "blank until I switch apps" case
-                        setTimeout(() => {
-                            printer.send(
-                                zpl,
-                                () => console.log("Retry succeeded"),
-                                (err2) => alert("Printer Error (after retry): " + err2)
-                            );
-                        }, 500);
-                    }
-                );
-            }, 150);
-        }, () => alert("Could not reach Zebra Browser Print service."), "printer");
-    });
+            BrowserPrint.getLocalDevices(function(devices) {
+                const printer = devices.find(d => d.name.includes('192.168.1.60'))
+                    || devices[0];
+
+                if (!printer) {
+                    jtNotify("No printer found", "Check that the Zebra printer is powered on and reachable.", "danger");
+                    return;
+                }
+
+                setTimeout(() => {
+                    printer.send(
+                        zpl,
+                        () => jtNotify("Print sent", "Sent to " + printer.name, "success"),
+                        (err) => {
+                            console.error("Print failed, retrying once:", err);
+                            setTimeout(() => {
+                                printer.send(
+                                    zpl,
+                                    () => jtNotify("Print sent", "Sent to " + printer.name + " (after retry)", "success"),
+                                    (err2) => jtNotify("Print failed", String(err2), "danger")
+                                );
+                            }, 500);
+                        }
+                    );
+                }, 150);
+            }, () => jtNotify("Connection error", "Could not reach Zebra Browser Print service.", "danger"), "printer");
+        });
+    }
 
     setInterval(updatePrinterStatus, 8000);
     window.addEventListener('load', updatePrinterStatus);
@@ -540,6 +554,10 @@ section.fi-section > .fi-section-header {
 @keyframes jt-dot-breathe {
     0%, 100% { box-shadow: 0 0 0 0 rgba(15,122,92,0.45); }
     50%      { box-shadow: 0 0 0 6px rgba(15,122,92,0); }
+}
+@keyframes jt-toast-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── PAGE HEADER ──────────────────────────── */

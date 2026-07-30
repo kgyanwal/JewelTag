@@ -284,13 +284,6 @@
               <div class="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white">MK</div>
               <div class="w-12 h-12 rounded-full bg-amber-600 flex items-center justify-center text-white text-sm font-bold border-2 border-white">+</div>
             </div>
-            <div class="ml-4">
-              <p class="text-white/80 text-sm"><span class="text-white font-bold">750+</span> jewelers transformed</p>
-              <div class="flex items-center mt-1">
-                <i class="fas fa-star text-yellow-400 text-sm"></i><i class="fas fa-star text-yellow-400 text-sm"></i><i class="fas fa-star text-yellow-400 text-sm"></i><i class="fas fa-star text-yellow-400 text-sm"></i><i class="fas fa-star text-yellow-400 text-sm"></i>
-                <span class="text-white/60 text-xs ml-2">4.95/5 (428 reviews)</span>
-              </div>
-            </div>
           </div>
         </div>
 
