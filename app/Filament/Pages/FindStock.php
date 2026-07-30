@@ -848,7 +848,21 @@ class FindStock extends Page implements HasForms, HasTable
                         ->label('Print Barcode')
                         ->icon('heroicon-o-printer')
                         ->color('gray')
-                        ->action(fn($record) => $this->dispatch('print-barcode', record: $record->id)),
+                        ->action(function ($record) {
+                            $service = new ZebraPrinterService();
+                            $zpl = $service->getZplCode($record, false);
+
+                            if (empty(trim($zpl))) {
+                                Notification::make()
+                                    ->title('Nothing to print')
+                                    ->body('No valid label data for this item.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $this->dispatch('zebra-print', zpl: $zpl);
+                        }),
 
                     TableAction::make('hold_item')
                         ->label('Place on Hold')
