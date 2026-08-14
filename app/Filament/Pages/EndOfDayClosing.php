@@ -143,7 +143,27 @@ class EndOfDayClosing extends Page
         if ($laybuyTotal > 0) {
             $systemTotals['laybuy'] = ($systemTotals['laybuy'] ?? 0) + $laybuyTotal;
         }
+// ── Laybuy instalments only in laybuy_payments (not in payments) ──
+$laybuyInstalments = \App\Models\LaybuyPayment::whereBetween('created_at', [$startUtc, $endUtc])
+    ->get();
 
+foreach ($laybuyInstalments as $lp) {
+    // Skip if already counted via payments table (quick_pay writes both)
+    $alreadyCounted = \App\Models\Payment::where('sale_id', function ($q) use ($lp) {
+            $q->select('sale_id')->from('laybuys')->where('id', $lp->laybuy_id);
+        })
+        ->whereRaw('ABS(amount - ?) < 0.01', [$lp->amount])
+        ->whereRaw('ABS(TIMESTAMPDIFF(SECOND, paid_at, ?)) < 5', [$lp->created_at])
+        ->exists();
+
+    if (!$alreadyCounted) {
+        $key = strtolower(trim($lp->payment_method ?? 'cash'));
+        $systemTotals[$key] = ($systemTotals[$key] ?? 0) + (float) $lp->amount;
+        if (!array_key_exists($key, $this->paymentMethods)) {
+            $this->paymentMethods[$key] = strtoupper(trim($lp->payment_method ?? 'CASH'));
+        }
+    }
+}
         /*
         |----------------------------------------------------------------------
         | 6. Per-staff sales summary (keyed by payments.paid_at — NOT sales.created_at)
