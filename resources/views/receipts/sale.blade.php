@@ -60,20 +60,41 @@ if ($hasRepair) {
         $displayTotal += floatval($sale->trade_in_value);
     }
 
-    $allPayments = collect();
-    if ($sale->payments) {
-        $allPayments = $allPayments->merge($sale->payments);
-    }
-    if ($isCustomDeposit) {
-        foreach($sale->items as $item) {
-            if ($item->custom_order_id && $item->customOrder && $item->customOrder->payments) {
-                $allPayments = $allPayments->merge($item->customOrder->payments);
-            }
+    // REPLACE WITH:
+$allPayments = collect();
+if ($sale->payments) {
+    $allPayments = $allPayments->merge($sale->payments);
+}
+if ($isCustomDeposit) {
+    foreach($sale->items as $item) {
+        if ($item->custom_order_id && $item->customOrder && $item->customOrder->payments) {
+            $allPayments = $allPayments->merge($item->customOrder->payments);
         }
     }
+}
 
-    $totalPaid = $allPayments->sum('amount');
-    $balance = max(0, $displayTotal - $totalPaid);
+// ── IMPORTED SALES: also include sale_payments table ──
+// Avoids double-counting by checking if sale_payments exist
+// and the amounts aren't already in payments table
+$importedPayments = $sale->salePayments ?? collect();
+if ($importedPayments->count() > 0) {
+    $existingTotal = $allPayments->sum('amount');
+    $importedTotal = $importedPayments->sum('amount');
+    // Only add imported payments if they're not already reflected
+    // (i.e. payments table doesn't already have the same total)
+    if (abs($existingTotal - $importedTotal) > 0.01 || $existingTotal == 0) {
+        $allPayments = $allPayments->merge(
+            $importedPayments->map(fn($sp) => (object)[
+                'amount' => $sp->amount,
+                'method' => $sp->payment_method,
+                'paid_at' => $sp->payment_date,
+            ])
+        );
+    }
+}
+
+$totalPaid = $allPayments->sum('amount');
+$balance = max(0, $displayTotal - $totalPaid);
     $isFullyPaid = $balance <= 0.01;
     $isLaybuy = $sale->payment_method === 'laybuy';
     $isPending = in_array($sale->status, ['pending', 'inprogress']);
