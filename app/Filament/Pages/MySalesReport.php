@@ -200,15 +200,7 @@ class MySalesReport extends Page implements HasTable, HasForms
         $tz           = self::storeTimezone();
 
         return $table
-            ->query(
-                Sale::query()
-                    ->with('customer')
-                    ->where('status', 'completed')
-                    ->where('balance_due', 0)
-                    ->when(!$isPrivileged, function (Builder $query) {
-                        $query->whereJsonContains('sales_person_list', auth()->user()->name);
-                    })
-            )
+           ->query($this->getTableQuery())
             ->columns([
                 TextColumn::make('effective_date')
                     ->label('Completed Date')
