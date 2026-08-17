@@ -371,16 +371,19 @@ class MySalesReport extends Page implements HasTable, HasForms
             $query->whereRaw("$expr <= ?", [self::localEndOfDayUtc($until, $tz)]);
         }
 
-        if ($isPrivileged) {
-            $names = $this->data['associates'] ?? $this->associates ?? [];
-            if (!empty($names)) {
-                $query->where(function (Builder $q) use ($names) {
-                    foreach ($names as $name) {
-                        $q->orWhereJsonContains('sales_person_list', $name);
-                    }
-                });
+      if ($isPrivileged) {
+    $names = $this->data['associates'] ?? $this->associates ?? [];
+    if (!empty($names)) {
+        $query->where(function (Builder $q) use ($names) {
+            foreach ($names as $name) {
+                $q->orWhereRaw(
+                    "JSON_CONTAINS(LOWER(sales_person_list), LOWER(JSON_QUOTE(?)))",
+                    [$name]
+                );
             }
-        }
+        });
+    }
+}
 
      $query->orderByRaw(self::effectiveDateExpr() . ' DESC')
               ->orderBy('created_at', 'desc')
