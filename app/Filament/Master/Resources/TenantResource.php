@@ -4,8 +4,11 @@ namespace App\Filament\Master\Resources;
 
 use App\Filament\Master\Resources\TenantResource\Pages;
 use App\Models\Tenant;
+use App\Models\Plan;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -27,20 +30,17 @@ class TenantResource extends Resource
                 Forms\Components\Section::make('Store Infrastructure')
                     ->columns(2)
                     ->schema([
-                      Forms\Components\TextInput::make('id')
+                        Forms\Components\TextInput::make('id')
                             ->label('Database ID (Tenant ID)')
                             ->required()
                             ->disabled(fn($record) => $record !== null)
                             ->placeholder('e.g. lxdiamond')
-                            
-                            // 🚀 THE FIX: Allow any normal name, but block 1-2 letter typos and spaces
-                            ->minLength(3) 
-                            ->regex('/^[a-z0-9]+$/') // Only lowercase letters and numbers allowed
+                            ->minLength(3)
+                            ->regex('/^[a-z0-9]+$/')
                             ->validationMessages([
                                 'regex' => 'The Store ID can only contain lowercase letters and numbers (no spaces or symbols allowed).',
                                 'min' => 'The Store ID must be at least 3 characters long to prevent accidental typos.',
                             ])
-                            
                             ->unique(ignoreRecord: true),
                         Forms\Components\TextInput::make('domain')
                             ->label('Primary Domain')
@@ -49,7 +49,6 @@ class TenantResource extends Resource
                             ->helperText('This creates the web address for the store.'),
                     ]),
 
-                // 🚀 Initial Admin Section (Only visible on Create)
                 Forms\Components\Section::make('Initial Superadmin Account')
                     ->description('This user will be created automatically inside the new tenant database.')
                     ->visible(fn($record) => $record === null)
@@ -75,7 +74,49 @@ class TenantResource extends Resource
                             ->maxLength(4)
                             ->default('1234')
                             ->dehydrated(false),
-                    ])
+                    ]),
+
+                Forms\Components\Section::make('Plan & Subscription')
+                    ->icon('heroicon-o-credit-card')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Select::make('plan_id')
+                            ->label('Assigned Plan')
+                            ->options(fn () => Plan::where('is_active', true)->orderBy('sort_order')->pluck('name', 'id'))
+                            ->required()
+                            ->native(false)
+                            ->live()
+                            ->default(fn () => Plan::where('slug', 'pro')->value('id')),
+
+                        Forms\Components\Select::make('plan_status')
+                            ->label('Subscription Status')
+                            ->options([
+                                'trial'     => '⏳ Trial',
+                                'active'    => '✅ Active',
+                                'suspended' => '🚫 Suspended',
+                                'cancelled' => '❌ Cancelled',
+                            ])
+                            ->default('trial')
+                            ->required()
+                            ->native(false)
+                            ->live(),
+
+                        Forms\Components\DatePicker::make('trial_ends_at')
+                            ->label('Trial Ends')
+                            ->visible(fn (Get $get) => $get('plan_status') === 'trial')
+                            ->default(now()->addDays(3)),
+
+                        Forms\Components\DatePicker::make('plan_expires_at')
+                            ->label('Plan Expiry Date')
+                            ->visible(fn (Get $get) => in_array($get('plan_status'), ['active', 'suspended']))
+                            ->helperText('Leave blank for no expiry'),
+
+                        Forms\Components\Textarea::make('suspension_reason')
+                            ->label('Suspension Reason')
+                            ->visible(fn (Get $get) => $get('plan_status') === 'suspended')
+                            ->columnSpanFull()
+                            ->rows(2),
+                    ]),
             ]);
     }
 
@@ -84,7 +125,50 @@ class TenantResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('id')->label('Store ID')->searchable()->weight('bold'),
-Tables\Columns\ToggleColumn::make('is_active')
+
+                TextColumn::make('plan.name')
+                    ->label('Plan')
+                    ->badge()
+                    ->color(fn ($record) => match ($record->plan?->slug) {
+                        'basic'      => 'warning',
+                        'pro'        => 'success',
+                        'enterprise' => 'info',
+                        default      => 'gray',
+                    })
+                    ->formatStateUsing(fn ($state) => $state ?? 'No Plan'),
+
+                TextColumn::make('plan_status')
+                    ->label('Status')
+                    ->badge()
+                    ->color(fn ($state) => match ($state) {
+                        'active'    => 'success',
+                        'trial'     => 'warning',
+                        'suspended' => 'danger',
+                        'cancelled' => 'gray',
+                        default     => 'gray',
+                    })
+                    ->formatStateUsing(fn ($state) => match ($state) {
+                        'active'    => '✅ Active',
+                        'trial'     => '⏳ Trial',
+                        'suspended' => '🚫 Suspended',
+                        'cancelled' => '❌ Cancelled',
+                        default     => ucfirst($state ?? '—'),
+                    }),
+
+                TextColumn::make('trial_ends_at')
+                    ->label('Trial Ends')
+                    ->visible(fn ($record) => $record?->plan_status === 'trial')
+                    ->formatStateUsing(function ($state) {
+                        if (!$state) return '—';
+                        $daysLeft = now()->diffInDays($state, false);
+                        if ($daysLeft < 0) return '⚠️ Expired';
+                        if ($daysLeft === 0) return '🔴 Today';
+                        return "{$daysLeft} day(s) left";
+                    })
+                    ->badge()
+                    ->color(fn ($state) => $state && now()->diffInDays($state, false) <= 1 ? 'danger' : 'warning'),
+
+                Tables\Columns\ToggleColumn::make('is_active')
                     ->label('System Status')
                     ->onColor('success')
                     ->offColor('danger')
@@ -96,6 +180,7 @@ Tables\Columns\ToggleColumn::make('is_active')
                             ->success()
                             ->send();
                     }),
+
                 TextColumn::make('domains.domain')
                     ->label('Web Address')
                     ->badge()
@@ -124,18 +209,16 @@ Tables\Columns\ToggleColumn::make('is_active')
                     ->icon('heroicon-m-finger-print')
                     ->color('info'),
 
-               TextColumn::make('db_size')
+                TextColumn::make('db_size')
                     ->label('Database Size')
                     ->getStateUsing(function (Tenant $record) {
                         try {
                             $dbName = $record->tenancy_db_name;
-                            // Query MySQL directly to get the actual MB size of the tenant's database
                             $result = \Illuminate\Support\Facades\DB::connection('mysql')->select("
                                 SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'size' 
                                 FROM information_schema.tables 
                                 WHERE table_schema = ?
                             ", [$dbName]);
-                            
                             $size = $result[0]->size ?? 0;
                             return $size > 0 ? "{$size} MB" : 'N/A';
                         } catch (\Exception $e) {
@@ -144,7 +227,6 @@ Tables\Columns\ToggleColumn::make('is_active')
                     })
                     ->badge()
                     ->color(function (Tenant $record) {
-                        // Optional: Turn badge red if DB gets dangerously large (e.g., > 500MB)
                         try {
                             $dbName = $record->tenancy_db_name;
                             $result = \Illuminate\Support\Facades\DB::connection('mysql')->select("
@@ -157,23 +239,18 @@ Tables\Columns\ToggleColumn::make('is_active')
                     })
                     ->icon('heroicon-o-circle-stack'),
 
-                // 🚀 2. File Storage Metric (Photos, Exports, etc.)
-               TextColumn::make('storage_size')
+                TextColumn::make('storage_size')
                     ->label('File Storage')
                     ->getStateUsing(function (Tenant $record) {
                         try {
                             $sizeInBytes = 0;
-                            // Stancl/Tenancy usually prefixes folders with 'tenant' + id
                             $prefix = config('tenancy.filesystem.suffix_base', 'tenant') . $record->id;
-                            
-                            // Look in the actual physical paths where Tenancy hides the files
                             $possiblePaths = [
-                                storage_path($prefix),                 // e.g., storage/tenantlxdiamond
-                                storage_path("app/public/{$prefix}"),  // e.g., storage/app/public/tenantlxdiamond
-                                storage_path("app/{$prefix}"),         // e.g., storage/app/tenantlxdiamond
-                                public_path($prefix),                  // e.g., public/tenantlxdiamond
+                                storage_path($prefix),
+                                storage_path("app/public/{$prefix}"),
+                                storage_path("app/{$prefix}"),
+                                public_path($prefix),
                             ];
-
                             foreach ($possiblePaths as $path) {
                                 if (\Illuminate\Support\Facades\File::isDirectory($path)) {
                                     $files = \Illuminate\Support\Facades\File::allFiles($path);
@@ -182,13 +259,10 @@ Tables\Columns\ToggleColumn::make('is_active')
                                     }
                                 }
                             }
-
                             if ($sizeInBytes === 0) {
                                 return '0 MB';
                             }
-                            
                             $sizeInMb = round($sizeInBytes / 1024 / 1024, 2);
-                            
                             if ($sizeInMb > 1000) {
                                 return round($sizeInMb / 1024, 2) . ' GB';
                             }
@@ -203,8 +277,111 @@ Tables\Columns\ToggleColumn::make('is_active')
 
                 TextColumn::make('created_at')->label('Launched')->dateTime()->sortable(),
             ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('plan_id')
+                    ->label('Plan')
+                    ->options(fn () => Plan::where('is_active', true)->orderBy('sort_order')->pluck('name', 'id')),
+                Tables\Filters\SelectFilter::make('plan_status')
+                    ->label('Status')
+                    ->options(['trial' => 'Trial', 'active' => 'Active', 'suspended' => 'Suspended', 'cancelled' => 'Cancelled']),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+
+                Action::make('change_plan')
+                    ->label('Change Plan')
+                    ->icon('heroicon-o-arrows-right-left')
+                    ->color('warning')
+                    ->form([
+                        Forms\Components\Select::make('plan_id')
+                            ->label('New Plan')
+                            ->options(fn () => Plan::where('is_active', true)->orderBy('sort_order')->pluck('name', 'id'))
+                            ->required()->native(false),
+                        Forms\Components\Select::make('plan_status')
+                            ->label('Status')
+                            ->options(['trial' => 'Trial', 'active' => 'Active', 'suspended' => 'Suspended'])
+                            ->default('active')->required()->native(false),
+                    ])
+                    ->fillForm(fn (Tenant $record) => [
+                        'plan_id'     => $record->plan_id,
+                        'plan_status' => $record->plan_status,
+                    ])
+                    ->action(function (Tenant $record, array $data) {
+                        $record->update([
+                            'plan_id'     => $data['plan_id'],
+                            'plan_status' => $data['plan_status'],
+                        ]);
+                        Notification::make()->title('Plan Updated')->success()->send();
+                    }),
+
+                // ── NEW: Extend Trial ──────────────────────────────────
+                Action::make('extend_trial')
+                    ->label('Extend Trial')
+                    ->icon('heroicon-o-clock')
+                    ->color('info')
+                    ->visible(fn (Tenant $record) => $record->plan_status === 'trial' || $record->plan_status === 'suspended')
+                    ->form([
+                        Forms\Components\Select::make('extend_days')
+                            ->label('Extend By')
+                            ->options([
+                                1  => '+1 day',
+                                3  => '+3 days',
+                                7  => '+7 days',
+                                14 => '+14 days',
+                                30 => '+30 days',
+                            ])
+                            ->default(3)
+                            ->required()
+                            ->native(false),
+                    ])
+                    ->action(function (Tenant $record, array $data) {
+                        $base = $record->trial_ends_at && $record->trial_ends_at->isFuture()
+                            ? $record->trial_ends_at
+                            : now();
+
+                        $record->update([
+                            'trial_ends_at'      => $base->addDays((int) $data['extend_days']),
+                            'plan_status'        => 'trial',
+                            'suspended_at'       => null,
+                            'suspension_reason'  => null,
+                        ]);
+
+                        Notification::make()
+                            ->title('Trial Extended')
+                            ->body("New trial end date: {$record->fresh()->trial_ends_at->format('M j, Y')}")
+                            ->success()
+                            ->send();
+                    }),
+
+                Action::make('suspend')
+                    ->label('Suspend')
+                    ->icon('heroicon-o-no-symbol')
+                    ->color('danger')
+                    ->visible(fn (Tenant $record) => $record->plan_status !== 'suspended')
+                    ->form([
+                        Forms\Components\Textarea::make('reason')->label('Reason')->required()->rows(2),
+                    ])
+                    ->requiresConfirmation()
+                    ->action(function (Tenant $record, array $data) {
+                        $record->update([
+                            'plan_status'       => 'suspended',
+                            'suspended_at'      => now(),
+                            'suspension_reason' => $data['reason'],
+                        ]);
+                        Notification::make()->title('Tenant Suspended')->warning()->send();
+                    }),
+
+                Action::make('reactivate')
+                    ->label('Reactivate')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn (Tenant $record) => $record->plan_status === 'suspended')
+                    ->requiresConfirmation()
+                    ->action(function (Tenant $record) {
+                        $record->update(['plan_status' => 'active', 'suspended_at' => null, 'suspension_reason' => null]);
+                        Notification::make()->title('Tenant Reactivated')->success()->send();
+                    }),
+
                 Action::make('emergency_reset')
                     ->label('Force Reset')
                     ->icon('heroicon-o-lifebuoy')
@@ -219,6 +396,7 @@ Tables\Columns\ToggleColumn::make('is_active')
                         });
                         Notification::make()->title('Reset Successful')->success()->send();
                     }),
+
                 Tables\Actions\DeleteAction::make()
                     ->label('Archive Store')
                     ->icon('heroicon-o-archive-box')

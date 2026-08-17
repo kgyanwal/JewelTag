@@ -5,9 +5,9 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\PreventAccessFromTenantDomains;
 use App\Models\Tenant;
+use App\Models\Plan;
 
-
-$centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us','www.jeweltag.us'];
+$centralDomains = ['localhost', '127.0.0.1', 'jeweltag.us', 'www.jeweltag.us'];
 
 foreach ($centralDomains as $domain) {
     Route::domain($domain)->middleware(['web'])->group(function () {
@@ -30,11 +30,20 @@ foreach ($centralDomains as $domain) {
         // Create Store
         Route::middleware([PreventAccessFromTenantDomains::class])->group(function () {
             Route::get('/create-store/{store_name}', function ($store_name) {
-                $tenant = Tenant::create(['id' => $store_name]);
+                $proPlan = Plan::where('slug', 'pro')->first();
+
+                $tenant = Tenant::create([
+                    'id'            => $store_name,
+                    'plan_id'       => $proPlan?->id,
+                    'plan_status'   => 'trial',
+                    'trial_ends_at' => now()->addDays(3),
+                ]);
+
                 $baseDomain = app()->isLocal() ? 'localhost' : 'jeweltag.us';
                 $fullDomain = $store_name . '.' . $baseDomain;
                 $tenant->domains()->create(['domain' => $fullDomain]);
-                return "Success! Store '{$store_name}' created.";
+
+                return "Success! Store '{$store_name}' created on the Pro plan with a 3-day trial (expires {$tenant->trial_ends_at->format('M j, Y g:i A')}).";
             });
         });
     });
@@ -46,7 +55,7 @@ Route::get('/google-test', function () {
 
     $response = Http::get('https://maps.googleapis.com/maps/api/geocode/json', [
         'address' => $address,
-        'key' => config('services.google.key'), // ✅ Use the key from services.php
+        'key' => config('services.google.key'),
     ]);
 
     return $response->json();
@@ -69,3 +78,7 @@ Route::get('/documentation', [PageController::class, 'documentation'])->name('do
 Route::get('/api-reference', [PageController::class, 'apiReference'])->name('api');
 Route::get('/about', [PageController::class, 'about'])->name('about');
 Route::get('/contact', [PageController::class, 'contact'])->name('contact');
+
+// Plan-limit redirect targets used by EnforcePlanLimits middleware
+Route::get('/suspended', fn () => view('errors.suspended'))->name('suspended');
+Route::get('/trial-expired', fn () => view('errors.trial-expired'))->name('trial-expired');

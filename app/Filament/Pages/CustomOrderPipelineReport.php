@@ -136,4 +136,32 @@ class CustomOrderPipelineReport extends Page
             'completion_rate'  => $all->count() > 0 ? round(($completed->count() / $all->count()) * 100, 1) : 0,
         ];
     }
+    // ── NEW: hide from nav for Basic plan ──
+public static function shouldRegisterNavigation(): bool
+{
+    return self::tenantHasReportAccess();
+}
+
+// ── NEW: block direct URL access too ──
+public static function canAccess(): bool
+{
+    return self::tenantHasReportAccess();
+}
+
+// ── NEW: shared plan-check helper ──
+protected static function tenantHasReportAccess(): bool
+{
+    if (!function_exists('tenant') || !tenant()) {
+        return true;
+    }
+
+    $tenantModel = tenant();
+    $tenantModel->loadMissing('plan');
+
+    if (!$tenantModel->plan) {
+        return false;
+    }
+
+    return (bool) $tenantModel->plan->hasFeature('advanced_analytics');
+}
 }

@@ -179,6 +179,24 @@ class AdminAttentionWidget extends Widget
             ];
         } catch (\Exception $e) {}
 
+        // 11. Critical sale modifications (changed after completion)
+        try {
+            $n = \App\Models\SaleAuditLog::where('severity', 'critical')
+                ->where('created_at', '>=', now()->subDays(30))
+                ->distinct('sale_id')
+                ->count('sale_id');
+            if ($n > 0) $alerts[] = [
+                'count'   => $n,
+                'short'   => 'Modified Sales',
+                'message' => 'Completed sales changed after the fact — price, status, or item edits made post-completion.',
+                'bg'      => '#fef2f2',
+                'border'  => '#ef4444',
+                'iconBg'  => '#ef4444',
+                'text'    => '#991b1b',
+                'url'     => '/admin/sales',
+            ];
+        } catch (\Exception $e) {}
+
         return $alerts;
     }
 }

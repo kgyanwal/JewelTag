@@ -399,8 +399,37 @@
     ]];
     }
 
-    $grandEstimated = collect($repairItems)->sum(fn($i) => floatval($i['estimated_cost'] ?? 0));
-    $grandFinal = collect($repairItems)->sum(fn($i) => floatval($i['final_cost'] ?? 0));
+     $itemCost = function (array $item): array {
+        if (!empty($item['is_warranty'])) {
+            return ['estimated' => 0, 'final' => 0, 'hasFinal' => true];
+        }
+
+        if (!empty($item['services']) && is_array($item['services'])) {
+            $est = 0;
+            $fin = 0;
+            $hasFinal = false;
+            foreach ($item['services'] as $svc) {
+                $est += floatval($svc['estimated_cost'] ?? 0);
+                if (isset($svc['final_cost']) && $svc['final_cost'] !== '' && $svc['final_cost'] !== null) {
+                    $fin += floatval($svc['final_cost']);
+                    $hasFinal = true;
+                }
+            }
+            return ['estimated' => $est, 'final' => $fin, 'hasFinal' => $hasFinal];
+        }
+
+        // Legacy fallback — older repairs saved before the services model existed
+        $est = floatval($item['estimated_cost'] ?? 0);
+        $fin = $item['final_cost'] ?? null;
+        return [
+            'estimated' => $est,
+            'final'     => ($fin !== null && $fin !== '') ? floatval($fin) : 0,
+            'hasFinal'  => ($fin !== null && $fin !== ''),
+        ];
+    };
+
+    $grandEstimated = collect($repairItems)->sum(fn($i) => $itemCost($i)['estimated']);
+    $grandFinal     = collect($repairItems)->sum(fn($i) => $itemCost($i)['final']);
 
     $statusMap = [
     'received' => ['label' => 'Received', 'class' => 'status-received'],
@@ -543,13 +572,14 @@
                         <div style="margin-top:3px;">{!! $badges !!}</div>
                         @endif
                     </td>
-                    <td style="text-align:right;">
+                   <td style="text-align:right;">
+                        @php $cost = $itemCost($rItem); @endphp
                         @if(!empty($rItem['is_warranty']))
                         <span style="color:#dc2626;font-weight:bold;">WARRANTY</span>
-                        @elseif(!empty($rItem['final_cost']) && floatval($rItem['final_cost']) > 0)
-                        <strong style="color:#1a6b65;">${{ number_format($rItem['final_cost'], 2) }}</strong>
-                        @elseif(!empty($rItem['estimated_cost']) && floatval($rItem['estimated_cost']) > 0)
-                        <span style="color:#888;">Est. ${{ number_format($rItem['estimated_cost'], 2) }}</span>
+                        @elseif($cost['hasFinal'] && $cost['final'] > 0)
+                        <strong style="color:#1a6b65;">${{ number_format($cost['final'], 2) }}</strong>
+                        @elseif($cost['estimated'] > 0)
+                        <span style="color:#888;">Est. ${{ number_format($cost['estimated'], 2) }}</span>
                         @else
                         <span style="color:#888;">TBD</span>
                         @endif
@@ -573,6 +603,54 @@
                 @endif
             </tbody>
         </table>
+
+      {{-- 🚀 NEW — Paid / Balance summary, using the authoritative calculation
+             (includes tax, matches what RepairResource shows in the table/form) --}}
+        @if(!$repair->is_warranty)
+        @php
+            $calc = \App\Filament\Resources\RepairResource::calculateRepairTotal($repair);
+            $repairPayments = \App\Models\Payment::where('repair_id', $repair->id)
+                ->orderBy('paid_at')
+                ->get();
+        @endphp
+        <table style="width:100%;border-collapse:collapse;margin:4px 0;font-size:9.5px;">
+            <tr>
+                <td style="width:33%;padding:4px 8px;text-align:center;background:#f9fafb;border:1px solid #e5e7eb;">
+                    <div style="font-size:7.5px;color:#6b7280;font-weight:900;text-transform:uppercase;letter-spacing:.06em;">Total (w/ Tax)</div>
+                    <div style="font-size:13px;font-weight:900;color:#1a6b65;">${{ number_format($calc['total'], 2) }}</div>
+                </td>
+                <td style="width:33%;padding:4px 8px;text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;">
+                    <div style="font-size:7.5px;color:#166534;font-weight:900;text-transform:uppercase;letter-spacing:.06em;">Paid</div>
+                    <div style="font-size:13px;font-weight:900;color:#166534;">${{ number_format($calc['paid'], 2) }}</div>
+                </td>
+                <td style="width:34%;padding:4px 8px;text-align:center;background:{{ $calc['balance'] > 0 ? '#fef2f2' : '#f0fdf4' }};border:1px solid {{ $calc['balance'] > 0 ? '#fca5a5' : '#bbf7d0' }};">
+                    <div style="font-size:7.5px;color:{{ $calc['balance'] > 0 ? '#dc2626' : '#166534' }};font-weight:900;text-transform:uppercase;letter-spacing:.06em;">Balance Due</div>
+                    <div style="font-size:13px;font-weight:900;color:{{ $calc['balance'] > 0 ? '#dc2626' : '#166534' }};">
+                        {{ $calc['balance'] > 0 ? '$'.number_format($calc['balance'], 2) : '✅ PAID IN FULL' }}
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        {{-- 🚀 NEW — Payment method breakdown, sourced from the actual Payment rows
+             so split payments (e.g. deposit via CASH + balance via KATAPULT) show
+             every method used, not just the total. --}}
+        @if($repairPayments->isNotEmpty())
+        <table style="width:100%;border-collapse:collapse;margin:2px 0 6px 0;font-size:8.5px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;">
+            <tr>
+                <td style="padding:4px 8px;">
+                    <span style="font-weight:900;color:#1a6b65;text-transform:uppercase;letter-spacing:.05em;font-size:7.5px;">Payment Method{{ $repairPayments->count() > 1 ? 's' : '' }}:</span>
+                    @foreach($repairPayments as $p)
+                    <span class="service-badge badge-sizing" style="margin-left:3px;">
+                        {{ strtoupper($p->method) }} — ${{ number_format($p->amount, 2) }}
+                        <span style="font-weight:400;color:#555;">({{ \Carbon\Carbon::parse($p->paid_at)->format('m/d/y') }})</span>
+                    </span>
+                    @endforeach
+                </td>
+            </tr>
+        </table>
+        @endif
+        @endif
 
         <div style="font-size:8.5px;color:#555;text-align:center;margin-top:4px;">
             Please keep this receipt. Present it when collecting your item.
@@ -741,13 +819,35 @@
     </tr>
 </table>
 
-        <div class="customer-box">
+       <div class="customer-box">
             <div class="cust-name">{{ $repair->customer->name }} {{ $repair->customer->last_name }}</div>
             <strong>Phone:</strong> {{ $repair->customer->phone ?? 'N/A' }}
         </div>
 
         @if($repair->is_warranty)
         <div class="warranty-box">&#9888; WARRANTY REPAIR — DO NOT CHARGE CUSTOMER &#9888;</div>
+        @else
+        @php
+            $workshopCalc = \App\Filament\Resources\RepairResource::calculateRepairTotal($repair);
+            $workshopPayments = \App\Models\Payment::where('repair_id', $repair->id)->orderBy('paid_at')->get();
+        @endphp
+        @if($workshopCalc['balance'] > 0)
+        <div style="background:#fef2f2;border:1.5px dashed #dc2626;padding:4px 10px;border-radius:4px;text-align:center;color:#dc2626;font-weight:900;font-size:10px;margin:4px 0;">
+            &#9888; BALANCE DUE ON PICKUP: ${{ number_format($workshopCalc['balance'], 2) }} &#9888;
+        </div>
+        @else
+        <div style="background:#f0fdf4;border:1.5px dashed #166534;padding:4px 10px;border-radius:4px;text-align:center;color:#166534;font-weight:900;font-size:10px;margin:4px 0;">
+            &#10003; PAID IN FULL
+        </div>
+        @endif
+        @if($workshopPayments->isNotEmpty())
+        <div style="font-size:8px;color:#555;text-align:center;margin-bottom:4px;">
+            Paid via:
+            @foreach($workshopPayments as $p)
+            <strong>{{ strtoupper($p->method) }}</strong> (${{ number_format($p->amount, 2) }}){{ !$loop->last ? ', ' : '' }}
+            @endforeach
+        </div>
+        @endif
         @endif
 
         <table class="workshop-table">

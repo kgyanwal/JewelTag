@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\LaybuyResource\Pages;
 
 use App\Filament\Resources\LaybuyResource;
+use App\Models\Laybuy;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
@@ -181,7 +182,32 @@ class CreateLaybuy extends CreateRecord
             return $laybuy;
         });
     }
+protected function beforeCreate(): void
+{
+    if (!function_exists('tenant') || !tenant()) return;
 
+    $tenantModel = tenant();
+    $tenantModel->loadMissing('plan');
+
+    if (!$tenantModel->plan) return;
+
+    $maxLaybuys = $tenantModel->plan->max_laybuys ?? 100;
+
+    if ($maxLaybuys === -1) return; // unlimited
+
+    $currentCount = Laybuy::count();
+
+    if ($currentCount >= $maxLaybuys) {
+        Notification::make()
+            ->title('Laybuy Limit Reached')
+            ->body("Your {$tenantModel->plan->name} plan allows up to {$maxLaybuys} laybuy plans ({$currentCount}/{$maxLaybuys} used). Upgrade to Pro for unlimited laybuys.")
+            ->danger()
+            ->persistent()
+            ->send();
+
+        $this->halt();
+    }
+}
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');

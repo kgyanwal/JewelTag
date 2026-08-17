@@ -429,13 +429,21 @@ class SaleResource extends Resource
                                                 ];
                                                 $set('items', $currentItems);
 
-                                                if ($deposit > 0) {
+                                              if ($deposit > 0) {
                                                     $set('is_split_payment', true);
-                                                    $splits      = $get('split_payments') ?? [];
-                                                    $cleanSplits = [];
-                                                    foreach ($splits as $k => $v) {
-                                                        if (floatval($v['amount'] ?? 0) > 0) $cleanSplits[$k] = $v;
-                                                    }
+                                                    // 🚀 FIX — keep ALL existing rows (including $0.00 placeholders
+                                                    // created by "Enable Payment for this Repair"), only append the
+                                                    // new custom deposit row. Previously filtered out amount==0 rows,
+                                                    // which silently deleted any repair-job payment row not yet
+                                                    // given a real amount.
+                                                    //
+                                                    // 🚀 FIX — also drop genuinely blank rows (no method AND no
+                                                    // amount AND no payment_target) — a stray leftover from any
+                                                    // repeater default state — so it never gets carried forward
+                                                    // and displayed as an empty "Select an option" row.
+                                                    $cleanSplits = collect($get('split_payments') ?? [])
+                                                        ->filter(fn($row) => !empty($row['method']) || !empty($row['amount']) || !empty($row['payment_target']))
+                                                        ->all();
                                                     $cleanSplits[$draftId] = ['method' => $method, 'amount' => $deposit, 'payment_target' => 'custom'];
                                                     $set('split_payments', $cleanSplits);
                                                 }
@@ -444,7 +452,6 @@ class SaleResource extends Resource
                                             }),
                                     ])->columnSpan(1),
                                 ]),
-
                             Section::make('Current Bill Items')->schema([
                                 Repeater::make('items')
                                     ->relationship('items')
@@ -567,6 +574,7 @@ class SaleResource extends Resource
                                         Hidden::make('new_custom_data')->dehydrated(),
                                         Hidden::make('is_non_stock')->default(false)->dehydrated(),
                                         Hidden::make('stock_no_display_persist')->dehydrated(),
+                                        Hidden::make('repair_payment_enabled')->default(false)->dehydrated(false),
 
                                         TextInput::make('stock_no_display')
                                             ->label('Item')
@@ -578,10 +586,29 @@ class SaleResource extends Resource
                                                     ->label('Edit Specs')
                                                     ->icon('heroicon-o-pencil-square')
                                                     ->color('warning')
-                                                    ->visible(fn(Get $get) => $get('is_new_custom_order') === true)
+                                                    ->visible(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
                                                     ->modalHeading('Edit Custom Piece')
                                                     ->modalWidth('3xl')
-                                                    ->fillForm(fn(Get $get) => is_string($d = $get('new_custom_data')) ? json_decode($d, true) : ($d ?? []))
+                                                    ->fillForm(function (Get $get) {
+                                                        if (!empty($get('custom_order_id')) && !($get('is_new_custom_order') === true)) {
+                                                            $co = \App\Models\CustomOrder::find($get('custom_order_id'));
+                                                            if (!$co) return [];
+                                                            return [
+                                                                'product_name'          => $co->product_name,
+                                                                'metal_type'            => $co->metal_type,
+                                                                'quoted_price'          => $co->quoted_price,
+                                                                'discount_percent'      => $co->discount_percent ?? 0,
+                                                                'discount_amount'       => $co->discount_amount ?? 0,
+                                                                'sale_price_display'    => max(0, floatval($co->quoted_price) - floatval($co->discount_amount ?? 0)),
+                                                                'is_tax_free'           => (bool)($co->is_tax_free ?? false),
+                                                                'due_date'              => $co->due_date,
+                                                                'design_notes'          => $co->design_notes,
+                                                                'custom_deposit_amount' => 0,
+                                                                'deposit_method'        => 'CASH',
+                                                            ];
+                                                        }
+                                                        return is_string($d = $get('new_custom_data')) ? json_decode($d, true) : ($d ?? []);
+                                                    })
                                                     ->form([
                                                         Grid::make(2)->schema([
                                                             Select::make('product_name')->label('What are we making?')->options(fn() => \App\Models\CustomOrder::whereNotNull('product_name')->pluck('product_name', 'product_name')->unique())->searchable()->createOptionForm([TextInput::make('new_product_name')->required()->label('New Product Name')])->createOptionUsing(fn($data) => $data['new_product_name'])->required(),
@@ -656,7 +683,7 @@ class SaleResource extends Resource
                                                         $splits      = data_get($livewire->data, 'split_payments') ?? [];
                                                         $cleanSplits = [];
                                                         foreach ($splits as $k => $v) {
-                                                            if (floatval($v['amount'] ?? 0) > 0 && $k !== $draftId) {
+                                                            if ($k !== $draftId) {
                                                                 $cleanSplits[$k] = $v;
                                                             }
                                                         }
@@ -807,7 +834,7 @@ class SaleResource extends Resource
                                             ->default(false)
                                             ->dehydrated(true)
                                             ->live()
-                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true || !empty($get('custom_order_id')))
+                                            ->disabled(fn(Get $get) => $get('is_new_custom_order') === true)
                                             ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                     ])
                                     ->columns(12)
@@ -824,96 +851,209 @@ class SaleResource extends Resource
                                 ->icon('heroicon-o-wrench')
                                 ->collapsible()
                                 ->schema([
+
                                     Repeater::make('special_jobs')
                                         ->label('')
                                         ->schema([
+                                            Hidden::make('job_uuid')
+                                                ->default(fn() => (string) Str::uuid())
+                                                ->dehydrated(true),
+
                                             Toggle::make('job_applies_to_store_item')
                                                 ->label('Was this item bought from our store?')
                                                 ->inline(false)
                                                 ->live()
                                                 ->columnSpanFull(),
 
-                                           Select::make('store_item_id')
-    ->label('Which item in this sale?')
-    ->placeholder('Select from items in this sale...')
-    ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
-    ->required(fn(Get $get) => $get('job_applies_to_store_item'))
-    ->options(function (Get $get) {
-        // Only offer items ACTUALLY in this sale's cart, keyed by
-        // product_item_id. This guarantees store_item_id can never
-        // point to an item outside the current sale — the source of
-        // the bug where notes silently applied to every item because
-        // the picked stock number belonged to a totally different sale.
-        $items = $get('../../items') ?? [];
-        $options = [];
-        foreach ($items as $item) {
-            $pid = $item['product_item_id'] ?? null;
-            if (!$pid) continue; // skip non-tag / custom items — they have no product_item_id
-            $stockNo = $item['stock_no_display'] ?? '';
-            $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 40);
-            $options[$pid] = trim("{$stockNo} — {$desc}");
-        }
-        return $options;
-    })
-    ->searchable()
-    ->live()
-    ->columnSpanFull(),
+                                            Select::make('store_item_id')
+                                                ->label('Which item in this sale?')
+                                                ->placeholder('Select from items in this sale...')
+                                                ->visible(fn(Get $get) => $get('job_applies_to_store_item'))
+                                                ->required(fn(Get $get) => $get('job_applies_to_store_item'))
+                                                ->options(function (Get $get) {
+                                                    // Only offer items ACTUALLY in this sale's cart, keyed by
+                                                    // product_item_id. This guarantees store_item_id can never
+                                                    // point to an item outside the current sale — the source of
+                                                    // the bug where notes silently applied to every item because
+                                                    // the picked stock number belonged to a totally different sale.
+                                                    $items = $get('../../items') ?? [];
+                                                    $options = [];
+                                                    foreach ($items as $item) {
+                                                        $pid = $item['product_item_id'] ?? null;
+                                                        if (!$pid) continue; // skip non-tag / custom items — they have no product_item_id
+                                                        $stockNo = $item['stock_no_display'] ?? '';
+                                                        $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 40);
+                                                        $options[$pid] = trim("{$stockNo} — {$desc}");
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->searchable()
+                                                ->live()
+                                                ->columnSpanFull(),
 
-                                           Select::make('applicable_item_indexes')
-    ->label('Or, apply this job to an item in this sale')
-    ->multiple()
-    ->searchable()
-    ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
-    ->options(function (Get $get) {
-        $items = $get('../../items') ?? [];
-        $options = [];
-        foreach (array_values($items) as $i => $item) {
-            $stockNo = $item['stock_no_display'] ?? null;
-            $desc    = $item['custom_description'] ?? '';
-            $label   = $stockNo
-                ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
-                : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
-            $options[$i] = ($i + 1) . '. ' . $label;
-        }
-        return $options;
-    })
-    ->placeholder('Select items this job applies to...')
-    ->required(fn(Get $get) => !$get('job_applies_to_store_item'))
-    ->columnSpanFull()
-    ->live(),
+                                            Select::make('applicable_item_indexes')
+                                                ->label('Or, apply this job to an item in this sale')
+                                                ->multiple()
+                                                ->searchable()
+                                                ->visible(fn(Get $get) => !$get('job_applies_to_store_item'))
+                                                ->options(function (Get $get) {
+                                                    $items = $get('../../items') ?? [];
+                                                    $options = [];
+                                                    foreach (array_values($items) as $i => $item) {
+                                                        $stockNo = $item['stock_no_display'] ?? null;
+                                                        $desc    = $item['custom_description'] ?? '';
+                                                        $label   = $stockNo
+                                                            ? "{$stockNo} — " . \Illuminate\Support\Str::limit($desc, 40)
+                                                            : \Illuminate\Support\Str::limit($desc ?: 'Item ' . ($i + 1), 50);
+                                                        $options[$i] = ($i + 1) . '. ' . $label;
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->placeholder('Select items this job applies to...')
+                                                ->required(fn(Get $get) => !$get('job_applies_to_store_item'))
+                                                ->columnSpanFull()
+                                                ->live(),
 
-Placeholder::make('job_target_confirmation')
-    ->hiddenLabel()
-    ->live()
-    ->content(function (Get $get) {
-        $appliesToStore = $get('job_applies_to_store_item');
-        $storeItemId    = $get('store_item_id');
-        $indexes        = $get('applicable_item_indexes') ?? [];
-        $items          = $get('../../items') ?? [];
+                                            Placeholder::make('job_target_confirmation')
+                                                ->hiddenLabel()
+                                                ->live()
+                                                ->content(function (Get $get) {
+                                                    $appliesToStore = $get('job_applies_to_store_item');
+                                                    $storeItemId    = $get('store_item_id');
+                                                    $indexes        = $get('applicable_item_indexes') ?? [];
+                                                    $items          = $get('../../items') ?? [];
 
-        if ($appliesToStore && $storeItemId) {
-            $item = \App\Models\ProductItem::find($storeItemId);
-            $label = $item ? "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40) : 'Unknown item';
-            return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$label}</strong></div>");
-        }
+                                                    if ($appliesToStore && $storeItemId) {
+                                                        $item = \App\Models\ProductItem::find($storeItemId);
+                                                        $label = $item ? "{$item->barcode} — " . \Illuminate\Support\Str::limit($item->custom_description ?? '', 40) : 'Unknown item';
+                                                        return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$label}</strong></div>");
+                                                    }
 
-        if (!empty($indexes)) {
-            $labels = [];
-            foreach ($indexes as $idx) {
-                $item = array_values($items)[$idx] ?? null;
-                if ($item) {
-                    $stockNo = $item['stock_no_display'] ?? '';
-                    $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 30);
-                    $labels[] = trim("{$stockNo} {$desc}");
-                }
-            }
-            $joined = implode(', ', $labels);
-            return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$joined}</strong></div>");
-        }
+                                                    if (!empty($indexes)) {
+                                                        $labels = [];
+                                                        foreach ($indexes as $idx) {
+                                                            $item = array_values($items)[$idx] ?? null;
+                                                            if ($item) {
+                                                                $stockNo = $item['stock_no_display'] ?? '';
+                                                                $desc    = \Illuminate\Support\Str::limit($item['custom_description'] ?? '', 30);
+                                                                $labels[] = trim("{$stockNo} {$desc}");
+                                                            }
+                                                        }
+                                                        $joined = implode(', ', $labels);
+                                                        return new HtmlString("<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:12px;color:#166534;'>✅ This job will print ONLY on: <strong>{$joined}</strong></div>");
+                                                    }
 
-        return new HtmlString("<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:700;'>⚠️ No item selected yet — this job will NOT print on any item until you pick one above.</div>");
-    })
-    ->columnSpanFull(),
+                                                    return new HtmlString("<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:700;'>⚠️ No item selected yet — this job will NOT print on any item until you pick one above.</div>");
+                                                })
+                                                ->columnSpanFull(),
+                                            Toggle::make('enable_payment')
+                                                ->label('Enable Payment for this Repair')
+                                                ->helperText('Adds this repair as a payment option below in Payment & Status.')
+                                                ->onColor('warning')
+                                                ->inline(false)
+                                                ->live()
+                                                ->visible(
+                                                    fn(Get $get) => (!empty($get('job_applies_to_store_item')) && !empty($get('store_item_id')))
+                                                        || (empty($get('job_applies_to_store_item')) && !empty($get('applicable_item_indexes')))
+                                                )
+                                                ->afterStateUpdated(function ($state, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                    // 🚀 FIX — key off the stable job_uuid hidden field, matching the SAME
+                                                    // "job_{uuid}" prefix used everywhere else (buildPaymentTargetOptions,
+                                                    // CreateSale.php, EditSale.php). The old regex-on-state-path approach
+                                                    // produced "new_job_{repeaterKey}", which NEVER matched anything else
+                                                    // in the system — Apply To silently never linked to this job's payment.
+                                                    $jobUuid = $get('job_uuid');
+                                                    if (!$jobUuid) return;
+
+                                                    $target = "job_{$jobUuid}";
+                                                    $data   = $livewire->data;
+                                                    $splits = data_get($data, 'split_payments') ?? [];
+
+                                                    if ($state) {
+                                                        data_set($data, 'is_split_payment', true);
+
+                                                        if (!collect($splits)->contains(fn($p) => ($p['payment_target'] ?? '') === $target)) {
+                                                            $splits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                                'method'         => 'CASH',
+                                                                'amount'         => number_format((float) ($get('job_final_charge') ?? 0), 2, '.', ''),
+                                                                'payment_target' => $target,
+                                                            ];
+                                                        }
+                                                    } else {
+                                                        $splits = collect($splits)->reject(fn($p) => ($p['payment_target'] ?? '') === $target)->all();
+                                                        if (empty($splits)) {
+                                                            data_set($data, 'is_split_payment', false);
+                                                        }
+                                                    }
+
+                                                    data_set($data, 'split_payments', $splits);
+                                                    $livewire->data = $data;
+
+                                                    self::updateTotals(
+                                                        fn($p) => data_get($livewire->data, $p),
+                                                        fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                    );
+                                                })
+                                                ->columnSpanFull(),
+
+                                            Toggle::make('job_is_tax_free')
+                                                ->label('No Tax on This Job')
+                                                ->helperText('Exempts this repair job\'s charge from sales tax.')
+                                                ->onColor('warning')
+                                                ->inline(false)
+                                                ->live()
+                                                ->visible(fn(Get $get) => $get('enable_payment'))
+                                                ->afterStateUpdated(fn(Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) => self::updateTotals(
+                                                    fn($p) => data_get($livewire->data, $p),
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                ))
+                                                ->columnSpanFull(),
+
+                                            TextInput::make('job_final_charge')
+                                                ->label('Amount to Charge for This Job')
+                                                ->helperText('This becomes the Final Charged amount on the Repair record and drives the payment amount below.')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->default(0)
+                                                ->visible(fn(Get $get) => $get('enable_payment'))
+                                                ->required(fn(Get $get) => $get('enable_payment'))
+                                                ->live(onBlur: true)
+                                                ->afterStateUpdated(function ($state, Get $get, Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                    $jobUuid = $get('job_uuid');
+                                                    if (!$jobUuid) return;
+
+                                                    $target = "job_{$jobUuid}";
+                                                    $amount = number_format((float) $state, 2, '.', '');
+
+                                                    $data   = $livewire->data;
+                                                    $splits = data_get($data, 'split_payments') ?? [];
+
+                                                    $found = false;
+                                                    foreach ($splits as $k => $row) {
+                                                        if (($row['payment_target'] ?? '') === $target) {
+                                                            $splits[$k]['amount'] = $amount;
+                                                            $found = true;
+                                                        }
+                                                    }
+
+                                                    if (!$found) {
+                                                        data_set($data, 'is_split_payment', true);
+                                                        $splits[(string) \Illuminate\Support\Str::uuid()] = [
+                                                            'method'         => 'CASH',
+                                                            'amount'         => $amount,
+                                                            'payment_target' => $target,
+                                                        ];
+                                                    }
+
+                                                    data_set($data, 'split_payments', $splits);
+                                                    $livewire->data = $data;
+
+                                                    self::updateTotals(
+                                                        fn($p) => data_get($livewire->data, $p),
+                                                        fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                    );
+                                                })
+                                                ->columnSpanFull(),
                                             Grid::make(3)->schema([
                                                 Select::make('job_type')
                                                     ->label('Service Type')
@@ -980,7 +1120,11 @@ Placeholder::make('job_target_confirmation')
                                         ->defaultItems(0)
                                         ->collapsible()
                                         ->itemLabel(fn(array $state): string => ($state['job_type'] ?? 'New Job'))
-                                        ->reorderable(false),
+                                        ->reorderable(false)
+                                        ->live(), // 🚀 FIX — without this, changes to enable_payment/target_repair_id
+                                    // inside a job item don't reliably propagate to the sibling
+                                    // "Apply To" Select in Payment & Status, which reads special_jobs
+                                    // from a completely different branch of the form tree.
                                 ]),
 
                             Section::make('Trade-In Details')
@@ -1845,14 +1989,13 @@ Placeholder::make('job_target_confirmation')
             ");
                                     }),
 
-                                // ── PAYMENT LOG BUTTON ────────────────────────────────────────
+                                // ── PAYMENT LOG + SALES LOG BUTTONS (same row) ─────────────────
                                 \Filament\Forms\Components\Actions::make([
                                     FormAction::make('view_payment_log')
                                         ->label('📋 Payment Log')
                                         ->color('info')
                                         ->outlined()
                                         ->icon('heroicon-o-banknotes')
-                                        ->visible(fn(string $operation) => $operation === 'edit')
                                         ->modalHeading(fn(?Sale $record) => 'Payment Log — ' . ($record?->invoice_number ?? ''))
                                         ->modalWidth('3xl')
                                         ->modalSubmitAction(false)
@@ -1860,7 +2003,6 @@ Placeholder::make('job_target_confirmation')
                                         ->form(function (?Sale $record) {
                                             if (!$record) return [];
 
-                                            // 1. Fetch POS payments directly attached to this sale record
                                             $payments1 = $record->payments()->orderBy('paid_at')->get()
                                                 ->map(fn($p) => [
                                                     'date'     => \Carbon\Carbon::parse($p->paid_at)->format('M d, Y'),
@@ -1872,7 +2014,6 @@ Placeholder::make('job_target_confirmation')
                                                     'id'       => $p->id,
                                                 ]);
 
-                                            // 2. Fetch historical or split layout sale_payments ledger records
                                             $payments2 = $record->salePayments()->orderBy('payment_date')->get()
                                                 ->map(fn($p) => [
                                                     'date'     => \Carbon\Carbon::parse($p->payment_date)->format('M d, Y'),
@@ -1884,7 +2025,6 @@ Placeholder::make('job_target_confirmation')
                                                     'id'       => $p->id,
                                                 ]);
 
-                                            // 🚀 CRITICAL FIX: Automatically find and merge deposits attached via the Custom Order milestone
                                             $customOrderIds = $record->items()->whereNotNull('custom_order_id')->pluck('custom_order_id')->unique();
 
                                             $payments3 = \App\Models\Payment::whereIn('custom_order_id', $customOrderIds)
@@ -1904,7 +2044,6 @@ Placeholder::make('job_target_confirmation')
                                                     'id'       => $p->id,
                                                 ]);
 
-                                            // Merge all arrays safely and sort chronologically by true UNIX timestamp status
                                             $allPayments = $payments1->concat($payments2)->concat($payments3)->sortBy('raw_date')->values();
                                             $grandTotal  = floatval($record->final_total);
                                             $customer    = $record->customer;
@@ -1930,7 +2069,6 @@ Placeholder::make('job_target_confirmation')
                                                 $balLabel   = $p['balance'] <= 0 ? '✅ Paid in Full' : '$' . number_format($p['balance'], 2) . ' remaining';
                                                 $timeHtml   = !empty($p['time']) ? "<span style='font-size:10px;color:#94a3b8;margin-left:6px;'>{$p['time']}</span>" : '';
 
-                                                // Route calculation logic matching our alternative dynamic sources mapping tracker
                                                 $receiptUrl = route('sales.payment-receipt', [
                                                     'record'     => $record->id,
                                                     'source'     => $p['source'] === 'custom_order_deposits' ? 'payments' : $p['source'],
@@ -1972,21 +2110,21 @@ Placeholder::make('job_target_confirmation')
                                             $summBalLabel = $finalBal <= 0 ? '&#x2705; $0.00' : '$' . number_format($finalBal, 2);
 
                                             $summary = "<div style='background:{$summBg};border:2px solid {$summBorder};border-radius:10px;padding:14px;margin-bottom:16px;'>
-                    <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;'>
-                        <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Invoice Total</div>
-                            <div style='font-size:18px;font-weight:900;color:#1e293b;'>\$" . number_format($grandTotal, 2) . "</div>
-                        </div>
-                        <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Total Paid</div>
-                            <div style='font-size:18px;font-weight:900;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
-                        </div>
-                        <div>
-                            <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Balance</div>
-                            <div style='font-size:18px;font-weight:900;color:{$summBalColor};'>{$summBalLabel}</div>
-                        </div>
+                <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;'>
+                    <div>
+                        <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Invoice Total</div>
+                        <div style='font-size:18px;font-weight:900;color:#1e293b;'>\$" . number_format($grandTotal, 2) . "</div>
                     </div>
-                </div>";
+                    <div>
+                        <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Total Paid</div>
+                        <div style='font-size:18px;font-weight:900;color:#10b981;'>\$" . number_format($totalPaid, 2) . "</div>
+                    </div>
+                    <div>
+                        <div style='font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;'>Balance</div>
+                        <div style='font-size:18px;font-weight:900;color:{$summBalColor};'>{$summBalLabel}</div>
+                    </div>
+                </div>
+            </div>";
 
                                             if ($allPayments->isEmpty()) {
                                                 $summary .= "<div style='text-align:center;color:#9ca3af;font-style:italic;padding:20px;'>No payments recorded yet.</div>";
@@ -1994,6 +2132,82 @@ Placeholder::make('job_target_confirmation')
 
                                             return [
                                                 Placeholder::make('payment_log_content')->label('')->content(new HtmlString($summary . $rows)),
+                                            ];
+                                        }),
+
+                                    FormAction::make('view_sales_log')
+                                        ->label(function (?Sale $record) {
+                                            if (!$record) return '📋 Sales Log';
+                                            $hasChanges = $record->auditLogs()->exists();
+                                            return $hasChanges ? '⚠️ Sales Log (Modified)' : '✅ Sales Log (Unchanged)';
+                                        })
+                                        ->color(function (?Sale $record) {
+                                            if (!$record) return 'gray';
+                                            return $record->auditLogs()->exists() ? 'danger' : 'success';
+                                        })
+                                        ->outlined()
+                                        ->icon('heroicon-o-clipboard-document-list')
+                                        ->visible(function (string $operation) {
+                                            if ($operation !== 'edit') return false;
+                                            $user = Staff::user();
+                                            return $user?->hasAnyRole(['Superadmin', 'Administration'])
+                                                || auth()->user()->hasRole('Superadmin');
+                                        })
+                                        ->modalHeading(fn(?Sale $record) => 'Sales Log — ' . ($record?->invoice_number ?? ''))
+                                        ->modalWidth('3xl')
+                                        ->modalSubmitAction(false)
+                                        ->modalCancelActionLabel('Close')
+                                        ->form(function (?Sale $record) {
+                                            if (!$record) return [];
+
+                                            $logs = $record->auditLogs()->get();
+
+                                            if ($logs->isEmpty()) {
+                                                return [
+                                                    Placeholder::make('no_changes')->label('')->content(new HtmlString("
+                        <div style='background:#f0fdf4;border:2px solid #10b981;border-radius:10px;padding:20px;text-align:center;'>
+                            <div style='font-size:28px;margin-bottom:8px;'>✅</div>
+                            <div style='font-size:14px;font-weight:800;color:#047857;'>No Changes Detected</div>
+                            <div style='font-size:12px;color:#059669;margin-top:4px;'>This sale has never been modified after initial creation.</div>
+                        </div>
+                    ")),
+                                                ];
+                                            }
+
+                                            $severityStyle = [
+                                                'critical' => ['bg' => '#fef2f2', 'border' => '#ef4444', 'text' => '#991b1b', 'label' => '🔴 CRITICAL — Changed After Completion'],
+                                                'warning'  => ['bg' => '#fff7ed', 'border' => '#f97316', 'text' => '#9a3412', 'label' => '🟠 Price/Qty Change'],
+                                                'info'     => ['bg' => '#eff6ff', 'border' => '#3b82f6', 'text' => '#1e40af', 'label' => '🔵 Status/General Change'],
+                                            ];
+
+                                            $rows = '';
+                                            foreach ($logs as $log) {
+                                                $style = $severityStyle[$log->severity] ?? $severityStyle['info'];
+                                                $when  = $log->created_at->format('M d, Y h:i A');
+
+                                                $rows .= "
+                    <div style='background:{$style['bg']};border:1.5px solid {$style['border']};border-radius:10px;padding:14px;margin-bottom:10px;'>
+                        <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                            <div>
+                                <span style='font-size:10px;font-weight:800;color:{$style['text']};text-transform:uppercase;letter-spacing:.04em;'>{$style['label']}</span>
+                                <div style='font-size:14px;font-weight:800;color:#1e293b;margin-top:4px;'>{$log->field_label}</div>
+                            </div>
+                            <div style='text-align:right;font-size:11px;color:#64748b;'>
+                                {$when}<br>
+                                <span style='font-weight:700;color:#334155;'>by " . e($log->user_name ?? 'Unknown') . "</span>
+                            </div>
+                        </div>
+                        <div style='margin-top:10px;display:flex;align-items:center;gap:10px;font-size:13px;'>
+                            <span style='background:#fee2e2;color:#b91c1c;padding:3px 10px;border-radius:6px;font-weight:700;text-decoration:line-through;'>" . e($log->old_value ?: '—') . "</span>
+                            <span style='color:#94a3b8;'>→</span>
+                            <span style='background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:6px;font-weight:700;'>" . e($log->new_value ?: '—') . "</span>
+                        </div>
+                    </div>
+                ";
+                                            }
+
+                                            return [
+                                                Placeholder::make('audit_log_content')->label('')->content(new HtmlString($rows)),
                                             ];
                                         }),
                                 ])->visible(fn(string $operation) => $operation === 'edit'),
@@ -2040,23 +2254,22 @@ Placeholder::make('job_target_confirmation')
 
                                 Select::make('payment_target')
                                     ->label('Apply To')
-                                    ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                                    ->options(fn(Get $get) => self::buildPaymentTargetOptions($get('items') ?? [], $get('special_jobs') ?? []))
                                     ->default('regular')
                                     ->required(function (Get $get) {
                                         if ($get('is_split_payment')) return false;
                                         $items = $get('items') ?? [];
                                         return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                                            || request()->has('custom_order_id');
+                                            || self::jobsHaveEnabledRepair($items, $get('special_jobs') ?? []);
                                     })
                                     ->visible(function (Get $get) {
                                         if ($get('is_split_payment')) return false;
                                         $items = $get('items') ?? [];
                                         return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
-                                            || request()->has('custom_order_id');
+                                            || self::jobsHaveEnabledRepair($items, $get('special_jobs') ?? []);
                                     })
                                     ->live()
                                     ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
-
                                 // ── TOTAL AMOUNT TO COLLECT (remaining after DB payments) ────
                                 Placeholder::make('display_total_due')
                                     ->label('Total Amount to Collect')
@@ -2239,13 +2452,7 @@ Placeholder::make('job_target_confirmation')
                                                     return $options;
                                                 })
                                                 ->required()
-                                                ->columnSpan(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $hasCustom = collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
-                                                    return $hasCustom ? 2 : 3;
-                                                }),
+                                                ->columnSpan(2),
 
                                             TextInput::make('amount')
                                                 ->numeric()
@@ -2266,31 +2473,34 @@ Placeholder::make('job_target_confirmation')
                                                             $set('amount', number_format(max(0, $total - $sum), 2, '.', ''));
                                                         })
                                                 )
-                                                ->columnSpan(function (Get $get) {
-                                                    $items = $get('../../items') ?? [];
-                                                    $hasCustom = collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
-                                                    return $hasCustom ? 2 : 3;
-                                                }),
-
+                                                // 🚀 FIX — was conditionally 3 when no custom order in cart, which
+                                                // made 3+3+2=8 overflow a 6-col Grid and push "Apply To" onto its
+                                                // own row. Now always 2+2+2=6, fits every time regardless of cart contents.
+                                                ->columnSpan(2),
                                             Select::make('payment_target')
                                                 ->label('Apply To')
-                                                ->options(['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'])
+                                                ->options(fn(Get $get) => self::buildPaymentTargetOptions($get('../../items') ?? [], $get('../../special_jobs') ?? []))
                                                 ->default('regular')
                                                 ->columnSpan(2)
                                                 ->visible(function (Get $get) {
                                                     $items = $get('../../items') ?? [];
-                                                    return collect($items)->contains(
-                                                        fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order'])
-                                                    ) || request()->has('custom_order_id');
+                                                    return collect($items)->contains(fn($item) => !empty($item['custom_order_id']) || !empty($item['is_new_custom_order']))
+                                                        || self::jobsHaveEnabledRepair($items, $get('../../special_jobs') ?? []);
                                                 })
                                                 ->live()
                                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                         ]),
                                     ])
-                                    ->visible(fn(Get $get) => $get('is_split_payment'))
-                                    ->defaultItems(1)
+                                   ->visible(fn(Get $get) => $get('is_split_payment'))
+                                    // 🚀 FIX — defaultItems(1) pre-populates a blank row in the
+                                    // repeater's internal state as soon as the form loads, even
+                                    // while hidden. Every code path that does
+                                    // $get('split_payments') ?? [] then appends a new row (custom
+                                    // deposit, repair job enable_payment, etc.) picks up that stale
+                                    // blank row along with it. The "Enable Split Payment" toggle
+                                    // already adds a real row itself when needed — defaultItems(0)
+                                    // here removes the phantom blank row entirely.
+                                    ->defaultItems(0)
                                     ->maxItems(100)
                                     ->addActionLabel('Add Another Payment Method')
                                     ->reorderable(false)
@@ -2511,12 +2721,21 @@ Placeholder::make('job_target_confirmation')
                                         $isSplit     = $get('is_split_payment');
                                         $customPaid  = 0;
                                         $regularPaid = 0;
+                                        // 🚀 FIX — repair job payments now count as regular payments
+                                        // toward the invoice total, since the total itself already
+                                        // includes the job charge (see updateTotals()). Still labeled
+                                        // distinctly below so staff can see what the money was for.
+                                        $repairPaid  = 0;
 
                                         if ($isSplit) {
                                             foreach ($get('split_payments') ?? [] as $p) {
-                                                $amt = (float)($p['amount'] ?? 0);
-                                                if (($p['payment_target'] ?? 'regular') === 'custom') {
+                                                $amt    = (float)($p['amount'] ?? 0);
+                                                $target = $p['payment_target'] ?? 'regular';
+                                                if ($target === 'custom') {
                                                     $customPaid += $amt;
+                                                } elseif (str_starts_with($target, 'job_') || str_starts_with($target, 'repair_')) {
+                                                    $repairPaid  += $amt;
+                                                    $regularPaid += $amt;
                                                 } else {
                                                     $regularPaid += $amt;
                                                 }
@@ -2532,7 +2751,6 @@ Placeholder::make('job_target_confirmation')
 
                                         $totalPaid = $customPaid + $regularPaid;
                                         $remaining = $total - $totalPaid;
-
                                         $html = "<div style='display:flex;justify-content:space-between;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                 <span style='font-size:0.875rem;color:#64748b;'>Invoice Total:</span>
                 <span style='font-size:0.875rem;font-weight:bold;color:#334155;'>$" . number_format($total, 2) . "</span>
@@ -2545,10 +2763,45 @@ Placeholder::make('job_target_confirmation')
                 </div>";
                                         }
 
-                                        if ($regularPaid > 0) {
+                                        if (($regularPaid - $repairPaid) > 0) {
                                             $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                     <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
-                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($regularPaid, 2) . "</span>
+                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($regularPaid - $repairPaid, 2) . "</span>
+                </div>";
+                                        }
+
+                                     if ($repairPaid > 0) {
+                                            // 🚀 NEW — show whether this repair job charge was taxed, and if so
+                                            // how much tax it contributed, mirroring how CUSTOM DEPOSIT already
+                                            // shows its own line. Sums job_final_charge across every enabled
+                                            // job, split by job_is_tax_free, using the same tax rate updateTotals() uses.
+                                            $jobsTaxableTotal = 0;
+                                            $jobsTaxFreeTotal = 0;
+                                            foreach (($get('special_jobs') ?? []) as $job) {
+                                                if (empty($job['enable_payment'])) continue;
+                                                $amt = round((float) ($job['job_final_charge'] ?? 0), 2);
+                                                if (!empty($job['job_is_tax_free'])) {
+                                                    $jobsTaxFreeTotal += $amt;
+                                                } else {
+                                                    $jobsTaxableTotal += $amt;
+                                                }
+                                            }
+                                            $dbTaxRate  = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                            $jobTaxRate = floatval($dbTaxRate) / 100;
+                                            $jobsTaxAmt = round($jobsTaxableTotal * $jobTaxRate, 2);
+
+                                            $taxBadge = $jobsTaxAmt > 0
+                                                ? "<span style='display:block;font-size:10px;color:#ea580c;font-weight:700;margin-top:2px;'>+ \$" . number_format($jobsTaxAmt, 2) . " tax</span>"
+                                                : (($jobsTaxFreeTotal > 0 && $jobsTaxableTotal <= 0)
+                                                    ? "<span style='display:block;font-size:10px;color:#64748b;font-weight:600;margin-top:2px;'>Tax Free</span>"
+                                                    : '');
+
+                                            $html .= "<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
+                    <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-orange-50 text-orange-700 border-orange-200'>🔧 REPAIR JOB PAYMENT</span>
+                    <div style='text-align:right;'>
+                        <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($repairPaid, 2) . "</span>
+                        {$taxBadge}
+                    </div>
                 </div>";
                                         }
 
@@ -2580,6 +2833,8 @@ Placeholder::make('job_target_confirmation')
                 Hidden::make('balance_due'),
                 Hidden::make('custom_order_id')->dehydrated(false),
                 Hidden::make('repair_id')->dehydrated(false),
+                Hidden::make('enable_repair_payment')->dehydrated(false),
+                Hidden::make('target_repair_id')->dehydrated(false),
             ])
             ->statePath('data');
     }
@@ -2924,6 +3179,110 @@ Placeholder::make('job_target_confirmation')
             ])
             ->defaultSort('created_at', 'desc');
     }
+    // 🚀 NEW — True if at least one special_jobs entry has "Enable Payment" on AND
+    // is actually pointed at a cart item carrying a repair_id. $prefix lets this be
+    // called from inside the split_payments repeater (which needs a relative path
+    // back up to the root) as well as from the top-level fields directly.
+    // 🚀 Keyed by the repair's own DB id — never a Repeater position/UUID, so this
+    // can never mismatch between the form's dropdown and CreateSale's save logic.
+    // 🚀 Returns [target_key => label]. target_key is "job_{uuid}" for every job
+    // with "Enable Payment" on, regardless of whether that job's item is stock,
+    // non-tag, custom order, or an existing repair — the Repair record itself
+    // gets created (or already exists) and mapped in CreateSale::afterCreate().
+public static function resolveEnabledJobTargets(array $items, array $specialJobs): array
+    {
+        $itemsFlat = array_values($items);
+        $targets   = [];
+
+        foreach ($specialJobs as $job) {
+            if (empty($job['enable_payment']) || empty($job['job_uuid'])) continue;
+
+            // 🚀 FIX — same as buildPaymentTargetOptions: item match is label-only, never gating.
+            $item = null;
+            if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
+                $item = collect($itemsFlat)->first(fn($i) => ($i['product_item_id'] ?? null) == $job['store_item_id']);
+            } else {
+                foreach (($job['applicable_item_indexes'] ?? []) as $idx) {
+                    $candidate = $itemsFlat[$idx] ?? null;
+                    if ($candidate) { $item = $candidate; break; }
+                }
+            }
+
+            $label = $item
+                ? ($item['stock_no_display'] ?? \Illuminate\Support\Str::limit($item['custom_description'] ?? 'Item', 25))
+                : ($job['job_type'] ?? 'Item');
+            $targets["job_{$job['job_uuid']}"] = $label;
+        }
+        return $targets;
+    }
+
+    public static function buildPaymentTargetOptions(array $items, array $specialJobs = []): array
+    {
+        $opts = ['regular' => 'Regular Sales', 'custom' => 'Custom Deposit'];
+
+        $n = 0;
+        // 1. Existing Repairs in cart
+        foreach ($items as $item) {
+            if (!empty($item['repair_id']) && !empty($item['repair_payment_enabled'])) {
+                $r = \App\Models\Repair::find($item['repair_id']);
+                if ($r) {
+                    $n++;
+                    $opts["repair_{$r->id}"] = "Repair Job {$n} — #{$r->repair_no}";
+                }
+            }
+        }
+
+      $itemsFlat = array_values($items);
+        foreach ($specialJobs as $job) {
+            if (empty($job['enable_payment']) || empty($job['job_uuid'])) continue;
+
+            // 🚀 FIX — item-matching is cosmetic only (for a nicer label). It must NEVER
+            // gate whether the option appears: adding a new item elsewhere (e.g. a new
+            // Custom Order) shifts applicable_item_indexes positions, breaking this match
+            // and silently hiding an already-enabled repair job's payment option along
+            // with its amount. enable_payment + job_uuid alone is what defines the option.
+            $item = null;
+            if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
+                $item = collect($itemsFlat)->first(fn($i) => ($i['product_item_id'] ?? null) == $job['store_item_id']);
+            } else {
+                foreach (($job['applicable_item_indexes'] ?? []) as $idx) {
+                    $candidate = $itemsFlat[$idx] ?? null;
+                    if ($candidate) {
+                        $item = $candidate;
+                        break;
+                    }
+                }
+            }
+
+            $n++;
+            $label = $item
+                ? ($item['stock_no_display'] ?? \Illuminate\Support\Str::limit($item['custom_description'] ?? 'Item', 25))
+                : ($job['job_type'] ?? 'Item');
+
+            // 🚀 FIX — once this job's Repair record has actually been created (repair_id
+            // set by afterCreate/afterSave), the saved Payment row's payment_target is
+            // "repair_{id}" (Payment::repair_id gets populated, not the job_uuid string).
+            // The option key must match that exactly or the dropdown shows blank on
+            // reopening the sale, even though the payment/repair link is intact in the DB.
+            // Emit "repair_{id}" once a repair_id exists; "job_{uuid}" only as the
+            // pre-creation placeholder for a job that hasn't been saved yet.
+            $targetKey = !empty($job['repair_id']) ? "repair_{$job['repair_id']}" : "job_{$job['job_uuid']}";
+            $opts[$targetKey] = "Repair Job {$n} — " . ($job['job_type'] ?? $label);
+        }
+
+        return $opts;
+    }
+
+    public static function jobsHaveEnabledRepair(array $items, array $specialJobs = []): bool
+    {
+        foreach ($items as $item) {
+            if (!empty($item['repair_id']) && !empty($item['repair_payment_enabled'])) return true;
+        }
+        foreach ($specialJobs as $job) {
+            if (!empty($job['enable_payment'])) return true;
+        }
+        return false;
+    }
 
     public static function getServiceTypeOptions(): array
     {
@@ -2960,6 +3319,26 @@ Placeholder::make('job_target_confirmation')
             }
         }
 
+        // 🚀 FIX — repair jobs with "Enable Payment" on carry a charge (job_final_charge)
+        // that was never being added to the invoice total. That's the actual root bug:
+        // the sale total stayed $72.63 while $500 was being collected against it, making
+        // it LOOK overpaid. Now the job charge is folded straight into the subtotal, same
+        // as any other line item, so "Total Paid" and "Balance Due" reconcile normally —
+        // no separate bucket, no exclusion needed.
+        $repairJobsTotal        = 0;
+        $repairJobsTaxableTotal = 0;
+        foreach (($get('special_jobs') ?? []) as $job) {
+            if (!empty($job['enable_payment'])) {
+                $jobAmt = round((float) ($job['job_final_charge'] ?? 0), 2);
+                $repairJobsTotal += $jobAmt;
+                if (empty($job['job_is_tax_free'])) {
+                    $repairJobsTaxableTotal += $jobAmt;
+                }
+            }
+        }
+        $itemsSubtotal      += $repairJobsTotal;
+        $taxableItemsBasis  += $repairJobsTaxableTotal; // only non-tax-free repair jobs are taxed
+
         $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
         $taxRate = floatval($dbTax) / 100;
 
@@ -2983,7 +3362,8 @@ Placeholder::make('job_target_confirmation')
         $set('final_total',         number_format($grandTotal, 2, '.', ''));
         $set('display_total_due',   number_format($grandTotal, 2, '.', ''));
 
-        // Tally all payments directly from the main block
+        // 🚀 FIX — no more exclusion. Every split row counts toward what was collected,
+        // since the total above now correctly includes the repair job charge it's paying for.
         $isSplit = $get('is_split_payment');
         if ($isSplit) {
             $payments   = $get('split_payments') ?? [];
@@ -3000,7 +3380,6 @@ Placeholder::make('job_target_confirmation')
 
         self::syncStatus($get, $set, $totalCollected);
     }
-
     public static function syncStatus(callable|Get $get, callable|Set $set, $totalCollected = null): void
     {
         $total = floatval($get('final_total') ?? 0);

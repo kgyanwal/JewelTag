@@ -3,6 +3,7 @@
 namespace App\Filament\Master\Resources\TenantResource\Pages;
 
 use App\Filament\Master\Resources\TenantResource;
+use App\Models\Plan;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Artisan;
@@ -19,10 +20,15 @@ class CreateTenant extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $this->domainUrl = $data['domain'];
-        
+
         // Remove non-tenant-table fields so create() doesn't fail
         unset($data['domain']);
-        
+
+        // ── NEW: Plan defaults ────────────────────────────────────────
+        $data['plan_id']       = $data['plan_id']       ?? Plan::where('slug', 'basic')->value('id');
+        $data['plan_status']   = $data['plan_status']   ?? 'trial';
+        $data['trial_ends_at'] = $data['trial_ends_at'] ?? now()->addDays(14);
+
         return $data;
     }
 

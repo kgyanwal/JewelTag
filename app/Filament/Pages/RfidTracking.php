@@ -293,8 +293,33 @@ class RfidTracking extends Page implements HasForms
         ];
     }
 
+    // ── MERGED: role check + plan check, one declaration only ──
     public static function shouldRegisterNavigation(): bool
     {
-        return \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+        $roleOk = \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+        if (!$roleOk) return false;
+
+        return self::tenantHasFeatureAccess();
+    }
+
+    public static function canAccess(): bool
+    {
+        return self::shouldRegisterNavigation();
+    }
+
+    protected static function tenantHasFeatureAccess(): bool
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return true;
+        }
+
+        $tenantModel = tenant();
+        $tenantModel->loadMissing('plan');
+
+        if (!$tenantModel->plan) {
+            return false;
+        }
+
+        return (bool) $tenantModel->plan->hasFeature('rfid');
     }
 }

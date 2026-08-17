@@ -34,6 +34,14 @@ class FindSale extends Page implements HasForms, HasTable
     protected static ?string $navigationGroup = 'Sales';
     protected static ?string $title           = 'Find Sale';
     protected static string  $view            = 'filament.pages.find-sale';
+    public string  $aiQuery       = '';
+    public string  $aiStatus      = '';   // 'thinking' | 'done' | 'error' | ''
+    public ?string $aiInterpretation = null; // human-readable explanation of what AI parsed
+    public bool    $aiSearchActive = false;
+    public float   $minAmount      = 0;
+    public float   $maxAmount      = 0;
+    public bool    $hasBalance     = false;
+
 
     #[\Livewire\Attributes\Url(as: 'keyword')]
     public ?string $keyword = null;
@@ -143,10 +151,16 @@ class FindSale extends Page implements HasForms, HasTable
                                     $this->resetTable();
                                 }),
 
-                            TextInput::make('staff_name')
-                                ->label('Sales Staff')
-                                ->placeholder('e.g. Anthony')
-                                ->live(debounce: 600)
+                            Select::make('staff_name')
+                                ->label('Sales Associate')
+                                ->placeholder('All Staff')
+                                ->options(
+                                    fn() => \App\Models\User::orderBy('name')
+                                        ->pluck('name', 'name')
+                                        ->toArray()
+                                )
+                                ->searchable()
+                                ->live()
                                 ->afterStateUpdated(function () {
                                     $this->resetPage();
                                     $this->resetTable();
@@ -246,6 +260,18 @@ class FindSale extends Page implements HasForms, HasTable
                         'items.productItem',
                         'payments',
                     ])
+                    ->when(
+                        $this->minAmount > 0,
+                        fn($q) => $q->where('final_total', '>=', $this->minAmount)
+                    )
+                    ->when(
+                        $this->maxAmount > 0,
+                        fn($q) => $q->where('final_total', '<=', $this->maxAmount)
+                    )
+                    ->when(
+                        $this->hasBalance,
+                        fn($q) => $q->where('balance_due', '>', 0.01)
+                    )
                     ->when(
                         $this->data['keyword'] ?? $this->keyword ?? null,
                         fn($q, $v) => $q->where(function ($sub) use ($v) {
@@ -361,6 +387,7 @@ class FindSale extends Page implements HasForms, HasTable
                         !$this->getTableSortColumn(),
                         fn($q) => $q->latest('created_at')
                     )
+                    
             )
             ->columns([
                 TextColumn::make('created_at')
@@ -441,44 +468,44 @@ class FindSale extends Page implements HasForms, HasTable
 
                 TextColumn::make('payment_status_summary')
                     ->label('PAYMENT SUMMARY')
-                   ->getStateUsing(function ($record) {
-    $isCustomDeposit = $record->has_trade_in
-        && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
+                    ->getStateUsing(function ($record) {
+                        $isCustomDeposit = $record->has_trade_in
+                            && str_contains($record->trade_in_description ?? '', 'Prior Deposit');
 
-    $total = floatval($record->final_total);
-    if ($isCustomDeposit) {
-        $total += floatval($record->trade_in_value);
-    }
+                        $total = floatval($record->final_total);
+                        if ($isCustomDeposit) {
+                            $total += floatval($record->trade_in_value);
+                        }
 
-    // Sum from all payment sources — never trust just one
-   $fromPayments     = floatval(\DB::table('payments')
-                        ->where('sale_id', $record->id)
-                        ->sum('amount'));
+                        // Sum from all payment sources — never trust just one
+                        $fromPayments     = floatval(\DB::table('payments')
+                            ->where('sale_id', $record->id)
+                            ->sum('amount'));
 
-$fromSalePayments = floatval(\DB::table('sale_payments')
-                        ->where('sale_id', $record->id)
-                        ->whereNull('deleted_at')
-                        ->sum('amount'));
+                        $fromSalePayments = floatval(\DB::table('sale_payments')
+                            ->where('sale_id', $record->id)
+                            ->whereNull('deleted_at')
+                            ->sum('amount'));
 
-$paid = $fromPayments + $fromSalePayments;
+                        $paid = $fromPayments + $fromSalePayments;
 
-// Fallback if both tables empty
-if ($paid == 0) {
-    $paid = floatval($record->amount_paid);
-}
-    $balance = max(0, $total - $paid);
+                        // Fallback if both tables empty
+                        if ($paid == 0) {
+                            $paid = floatval($record->amount_paid);
+                        }
+                        $balance = max(0, $total - $paid);
 
-    $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
-    $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
+                        $html  = "<div class='text-xs text-gray-500'>Bill Total: $" . number_format($total, 2) . "</div>";
+                        $html .= "<div class='text-sm font-bold text-success-600'>Paid: $" . number_format($paid, 2) . "</div>";
 
-    if ($balance > 0.01) {
-        $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
-    } else {
-        $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
-    }
+                        if ($balance > 0.01) {
+                            $html .= "<div class='text-sm font-bold text-danger-600'>Balance: $" . number_format($balance, 2) . "</div>";
+                        } else {
+                            $html .= "<div class='text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded inline-block uppercase font-bold mt-1'>Fully Paid</div>";
+                        }
 
-    return new HtmlString($html);
-}),
+                        return new HtmlString($html);
+                    }),
             ])
             ->actions([
                 \Filament\Tables\Actions\EditAction::make()
@@ -808,11 +835,151 @@ if ($paid == 0) {
 
 
             ])
+       ->filters([
+                // 🚀 NEW — Balance Due / Fully Paid filter, computed the same
+                // way as the PAYMENT SUMMARY column itself (payments +
+                // sale_payments, falling back to amount_paid), so results here
+                // always match what staff see printed in that column.
+                \Filament\Tables\Filters\Filter::make('payment_status')
+                    ->form([
+                        \Filament\Forms\Components\Radio::make('payment_status')
+                            ->label('Payment Status')
+                            ->options([
+                                'balance'      => '🔴 Has Balance Due',
+                                'fully_paid'   => '✅ Fully Paid',
+                            ])
+                            ->inline()
+                            ->inlineLabel(false),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (empty($data['payment_status'])) {
+                            return $query;
+                        }
+
+                        // Compute paid = payments + sale_payments, falling back to
+                        // amount_paid when both are 0 — mirrors payment_status_summary.
+                        $paidExpr = "
+                            COALESCE((
+                                SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = sales.id
+                            ), 0)
+                            +
+                            COALESCE((
+                                SELECT SUM(sp.amount) FROM sale_payments sp
+                                WHERE sp.sale_id = sales.id AND sp.deleted_at IS NULL
+                            ), 0)
+                        ";
+
+                        if ($data['payment_status'] === 'balance') {
+                            return $query->whereRaw("
+                                GREATEST(0, final_total - (
+                                    CASE WHEN ({$paidExpr}) = 0 THEN amount_paid ELSE ({$paidExpr}) END
+                                )) > 0.01
+                            ");
+                        }
+
+                        if ($data['payment_status'] === 'fully_paid') {
+                            return $query->whereRaw("
+                                GREATEST(0, final_total - (
+                                    CASE WHEN ({$paidExpr}) = 0 THEN amount_paid ELSE ({$paidExpr}) END
+                                )) <= 0.01
+                            ");
+                        }
+
+                        return $query;
+                    })
+                    ->indicateUsing(function (array $data): ?string {
+                        if (empty($data['payment_status'])) return null;
+                        return $data['payment_status'] === 'balance' ? 'Has Balance Due' : 'Fully Paid';
+                    }),
+            ])
+           ->filtersLayout(\Filament\Tables\Enums\FiltersLayout::Dropdown)
             ->defaultSort('created_at', 'desc')
             ->defaultPaginationPageOption(15)
             ->paginationPageOptions([10, 15, 25, 50]);
     }
 
+    public function runAiSearch(): void
+    {
+        if (blank($this->aiQuery)) return;
+ 
+        $this->aiStatus = 'thinking';
+        $this->aiInterpretation = null;
+ 
+        $service = new \App\Services\GeminiSaleSearchService();
+        $parsed  = $service->parse($this->aiQuery);
+ 
+        if (isset($parsed['error'])) {
+            $this->aiStatus = 'error';
+            $this->aiInterpretation = $parsed['error'];
+            return;
+        }
+ 
+        // ── Apply parsed filters to existing filter properties ────
+        $this->keyword        = $parsed['keyword']        ?? null;
+        $this->invoice_number = $parsed['invoice_number'] ?? null;
+        $this->staff_name     = $parsed['staff_name']     ?? null;
+        $this->first_name     = $parsed['first_name']     ?? null;
+        $this->last_name      = $parsed['last_name']      ?? null;
+        $this->phone          = $parsed['phone']          ?? null;
+        $this->payment_method = $parsed['payment_method'] ?? null;
+        $this->date_from      = $parsed['date_from']      ?? null;
+        $this->date_to        = $parsed['date_to']        ?? null;
+        $this->job_type       = $parsed['job_type']       ?? null;
+        $this->minAmount      = floatval($parsed['min_amount'] ?? 0);
+        $this->maxAmount      = floatval($parsed['max_amount'] ?? 0);
+        $this->hasBalance     = (bool)($parsed['has_balance'] ?? false);
+ 
+        // ── Sync to form data ─────────────────────────────────────
+        $this->data = array_merge($this->data ?? [], [
+            'keyword'        => $this->keyword,
+            'invoice_number' => $this->invoice_number,
+            'staff_name'     => $this->staff_name,
+            'first_name'     => $this->first_name,
+            'last_name'      => $this->last_name,
+            'phone'          => $this->phone,
+            'payment_method' => $this->payment_method,
+            'date_from'      => $this->date_from,
+            'date_to'        => $this->date_to,
+            'job_type'       => $this->job_type,
+        ]);
+        $this->form->fill($this->data);
+ 
+        // ── Build human-readable interpretation ───────────────────
+        $parts = [];
+        if ($this->staff_name)     $parts[] = "Staff: <strong>{$this->staff_name}</strong>";
+        if ($this->keyword)        $parts[] = "Keyword: <strong>{$this->keyword}</strong>";
+        if ($this->payment_method) $parts[] = "Method: <strong>{$this->payment_method}</strong>";
+        if ($this->date_from && $this->date_to)
+            $parts[] = "Date: <strong>{$this->date_from}</strong> → <strong>{$this->date_to}</strong>";
+        elseif ($this->date_from)
+            $parts[] = "From: <strong>{$this->date_from}</strong>";
+        if ($this->minAmount > 0)  $parts[] = "Min: <strong>$" . number_format($this->minAmount, 0) . "</strong>";
+        if ($this->maxAmount > 0)  $parts[] = "Max: <strong>$" . number_format($this->maxAmount, 0) . "</strong>";
+        if ($this->hasBalance)     $parts[] = "<strong>Outstanding balance only</strong>";
+        if ($this->job_type)       $parts[] = "Job: <strong>{$this->job_type}</strong>";
+ 
+        $this->aiInterpretation = !empty($parts)
+            ? '🤖 Searching for: ' . implode(' &nbsp;·&nbsp; ', $parts)
+            : '🤖 No specific filters detected — showing all results.';
+ 
+        $this->aiStatus      = 'done';
+        $this->aiSearchActive = true;
+ 
+        $this->resetPage();
+        $this->resetTable();
+    }
+ 
+    public function clearAiSearch(): void
+    {
+        $this->aiQuery        = '';
+        $this->aiStatus       = '';
+        $this->aiInterpretation = null;
+        $this->aiSearchActive  = false;
+        $this->minAmount       = 0;
+        $this->maxAmount       = 0;
+        $this->hasBalance      = false;
+        $this->resetFilters();
+    }
     public function resetFilters(): void
     {
         $this->keyword = $this->invoice_number = $this->staff_name = null;

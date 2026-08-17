@@ -30,7 +30,31 @@ class EodAmendmentRequests extends Page implements HasTable, HasForms
 
     public static function shouldRegisterNavigation(): bool
     {
-        return auth()->user()?->hasRole('Superadmin') ?? false;
+        $roleOk = auth()->user()?->hasAnyRole(['Superadmin', 'Administration']) ?? false;
+        if (!$roleOk) return false;
+
+        return self::tenantHasReportAccess();
+    }
+
+    public static function canAccess(): bool
+    {
+        return self::shouldRegisterNavigation();
+    }
+
+    protected static function tenantHasReportAccess(): bool
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return true;
+        }
+
+        $tenantModel = tenant();
+        $tenantModel->loadMissing('plan');
+
+        if (!$tenantModel->plan) {
+            return false;
+        }
+
+        return (bool) $tenantModel->plan->hasFeature('advanced_analytics');
     }
 
     public function mount(): void

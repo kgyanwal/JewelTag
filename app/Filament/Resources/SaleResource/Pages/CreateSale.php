@@ -83,7 +83,25 @@ class CreateSale extends CreateRecord
                 }
 
                 foreach ($repairItems as $index => $rItem) {
-                    $cost        = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
+                    // 🚀 FIX: Costs now live per-service under items[].services[], not as
+                    // flat item-level final_cost/estimated_cost. Sum across all services on
+                    // this item, preferring the final (charged) cost over the quoted estimate.
+                    $isWarranty = !empty($rItem['is_warranty']);
+                    $itemCost   = 0;
+
+                    foreach ($rItem['services'] ?? [] as $svc) {
+                        if ($isWarranty) continue; // warranty items are always $0
+                        $itemCost += (isset($svc['final_cost']) && $svc['final_cost'] !== '' && $svc['final_cost'] !== null)
+                            ? floatval($svc['final_cost'])
+                            : floatval($svc['estimated_cost'] ?? 0);
+                    }
+
+                    // Legacy fallback for older repairs saved before the services model existed
+                    if ($itemCost <= 0 && empty($rItem['services'])) {
+                        $itemCost = floatval($rItem['final_cost'] ?? $rItem['estimated_cost'] ?? 0);
+                    }
+
+                    $cost        = $itemCost;
                     $cartItems[] = [
                         'product_item_id'     => null,
                         'repair_id'           => $repair->id,
@@ -94,7 +112,7 @@ class CreateSale extends CreateRecord
                         'sale_price_override' => $cost,
                         'discount_percent'    => 0,
                         'discount_amount'     => 0,
-                        'is_tax_free'         => false,
+                        'is_tax_free'         => $isWarranty,
                     ];
                 }
 
@@ -350,11 +368,108 @@ class CreateSale extends CreateRecord
             $specialJobs = $sale->special_jobs ?? [];
             $isLaybuy = $sale->payment_method === 'laybuy';
             $sale->update(['effective_sale_date' => $sale->completed_at ?? now()]);
-            // Find the custom order if one exists in this cart
+       // Find the custom order if one exists in this cart
             $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
             $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
+            // 🚀 NEW — create every special_jobs Repair FIRST (moved up from below), and
+            // build job_uuid → repair_id so "job_{uuid}" payment targets (set before the
+            // Repair existed) can be resolved to a real repair_id right below.
+            $jobUuidToRepairId = [];
+            if (!empty($specialJobs) && is_array($specialJobs)) {
+                $saleItemsArrayForJobs = $sale->items->values();
+
+               foreach ($specialJobs as $job) {
+                    if (empty($job['job_type'])) continue;
+
+                    $itemDescription = null;
+                    if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
+                        $storeItem = \App\Models\ProductItem::find($job['store_item_id']);
+                        if ($storeItem) {
+                            $itemDescription = $storeItem->barcode . ' — ' . ($storeItem->custom_description ?? '');
+                        }
+                    }
+                    if (empty($itemDescription)) {
+                        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
+                        if (empty($selectedIndexes)) $selectedIndexes = [0];
+                        $selectedItems = collect($selectedIndexes)->map(fn($idx) => $saleItemsArrayForJobs->get((int)$idx))->filter();
+                        $itemDescription = $selectedItems->map(function ($item) {
+                            if ($item->productItem) return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
+                            return $item->custom_description ?? 'Item';
+                        })->filter()->implode(', ');
+                    }
+                    if (empty($itemDescription)) $itemDescription = 'Item from Sale #' . $sale->invoice_number;
+
+                    $datePrefix = now()->format('ymd');
+                    $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
+                    while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
+                        $sequence++;
+                    }
+                    $repairNo = $datePrefix . '-' . $sequence;
+
+                    // 🚀 FIX — was hardcoded 0/null. Now pulls straight from the
+                    // "Amount to Charge for This Job" field so calculateRepairTotal()
+                    // agrees with what was actually collected via split_payments.
+                    $jobCharge = round((float) ($job['job_final_charge'] ?? 0), 2);
+
+                    $newRepair = \App\Models\Repair::create([
+                        'sale_id'              => $sale->id,
+                        'repair_no'            => $repairNo,
+                        'customer_id'          => $sale->customer_id,
+                        'store_id'             => $sale->store_id,
+                        'staff_id'             => auth()->id(),
+                        'sales_person_list'    => is_array($sale->sales_person_list) ? $sale->sales_person_list : [$sale->sales_person_list],
+                        'status'               => 'received',
+                        'item_description'     => $itemDescription,
+                        'reported_issue'       => $job['job_type']
+                            . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
+                            . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
+                            . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
+                        'repair_notes'         => $job['job_instructions'] ?? null,
+                        'customer_pickup_date' => $job['date_required'] ?? null,
+                        'estimated_cost'       => $jobCharge,
+                        'final_cost'           => $jobCharge,
+                      'items'                => [[
+                            'item_description' => $itemDescription,
+                            'reported_issue'   => $job['job_type'],
+                            'is_warranty'       => false,
+                            'is_tax_free'       => (bool) ($job['job_is_tax_free'] ?? false),
+                            'services'          => [[
+                                'job_type'         => $job['job_type'],
+                                'metal_type'       => $job['metal_type'] ?? null,
+                                'current_size'     => $job['current_size'] ?? null,
+                                'target_size'      => $job['target_size'] ?? null,
+                                'send_to'          => $job['send_to'] ?? null,
+                                'job_instructions' => $job['job_instructions'] ?? null,
+                                'date_required'    => $job['date_required'] ?? null,
+                                'estimated_cost'   => $jobCharge,
+                                'final_cost'       => $jobCharge,
+                            ]],
+                        ]],
+                    ]);
+
+                 if (!empty($job['job_uuid'])) {
+                        $jobUuidToRepairId[$job['job_uuid']] = $newRepair->id;
+                    }
+                }
+
+                // 🚀 FIX — persist repair_id back onto the Sale's own special_jobs column.
+                // Without this, buildPaymentTargetOptions() (which reads special_jobs, not
+                // the Payment table) keeps emitting "job_{uuid}" as the option key forever,
+                // while the hydrated split_payments row (built from Payment::repair_id on
+                // EditSale::mutateFormDataBeforeFill) uses "repair_{id}" — a permanent
+                // mismatch that shows a blank "Select an option" on every reopen.
+                $updatedSpecialJobs = $specialJobs;
+                foreach ($updatedSpecialJobs as $idx => $job) {
+                    if (!empty($job['job_uuid']) && isset($jobUuidToRepairId[$job['job_uuid']])) {
+                        $updatedSpecialJobs[$idx]['repair_id'] = $jobUuidToRepairId[$job['job_uuid']];
+                    }
+                }
+                $sale->updateQuietly(['special_jobs' => $updatedSpecialJobs]);
+            }
+
             // 🚀 CRITICAL FIX 1: Link historical Custom Order payments to this new Sale record immediately
+
             if ($customOrder) {
                 \App\Models\Payment::where('custom_order_id', $customOrder->id)
                     ->update(['sale_id' => $sale->id]);
@@ -385,18 +500,39 @@ class CreateSale extends CreateRecord
             // Loop and insert only TRULY NEW money collected today
             foreach ($paymentsToProcess as $p) {
                 if ($p['amount'] <= 0) continue;
-
-                $target = $p['target'] ?? 'regular';
+$target   = $p['target'] ?? 'regular';
                 $isCustom = ($target === 'custom' && $customOrder);
+                // 🚀 Resolve either "repair_{id}" (item already had a Repair) or
+                // "job_{uuid}" (Repair just got created above this loop) to a real id.
+                $paymentRepairId = null;
+                if (str_starts_with($target, 'repair_')) {
+                    $paymentRepairId = (int) substr($target, 7);
+                } elseif (str_starts_with($target, 'job_')) {
+                    $jobUuid = substr($target, 4);
+                    $paymentRepairId = $jobUuidToRepairId[$jobUuid] ?? null;
+                }
 
                 \App\Models\Payment::create([
                     'sale_id'         => $sale->id,
                     'custom_order_id' => $isCustom ? $customOrder->id : null,
+                    'repair_id'       => $paymentRepairId,
                     'amount'          => $p['amount'],
                     'method'          => $p['method'],
                     'paid_at'         => now(),
                     'store_id'        => $sale->store_id ?? 1,
                 ]);
+
+                // 🚀 Resync immediately, same pattern as custom order below
+                if ($paymentRepairId) {
+                    $r = \App\Models\Repair::find($paymentRepairId);
+                    if ($r) {
+                        $rCalc = \App\Filament\Resources\RepairResource::calculateRepairTotal($r->fresh());
+                        $r->update([
+                            'amount_paid' => $rCalc['paid'],
+                            'balance_due' => $rCalc['balance'],
+                        ]);
+                    }
+                }
             }
 
             // 🚀 Update Sale total directly from DB so it accounts for old AND new money
@@ -477,90 +613,7 @@ class CreateSale extends CreateRecord
             }
 
 
-            if (!empty($specialJobs) && is_array($specialJobs)) {
-
-                $saleItemsArray = $sale->items->values();
-
-               foreach ($specialJobs as $job) {
-                    if (empty($job['job_type'])) continue;
-
-                    $itemDescription = null;
-
-                    // ── Path 1: job applies to a previously-sold store item (not in this cart) ──
-                    if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
-                        $storeItem = \App\Models\ProductItem::find($job['store_item_id']);
-                        if ($storeItem) {
-                            $itemDescription = $storeItem->barcode . ' — ' . ($storeItem->custom_description ?? '');
-                        }
-                    }
-
-                    // ── Path 2: job applies to item(s) already in this sale's cart ──
-                    if (empty($itemDescription)) {
-                        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
-                        if (empty($selectedIndexes)) {
-                            $selectedIndexes = [0];
-                        }
-
-                        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
-                            return $saleItemsArray->get((int)$idx);
-                        })->filter();
-
-                        $itemDescription = $selectedItems->map(function ($item) {
-                            if ($item->productItem) {
-                                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
-                            }
-                            return $item->custom_description ?? 'Item';
-                        })->filter()->implode(', ');
-                    }
-
-                    if (empty($itemDescription)) {
-                        $itemDescription = 'Item from Sale #' . $sale->invoice_number;
-                    }
-
-                    // ── Generate repair number ────────────────────────────────
-                    $datePrefix = now()->format('ymd');
-                    $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
-                    while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
-                        $sequence++;
-                    }
-                    $repairNo = $datePrefix . '-' . $sequence;
-
-                    \App\Models\Repair::create([
-                        'sale_id'              => $sale->id,
-                        'repair_no'            => $repairNo,
-                        'customer_id'          => $sale->customer_id,
-                        'store_id'             => $sale->store_id,
-                        'staff_id'             => auth()->id(),
-                        'sales_person_list'    => is_array($sale->sales_person_list)
-                            ? $sale->sales_person_list
-                            : [$sale->sales_person_list],
-                        'status'               => 'received',
-                        'item_description'     => $itemDescription,
-                        'reported_issue'       => $job['job_type']
-                            . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
-                            . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
-                            . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
-                        'repair_notes'         => $job['job_instructions'] ?? null,
-                        'customer_pickup_date' => $job['date_required'] ?? null,
-                        'estimated_cost'       => 0,
-                        'final_cost'           => null,
-                        'items'                => [[
-                            'item_description' => $itemDescription,
-                            'reported_issue'   => $job['job_type'],
-                            'job_type'         => $job['job_type'],
-                            'metal_type'       => $job['metal_type'] ?? null,
-                            'current_size'     => $job['current_size'] ?? null,
-                            'target_size'      => $job['target_size'] ?? null,
-                            'send_to'          => $job['send_to'] ?? null,
-                            'job_instructions' => $job['job_instructions'] ?? null,
-                            'date_required'    => $job['date_required'] ?? null,
-                            'estimated_cost'   => 0,
-                            'final_cost'       => null,
-                        ]],
-                    ]);
-                }
-            }
-        });
+           });
 
         session()->forget("sale_draft_{$this->draftId}");
         $this->data = [];

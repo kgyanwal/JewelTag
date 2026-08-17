@@ -688,63 +688,84 @@ class LaybuyResource extends Resource
                             ]),
 
                         Section::make('Agreement Status')
-                            ->schema([
-                                Select::make('status')
-                                    ->options(['in_progress' => 'Active Plan', 'completed' => 'Fully Paid', 'cancelled' => 'Cancelled'])
-                                    ->required()->native(false),
+    ->schema([
+        Select::make('status')
+            ->options(['in_progress' => 'Active Plan', 'completed' => 'Fully Paid', 'cancelled' => 'Cancelled'])
+            ->required()->native(false),
 
-                                TextInput::make('total_amount')
-                                    ->label('Agreement Total')
-                                    ->prefix('$')->readOnly()
-                                    ->extraInputAttributes(['class' => 'font-bold text-xl text-gray-900']),
+        TextInput::make('total_amount')
+            ->label('Agreement Total')
+            ->prefix('$')->readOnly()
+            ->extraInputAttributes([
+                'class' => 'font-black !text-2xl text-gray-900',
+                'style' => 'font-size:22px !important; height:48px;'
+            ]),
 
-                                TextInput::make('amount_paid')
-                                    ->label('Initial Deposit Collected')
-                                    ->prefix('$')
-                                    ->numeric()
-                                    ->readOnly(fn(string $operation) => $operation === 'edit')
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set))
-                                    ->extraInputAttributes(['class' => 'text-green-600 font-bold']),
+        TextInput::make('amount_paid')
+            ->label('Initial Deposit Collected')
+            ->prefix('$')
+            ->numeric()
+            ->readOnly(fn(string $operation) => $operation === 'edit')
+            ->live(onBlur: true)
+            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateTotals($get, $set))
+            ->extraInputAttributes([
+                'class' => 'font-black !text-2xl text-green-600',
+                'style' => 'font-size:22px !important; height:48px;'
+            ]),
 
-                                Select::make('initial_payment_method')
-                                    ->label('Deposit Payment Method')
-                                    ->options(function () {
-                                        $json    = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
-                                        $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
-                                        $options = [];
-                                        foreach ($methods as $method) {
-                                            if (strtoupper($method) !== 'LAYBUY') {
-                                                $options[strtoupper($method)] = strtoupper($method);
-                                            }
-                                        }
-                                        return $options;
-                                    })
-                                    ->default('CASH')
-                                    ->visible(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0)
-                                    ->required(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0),
+        Select::make('initial_payment_method')
+            ->label('Deposit Payment Method')
+            ->options(function () {
+                $json    = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
+                $methods = $json ? json_decode($json, true) : ['CASH', 'VISA', 'MASTERCARD', 'AMEX'];
+                $options = [];
+                foreach ($methods as $method) {
+                    if (strtoupper($method) !== 'LAYBUY') {
+                        $options[strtoupper($method)] = strtoupper($method);
+                    }
+                }
+                return $options;
+            })
+            ->default('CASH')
+            ->visible(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0)
+            ->required(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('amount_paid')) > 0),
 
-                                TextInput::make('balance_due')
-                                    ->label('Remaining Balance')
-                                    ->prefix('$')->readOnly()
-                                    ->extraInputAttributes(['class' => 'text-red-600 font-black text-2xl bg-red-50']),
+        Placeholder::make('balance_due_display')
+            ->label('')
+            ->content(function (Get $get) {
+                $balance = (float) ($get('balance_due') ?? 0);
+                $color = $balance > 0.01 ? '#dc2626' : '#16a34a';
+                $bg    = $balance > 0.01 ? '#fef2f2' : '#f0fdf4';
+                $label = $balance > 0.01 ? 'Remaining Balance' : 'Paid in Full';
 
-                                Placeholder::make('progress_bar')
-                                    ->label('Payment Progress')
-                                    ->content(function (Get $get) {
-                                        $total = (float) $get('total_amount');
-                                        $paid  = (float) $get('amount_paid');
-                                        $perc  = $total > 0 ? min(100, round(($paid / $total) * 100)) : 0;
-                                        return new HtmlString("
-                                            <div class='w-full bg-gray-200 rounded-full h-2.5 mt-2'>
-                                                <div class='bg-primary-600 h-2.5 rounded-full transition-all duration-500' style='width:{$perc}%'></div>
-                                            </div>
-                                            <div class='flex justify-between text-[10px] font-bold text-gray-500 mt-1 uppercase'>
-                                                <span>Progress</span><span>{$perc}%</span>
-                                            </div>
-                                        ");
-                                    }),
-                            ]),
+                return new HtmlString("
+                    <div style='background:{$bg};border:2px solid {$color}33;border-radius:12px;padding:14px 20px;margin-top:4px;'>
+                        <div style='font-size:12px;font-weight:800;color:{$color};text-transform:uppercase;letter-spacing:0.05em;'>{$label}</div>
+                        <div style='font-size:36px;font-weight:900;color:{$color};line-height:1.2;'>\$" . number_format($balance, 2) . "</div>
+                    </div>
+                ");
+            })
+            ->live(),
+
+        Hidden::make('balance_due'),
+
+        Placeholder::make('progress_bar')
+            ->label('Payment Progress')
+            ->content(function (Get $get) {
+                $total = (float) $get('total_amount');
+                $paid  = (float) $get('amount_paid');
+                $perc  = $total > 0 ? min(100, round(($paid / $total) * 100)) : 0;
+                $color = $perc >= 100 ? '#16a34a' : ($perc >= 50 ? '#0284c7' : '#dc2626');
+                return new HtmlString("
+                    <div class='w-full bg-gray-200 rounded-full h-4 mt-2'>
+                        <div style='background:{$color};width:{$perc}%;height:100%;border-radius:999px;transition:width 0.3s;' class='h-4 rounded-full'></div>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;font-size:14px;font-weight:800;color:#374151;margin-top:6px;text-transform:uppercase;'>
+                        <span>Progress</span><span style='color:{$color};font-size:16px;'>{$perc}%</span>
+                    </div>
+                ");
+            }),
+    ]),
 
                         Section::make('Timeline')
                             ->schema([

@@ -686,6 +686,41 @@
         </div>
     </div>
 
+ {{-- ══ SALES BREAKDOWN BY TYPE ══ --}}
+    @php
+        $typeData = $this->salesTypeBreakdown;
+        $typeDotClass = [
+            'Repairs'        => 'dot-manual',
+            'Custom Orders'  => 'dot-electronic',
+            'Laybuys'        => 'dot-layby',
+            'Regular Sales'  => 'dot-credit',
+        ];
+    @endphp
+    <div class="sr-banking-card">
+        <div class="sr-banking-head">
+            <span>Sales Breakdown by Type</span>
+            <span class="r">Count</span>
+            <span class="r">Total</span>
+        </div>
+
+        @foreach($typeData['breakdown'] as $typeName => $row)
+        <div class="sr-banking-row">
+            <div class="sr-banking-row-label">
+                <span class="sr-group-dot {{ $typeDotClass[$typeName] ?? 'dot-other' }}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
+                {{ $typeName }}
+            </div>
+            <div class="sr-banking-row-sub">{{ $row['count'] }}</div>
+            <div class="sr-banking-row-total">${{ number_format($row['total'], 2) }}</div>
+        </div>
+        @endforeach
+
+        <div class="sr-banking-final">
+            <div class="sr-banking-final-label">Grand Total</div>
+            <div></div>
+            <div class="sr-banking-final-amount">${{ number_format($typeData['grandTotal'], 2) }}</div>
+        </div>
+    </div>
+
     {{-- ══ BANKING TOTALS ══ --}}
     <div class="sr-banking-card">
         <div class="sr-banking-head">

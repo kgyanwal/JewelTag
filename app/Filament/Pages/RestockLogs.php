@@ -27,9 +27,36 @@ class RestockLogs extends Page implements HasTable
     protected static ?string $title           = 'Restocked Items Log';
     protected static string  $view            = 'filament.pages.restock-logs';
 
+    // ── MERGED: role check + plan check, one declaration only ──
     public static function shouldRegisterNavigation(): bool
     {
-        return \App\Helpers\Staff::user()?->hasRole('Superadmin') ?? false;
+        $roleOk = \App\Helpers\Staff::user()?->hasRole('Superadmin') ?? false;
+        if (!$roleOk) return false;
+
+        return self::tenantHasReportAccess();
+    }
+
+    // ── NEW: block direct URL access too ──
+    public static function canAccess(): bool
+    {
+        return self::shouldRegisterNavigation();
+    }
+
+    // ── NEW: shared plan-check helper ──
+    protected static function tenantHasReportAccess(): bool
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return true;
+        }
+
+        $tenantModel = tenant();
+        $tenantModel->loadMissing('plan');
+
+        if (!$tenantModel->plan) {
+            return false;
+        }
+
+        return (bool) $tenantModel->plan->hasFeature('advanced_analytics');
     }
 
     public function mount(): void
@@ -44,16 +71,14 @@ class RestockLogs extends Page implements HasTable
     {
         return $table
             ->query(
-                // Items that are now in_stock BUT have a SaleItem record
-                // meaning they were previously sold and then restocked
-               ProductItem::query()
-    ->where('status', 'in_stock')
-    ->whereExists(function ($query) {
-        $query->select(\Illuminate\Support\Facades\DB::raw(1))
-            ->from('sale_items')
-            ->whereColumn('sale_items.product_item_id', 'product_items.id');
-    })
-    ->latest('updated_at')
+                ProductItem::query()
+                    ->where('status', 'in_stock')
+                    ->whereExists(function ($query) {
+                        $query->select(\Illuminate\Support\Facades\DB::raw(1))
+                            ->from('sale_items')
+                            ->whereColumn('sale_items.product_item_id', 'product_items.id');
+                    })
+                    ->latest('updated_at')
             )
             ->columns([
                 TextColumn::make('updated_at')

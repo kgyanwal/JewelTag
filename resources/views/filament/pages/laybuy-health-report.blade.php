@@ -96,12 +96,54 @@
 
 <div class="lhr-root lhr-onyx">
 
-    {{-- HERO --}}
+{{-- HERO --}}
     <div class="lhr-hero">
         <div class="lhr-hero-eyebrow">Layaway</div>
         <h1 class="lhr-hero-title">Laybuy Health Report</h1>
         <p class="lhr-hero-sub">Which payment plans are on track, and which need a phone call before they're written off.</p>
     </div>
+
+    {{-- 🚀 NEW — DATE FILTER --}}
+    <div style="background:#fff;border:1px solid rgba(33,28,22,0.08);border-radius:14px;padding:16px 20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(33,28,22,0.04);">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--o-ink-soft, #5C5346);margin-bottom:10px;">
+            Filter by Laybuy Start Date
+        </div>
+        {{ $this->form }}
+    </div>
+
+    @php
+        $periodStats = $this->getPeriodStats();
+    @endphp
+
+    @if($fromDate || $toDate)
+    <div style="background:linear-gradient(135deg,#15120F,#1F1A15);border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 6px 20px rgba(21,18,15,0.2);">
+        <div style="font-size:12px;color:rgba(250,246,238,0.7);">
+            Laybuy sales
+            @if($fromDate && $toDate)
+                from <strong style="color:#E0AE5C;">{{ \Carbon\Carbon::parse($fromDate)->format('M d, Y') }}</strong>
+                to <strong style="color:#E0AE5C;">{{ \Carbon\Carbon::parse($toDate)->format('M d, Y') }}</strong>
+            @elseif($fromDate)
+                since <strong style="color:#E0AE5C;">{{ \Carbon\Carbon::parse($fromDate)->format('M d, Y') }}</strong>
+            @else
+                up to <strong style="color:#E0AE5C;">{{ \Carbon\Carbon::parse($toDate)->format('M d, Y') }}</strong>
+            @endif
+        </div>
+        <div style="display:flex;gap:24px;">
+            <div>
+                <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(250,246,238,0.5);">Plans Opened</div>
+                <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:#fff;">{{ $periodStats['count'] }}</div>
+            </div>
+            <div>
+                <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(250,246,238,0.5);">Total Value</div>
+                <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:#E0AE5C;">${{ number_format($periodStats['total_value'], 2) }}</div>
+            </div>
+            <div>
+                <div style="font-size:9.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(250,246,238,0.5);">Collected So Far</div>
+                <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:#6FCF97;">${{ number_format($periodStats['total_paid'], 2) }}</div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     @php
         $stats   = $this->getStats();

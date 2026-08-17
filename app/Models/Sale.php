@@ -84,12 +84,27 @@ class Sale extends Model
                 $sale->invoice_number = $prefix . $nextNumber;
             }
         });
-       static::saving(function ($sale) {
-    // Only set completed_at when status becomes completed
-    if ($sale->status === 'completed' && empty($sale->completed_at)) {
-        $sale->completed_at = now();
-    }
-});
+        // REPLACE WITH:
+        static::saving(function ($sale) {
+            // ── 1. New sale becoming completed for first time ──
+            if ($sale->status === 'completed' && empty($sale->completed_at)) {
+                $sale->completed_at = now();
+            }
+
+            // ── 2. Imported sale: balance_due just dropped to 0 from a real payment ──
+            // Only fires when balance_due was > 0 before and is now 0 or less.
+            // This moves completed_at to NOW so MySalesReport shows it in the
+            // correct month instead of the original import/sale date.
+            // Safe: only triggers when balance_due is actually changing to zero.
+            if (
+                $sale->status === 'completed'        &&
+                floatval($sale->balance_due) <= 0.01 &&
+                $sale->isDirty('balance_due')        &&
+                floatval($sale->getOriginal('balance_due')) > 0.01
+            ) {
+                $sale->completed_at = now();
+            }
+        });
     }
 
     public function getCustomerNameAttribute(): string
@@ -113,13 +128,17 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
     public function salePayments(): HasMany
-{
-    return $this->hasMany(SalePayment::class);
-}
+    {
+        return $this->hasMany(SalePayment::class);
+    }
     public function getGlobalSearchResultDetails(): array
     {
         return [
             'Customer' => $this->customer?->name ?? 'Walk-in',
         ];
+    }
+    public function auditLogs()
+    {
+        return $this->hasMany(SaleAuditLog::class)->latest();
     }
 }

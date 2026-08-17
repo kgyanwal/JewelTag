@@ -465,4 +465,32 @@ class WarrantyReport extends Page implements HasForms, HasTable
             ->emptyStateHeading('No warranty sales in this period')
             ->emptyStateDescription('Try adjusting the date range, period, or staff filter.');
     }
+    // ── NEW: hide from nav for Basic plan ──
+public static function shouldRegisterNavigation(): bool
+{
+    return self::tenantHasReportAccess();
+}
+
+// ── NEW: block direct URL access too ──
+public static function canAccess(): bool
+{
+    return self::tenantHasReportAccess();
+}
+
+// ── NEW: shared plan-check helper ──
+protected static function tenantHasReportAccess(): bool
+{
+    if (!function_exists('tenant') || !tenant()) {
+        return true;
+    }
+
+    $tenantModel = tenant();
+    $tenantModel->loadMissing('plan');
+
+    if (!$tenantModel->plan) {
+        return false;
+    }
+
+    return (bool) $tenantModel->plan->hasFeature('advanced_analytics');
+}
 }

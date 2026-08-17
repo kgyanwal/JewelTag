@@ -592,7 +592,29 @@ section.fi-section > .fi-section-header {
 .fi-page-header { padding: 1.25rem 0 0.75rem 0 !important; }
 .fi-header-heading {
     font-family: 'Fraunces', serif !important;
-    color: var(--jt-pine) !important;
+    color: var(--jt-ivory) !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
+}
+
+/* 🚀 FIX — page header/title sits on the dark pine topbar background on
+   pages like Sale Edit, not on a white card. The prior color: var(--jt-pine)
+   was dark-teal-on-dark-teal, making "Edit D5134" essentially invisible
+   (only visible via text selection). Ivory + a subtle shadow keeps it
+   readable and matches the topbar's own text treatment. */
+.fi-header-heading,
+.fi-header-heading * {
+    color: var(--jt-ivory) !important;
+}
+
+/* Breadcrumbs (Sales > D5134 > Edit) sit in the same dark region — ensure
+   they're legible too, slightly dimmer than the title for hierarchy */
+.fi-breadcrumbs,
+.fi-breadcrumbs * {
+    color: rgba(248,246,241,0.65) !important;
+}
+.fi-breadcrumbs-item:last-child,
+.fi-breadcrumbs-item:last-child * {
+    color: var(--jt-gold-soft) !important;
 }
 
 /* ── SCROLLBAR ────────────────────────────── */
@@ -767,6 +789,9 @@ HTML;
                 \App\Filament\Pages\RfidTracking::class,
                 \App\Filament\Pages\ExchangedCustomOrdersReport::class,
                 \App\Filament\Pages\PrintHistory::class,
+                \App\Filament\Pages\DiamondSearch::class,
+                \App\Filament\Pages\StaffPerformanceDashboard::class,
+                \App\Filament\Pages\CustomerLifetimeValue::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
@@ -788,6 +813,8 @@ HTML;
                 \Stancl\Tenancy\Middleware\InitializeTenancyByDomain::class,
                 \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
                 \App\Http\Middleware\CheckLicense::class,
+                \App\Http\Middleware\EnforcePlanLimits::class,
+                \App\Http\Middleware\TrackTenantActivity::class, 
             ])
             ->authMiddleware([
                 Authenticate::class,
@@ -872,6 +899,81 @@ HTML;
 
     public function boot(): void
     {
+        FilamentView::registerRenderHook(
+    'panels::content.start',
+    function (): string {
+        // Only show on the Users resource pages
+        if (!request()->routeIs('filament.admin.resources.users.*')) {
+            return '';
+        }
+        if (!function_exists('tenant') || !tenant()) return '';
+
+        $tenantModel = tenant();
+        $tenantModel->loadMissing('plan');
+        if (!$tenantModel->plan) return '';
+
+        $max     = $tenantModel->plan->max_users;
+        $current = \App\Models\User::count();
+        $unlimited = $max === -1;
+        $pct = $unlimited ? 0 : min(100, round(($current / max($max, 1)) * 100));
+        $nearLimit = !$unlimited && $current >= $max;
+        $color = $nearLimit ? '#B8463F' : ($pct > 75 ? '#C9A24B' : '#0F7A5C');
+
+        $label = $unlimited ? "{$current} users · Unlimited on {$tenantModel->plan->name}"
+            : "{$current} / {$max} users used on {$tenantModel->plan->name}";
+
+        $upgradeBtn = $nearLimit
+            ? '<a href="/contact" style="background:#0B3D3C;color:#F8F6F1;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;">Upgrade Plan</a>'
+            : '';
+
+        $bar = $unlimited ? '' : "
+            <div style='background:#e2e8f0;border-radius:99px;height:6px;width:160px;overflow:hidden;'>
+                <div style='background:{$color};height:100%;width:{$pct}%;'></div>
+            </div>";
+
+        return "
+            <div style='background:#fff;border:1px solid rgba(11,61,60,0.08);border-radius:12px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;'>
+                <div style='display:flex;align-items:center;gap:14px;'>
+                    <span style='font-size:13px;font-weight:700;color:#0B3D3C;'>👥 {$label}</span>
+                    {$bar}
+                </div>
+                {$upgradeBtn}
+            </div>";
+    }
+);
+ FilamentView::registerRenderHook(
+        'panels::content.start',
+        function (): string {
+            if (!function_exists('tenant') || !tenant()) return '';
+
+            $tenantModel = tenant();
+            $tenantModel->loadMissing('plan');
+
+            if ($tenantModel->plan_status !== 'trial' || !$tenantModel->trial_ends_at) {
+                return '';
+            }
+
+            $daysLeft = now()->diffInDays($tenantModel->trial_ends_at, false);
+            $expired  = $daysLeft < 0;
+            $today    = $daysLeft === 0;
+
+            $color = $expired ? '#B8463F' : ($daysLeft <= 1 ? '#B8463F' : ($daysLeft <= 3 ? '#C9A24B' : '#3D6B63'));
+            $bg    = $expired ? '#FBEAE8' : ($daysLeft <= 1 ? '#FBEAE8' : ($daysLeft <= 3 ? '#FBF3E2' : '#EEF3F2'));
+
+            $message = $expired
+                ? '⚠️ Your trial has expired. Contact us to continue using JewelTag.'
+                : ($today
+                    ? '🔴 Your trial ends today! Upgrade now to avoid interruption.'
+                    : "⏳ You're on a trial — {$daysLeft} day(s) remaining on your {$tenantModel->plan?->name} plan.");
+
+            return "
+                <div style='background:{$bg};border-left:4px solid {$color};border-radius:10px;padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;'>
+                    <div style='font-size:13px;font-weight:700;color:{$color};'>{$message}</div>
+                    <a href='/contact' style='background:#0B3D3C;color:#F8F6F1;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;'>Upgrade Now</a>
+                </div>";
+        }
+    );
+
         FilamentView::registerRenderHook(
             'panels::content.start',
             function (): string {

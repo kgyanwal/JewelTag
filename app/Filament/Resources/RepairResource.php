@@ -27,17 +27,180 @@ class RepairResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-wrench';
     protected static ?string $navigationGroup = 'Sales';
 
+    // 🚀 NEW — Sums every service's charge across every item on this repair ticket.
+    // Prefers final_cost (what was actually charged) over estimated_cost (the quote),
+    // and skips warranty items entirely (always $0), matching the table's own display logic.
+    public static function calculateRepairTotal(Repair $record): array
+    {
+        $subtotal        = 0;
+        $taxableSubtotal = 0; // 🚀 NEW — only non-tax-free items contribute to the taxable base
+
+        foreach ($record->items ?? [] as $item) {
+            $isWarranty = !empty($item['is_warranty']);
+            $isTaxFree  = !empty($item['is_tax_free']); // 🚀 NEW
+            if ($isWarranty) continue;
+
+            $itemTotal = 0;
+            foreach ($item['services'] ?? [] as $svc) {
+                $itemTotal += (isset($svc['final_cost']) && $svc['final_cost'] !== '' && $svc['final_cost'] !== null)
+                    ? floatval($svc['final_cost'])
+                    : floatval($svc['estimated_cost'] ?? 0);
+            }
+
+            $subtotal += $itemTotal;
+            if (!$isTaxFree) {
+                $taxableSubtotal += $itemTotal;
+            }
+        }
+
+        $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = floatval($dbTax) / 100;
+        $tax     = round($taxableSubtotal * $taxRate, 2); // 🚀 CHANGED — tax only on taxable portion
+        $total   = round($subtotal + $tax, 2);
+
+        $paid    = round(\App\Models\Payment::where('repair_id', $record->id)->sum('amount'), 2);
+        $balance = max(0, round($total - $paid, 2));
+
+        return compact('subtotal', 'tax', 'total', 'paid', 'balance');
+    }
+
+    // 🚀 NEW — Mirrors CustomOrderResource::createSaleDirectly(). Fires automatically once
+    // a repair's balance hits $0 via the "Add Deposit" action below, so the finished repair
+    // shows up in Sales Reports exactly like a completed Custom Order does.
+    public static function createSaleFromRepair(Repair $record): \App\Models\Sale
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($record) {
+            $calc = self::calculateRepairTotal($record);
+
+            $staffIds = $record->sales_person_list;
+            if (is_string($staffIds)) {
+                $decoded  = json_decode($staffIds, true);
+                $staffIds = is_array($decoded) ? $decoded : [];
+            }
+            if (empty($staffIds) || !is_array($staffIds)) {
+                $staffIds = $record->staff_id ? [$record->staff_id] : [];
+            }
+            $staffNames = \App\Models\User::whereIn('id', $staffIds)->pluck('name')->toArray();
+            if (empty($staffNames)) {
+                $staffNames = [auth()->user()->name ?? 'Unknown'];
+            }
+
+            $description = collect($record->items ?? [])
+                ->pluck('item_description')
+                ->filter()
+                ->implode(', ') ?: ('Repair #' . $record->repair_no);
+
+            $invoiceNumber = 'R' . str_pad((string) (\App\Models\Sale::max('id') + 1), 4, '0', STR_PAD_LEFT);
+
+            $sale = \App\Models\Sale::create([
+                'invoice_number'    => $invoiceNumber,
+                'customer_id'       => $record->customer_id,
+                'store_id'          => $record->store_id ?? auth()->user()->store_id ?? 1,
+                'sales_person_list' => $staffNames,
+                'subtotal'          => round($calc['subtotal'], 2),
+                'tax_amount'        => $calc['tax'],
+                'final_total'       => $calc['total'],
+                'amount_paid'       => $calc['paid'],
+                'balance_due'       => max(0, round($calc['total'] - $calc['paid'], 2)),
+                'payment_method'    => 'split',
+                'is_split_payment'  => true,
+                'status'            => 'completed',
+                'completed_at'      => now(),
+                'notes'             => 'Created from Repair #' . $record->repair_no,
+            ]);
+
+            $allItemsTaxFree = collect($record->items ?? [])
+                ->filter(fn($item) => empty($item['is_warranty']))
+                ->every(fn($item) => !empty($item['is_tax_free']));
+
+            $sale->items()->create([
+                'repair_id'           => $record->id,
+                'stock_no_display'    => 'REPAIR #' . $record->repair_no,
+                'custom_description'  => $description,
+                'qty'                 => 1,
+                'sold_price'          => round($calc['subtotal'], 2),
+                'sale_price_override' => round($calc['subtotal'], 2),
+                'is_tax_free'         => $allItemsTaxFree,
+                'is_non_stock'        => true,
+            ]);
+
+            // Re-point every deposit payment already collected on this repair to the new Sale
+            \App\Models\Payment::where('repair_id', $record->id)->update(['sale_id' => $sale->id]);
+
+            $record->update([
+                'sale_id' => $sale->id,
+                'status'  => 'delivered',
+            ]);
+
+            return $sale;
+        });
+    }
+
+    public static function updateRepairTotals(callable|Forms\Get $get, callable|Forms\Set $set): void
+    {
+        $items           = $get('items') ?? [];
+        $subtotal        = 0;
+        $taxableSubtotal = 0; // 🚀 NEW
+
+        foreach ($items as $item) {
+            if (!empty($item['is_warranty'])) continue;
+
+            $itemTotal = 0;
+            foreach ($item['services'] ?? [] as $svc) {
+                $itemTotal += (isset($svc['final_cost']) && $svc['final_cost'] !== '' && $svc['final_cost'] !== null)
+                    ? floatval($svc['final_cost'])
+                    : floatval($svc['estimated_cost'] ?? 0);
+            }
+
+            $subtotal += $itemTotal;
+            if (empty($item['is_tax_free'])) {
+                $taxableSubtotal += $itemTotal;
+            }
+        }
+
+        $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate = floatval($dbTax) / 100;
+        $tax     = round($taxableSubtotal * $taxRate, 2); // 🚀 CHANGED
+        $total   = round($subtotal + $tax, 2);
+
+        $set('repair_subtotal', number_format($subtotal, 2, '.', ''));
+        $set('repair_tax',      number_format($tax, 2, '.', ''));
+        $set('repair_total',    number_format($total, 2, '.', ''));
+
+        $isSplit = $get('is_split_payment');
+        if ($isSplit) {
+            $payments       = $get('split_payments') ?? [];
+            $totalCollected = collect($payments)->sum(fn($p) => (float) ($p['amount'] ?? 0));
+        } else {
+            $totalCollected = floatval($get('amount_paid') ?? 0);
+        }
+
+        $changeGiven = max(0, $totalCollected - $total);
+        $balanceDue  = max(0, $total - $totalCollected);
+
+        $set('change_given', number_format($changeGiven, 2, '.', ''));
+        $set('balance_due',  number_format($balanceDue, 2, '.', ''));
+    }
+
     private static function staffBadge(?string $name): string
     {
         if (!$name) return '<span style="color:#9ca3af;font-size:11px;">—</span>';
         $palette = [
-            ['#DBEAFE','#1D4ED8'],['#EDE9FE','#6D28D9'],['#CCFBF1','#0F766E'],
-            ['#FEF3C7','#B45309'],['#DCFCE7','#15803D'],['#FCE7F3','#BE185D'],
-            ['#FEE2E2','#B91C1C'],['#F3E8FF','#7E22CE'],['#CFFAFE','#0E7490'],
-            ['#FFEDD5','#C2410C'],['#E0E7FF','#4338CA'],['#ECFCCB','#4D7C0F'],
+            ['#DBEAFE', '#1D4ED8'],
+            ['#EDE9FE', '#6D28D9'],
+            ['#CCFBF1', '#0F766E'],
+            ['#FEF3C7', '#B45309'],
+            ['#DCFCE7', '#15803D'],
+            ['#FCE7F3', '#BE185D'],
+            ['#FEE2E2', '#B91C1C'],
+            ['#F3E8FF', '#7E22CE'],
+            ['#CFFAFE', '#0E7490'],
+            ['#FFEDD5', '#C2410C'],
+            ['#E0E7FF', '#4338CA'],
+            ['#ECFCCB', '#4D7C0F'],
         ];
         $index = abs(crc32(strtolower(trim($name)))) % count($palette);
-        [$bg,$text] = $palette[$index];
+        [$bg, $text] = $palette[$index];
         $short = strtoupper(substr(trim($name), 0, 6));
         return "<span style='background:{$bg};color:{$text};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px;white-space:nowrap;display:inline-block;border:1px solid {$text}33;'>{$short}</span>";
     }
@@ -86,11 +249,11 @@ class RepairResource extends Resource
                                                         Placeholder::make('img')->label('')
                                                             ->content(new HtmlString("
                                                                 <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
-                                                                    <img src='" . ($customer->image ? asset('storage/'.$customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
+                                                                    <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
                                                                     <div>
                                                                         <h3 class='text-lg font-bold text-gray-900'>{$customer->name} {$customer->last_name}</h3>
                                                                         <p class='text-sm text-gray-500'>ID: {$customer->customer_no}</p>
-                                                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>Balance: $".number_format($customer->credit_balance??0,2)."</span>
+                                                                        <span class='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 mt-1'>Balance: $" . number_format($customer->credit_balance ?? 0, 2) . "</span>
                                                                     </div>
                                                                 </div>
                                                             "))->columnSpanFull(),
@@ -115,10 +278,10 @@ class RepairResource extends Resource
                                                 Grid::make(2)->schema([
                                                     TextInput::make('phone')->label('Mobile Phone')->tel()->prefix('+1')
                                                         ->mask('(999) 999-9999')->placeholder('(555) 555-5555')
-                                                        ->stripCharacters(['(',')','-',' '])->rule('regex:/^[0-9]{10}$/')
+                                                        ->stripCharacters(['(', ')', '-', ' '])->rule('regex:/^[0-9]{10}$/')
                                                         ->afterStateHydrated(function ($component, $state) {
                                                             if ($state && preg_match('/^[0-9]{10}$/', $state))
-                                                                $component->state('('.substr($state,0,3).') '.substr($state,3,3).'-'.substr($state,6));
+                                                                $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
                                                         }),
                                                     TextInput::make('email')->label('Email')->email(),
                                                 ]),
@@ -130,22 +293,22 @@ class RepairResource extends Resource
                                                     GoogleAutocomplete::make('address_search')->label('Search Address')
                                                         ->autocompletePlaceholder('Start typing address...')->countries(['US'])->columnSpanFull()
                                                         ->withFields([
-                                                            TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field'=>'{street_number} {route}']),
-                                                            TextInput::make('address_line_2')->label('Address 2')->extraInputAttributes(['data-google-field'=>'subpremise']),
-                                                            TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field'=>'locality','data-google-value'=>'short_name']),
-                                                            TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field'=>'administrative_area_level_1']),
-                                                            TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field'=>'postal_code']),
+                                                            TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                            TextInput::make('address_line_2')->label('Address 2')->extraInputAttributes(['data-google-field' => 'subpremise']),
+                                                            TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                            TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                            TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code']),
                                                         ]),
                                                     Select::make('country')->label('Country')->default('United States')->searchable(),
                                                 ]),
                                             ]),
                                         ]),
-                                        Hidden::make('customer_no')->default(fn() => 'CUST-'.strtoupper(Str::random(6))),
+                                        Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
                                     ])
                                     ->createOptionUsing(fn(array $data) => \App\Models\Customer::create($data)->id),
 
                                 Select::make('status')
-                                    ->options(['received'=>'Received','in_progress'=>'In Progress','ready'=>'Ready for Pickup','delivered'=>'Delivered'])
+                                    ->options(['received' => 'Received', 'in_progress' => 'In Progress', 'ready' => 'Ready for Pickup', 'delivered' => 'Delivered'])
                                     ->default('received')->required(),
                             ]),
                         ]),
@@ -157,38 +320,42 @@ class RepairResource extends Resource
                             Repeater::make('items')->label('')
                                 ->schema([
 
-                                    // ── ITEM ORIGIN ──────────────────────────────────
                                     Section::make('Item Origin')
                                         ->description('Where did this piece come from?')
                                         ->icon('heroicon-o-tag')
                                         ->schema([
-                                            Grid::make(2)->schema([
-                                               Toggle::make('is_warranty')
-    ->label('Covered Under Warranty?')
-    ->helperText('Automatically sets all service costs to $0.00')
-    ->onColor('success')->inline(false)->live()
-    ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
-        if ($state) {
-            // Zero out all service costs via the services array
-            $set('services', collect($get('services') ?? [])->map(function ($svc) {
-                $svc['estimated_cost'] = 0;
-                $svc['final_cost']     = 0;
-                return $svc;
-            })->toArray());
-        }
-    }),
+                                            Grid::make(3)->schema([
+                                                Toggle::make('is_warranty')
+                                                    ->label('Covered Under Warranty?')
+                                                    ->helperText('Automatically sets all service costs to $0.00')
+                                                    ->onColor('success')->inline(false)->live()
+                                                    ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+                                                        if ($state) {
+                                                            // Zero out all service costs via the services array
+                                                            $set('services', collect($get('services') ?? [])->map(function ($svc) {
+                                                                $svc['estimated_cost'] = 0;
+                                                                $svc['final_cost']     = 0;
+                                                                return $svc;
+                                                            })->toArray());
+                                                        }
+                                                    }),
                                                 Toggle::make('is_from_store_stock')->label('Was this bought from our store?')->inline(false)->live(),
+                                                // 🚀 Tax-free flag per item, same role as is_tax_free on Sale/CustomOrder items
+                                                Toggle::make('is_tax_free')
+                                                    ->label('Tax Free?')
+                                                    ->helperText('Exempt this item\'s services from tax')
+                                                    ->onColor('warning')->inline(false)->live(),
                                             ]),
                                             Select::make('original_product_id')
                                                 ->label('Search Store Stock No.')
                                                 ->placeholder('Search by stock number...')
                                                 ->options(fn() => \App\Models\ProductItem::query()->whereNotNull('barcode')->orderBy('barcode')->limit(200)->get()
-                                                    ->mapWithKeys(fn($item) => [$item->id => "{$item->barcode} — ".Str::limit($item->custom_description??'',40)." [{$item->status}]"]))
+                                                    ->mapWithKeys(fn($item) => [$item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"]))
                                                 ->getSearchResultsUsing(fn(string $search) => \App\Models\ProductItem::query()
-                                                    ->where(fn($q) => $q->where('barcode','like',"%{$search}%")->orWhere('custom_description','like',"%{$search}%"))
+                                                    ->where(fn($q) => $q->where('barcode', 'like', "%{$search}%")->orWhere('custom_description', 'like', "%{$search}%"))
                                                     ->limit(50)->get()
-                                                    ->mapWithKeys(fn($item) => [$item->id => "{$item->barcode} — ".Str::limit($item->custom_description??'',40)." [{$item->status}]"]))
-                                                ->getOptionLabelUsing(fn($v) => \App\Models\ProductItem::find($v)?->barcode.' — '.\App\Models\ProductItem::find($v)?->custom_description)
+                                                    ->mapWithKeys(fn($item) => [$item->id => "{$item->barcode} — " . Str::limit($item->custom_description ?? '', 40) . " [{$item->status}]"]))
+                                                ->getOptionLabelUsing(fn($v) => \App\Models\ProductItem::find($v)?->barcode . ' — ' . \App\Models\ProductItem::find($v)?->custom_description)
                                                 ->searchable()->live()
                                                 ->afterStateUpdated(function ($state, Forms\Set $set) {
                                                     if ($item = \App\Models\ProductItem::find($state))
@@ -207,20 +374,20 @@ class RepairResource extends Resource
                                                 ->label('Item Photo (Intake Condition)')
                                                 ->image()->disk('public')->directory('repair-intake-photos')
                                                 ->visibility('public')->imageEditor()
-                                                ->imageEditorAspectRatios(['1:1','4:3',null])
+                                                ->imageEditorAspectRatios(['1:1', '4:3', null])
                                                 ->maxSize(5120)->columnSpanFull()
-                                                ->extraInputAttributes(['capture'=>'environment']),
+                                                ->extraInputAttributes(['capture' => 'environment']),
                                             Forms\Components\Hidden::make('captured_photos')->default([])->dehydrated(true),
                                             Placeholder::make('webcam_view')->label('')->live()
                                                 ->content(function (Forms\Get $get, $component) {
                                                     $photos   = $get('captured_photos') ?? [];
                                                     if (!is_array($photos)) $photos = [];
                                                     $statePath = $component->getStatePath();
-                                                    $fieldPath = str_replace('webcam_view','captured_photos',$statePath);
-                                                    $key = md5($fieldPath.count($photos));
+                                                    $fieldPath = str_replace('webcam_view', 'captured_photos', $statePath);
+                                                    $key = md5($fieldPath . count($photos));
                                                     return new HtmlString(\Illuminate\Support\Facades\Blade::render(
                                                         '<livewire:repair-webcam-capture :statePath="$statePath" :photos="$photos" :key="$key" />',
-                                                        ['statePath'=>$fieldPath,'photos'=>$photos,'key'=>$key]
+                                                        ['statePath' => $fieldPath, 'photos' => $photos, 'key' => $key]
                                                     ));
                                                 }),
                                         ]),
@@ -252,9 +419,9 @@ class RepairResource extends Resource
                                                     $final = $state['final_cost'] ?? null;
                                                     $est   = floatval($state['estimated_cost'] ?? 0);
                                                     if ($final !== null && $final !== '' && floatval($final) > 0) {
-                                                        $label .= '  ·  $'.number_format(floatval($final),2).' charged';
+                                                        $label .= '  ·  $' . number_format(floatval($final), 2) . ' charged';
                                                     } elseif ($est > 0) {
-                                                        $label .= '  ·  $'.number_format($est,2).' quoted';
+                                                        $label .= '  ·  $' . number_format($est, 2) . ' quoted';
                                                     }
                                                     return $label;
                                                 })
@@ -270,7 +437,7 @@ class RepairResource extends Resource
 
                                                         Select::make('metal_type')
                                                             ->label('Metal')
-                                                            ->options(['10k'=>'10k Gold','14k'=>'14k Gold','18k'=>'18k Gold','Platinum'=>'Platinum','Silver'=>'Sterling Silver','Other'=>'Other'])
+                                                            ->options(['10k' => '10k Gold', '14k' => '14k Gold', '18k' => '18k Gold', 'Platinum' => 'Platinum', 'Silver' => 'Sterling Silver', 'Other' => 'Other'])
                                                             ->placeholder('Select metal...')->nullable()->columnSpan(3),
 
                                                         CustomDatePicker::make('date_required')
@@ -279,17 +446,17 @@ class RepairResource extends Resource
                                                         Select::make('send_to')
                                                             ->label('Send To')
                                                             ->options(function () {
-                                                                $locations = \App\Models\InventorySetting::where('key','repair_locations')->first()?->value ?? [];
-                                                                return collect($locations)->mapWithKeys(fn($l) => [$l=>$l])->toArray();
+                                                                $locations = \App\Models\InventorySetting::where('key', 'repair_locations')->first()?->value ?? [];
+                                                                return collect($locations)->mapWithKeys(fn($l) => [$l => $l])->toArray();
                                                             })
                                                             ->createOptionForm([
                                                                 Forms\Components\TextInput::make('name')->label('New Location Name')->required(),
                                                             ])
                                                             ->createOptionUsing(function (array $data) {
-                                                                $setting = \App\Models\InventorySetting::firstOrCreate(['key'=>'repair_locations'],['value'=>[]]);
+                                                                $setting = \App\Models\InventorySetting::firstOrCreate(['key' => 'repair_locations'], ['value' => []]);
                                                                 $current = $setting->value ?? [];
                                                                 $current[] = $data['name'];
-                                                                $setting->update(['value'=>array_values(array_unique($current))]);
+                                                                $setting->update(['value' => array_values(array_unique($current))]);
                                                                 return $data['name'];
                                                             })
                                                             ->searchable()->native(false)
@@ -320,13 +487,13 @@ class RepairResource extends Resource
                                                         TextInput::make('estimated_cost')
                                                             ->label('Quoted to Customer')
                                                             ->numeric()->prefix('$')->default(0)->nullable()
-                                                            ->extraInputAttributes(['style'=>'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;'])
+                                                            ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;'])
                                                             ->helperText('What you told the customer'),
 
                                                         TextInput::make('final_cost')
                                                             ->label('Final Charged')
                                                             ->numeric()->prefix('$')->nullable()
-                                                            ->extraInputAttributes(['style'=>'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;'])
+                                                            ->extraInputAttributes(['style' => 'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;'])
                                                             ->helperText('Fill when service is complete'),
 
                                                         Placeholder::make('service_status')
@@ -342,13 +509,13 @@ class RepairResource extends Resource
                                                                 }
                                                                 if ($final === null || $final === '') {
                                                                     if ($est > 0) {
-                                                                        return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#fffbeb;color:#b45309;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #fde68a;'>⏳ Quoted \$".number_format($est,2)."</span>");
+                                                                        return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#fffbeb;color:#b45309;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #fde68a;'>⏳ Quoted \$" . number_format($est, 2) . "</span>");
                                                                     }
                                                                     return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;color:#64748b;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;'>⏳ Pending Quote</span>");
                                                                 }
                                                                 $f = floatval($final);
                                                                 if ($f > 0) {
-                                                                    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$".number_format($f,2)." charged</span>");
+                                                                    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($f, 2) . " charged</span>");
                                                                 }
                                                                 return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ No Charge</span>");
                                                             }),
@@ -375,15 +542,19 @@ class RepairResource extends Resource
 
                                                     if ($totalEst == 0 && !$anyFinal) return '';
 
+                                                    $taxFreeBadge = $get('is_tax_free')
+                                                        ? "<span style='background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;margin-left:8px;'>TAX FREE</span>"
+                                                        : '';
+
                                                     $html = "<div style='background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;'>";
-                                                    $html .= "<div style='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5);'>Item Total</div>";
+                                                    $html .= "<div style='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5);'>Item Total{$taxFreeBadge}</div>";
                                                     $html .= "<div style='display:flex;gap:20px;align-items:center;'>";
 
                                                     if ($totalEst > 0) {
-                                                        $html .= "<div style='text-align:center;'><div style='font-size:9px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;'>Quoted</div><div style='font-size:1.4rem;font-weight:900;color:#fcd34d;'>$".number_format($totalEst,2)."</div></div>";
+                                                        $html .= "<div style='text-align:center;'><div style='font-size:9px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;'>Quoted</div><div style='font-size:1.4rem;font-weight:900;color:#fcd34d;'>$" . number_format($totalEst, 2) . "</div></div>";
                                                     }
                                                     if ($anyFinal) {
-                                                        $html .= "<div style='text-align:center;'><div style='font-size:9px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;'>Final</div><div style='font-size:1.4rem;font-weight:900;color:#6ee7b7;'>$".number_format($totalFinal,2)."</div></div>";
+                                                        $html .= "<div style='text-align:center;'><div style='font-size:9px;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;'>Final</div><div style='font-size:1.4rem;font-weight:900;color:#6ee7b7;'>$" . number_format($totalFinal, 2) . "</div></div>";
                                                     }
 
                                                     $html .= "</div></div>";
@@ -395,7 +566,9 @@ class RepairResource extends Resource
                                 ->defaultItems(1)
                                 ->addActionLabel('+ Add Another Jewelry Item')
                                 ->itemLabel(fn(array $state): ?string => $state['item_description'] ?? 'New Item')
-                                ->collapsible()->cloneable()->reorderable(true),
+                                ->collapsible()->cloneable()->reorderable(true)
+                                ->live()
+                                ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
                         ]),
                 ]),
 
@@ -409,11 +582,11 @@ class RepairResource extends Resource
                             Hidden::make('sales_person_id'),
                             Select::make('sales_person_list')
                                 ->label('Sales Staff')->multiple()->searchable()->preload()
-                                ->options(\App\Models\User::pluck('name','id'))
+                                ->options(\App\Models\User::pluck('name', 'id'))
                                 ->default(function () {
                                     $activeName = Session::get('active_staff_name');
                                     if ($activeName) {
-                                        $user = \App\Models\User::where('name','LIKE',"%{$activeName}%")->first();
+                                        $user = \App\Models\User::where('name', 'LIKE', "%{$activeName}%")->first();
                                         if ($user) return [$user->id];
                                     }
                                     return auth()->id() ? [auth()->id()] : [];
@@ -428,13 +601,13 @@ class RepairResource extends Resource
                         ->schema([
                             Grid::make(2)->schema([
                                 Select::make('dropped_by')->label('Dropped By')
-                                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                                     ->searchable()->preload(),
                                 CustomDatePicker::make('date_dropped')->label('Date Dropped')->displayFormat('M d, Y'),
                             ]),
                             Grid::make(2)->schema([
                                 Select::make('picked_up_by')->label('Picked Up By')
-                                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                                     ->searchable()->preload(),
                                 CustomDatePicker::make('date_picked_up')->label('Date Picked/Received')->displayFormat('M d, Y'),
                             ]),
@@ -447,7 +620,7 @@ class RepairResource extends Resource
                                         TextInput::make('repair_location')
                                             ->label('Location Name / Address')
                                             ->placeholder('e.g. Javier Workshop, Texas Vendor')
-                                            ->extraInputAttributes(['data-google-field'=>'{establishment} {route}']),
+                                            ->extraInputAttributes(['data-google-field' => '{establishment} {route}']),
                                     ]),
                                 CustomDatePicker::make('customer_pickup_date')->label('Customer Pickup Date')->displayFormat('M d, Y'),
                             ]),
@@ -468,10 +641,10 @@ class RepairResource extends Resource
                                     $rows = '';
 
                                     $itemNumber = 0;
-foreach ($items as $item) {
-    $itemNumber++;
-    $desc     = Str::limit($item['item_description'] ?? ('Item '.$itemNumber), 28);
-    $services = $item['services'] ?? [];
+                                    foreach ($items as $item) {
+                                        $itemNumber++;
+                                        $desc     = Str::limit($item['item_description'] ?? ('Item ' . $itemNumber), 28);
+                                        $services = $item['services'] ?? [];
                                         $itemEst  = 0;
                                         $itemFin  = 0;
                                         $hasF     = false;
@@ -489,11 +662,11 @@ foreach ($items as $item) {
                                         $grandFinal += $itemFin;
 
                                         $priceHtml = $hasF
-                                            ? "<span style='font-weight:800;color:#059669;'>$".number_format($itemFin,2)."</span>"
-                                            : ($itemEst > 0 ? "<span style='font-weight:700;color:#b45309;'>~$".number_format($itemEst,2)."</span>" : "<span style='color:#94a3b8;'>TBD</span>");
+                                            ? "<span style='font-weight:800;color:#059669;'>$" . number_format($itemFin, 2) . "</span>"
+                                            : ($itemEst > 0 ? "<span style='font-weight:700;color:#b45309;'>~$" . number_format($itemEst, 2) . "</span>" : "<span style='color:#94a3b8;'>TBD</span>");
 
                                         $rows .= "<div style='display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12px;'>
-                                            <span style='color:#374151;'>".e($desc)."</span>
+                                            <span style='color:#374151;'>" . e($desc) . "</span>
                                             {$priceHtml}
                                         </div>";
                                     }
@@ -510,10 +683,229 @@ foreach ($items as $item) {
                                         <div>{$rows}</div>
                                         <div style='display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:2px solid #0f172a;'>
                                             <span style='font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;'>{$totalLabel}</span>
-                                            <span style='font-size:1.5rem;font-weight:900;color:{$totalColor};'>$".number_format($totalAmount,2)."</span>
+                                            <span style='font-size:1.5rem;font-weight:900;color:{$totalColor};'>$" . number_format($totalAmount, 2) . "</span>
                                         </div>
                                     ");
                                 }),
+                        ]),
+
+                    // 🚀 NEW — Payment & Status, mirrors SaleResource's section exactly:
+                    // split toggle, method select, amount received w/ "Collect Remaining
+                    // Balance", change given, split payments repeater w/ "Fill Remaining".
+                    Section::make('Payment & Status')
+                        ->icon('heroicon-o-banknotes')
+                        ->schema([
+
+                            Toggle::make('is_split_payment')
+                                ->label('Enable Split Payment')
+                                ->onColor('warning')
+                                ->live()
+                                ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+                                    if ($state) {
+                                        $existingAmount = floatval($get('amount_paid') ?? 0);
+                                        $existingMethod = $get('payment_method') ?? 'CASH';
+                                        $currentSplits  = $get('split_payments') ?? [];
+                                        if ($existingAmount > 0 && empty($currentSplits)) {
+                                            $set('split_payments', [
+                                                (string) Str::uuid() => ['method' => $existingMethod, 'amount' => $existingAmount],
+                                            ]);
+                                        }
+                                    } else {
+                                        $currentSplits = $get('split_payments') ?? [];
+                                        if (!empty($currentSplits)) {
+                                            $totalSplit  = collect($currentSplits)->sum(fn($p) => (float) ($p['amount'] ?? 0));
+                                            $firstMethod = collect($currentSplits)->first()['method'] ?? 'CASH';
+                                            $set('amount_paid', number_format($totalSplit, 2, '.', ''));
+                                            $set('payment_method', $firstMethod);
+                                        }
+                                    }
+                                    self::updateRepairTotals($get, $set);
+                                })
+                                ->columnSpanFull(),
+
+                            Select::make('payment_method')
+                                ->label('Payment Method')
+                                ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
+                                ->placeholder('Select Payment Method')
+                                ->required(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->live()
+                                ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
+
+                            Placeholder::make('display_total_due')
+                                ->label('Total Amount to Collect')
+                                ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->live()
+                                ->content(function (Forms\Get $get, ?Repair $record) {
+                                    $total     = floatval($get('repair_total') ?? 0);
+                                    $dbPaid    = $record ? \App\Models\Payment::where('repair_id', $record->id)->sum('amount') : 0;
+                                    $remaining = max(0, $total - $dbPaid);
+                                    $method    = strtoupper($get('payment_method') ?? '');
+                                    $badge     = $method
+                                        ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
+                                        : '';
+                                    $note = $dbPaid > 0
+                                        ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Repair total: \$" . number_format($total, 2) . "</div>"
+                                        : '';
+                                    return new HtmlString("
+                                        <div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
+                                            <div style='display:flex;align-items:center;'>
+                                                <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($remaining, 2) . "</span>
+                                                {$badge}
+                                            </div>
+                                            {$note}
+                                        </div>
+                                    ");
+                                }),
+
+                            TextInput::make('amount_paid')
+                                ->label('Amount Received')
+                                ->numeric()->prefix('$')->default(0)
+                                ->live(onBlur: true)
+                                ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set))
+                                ->helperText(function (Forms\Get $get, ?Repair $record) {
+                                    if (!$record) return 'What the customer is paying right now';
+                                    $dbPaid    = \App\Models\Payment::where('repair_id', $record->id)->sum('amount');
+                                    $total     = floatval($get('repair_total') ?? 0);
+                                    $remaining = max(0, $total - $dbPaid);
+                                    $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
+                                    $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
+                                    return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
+                                })
+                                ->hintAction(
+                                    FormAction::make('fill_full_amount')
+                                        ->label('Collect Remaining Balance')
+                                        ->icon('heroicon-o-banknotes')
+                                        ->color('success')
+                                        ->action(function (Forms\Get $get, Forms\Set $set, ?Repair $record) {
+                                            $total     = floatval($get('repair_total') ?? 0);
+                                            $dbPaid    = $record ? \App\Models\Payment::where('repair_id', $record->id)->sum('amount') : 0;
+                                            $remaining = max(0, round($total - $dbPaid, 2));
+                                            $set('amount_paid', number_format($remaining, 2, '.', ''));
+                                            self::updateRepairTotals($get, $set);
+                                        })
+                                ),
+
+                            Placeholder::make('change_given_display')
+                                ->label('Change Given')
+                                ->live()
+                                ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->content(function (Forms\Get $get) {
+                                    $change = max(0, floatval($get('amount_paid') ?? 0) - floatval($get('repair_total') ?? 0));
+                                    if ($change > 0.009) {
+                                        return new HtmlString("<span style='font-size:1.2rem;font-weight:900;color:#2563eb;'>\$" . number_format($change, 2) . "</span>");
+                                    }
+                                    return new HtmlString("<span style='color:#94a3b8;'>$0.00</span>");
+                                }),
+
+                            Repeater::make('split_payments')
+                                ->label('Payment Breakdown')
+                                ->dehydrated(false)
+                                ->schema([
+                                    Grid::make(2)->schema([
+                                        Select::make('method')
+                                            ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
+                                            ->required()
+                                            ->live()
+                                            // 🚀 FIX — recalc directly via the top-level Livewire data array,
+                                            // same pattern SaleResource uses for its nested discount fields,
+                                            // instead of relying solely on the parent Repeater's afterStateUpdated
+                                            // to propagate up (which can lag on nested/blur updates).
+                                            ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                self::updateRepairTotals(
+                                                    fn($p) => data_get($livewire->data, $p),
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                );
+                                            }),
+                                        TextInput::make('amount')
+                                            ->numeric()->prefix('$')->required()
+                                            ->live(onBlur: true)
+                                            // 🚀 FIX — same direct recalculation on the amount field itself
+                                            ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                self::updateRepairTotals(
+                                                    fn($p) => data_get($livewire->data, $p),
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                );
+                                            })
+                                            ->hintAction(
+                                                FormAction::make('fill_remaining')
+                                                    ->label('Fill Remaining')
+                                                    ->icon('heroicon-o-banknotes')
+                                                    ->color('success')
+                                                    ->visible(fn(Forms\Get $get) => floatval($get('amount') ?? 0) == 0)
+                                                    ->action(function (Forms\Get $get, Forms\Set $set) {
+                                                        $total = floatval($get('../../repair_total') ?? 0);
+                                                        $sum   = collect($get('../../split_payments') ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0));
+                                                        $set('amount', number_format(max(0, $total - $sum), 2, '.', ''));
+                                                        self::updateRepairTotals($get, $set);
+                                                    })
+                                            ),
+                                    ]),
+                                ])
+                                ->visible(fn(Forms\Get $get) => $get('is_split_payment'))
+                                ->addActionLabel('+ Add Payment Method')
+                                ->reorderable(false)
+                                ->defaultItems(0)
+                                ->live()
+                                ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set))
+                                ->columnSpanFull(),
+
+                            // 🚀 NEW — standalone "+ Collect Remaining Balance" button, same as
+                            // SaleResource's smart_collect_remaining, sitting outside the repeater
+                            // so it always works regardless of nested-field propagation timing.
+                            Forms\Components\Actions::make([
+                                FormAction::make('repair_smart_collect_remaining')
+                                    ->label('+ Collect Remaining Balance')
+                                    ->icon('heroicon-o-banknotes')
+                                    ->color('success')
+                                    ->outlined()
+                                    ->visible(function (Forms\Get $get) {
+                                        $total = floatval($get('repair_total') ?? 0);
+                                        $sum   = collect($get('split_payments') ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0));
+                                        return round($total - $sum, 2) > 0.01;
+                                    })
+                                    ->action(function (Forms\Get $get, Forms\Set $set) {
+                                        $existingSplits = $get('split_payments') ?? [];
+                                        $currentSum     = collect($existingSplits)->sum(fn($p) => (float) ($p['amount'] ?? 0));
+                                        $total          = floatval($get('repair_total') ?? 0);
+                                        $remaining      = max(0, round($total - $currentSum, 2));
+
+                                        if ($remaining <= 0.01) return;
+
+                                        $defaultMethod = collect($existingSplits)
+                                            ->filter(fn($p) => !empty($p['method']))
+                                            ->pluck('method')
+                                            ->first() ?? $get('payment_method') ?? 'CASH';
+
+                                        $existingSplits[(string) Str::uuid()] = [
+                                            'method' => $defaultMethod,
+                                            'amount' => number_format($remaining, 2, '.', ''),
+                                        ];
+
+                                        $set('split_payments', $existingSplits);
+                                        self::updateRepairTotals($get, $set);
+                                    }),
+                            ])->visible(fn(Forms\Get $get) => $get('is_split_payment')),
+
+                            Placeholder::make('split_remaining')
+                                ->label('Remaining Balance')
+                                ->live()
+                                ->visible(fn(Forms\Get $get) => $get('is_split_payment'))
+                                ->content(function (Forms\Get $get) {
+                                    $total = floatval($get('repair_total') ?? 0);
+                                    $sum   = collect($get('split_payments') ?? [])->sum(fn($p) => floatval($p['amount'] ?? 0));
+                                    $rem   = $total - $sum;
+                                    $color = abs($rem) < 0.009 ? '#16a34a' : '#0284c7';
+                                    return new HtmlString("<span style='font-size:1.1rem;font-weight:900;color:{$color};'>\$" . number_format(max(0, $rem), 2) . "</span>");
+                                }),
+
+                            Hidden::make('repair_subtotal'),
+                            Hidden::make('repair_tax'),
+                            Hidden::make('repair_total')
+                                ->afterStateHydrated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
+                            Hidden::make('balance_due'),
+                            Hidden::make('change_given')->dehydrated(false),
                         ]),
 
                     Section::make('Customer Contact')
@@ -552,12 +944,24 @@ foreach ($items as $item) {
             ->striped()
             ->columnToggleFormColumns(2)
             ->headerActions([
-                Tables\Actions\Action::make('toggle_me_label')
-                    ->label('Manage Columns ▼')->color('gray')->action(null)
-                    ->extraAttributes(['style'=>'cursor:default;background:transparent;border:none;box-shadow:none;font-weight:600;font-size:12px;']),
+                // 🚀 NEW — single click expands/collapses all the secondary
+                // tracking columns (Dropped, Drop By, Pick By, Picked, Ready?,
+                // Location, Pickup) at once, instead of toggling them one by
+                // one through the column-picker dropdown. State lives in
+                // session so it persists across page reloads for this user.
+            Tables\Actions\Action::make('toggle_expand_columns')
+                    ->label(fn() => Session::get('repair_columns_expanded', false) ? '← Collapse Columns' : 'Expand Columns →')
+                    ->icon(fn() => Session::get('repair_columns_expanded', false) ? 'heroicon-o-chevron-double-left' : 'heroicon-o-chevron-double-right')
+                    ->color('danger')
+                    ->extraAttributes([
+                        'style' => 'font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.15);',
+                    ])
+                    ->action(function () {
+                        Session::put('repair_columns_expanded', ! Session::get('repair_columns_expanded', false));
+                    }),
             ])
             ->modifyQueryUsing(function ($query) {
-                $query->with(['customer','sale']);
+                $query->with(['customer', 'sale']);
                 $keyword  = request('keyword');
                 $customer = request('customer');
                 $staff    = request('staff');
@@ -568,28 +972,41 @@ foreach ($items as $item) {
 
                 if ($keyword) {
                     $query->where(function ($q) use ($keyword) {
-                        $q->where('repair_no','like',"%{$keyword}%")
-                          ->orWhere('repair_notes','like',"%{$keyword}%")
-                          ->orWhereRaw("JSON_SEARCH(items,'all',?,null,'\$[*].item_description') IS NOT NULL",["%{$keyword}%"])
-                          ->orWhereRaw("JSON_SEARCH(items,'all',?,null,'\$[*].reported_issue') IS NOT NULL",["%{$keyword}%"]);
+                        $q->where('repair_no', 'like', "%{$keyword}%")
+                            ->orWhere('repair_notes', 'like', "%{$keyword}%")
+                            ->orWhereRaw("JSON_SEARCH(items,'all',?,null,'\$[*].item_description') IS NOT NULL", ["%{$keyword}%"])
+                            ->orWhereRaw("JSON_SEARCH(items,'all',?,null,'\$[*].reported_issue') IS NOT NULL", ["%{$keyword}%"]);
                     });
                 }
                 if ($customer) {
-                    $query->whereHas('customer', fn($q) =>
-                        $q->where('name','like',"%{$customer}%")->orWhere('last_name','like',"%{$customer}%")
-                          ->orWhereRaw("CONCAT(name,' ',last_name) LIKE ?",["%{$customer}%"])->orWhere('phone','like',"%{$customer}%")
+                    $query->whereHas(
+                        'customer',
+                        fn($q) =>
+                        $q->where('name', 'like', "%{$customer}%")->orWhere('last_name', 'like', "%{$customer}%")
+                            ->orWhereRaw("CONCAT(name,' ',last_name) LIKE ?", ["%{$customer}%"])->orWhere('phone', 'like', "%{$customer}%")
                     );
                 }
                 if ($staff) {
-                    $query->where(fn($q) =>
-                        $q->whereHas('salesPerson', fn($sq) => $sq->where('name','like',"%{$staff}%"))
-                          ->orWhere('sales_person_list','like',"%{$staff}%")
+                    $query->where(
+                        fn($q) =>
+                        $q->whereHas('salesPerson', fn($sq) => $sq->where('name', 'like', "%{$staff}%"))
+                            ->orWhere('sales_person_list', 'like', "%{$staff}%")
                     );
                 }
                 if ($status)   $query->where('status', $status);
                 if ($location) $query->where('repair_location', $location);
-                if ($from) { try { $query->whereDate('created_at','>=',(new \Carbon\Carbon($from))->format('Y-m-d')); } catch (\Exception $e) {} }
-                if ($to)   { try { $query->whereDate('created_at','<=',(new \Carbon\Carbon($to))->format('Y-m-d')); } catch (\Exception $e) {} }
+                if ($from) {
+                    try {
+                        $query->whereDate('created_at', '>=', (new \Carbon\Carbon($from))->format('Y-m-d'));
+                    } catch (\Exception $e) {
+                    }
+                }
+                if ($to) {
+                    try {
+                        $query->whereDate('created_at', '<=', (new \Carbon\Carbon($to))->format('Y-m-d'));
+                    } catch (\Exception $e) {
+                    }
+                }
 
                 return $query;
             })
@@ -598,11 +1015,11 @@ foreach ($items as $item) {
                     ->label('DATE')->date('m/d/y')->sortable()->size('sm')->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('repair_no')
-    ->label('JOB #')->searchable()
-    ->weight('bold')->copyable()->grow(false)->toggleable(),
+                    ->label('JOB #')->searchable()
+                    ->weight('bold')->copyable()->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('customer.last_name')
-                    ->label('CUSTOMER')->searchable(['last_name','name'])
+                    ->label('CUSTOMER')->searchable(['last_name', 'name'])
                     ->formatStateUsing(fn($record) => strtoupper($record->customer?->last_name ?? 'WALK-IN'))
                     ->weight('bold')->grow(false)->toggleable(),
 
@@ -610,97 +1027,113 @@ foreach ($items as $item) {
                     ->label('SALES STAFF')->html()
                     ->getStateUsing(function ($record) {
                         $list = $record->sales_person_list;
-                        if (is_string($list)) { $decoded = json_decode($list,true); $list = is_array($decoded) ? $decoded : [$list]; }
-                        if (empty($list)||!is_array($list)) return $record->salesPerson?->name ?? '—';
+                        if (is_string($list)) {
+                            $decoded = json_decode($list, true);
+                            $list = is_array($decoded) ? $decoded : [$list];
+                        }
+                        if (empty($list) || !is_array($list)) return $record->salesPerson?->name ?? '—';
                         $firstItem = $list[0] ?? null;
                         if (is_numeric($firstItem)) {
-                            $names = \App\Models\User::whereIn('id',$list)->pluck('name')->toArray();
-                            return !empty($names) ? implode('||',$names) : ($record->salesPerson?->name ?? '—');
+                            $names = \App\Models\User::whereIn('id', $list)->pluck('name')->toArray();
+                            return !empty($names) ? implode('||', $names) : ($record->salesPerson?->name ?? '—');
                         }
-                        $names = array_filter($list, fn($n) => !empty(trim($n??'')));
-                        return !empty($names) ? implode('||',$names) : ($record->salesPerson?->name ?? '—');
+                        $names = array_filter($list, fn($n) => !empty(trim($n ?? '')));
+                        return !empty($names) ? implode('||', $names) : ($record->salesPerson?->name ?? '—');
                     })
                     ->formatStateUsing(function ($state) {
-                        if (!$state||$state==='—') return '<span style="color:#9ca3af;font-size:11px;">—</span>';
-                        return collect(explode('||',$state))->map(fn($name) => self::staffBadge(trim($name)))->implode(' ');
+                        if (!$state || $state === '—') return '<span style="color:#9ca3af;font-size:11px;">—</span>';
+                        return collect(explode('||', $state))->map(fn($name) => self::staffBadge(trim($name)))->implode(' ');
                     })
                     ->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('date_dropped')
-                    ->label('DROPPED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)->toggleable(),
+                    ->label('DROPPED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
-                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:110px;'])->toggleable(),
+                    ->extraAttributes(['style' => 'min-width:110px;'])
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
-                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:110px;'])->toggleable(),
+                    ->extraAttributes(['style' => 'min-width:110px;'])
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\TextColumn::make('date_picked_up')
-                    ->label('PICKED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)->toggleable(),
+                    ->label('PICKED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('status')->label('STATUS')
-                    ->options(['received'=>'RCVD','in_progress'=>'IN PROG','ready'=>'DONE','delivered'=>'DELIVERED'])
+                    ->options(['received' => 'RCVD', 'in_progress' => 'IN PROG', 'ready' => 'DONE', 'delivered' => 'DELIVERED'])
                     ->selectablePlaceholder(false)->grow(false)
-                    ->extraAttributes(fn($record): array => match($record->status) {
-                        'received'    => ['style'=>'background:#F3F4F6;color:#374151;font-weight:700;border-radius:4px;min-width:90px;'],
-                        'in_progress' => ['style'=>'background:#FEE2E2;color:#B91C1C;font-weight:700;border-radius:4px;min-width:90px;'],
-                        'ready'       => ['style'=>'background:#DCFCE7;color:#15803D;font-weight:700;border-radius:4px;min-width:90px;'],
-                        'delivered'   => ['style'=>'background:#DBEAFE;color:#1D4ED8;font-weight:700;border-radius:4px;min-width:90px;'],
-                        default       => ['style'=>'min-width:90px;'],
+                    ->extraAttributes(fn($record): array => match ($record->status) {
+                        'received'    => ['style' => 'background:#F3F4F6;color:#374151;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'in_progress' => ['style' => 'background:#FEE2E2;color:#B91C1C;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'ready'       => ['style' => 'background:#DCFCE7;color:#15803D;font-weight:700;border-radius:4px;min-width:90px;'],
+                        'delivered'   => ['style' => 'background:#DBEAFE;color:#1D4ED8;font-weight:700;border-radius:4px;min-width:90px;'],
+                        default       => ['style' => 'min-width:90px;'],
                     })->toggleable(),
 
                 Tables\Columns\ToggleColumn::make('is_ready_toggle')->label('READY?')
-                    ->getStateUsing(fn($record) => in_array($record->status,['ready','delivered']))
+                    ->getStateUsing(fn($record) => in_array($record->status, ['ready', 'delivered']))
                     ->onColor('success')->offColor('gray')
-                    ->updateStateUsing(fn($record,$state) => $record->update(['status'=>$state?'ready':'received']))
-                    ->grow(false)->toggleable(),
+                    ->updateStateUsing(fn($record, $state) => $record->update(['status' => $state ? 'ready' : 'received']))
+                    ->grow(false)
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('repair_location')->label('LOCATION')
-                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location','!=','')->distinct()->pluck('repair_location','repair_location')->toArray())
+                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location', '!=', '')->distinct()->pluck('repair_location', 'repair_location')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:150px;'])->toggleable(),
+                    ->extraAttributes(['style' => 'min-width:150px;'])
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\TextColumn::make('customer_pickup_date')->label('PICKUP')->placeholder('—')
-                    ->formatStateUsing(fn($state) => $state
-                        ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>".(\Carbon\Carbon::parse($state)->format('m/d/y'))."</span>")
-                        : '<span style="color:#9ca3af;">—</span>'
-                    )->grow(false)->toggleable(),
+                    ->formatStateUsing(
+                        fn($state) => $state
+                            ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>" . (\Carbon\Carbon::parse($state)->format('m/d/y')) . "</span>")
+                            : '<span style="color:#9ca3af;">—</span>'
+                    )->grow(false)
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\TextColumn::make('origin')->label('ORIGIN')->html()
                     ->getStateUsing(function ($record) {
                         if (empty($record->sale_id)) return 'DIRECT';
-                        $saleData  = \Illuminate\Support\Facades\DB::table('sales')->where('id',$record->sale_id)->select('notes')->first();
+                        $saleData  = \Illuminate\Support\Facades\DB::table('sales')->where('id', $record->sale_id)->select('notes')->first();
                         $saleNotes = strtolower($saleData?->notes ?? '');
-                        $hasExchangeItem = \Illuminate\Support\Facades\DB::table('sale_items')->where('sale_id',$record->sale_id)
-                            ->where(fn($q) => $q->where('custom_description','like','%exchange%')->orWhere('custom_description','like','%return%'))->exists();
-                        if ($hasExchangeItem || str_contains($saleNotes,'exchange')) return 'EXCHANGE';
+                        $hasExchangeItem = \Illuminate\Support\Facades\DB::table('sale_items')->where('sale_id', $record->sale_id)
+                            ->where(fn($q) => $q->where('custom_description', 'like', '%exchange%')->orWhere('custom_description', 'like', '%return%'))->exists();
+                        if ($hasExchangeItem || str_contains($saleNotes, 'exchange')) return 'EXCHANGE';
                         return 'POS SALE';
                     })
                     ->formatStateUsing(function (string $state, $record) {
-                        $badgeClass = match($state) {
+                        $badgeClass = match ($state) {
                             'POS SALE' => 'bg-blue-50 text-blue-700 border-blue-200',
                             'EXCHANGE' => 'bg-amber-50 text-amber-700 border-amber-200',
                             default    => 'bg-gray-50 text-gray-700 border-gray-200',
                         };
-                        $badgeLabel = match($state) { 'POS SALE'=>'🛒 POS SALE','EXCHANGE'=>'🔄 EXCHANGE',default=>'🛠️ DIRECT' };
+                        $badgeLabel = match ($state) {
+                            'POS SALE' => '🛒 POS SALE',
+                            'EXCHANGE' => '🔄 EXCHANGE',
+                            default => '🛠️ DIRECT'
+                        };
                         $html = "<div><span class='inline-flex items-center gap-x-1 rounded-md px-2 py-0.5 text-xs font-medium border {$badgeClass}'>{$badgeLabel}</span></div>";
                         if (!empty($record->sale_id)) {
-                            $inv = $record->sale?->invoice_number ?? \Illuminate\Support\Facades\DB::table('sales')->where('id',$record->sale_id)->value('invoice_number');
+                            $inv = $record->sale?->invoice_number ?? \Illuminate\Support\Facades\DB::table('sales')->where('id', $record->sale_id)->value('invoice_number');
                             if ($inv) $html .= "<div class='text-[11px] text-gray-400 font-mono mt-1'>Inv #{$inv}</div>";
                         }
                         return new HtmlString($html);
                     })->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('sale.invoice_number')->label('SALE')->placeholder('—')
-                    ->formatStateUsing(fn($state) => $state
-                        ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;'>#{$state}</span>")
-                        : '—'
+                    ->formatStateUsing(
+                        fn($state) => $state
+                            ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;'>#{$state}</span>")
+                            : '—'
                     )
-                    ->url(fn($record) => $record->sale_id ? \App\Filament\Resources\SaleResource::getUrl('edit',['record'=>$record->sale_id]) : null)
+                    ->url(fn($record) => $record->sale_id ? \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $record->sale_id]) : null)
                     ->openUrlInNewTab()->grow(false)->toggleable(),
 
                 Tables\Columns\TextColumn::make('repair_notes')->label('NOTES')->limit(25)
@@ -753,25 +1186,44 @@ foreach ($items as $item) {
 
                 // ── QUOTE TOTAL column — sums all services across all items ──
                 Tables\Columns\TextColumn::make('estimated_total')->label('QUOTED')->money('USD')
-                    ->getStateUsing(fn($record) =>
-                        collect($record->items ?? [])->sum(fn($item) =>
+                    ->getStateUsing(
+                        fn($record) =>
+                        collect($record->items ?? [])->sum(
+                            fn($item) =>
                             collect($item['services'] ?? [])->sum(fn($svc) => floatval($svc['estimated_cost'] ?? 0))
                         )
                     )->grow(false)->toggleable(),
 
                 // ── FINAL TOTAL column ────────────────────────────────────────
                 Tables\Columns\TextColumn::make('final_total_col')->label('CHARGED')->html()
-                    ->getStateUsing(fn($record) =>
-                        collect($record->items ?? [])->sum(fn($item) =>
-                            collect($item['services'] ?? [])->sum(fn($svc) =>
+                    ->getStateUsing(
+                        fn($record) =>
+                        collect($record->items ?? [])->sum(
+                            fn($item) =>
+                            collect($item['services'] ?? [])->sum(
+                                fn($svc) =>
                                 isset($svc['final_cost']) && $svc['final_cost'] !== '' ? floatval($svc['final_cost']) : 0
                             )
                         )
                     )
                     ->formatStateUsing(function ($state) {
                         if ($state <= 0) return '<span style="color:#94a3b8;">—</span>';
-                        return new HtmlString("<span style='font-weight:800;color:#059669;'>$".number_format($state,2)."</span>");
+                        return new HtmlString("<span style='font-weight:800;color:#059669;'>$" . number_format($state, 2) . "</span>");
                     })->grow(false)->toggleable(),
+
+                // 🚀 NEW — mirrors CustomOrderResource's PAID/BALANCE columns
+                Tables\Columns\TextColumn::make('repair_paid')
+                    ->label('PAID')
+                    ->getStateUsing(fn(Repair $record) => self::calculateRepairTotal($record)['paid'])
+                    ->money('USD')->color('info')->grow(false)->toggleable(),
+
+                Tables\Columns\TextColumn::make('repair_balance')
+                    ->label('BALANCE')
+                    ->getStateUsing(fn(Repair $record) => self::calculateRepairTotal($record)['balance'])
+                    ->money('USD')
+                    ->color(fn($state) => $state > 0 ? 'danger' : 'success')
+                    ->weight('bold')
+                    ->grow(false)->toggleable(),
             ])
             ->filters([])
             ->actions([
@@ -782,62 +1234,197 @@ foreach ($items as $item) {
                         ->label('Delay Notification')->icon('heroicon-o-clock')->color('danger')
                         ->form([
                             Forms\Components\Select::make('notify_method')
-                                ->options(['sms'=>'SMS','email'=>'Email','both'=>'Both'])->default('sms')->required(),
+                                ->options(['sms' => 'SMS', 'email' => 'Email', 'both' => 'Both'])->default('sms')->required(),
                             Forms\Components\Textarea::make('message')->label('Message Content')
                                 ->default(fn($record) => "Hi {$record->customer->name}, we are experiencing a slight delay with your repair #{$record->repair_no}. We appreciate your patience!")
                                 ->required(),
                         ])
-                        ->action(fn($record, array $data) => self::handleRepairNotification($record,$data['notify_method'],$data['message'])),
+                        ->action(fn($record, array $data) => self::handleRepairNotification($record, $data['notify_method'], $data['message'])),
 
                     Tables\Actions\Action::make('markReady')
                         ->label('Ready for Pickup')->icon('heroicon-o-check-circle')->color('success')
                         ->form([
                             Forms\Components\Select::make('notify_method')
-                                ->options(['sms'=>'SMS','email'=>'Email','both'=>'Both','none'=>'None'])->default('both')->required(),
+                                ->options(['sms' => 'SMS', 'email' => 'Email', 'both' => 'Both', 'none' => 'None'])->default('both')->required(),
                             Forms\Components\Textarea::make('message')->label('Message Content')
                                 ->default(fn($record) => "Hi {$record->customer->name}, great news! Your repair #{$record->repair_no} is ready for pickup.")
                                 ->visible(fn($get) => $get('notify_method') !== 'none'),
                         ])
                         ->action(function ($record, array $data) {
-                            $record->update(['status'=>'ready']);
-                            if (($data['notify_method']??'none') !== 'none')
-                                self::handleRepairNotification($record,$data['notify_method'],$data['message']);
+                            $record->update(['status' => 'ready']);
+                            if (($data['notify_method'] ?? 'none') !== 'none')
+                                self::handleRepairNotification($record, $data['notify_method'], $data['message']);
                         }),
 
                     Tables\Actions\Action::make('billRepair')
                         ->label('Bill to POS')->icon('heroicon-o-currency-dollar')->color('success')
-                        ->url(fn(Repair $record) => route('filament.admin.resources.sales.create',['repair_id'=>$record->id,'customer_id'=>$record->customer_id])),
+                        ->visible(fn(Repair $record) => !$record->sale_id)
+                        ->url(fn(Repair $record) => route('filament.admin.resources.sales.create', ['repair_id' => $record->id, 'customer_id' => $record->customer_id])),
 
+                    // 🚀 NEW — Add Deposit, mirrors CustomOrderResource::recordPayment.
+                    // Hidden if this repair is already linked to a Sale — in that case
+                    // payment collection happens on the Sale side, not here, exactly like
+                    // you asked: "if from sales, do transaction from sales."
+                    Tables\Actions\Action::make('recordRepairPayment')
+                        ->label('Add Deposit')
+                        ->icon('heroicon-o-banknotes')
+                        ->color('success')
+                        ->visible(function (Repair $record) {
+                            // 🚀 Always visible for POS-linked repairs regardless of current
+                            // balance, since staff may need to add a charge + payment after
+                            // the fact. Direct (non-POS) repairs keep the balance>0 gate.
+                            if ($record->status === 'delivered') return false;
+                            if ($record->sale_id) return true;
+                            return self::calculateRepairTotal($record)['balance'] > 0.01;
+                        })
+                        ->modalHeading(fn(Repair $record) => "Add Payment — Repair #{$record->repair_no}")
+                        ->modalSubmitActionLabel('✓ Record Payment')
+                        ->modalWidth('lg')
+                        ->form(function (Repair $record) {
+                            $calc = self::calculateRepairTotal($record);
+                            $payments = \App\Models\Payment::where('repair_id', $record->id)->orderBy('paid_at')->get();
+
+                            $rows = '';
+                            if ($payments->isEmpty()) {
+                                $rows = "<p style='font-size:11px;color:#9ca3af;font-style:italic;padding:8px 0;'>No payments recorded yet.</p>";
+                            } else {
+                                $running = 0;
+                                foreach ($payments as $p) {
+                                    $running += floatval($p->amount);
+                                    $runningBal = max(0, $calc['total'] - $running);
+                                    $rows .= "<div style='display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:6px 0;border-bottom:1px dashed #e5e7eb;'>
+                                        <div>
+                                            <span style='color:#374151;font-weight:600;'>" . \Carbon\Carbon::parse($p->paid_at)->format('M d, Y') . "</span>
+                                            <span style='display:inline-block;margin-left:8px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:1px 8px;font-size:10px;font-weight:700;'>" . strtoupper($p->method) . "</span>
+                                        </div>
+                                        <div style='text-align:right;'>
+                                            <span style='color:#10b981;font-weight:700;'>+\$" . number_format($p->amount, 2) . "</span>
+                                            <span style='color:#9ca3af;font-size:10px;margin-left:8px;'>bal: \$" . number_format($runningBal, 2) . "</span>
+                                        </div>
+                                    </div>";
+                                }
+                            }
+
+                            $balColor = $calc['balance'] <= 0 ? '#10b981' : '#ef4444';
+                            $summaryHtml = "
+                                <div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:2px;'>
+                                    <div style='font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>📋 Payment History</div>
+                                    {$rows}
+                                    <div style='margin-top:10px;padding-top:10px;border-top:2px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;'>
+                                        <div>
+                                            <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Repair Total</div>
+                                            <div style='font-size:14px;font-weight:700;color:#374151;'>\$" . number_format($calc['total'], 2) . "</div>
+                                        </div>
+                                        <div style='text-align:center;'>
+                                            <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Total Paid</div>
+                                            <div style='font-size:14px;font-weight:700;color:#10b981;'>\$" . number_format($calc['paid'], 2) . "</div>
+                                        </div>
+                                        <div style='text-align:right;'>
+                                            <div style='font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;'>Remaining</div>
+                                            <div style='font-size:20px;font-weight:900;color:{$balColor};'>\$" . number_format($calc['balance'], 2) . "</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ";
+
+                            return [
+                                Placeholder::make('payment_history')->label('')->content(new HtmlString($summaryHtml)),
+                                TextInput::make('amount')
+                                    ->label('Amount to Collect Now')
+                                    ->numeric()->required()->prefix('$')
+                                    ->default(number_format($calc['balance'], 2, '.', ''))
+                                    // 🚀 FIX — hard-cap collection at the actual remaining balance.
+                                    // Previously staff could type any amount (e.g. $20,000 against
+                                    // a $10,000 repair), silently overpaying with no validation.
+                                    ->maxValue($calc['balance'])
+                                    ->helperText('Cannot exceed the remaining balance of $' . number_format($calc['balance'], 2, '.', ','))
+                                    ->extraInputAttributes(['style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;']),
+                                Select::make('payment_method')
+                                    ->label('Payment Method')
+                                    ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
+                                    ->default('CASH')->required()->native(false),
+                            ];
+                        })
+                        ->action(function (Repair $record, array $data) {
+                            \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+                                // 🚀 FIX — if this repair is already linked to a Sale (POS-origin
+                                // repair), stamp sale_id on the new Payment too, so it shows up in
+                                // that Sale's own payment log / totals, not just the repair's.
+                                \App\Models\Payment::create([
+                                    'repair_id' => $record->id,
+                                    'sale_id'   => $record->sale_id,
+                                    'amount'    => round((float) $data['amount'], 2),
+                                    'method'    => strtoupper(trim($data['payment_method'])),
+                                    'paid_at'   => now(),
+                                    'store_id'  => $record->store_id ?? auth()->user()->store_id ?? 1,
+                                ]);
+                            });
+
+                            $calc = self::calculateRepairTotal($record->fresh());
+                            $record->update([
+                                'amount_paid' => $calc['paid'],
+                                'balance_due' => $calc['balance'],
+                            ]);
+
+                            // 🚀 FIX — resync the parent Sale's amount_paid/balance_due immediately
+                            // from the DB, exactly like CreateSale/EditSale do after their own
+                            // payment loops. Without this, the Sale record kept showing stale
+                            // totals even though a new Payment was just linked to it.
+                            if ($record->sale_id) {
+                                $sale = \App\Models\Sale::find($record->sale_id);
+                                if ($sale) {
+                                    $totalSalePaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
+                                    $newBalance    = max(0, round(floatval($sale->final_total) - $totalSalePaid, 2));
+                                    $sale->update([
+                                        'amount_paid' => round($totalSalePaid, 2),
+                                        'balance_due' => $newBalance,
+                                        'status'      => $newBalance <= 0.01 ? 'completed' : $sale->status,
+                                    ]);
+                                }
+                            }
+
+                            if ($calc['balance'] <= 0.01 && !$record->sale_id) {
+                                $sale = self::createSaleFromRepair($record->fresh());
+                                Notification::make()
+                                    ->title("✅ Fully Paid — Sale #{$sale->invoice_number} Created")
+                                    ->body('This repair now shows up in your Sales Report.')
+                                    ->success()
+                                    ->persistent()
+                                    ->send();
+                            } else {
+                                Notification::make()->title('✅ Payment Recorded')->body('Balance updated successfully.')->success()->send();
+                            }
+                        }),
                     Tables\Actions\Action::make('printJobPacket')
                         ->label('Print Job Packet')->icon('heroicon-o-printer')->color('info')
-                        ->url(fn(Repair $record): string => route('repair.print',$record))->openUrlInNewTab(),
+                        ->url(fn(Repair $record): string => route('repair.print', $record))->openUrlInNewTab(),
                 ])
             ])
-            ->defaultSort('created_at','desc');
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function handleRepairNotification(Repair $record, string $method, string $message)
     {
         $history   = $record->repair_history ?? [];
-        $history[] = ['sent_at'=>now()->toDateTimeString(),'method'=>$method,'message'=>$message,'staff_name'=>auth()->user()->name??'System'];
-        $record->update(['last_message'=>$message,'notified_at'=>now(),'repair_history'=>$history]);
+        $history[] = ['sent_at' => now()->toDateTimeString(), 'method' => $method, 'message' => $message, 'staff_name' => auth()->user()->name ?? 'System'];
+        $record->update(['last_message' => $message, 'notified_at' => now(), 'repair_history' => $history]);
 
-        if (in_array($method,['sms','both']) && !empty($record->customer->phone)) {
+        if (in_array($method, ['sms', 'both']) && !empty($record->customer->phone)) {
             try {
-                $digits         = preg_replace('/[^0-9]/','', $record->customer->phone);
-                $formattedPhone = '+1'.(Str::startsWith($digits,'1') ? substr($digits,1) : $digits);
-                $settings       = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value','key');
-                $sns = new SnsClient(['version'=>'latest','region'=>$settings['aws_sms_default_region']??config('services.sns.region','us-east-2'),'credentials'=>['key'=>$settings['aws_sms_access_key_id']??config('services.sns.key'),'secret'=>$settings['aws_sms_secret_access_key']??config('services.sns.secret')]]);
-                $sns->publish(['Message'=>$message,'PhoneNumber'=>$formattedPhone,'MessageAttributes'=>['OriginationNumber'=>['DataType'=>'String','StringValue'=>$settings['aws_sns_sms_from']??config('services.sns.sms_from')]]]);
+                $digits         = preg_replace('/[^0-9]/', '', $record->customer->phone);
+                $formattedPhone = '+1' . (Str::startsWith($digits, '1') ? substr($digits, 1) : $digits);
+                $settings       = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+                $sns = new SnsClient(['version' => 'latest', 'region' => $settings['aws_sms_default_region'] ?? config('services.sns.region', 'us-east-2'), 'credentials' => ['key' => $settings['aws_sms_access_key_id'] ?? config('services.sns.key'), 'secret' => $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret')]]);
+                $sns->publish(['Message' => $message, 'PhoneNumber' => $formattedPhone, 'MessageAttributes' => ['OriginationNumber' => ['DataType' => 'String', 'StringValue' => $settings['aws_sns_sms_from'] ?? config('services.sns.sms_from')]]]);
             } catch (\Exception $e) {
                 Notification::make()->title('SMS Error')->body($e->getMessage())->danger()->send();
             }
         }
 
-        if (in_array($method,['email','both']) && !empty($record->customer->email)) {
+        if (in_array($method, ['email', 'both']) && !empty($record->customer->email)) {
             try {
-                $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value','key');
-                config(['services.ses.key'=>$settings['aws_access_key_id']??config('services.ses.key'),'services.ses.secret'=>$settings['aws_secret_access_key']??config('services.ses.secret'),'services.ses.region'=>$settings['aws_default_region']??config('services.ses.region')]);
+                $settings = \Illuminate\Support\Facades\DB::table('site_settings')->pluck('value', 'key');
+                config(['services.ses.key' => $settings['aws_access_key_id'] ?? config('services.ses.key'), 'services.ses.secret' => $settings['aws_secret_access_key'] ?? config('services.ses.secret'), 'services.ses.region' => $settings['aws_default_region'] ?? config('services.ses.region')]);
                 Mail::raw($message, fn($mail) => $mail->to($record->customer->email)->subject("Update: Jewelry Repair #{$record->repair_no}"));
             } catch (\Exception $e) {
                 Notification::make()->title('Email Error')->body('SMTP check failed.')->danger()->send();
