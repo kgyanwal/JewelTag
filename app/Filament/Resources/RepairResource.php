@@ -214,7 +214,6 @@ class RepairResource extends Resource
                 Group::make()->columnSpan(['lg' => 8])->schema([
 
                     Section::make('Repair Intake')
-                        ->description('Record customer details and overall ticket status.')
                         ->icon('heroicon-o-user-circle')
                         ->schema([
                             Grid::make(2)->schema([
@@ -314,20 +313,18 @@ class RepairResource extends Resource
                         ]),
 
                     Section::make('Jewelry Items to Repair')
-                        ->description('Add all items brought in. Each item can have its own photos, issues, and services with individual pricing.')
                         ->icon('heroicon-o-sparkles')
                         ->schema([
                             Repeater::make('items')->label('')
                                 ->schema([
 
                                     Section::make('Item Origin')
-                                        ->description('Where did this piece come from?')
                                         ->icon('heroicon-o-tag')
                                         ->schema([
                                             Grid::make(3)->schema([
                                                 Toggle::make('is_warranty')
-                                                    ->label('Covered Under Warranty?')
-                                                    ->helperText('Automatically sets all service costs to $0.00')
+                                                    ->label('Warranty')
+                                                    ->helperText('Zeroes all costs')
                                                     ->onColor('success')->inline(false)->live()
                                                     ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
                                                         if ($state) {
@@ -339,11 +336,11 @@ class RepairResource extends Resource
                                                             })->toArray());
                                                         }
                                                     }),
-                                                Toggle::make('is_from_store_stock')->label('Was this bought from our store?')->inline(false)->live(),
+                                                Toggle::make('is_from_store_stock')->label('From Our Stock')->inline(false)->live(),
                                                 // 🚀 Tax-free flag per item, same role as is_tax_free on Sale/CustomOrder items
                                                 Toggle::make('is_tax_free')
-                                                    ->label('Tax Free?')
-                                                    ->helperText('Exempt this item\'s services from tax')
+                                                    ->label('Tax Free')
+                                                    ->helperText('No sales tax')
                                                     ->onColor('warning')->inline(false)->live(),
                                             ]),
                                             Select::make('original_product_id')
@@ -367,8 +364,7 @@ class RepairResource extends Resource
 
                                     // ── PHOTO DOCUMENTATION ───────────────────────────
                                     Section::make('Photo Documentation')
-                                        ->description('Capture the item\'s intake condition.')
-                                        ->icon('heroicon-o-camera')->collapsible()
+                                        ->icon('heroicon-o-camera')->collapsible()->collapsed()
                                         ->schema([
                                             Forms\Components\FileUpload::make('item_photo')
                                                 ->label('Item Photo (Intake Condition)')
@@ -408,7 +404,6 @@ class RepairResource extends Resource
 
                                     // ── SERVICES WITH PRICING ─────────────────────────
                                     Section::make('Services & Pricing')
-                                        ->description('Add each service required. Set the quote and final cost per service so customers see exactly what they\'re paying for.')
                                         ->icon('heroicon-o-wrench-screwdriver')
                                         ->schema([
                                             Repeater::make('services')->label('')
@@ -487,14 +482,12 @@ class RepairResource extends Resource
                                                         TextInput::make('estimated_cost')
                                                             ->label('Quoted to Customer')
                                                             ->numeric()->prefix('$')->default(0)->nullable()
-                                                            ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;'])
-                                                            ->helperText('What you told the customer'),
+                                                            ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;']),
 
                                                         TextInput::make('final_cost')
                                                             ->label('Final Charged')
                                                             ->numeric()->prefix('$')->nullable()
-                                                            ->extraInputAttributes(['style' => 'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;'])
-                                                            ->helperText('Fill when service is complete'),
+                                                            ->extraInputAttributes(['style' => 'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;']),
 
                                                         Placeholder::make('service_status')
                                                             ->label('Status')
@@ -576,7 +569,6 @@ class RepairResource extends Resource
                 Group::make()->columnSpan(['lg' => 4])->schema([
 
                     Section::make('Staff Assignment')
-                        ->description('Who is handling this ticket?')
                         ->icon('heroicon-o-identification')
                         ->schema([
                             Hidden::make('sales_person_id'),
@@ -596,8 +588,7 @@ class RepairResource extends Resource
                         ]),
 
                     Section::make('Repair Tracking')
-                        ->description('Drop-off, pickup, and repair location details.')
-                        ->icon('heroicon-o-map-pin')->collapsible()
+                        ->icon('heroicon-o-map-pin')->collapsible()->collapsed()
                         ->schema([
                             Grid::make(2)->schema([
                                 Select::make('dropped_by')->label('Dropped By')
@@ -909,24 +900,20 @@ class RepairResource extends Resource
                         ]),
 
                     Section::make('Customer Contact')
-                        ->description('Track whether the customer has been reached')
                         ->icon('heroicon-o-phone')
                         ->schema([
                             Grid::make(2)->schema([
                                 Toggle::make('customer_called')
-                                    ->label('📞 Called — Customer Answered')
-                                    ->helperText('Check if customer picked up the phone')
+                                    ->label('📞 Called — Answered')
                                     ->onColor('success')->inline(false)->live(),
 
                                 Toggle::make('customer_texted')
                                     ->label('💬 Texted — No Answer')
-                                    ->helperText('Check if you had to send a text instead')
                                     ->onColor('info')->inline(false)->live(),
                             ]),
                         ]),
 
                     Section::make('Workflow')
-                        ->description('Printing and Notifications')
                         ->icon('heroicon-o-printer')
                         ->schema([
                             Toggle::make('auto_print')
