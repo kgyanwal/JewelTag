@@ -84,10 +84,26 @@ class Sale extends Model
                 $sale->invoice_number = $prefix . $nextNumber;
             }
         });
-       static::saving(function ($sale) {
-    // Only set completed_at when status becomes completed
+      // WITH:
+static::saving(function ($sale) {
+    // Resolve store timezone — use store linked to this sale, or app default
+    $tz   = optional(\App\Models\Store::find($sale->store_id))->timezone
+            ?? config('app.timezone', 'UTC');
+    $now  = \Illuminate\Support\Carbon::now($tz);
+
+    // ── 1. New sale becoming completed for first time ──
     if ($sale->status === 'completed' && empty($sale->completed_at)) {
-        $sale->completed_at = now();
+        $sale->completed_at = $now;
+    }
+
+    // ── 2. Imported sale: balance_due just dropped to 0 from a real payment ──
+    if (
+        $sale->status === 'completed'        &&
+        floatval($sale->balance_due) <= 0.01 &&
+        $sale->isDirty('balance_due')        &&
+        floatval($sale->getOriginal('balance_due')) > 0.01
+    ) {
+        $sale->completed_at = $now;
     }
 });
     }
@@ -113,9 +129,9 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
     public function salePayments(): HasMany
-{
-    return $this->hasMany(SalePayment::class);
-}
+    {
+        return $this->hasMany(SalePayment::class);
+    }
     public function getGlobalSearchResultDetails(): array
     {
         return [
@@ -123,7 +139,7 @@ class Sale extends Model
         ];
     }
     public function auditLogs()
-{
-    return $this->hasMany(SaleAuditLog::class)->latest();
-}
+    {
+        return $this->hasMany(SaleAuditLog::class)->latest();
+    }
 }
