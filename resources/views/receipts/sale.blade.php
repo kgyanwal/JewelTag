@@ -60,7 +60,8 @@ if ($hasRepair) {
         $displayTotal += floatval($sale->trade_in_value);
     }
 
-    $allPayments = collect();
+    // REPLACE the entire imported payments block with this simpler logic:
+$allPayments = collect();
 if ($sale->payments) {
     $allPayments = $allPayments->merge($sale->payments);
 }
@@ -72,21 +73,24 @@ if ($isCustomDeposit) {
     }
 }
 
-// ── IMPORTED SALES: add sale_payments (excluding any already in payments table) ──
+// For imported sales — use sale_payments as the base,
+// then add any NEW payments from payments table on top
 $importedPayments = $sale->salePayments ?? collect();
 if ($importedPayments->count() > 0) {
-    $existingPaymentIds = $sale->payments->pluck('id')->toArray();
-    $paymentsTotal = $sale->payments->sum('amount');
-    $importedTotal = $importedPayments->sum('amount');
-    // Only merge if imported payments are NOT already duplicated in payments table
-    if ($paymentsTotal != $importedTotal) {
-        $allPayments = $allPayments->merge(
-            $importedPayments->map(fn($sp) => (object)[
-                'amount'  => $sp->amount,
-                'method'  => $sp->payment_method,
-                'paid_at' => $sp->payment_date,
-            ])
-        );
+    // Start fresh with imported payments as base
+    $allPayments = $importedPayments->map(fn($sp) => (object)[
+        'amount'  => $sp->amount,
+        'method'  => $sp->payment_method,
+        'paid_at' => $sp->payment_date,
+    ]);
+    // Add only NEW payments (those added after import date)
+    $newPayments = $sale->payments->filter(
+        fn($p) => is_null($p->created_at) || $p->created_at->gt(
+            $importedPayments->max('created_at') ?? now()->subYears(10)
+        )
+    );
+    if ($newPayments->count() > 0) {
+        $allPayments = $allPayments->merge($newPayments);
     }
 }
 
