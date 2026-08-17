@@ -60,8 +60,7 @@ if ($hasRepair) {
         $displayTotal += floatval($sale->trade_in_value);
     }
 
-    // REPLACE WITH:
-$allPayments = collect();
+    $allPayments = collect();
 if ($sale->payments) {
     $allPayments = $allPayments->merge($sale->payments);
 }
@@ -73,20 +72,18 @@ if ($isCustomDeposit) {
     }
 }
 
-// ── IMPORTED SALES: also include sale_payments table ──
-// Avoids double-counting by checking if sale_payments exist
-// and the amounts aren't already in payments table
+// ── IMPORTED SALES: add sale_payments (excluding any already in payments table) ──
 $importedPayments = $sale->salePayments ?? collect();
 if ($importedPayments->count() > 0) {
-    $existingTotal = $allPayments->sum('amount');
+    $existingPaymentIds = $sale->payments->pluck('id')->toArray();
+    $paymentsTotal = $sale->payments->sum('amount');
     $importedTotal = $importedPayments->sum('amount');
-    // Only add imported payments if they're not already reflected
-    // (i.e. payments table doesn't already have the same total)
-    if (abs($existingTotal - $importedTotal) > 0.01 || $existingTotal == 0) {
+    // Only merge if imported payments are NOT already duplicated in payments table
+    if ($paymentsTotal != $importedTotal) {
         $allPayments = $allPayments->merge(
             $importedPayments->map(fn($sp) => (object)[
-                'amount' => $sp->amount,
-                'method' => $sp->payment_method,
+                'amount'  => $sp->amount,
+                'method'  => $sp->payment_method,
                 'paid_at' => $sp->payment_date,
             ])
         );
@@ -94,7 +91,7 @@ if ($importedPayments->count() > 0) {
 }
 
 $totalPaid = $allPayments->sum('amount');
-$balance = max(0, $displayTotal - $totalPaid);
+$balance   = max(0, $displayTotal - $totalPaid);
     $isFullyPaid = $balance <= 0.01;
     $isLaybuy = $sale->payment_method === 'laybuy';
     $isPending = in_array($sale->status, ['pending', 'inprogress']);
