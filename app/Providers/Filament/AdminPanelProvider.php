@@ -793,6 +793,7 @@ HTML;
                 \App\Filament\Pages\StaffPerformanceDashboard::class,
                 \App\Filament\Pages\CustomerLifetimeValue::class,
                 \App\Filament\Pages\WarrantyReport::class,
+                \App\Filament\Pages\TestValorTerminal::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
