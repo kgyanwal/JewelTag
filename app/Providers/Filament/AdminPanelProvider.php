@@ -792,6 +792,7 @@ HTML;
                 \App\Filament\Pages\DiamondSearch::class,
                 \App\Filament\Pages\StaffPerformanceDashboard::class,
                 \App\Filament\Pages\CustomerLifetimeValue::class,
+                \App\Filament\Pages\WarrantyReport::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,
