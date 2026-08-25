@@ -587,8 +587,9 @@ class RepairResource extends Resource
                                 ->afterStateUpdated(fn($state, Forms\Set $set) => $set('sales_person_id', !empty($state) ? (int)$state[0] : null)),
                         ]),
 
-                    Section::make('Repair Tracking')
-                        ->icon('heroicon-o-map-pin')->collapsible()->collapsed()
+                                       Section::make('Repair Tracking')
+                        ->description('Drop-off, pickup, and repair location details.')
+                        ->icon('heroicon-o-map-pin')
                         ->schema([
                             Grid::make(2)->schema([
                                 Select::make('dropped_by')->label('Dropped By')
@@ -1033,25 +1034,25 @@ class RepairResource extends Resource
                     })
                     ->grow(false)->toggleable(),
 
-                Tables\Columns\TextColumn::make('date_dropped')
+                               Tables\Columns\TextColumn::make('date_dropped')
                     ->label('DROPPED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
-                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style' => 'min-width:110px;'])
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->extraAttributes(['style'=>'min-width:110px;'])
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
-                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
+                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style' => 'min-width:110px;'])
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->extraAttributes(['style'=>'min-width:110px;'])
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\TextColumn::make('date_picked_up')
                     ->label('PICKED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\SelectColumn::make('status')->label('STATUS')
                     ->options(['received' => 'RCVD', 'in_progress' => 'IN PROG', 'ready' => 'DONE', 'delivered' => 'DELIVERED'])
@@ -1064,26 +1065,25 @@ class RepairResource extends Resource
                         default       => ['style' => 'min-width:90px;'],
                     })->toggleable(),
 
-                Tables\Columns\ToggleColumn::make('is_ready_toggle')->label('READY?')
-                    ->getStateUsing(fn($record) => in_array($record->status, ['ready', 'delivered']))
+                                Tables\Columns\ToggleColumn::make('is_ready_toggle')->label('READY?')
+                    ->getStateUsing(fn($record) => in_array($record->status,['ready','delivered']))
                     ->onColor('success')->offColor('gray')
-                    ->updateStateUsing(fn($record, $state) => $record->update(['status' => $state ? 'ready' : 'received']))
+                    ->updateStateUsing(fn($record,$state) => $record->update(['status'=>$state?'ready':'received']))
                     ->grow(false)
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\SelectColumn::make('repair_location')->label('LOCATION')
-                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location', '!=', '')->distinct()->pluck('repair_location', 'repair_location')->toArray())
+                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location','!=','')->distinct()->pluck('repair_location','repair_location')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style' => 'min-width:150px;'])
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->extraAttributes(['style'=>'min-width:150px;'])
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\TextColumn::make('customer_pickup_date')->label('PICKUP')->placeholder('—')
-                    ->formatStateUsing(
-                        fn($state) => $state
-                            ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>" . (\Carbon\Carbon::parse($state)->format('m/d/y')) . "</span>")
-                            : '<span style="color:#9ca3af;">—</span>'
+                    ->formatStateUsing(fn($state) => $state
+                        ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>".(\Carbon\Carbon::parse($state)->format('m/d/y'))."</span>")
+                        : '<span style="color:#9ca3af;">—</span>'
                     )->grow(false)
-                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
+                    ->toggleable(isToggledHiddenByDefault: false),  
 
                 Tables\Columns\TextColumn::make('origin')->label('ORIGIN')->html()
                     ->getStateUsing(function ($record) {
