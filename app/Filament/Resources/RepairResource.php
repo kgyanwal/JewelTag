@@ -1034,25 +1034,25 @@ class RepairResource extends Resource
                     })
                     ->grow(false)->toggleable(),
 
-                               Tables\Columns\TextColumn::make('date_dropped')
+                             Tables\Columns\TextColumn::make('date_dropped')
                     ->label('DROPPED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
-                Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
+              Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
                     ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
                     ->extraAttributes(['style'=>'min-width:110px;'])
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
-                Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
+              Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
                     ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
                     ->extraAttributes(['style'=>'min-width:110px;'])
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\TextColumn::make('date_picked_up')
                     ->label('PICKED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('status')->label('STATUS')
                     ->options(['received' => 'RCVD', 'in_progress' => 'IN PROG', 'ready' => 'DONE', 'delivered' => 'DELIVERED'])
@@ -1070,7 +1070,7 @@ class RepairResource extends Resource
                     ->onColor('success')->offColor('gray')
                     ->updateStateUsing(fn($record,$state) => $record->update(['status'=>$state?'ready':'received']))
                     ->grow(false)
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('repair_location')->label('LOCATION')
                     ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location','!=','')->distinct()->pluck('repair_location','repair_location')->toArray())
