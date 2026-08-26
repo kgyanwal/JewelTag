@@ -10,7 +10,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.1/aos.css" rel="stylesheet" />
   <style>
     :root {
       --primary-gold: #d97706;
@@ -24,6 +24,15 @@
     body { font-family:'Outfit', sans-serif; color:#1e293b; overflow-x:hidden; background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%); }
     .playfair { font-family:'Playfair Display',serif; }
     .mono { font-family:'Space Mono', monospace; }
+
+    /* SEO/reliability fallback: if AOS's JS never loads or errors, this
+       forces [data-aos] elements visible after a short timeout so content
+       can never get permanently stuck at opacity:0 (see script at bottom). */
+    [data-aos].aos-fallback-visible {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
 
     .gold-gradient { background:linear-gradient(135deg,var(--primary-gold),var(--dark-gold)); }
     .gold-gradient-text {
@@ -85,10 +94,6 @@
       to { opacity: 1; transform: translateY(0) scale(1) rotateX(0deg); }
     }
 
-    /* ── LIVE PRODUCT DEMO VIDEO (replaces the guessed screenshot zoom) ──
-       Real footage of the app, framed like a live browser window, with a
-       progress bar and timed caption chips that pop up in sync with what's
-       actually happening on screen — no more guessed coordinates. */
     .video-stage { position:absolute; inset:0; overflow:hidden; background:#0b1220; }
     .pos-video {
       position:absolute; inset:0; width:100%; height:100%;
@@ -738,10 +743,28 @@
     <i class="fas fa-chevron-up text-gray-700"></i>
   </button>
 
-  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.1/aos.js"></script>
   <script>
-    // Initialize Scroll Animations
-    AOS.init({ duration:800, once:true, offset:50 });
+    // Initialize Scroll Animations (wrapped in try/catch: if AOS fails to
+    // load for any reason, the rest of this script — mobile menu, chat,
+    // back-to-top, FAQ, forms — still runs instead of dying on one error)
+    try {
+      AOS.init({ duration:800, once:true, offset:50 });
+    } catch (e) {
+      console.warn('AOS failed to initialize:', e);
+    }
+
+    // Safety net: if AOS's own JS never ran (blocked CDN, slow network,
+    // ad-blocker, etc.) any [data-aos] element would stay invisible
+    // forever because AOS's CSS sets opacity:0 until AOS adds a class.
+    // This guarantees content is never permanently hidden.
+    setTimeout(function () {
+      document.querySelectorAll('[data-aos]').forEach(function (el) {
+        if (!el.classList.contains('aos-animate')) {
+          el.classList.add('aos-fallback-visible');
+        }
+      });
+    }, 1500);
 
     // Mobile menu
     document.getElementById('mobile-menu-button')?.addEventListener('click', () => {

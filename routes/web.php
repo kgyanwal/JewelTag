@@ -32,7 +32,7 @@ foreach ($centralDomains as $domain) {
             Route::get('/create-store/{store_name}', function ($store_name) {
                 $proPlan = Plan::where('slug', 'pro')->first();
 
-                $tenant = Tenant::create([
+                               $tenant = Tenant::create([
                     'id'            => $store_name,
                     'plan_id'       => $proPlan?->id,
                     'plan_status'   => 'trial',
@@ -42,6 +42,15 @@ foreach ($centralDomains as $domain) {
                 $baseDomain = app()->isLocal() ? 'localhost' : 'jeweltag.us';
                 $fullDomain = $store_name . '.' . $baseDomain;
                 $tenant->domains()->create(['domain' => $fullDomain]);
+
+                \App\Models\MasterAuditLog::record(
+                    action: 'tenant_created',
+                    fieldLabel: 'Plan',
+                    oldValue: null,
+                    newValue: ($proPlan?->name ?? 'Pro') . ' (trial)',
+                    tenantId: $tenant->id,
+                    tenantName: $tenant->id,
+                );
 
                 return "Success! Store '{$store_name}' created on the Pro plan with a 3-day trial (expires {$tenant->trial_ends_at->format('M j, Y g:i A')}).";
             });

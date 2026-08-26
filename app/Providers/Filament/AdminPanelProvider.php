@@ -61,13 +61,40 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::GLOBAL_SEARCH_END,
                 fn(): string => view('filament.hooks.custom-logo')->render(),
             )
-            ->renderHook(
+                       ->renderHook(
                 PanelsRenderHook::TOPBAR_END,
                 fn(): string => Blade::render('
                     @php
                         $staffUser = \App\Helpers\Staff::user();
                         $name = $staffUser?->username ?? $staffUser?->name ?? null;
+
+                        // 🚀 NEW — plan badge, color/label keyed off the tenant\'s actual plan slug
+                        $planSlug  = null;
+                        $planName  = null;
+                        if (function_exists(\'tenant\') && tenant()) {
+                            $t = tenant();
+                            $t->loadMissing(\'plan\');
+                            $planSlug = $t->plan?->slug;
+                            $planName = $t->plan?->name;
+                        }
+
+                        $planStyles = [
+                            \'basic\'      => [\'bg\' => \'rgba(148,163,184,0.16)\', \'border\' => \'#94a3b8\', \'text\' => \'#e2e8f0\', \'label\' => $planName ?? \'Basic\'],
+                            \'pro\'        => [\'bg\' => \'rgba(201,162,75,0.16)\',  \'border\' => \'#C9A24B\', \'text\' => \'#E4CD8E\', \'label\' => $planName ?? \'Pro\'],
+                            \'pro_crm\'    => [\'bg\' => \'rgba(201,162,75,0.22)\',  \'border\' => \'#C9A24B\', \'text\' => \'#F3E3B4\', \'label\' => ($planName ?? \'Pro\') . \' + CRM\'],
+                            \'enterprise\' => [\'bg\' => \'rgba(61,107,99,0.28)\',   \'border\' => \'#3D6B63\', \'text\' => \'#9DD9CB\', \'label\' => $planName ?? \'Enterprise\'],
+                        ];
+                        $style = $planStyles[$planSlug] ?? null;
                     @endphp
+                    @if($style)
+                        <div class="jt-plan-badge" title="Current Plan: {{ $style[\'label\'] }}"
+                             style="background:{{ $style[\'bg\'] }};border-color:{{ $style[\'border\'] }};color:{{ $style[\'text\'] }};">
+                            <svg xmlns="http://www.w3.org/2000/svg" style="width:13px;height:13px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            {{ $style[\'label\'] }}
+                        </div>
+                    @endif
                     @if($name)
                         <div class="jt-staff-chip">
                             <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -313,6 +340,22 @@ header.fi-topbar {
     transition: background 150ms var(--jt-ease);
 }
 .jt-staff-chip:hover { background: rgba(201,162,75,0.22); }
+
+/* ── PLAN BADGE — pill next to staff chip, color keyed to plan tier ── */
+.jt-plan-badge {
+    display: flex; align-items: center; gap: 6px;
+    border: 1.5px solid;
+    border-radius: 999px;
+    padding: 5px 12px 5px 10px;
+    margin-right: 8px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    transition: filter 150ms var(--jt-ease);
+}
+.jt-plan-badge:hover { filter: brightness(1.15); }
 /* ── GLOBAL SEARCH BAR (top nav) ──────────── */
 .fi-topbar .fi-global-search-field,
 .fi-global-search-field {
@@ -392,13 +435,37 @@ div[id*="global-search"] p {
 }
 .fi-topbar nav > ul::-webkit-scrollbar { display: none !important; }
 
+/* 🚀 FIX — without flex-shrink:0, flexbox squeezes long items like
+   "Analytics & Reports" into wrapping/clipping before the container's
+   overflow-x:auto kicks in. Locking each item's natural width forces the
+   bar to scroll horizontally instead of crushing individual labels. */
+.fi-topbar nav > ul > li {
+    flex-shrink: 0 !important;
+}
+
 .fi-topbar nav > ul > li > a,
 .fi-topbar nav > ul > li > button {
     white-space: nowrap !important;
-    font-size: 0.82rem !important;
-    padding: 6px 12px !important;
+    font-size: 0.78rem !important;
+    padding: 6px 10px !important;
     border-radius: 6px !important;
     transition: background 150ms var(--jt-ease), color 150ms var(--jt-ease) !important;
+    flex-shrink: 0 !important;
+}
+
+/* 🚀 FIX — the text span/label inside each nav link was still wrapping onto
+   two lines even with the <li> locked, because white-space:nowrap wasn't
+   applied to the actual text element. This forces every piece of nav text
+   onto one line so "Analytics & Reports" renders as a single row. */
+.fi-topbar nav > ul > li > a *,
+.fi-topbar nav > ul > li > button * {
+    white-space: nowrap !important;
+}
+
+/* Tighten the gap between nav items so everything fits without needing
+   horizontal scroll at normal zoom levels */
+.fi-topbar nav > ul {
+    gap: 2px !important;
 }
 .fi-topbar nav > ul > li > a:hover,
 .fi-topbar nav > ul > li > button:hover {
@@ -839,13 +906,38 @@ HTML;
                     ->url(fn(): string => SaleResource::getUrl('index'))
                     ->sort(-99),
 
-                NavigationItem::make('New Customer')
+                               NavigationItem::make('New Customer')
                     ->label('New Customer')
                     ->group('Customer')
                     ->icon('heroicon-o-user-plus')
                     ->activeIcon('heroicon-s-user-plus')
                     ->url(fn(): string => CustomerResource::getUrl('create'))
                     ->sort(-100),
+
+                // 🚀 NEW — only shows for tenants NOT already on the top tier,
+                // so a store on Enterprise never sees an "upgrade" prompt.
+                NavigationItem::make('Upgrade Plan')
+                    ->label(function (): string {
+                        if (!function_exists('tenant') || !tenant()) return 'Upgrade Plan';
+                        $slug = tenant()->plan?->slug;
+                        return match ($slug) {
+                            'basic'   => 'Upgrade to Pro',
+                            'pro'     => 'Upgrade to Pro + CRM',
+                            'pro_crm' => 'Upgrade to Enterprise',
+                            default   => 'Upgrade Plan',
+                        };
+                    })
+                    ->group('Admin')
+                    ->icon('heroicon-o-rocket-launch')
+                    ->activeIcon('heroicon-s-rocket-launch')
+                    ->url('/contact')
+                    ->openUrlInNewTab()
+                    ->visible(function (): bool {
+                        if (!function_exists('tenant') || !tenant()) return false;
+                        $slug = tenant()->plan?->slug;
+                        return in_array($slug, ['basic', 'pro', 'pro_crm']); // hide only for enterprise / null
+                    })
+                    ->sort(100),
             ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Sales'),

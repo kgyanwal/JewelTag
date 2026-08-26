@@ -168,12 +168,23 @@ class TenantResource extends Resource
                     ->badge()
                     ->color(fn ($state) => $state && now()->diffInDays($state, false) <= 1 ? 'danger' : 'warning'),
 
-                Tables\Columns\ToggleColumn::make('is_active')
+                               Tables\Columns\ToggleColumn::make('is_active')
                     ->label('System Status')
                     ->onColor('success')
                     ->offColor('danger')
                     ->afterStateUpdated(function ($record, $state) {
                         $status = $state ? 'activated' : 'suspended';
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'system_status_toggled',
+                            fieldLabel: 'System Status',
+                            oldValue: $state ? 'Suspended' : 'Active',
+                            newValue: $state ? 'Active' : 'Suspended',
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: $state ? 'info' : 'critical',
+                        );
+
                         Notification::make()
                             ->title("Store {$status}")
                             ->body("Store {$record->id} has been {$status}.")
@@ -306,11 +317,27 @@ class TenantResource extends Resource
                         'plan_id'     => $record->plan_id,
                         'plan_status' => $record->plan_status,
                     ])
-                    ->action(function (Tenant $record, array $data) {
+                                       ->action(function (Tenant $record, array $data) {
+                        $oldPlan = $record->plan?->name ?? 'No Plan';
+                        $oldStatus = $record->plan_status;
+
                         $record->update([
                             'plan_id'     => $data['plan_id'],
                             'plan_status' => $data['plan_status'],
                         ]);
+
+                        $newPlan = \App\Models\Plan::find($data['plan_id'])?->name ?? 'No Plan';
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'plan_changed',
+                            fieldLabel: 'Plan',
+                            oldValue: "{$oldPlan} ({$oldStatus})",
+                            newValue: "{$newPlan} ({$data['plan_status']})",
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: 'warning',
+                        );
+
                         Notification::make()->title('Plan Updated')->success()->send();
                     }),
 
@@ -334,7 +361,9 @@ class TenantResource extends Resource
                             ->required()
                             ->native(false),
                     ])
-                    ->action(function (Tenant $record, array $data) {
+                                        ->action(function (Tenant $record, array $data) {
+                        $oldEndDate = $record->trial_ends_at?->format('M j, Y') ?? 'None';
+
                         $base = $record->trial_ends_at && $record->trial_ends_at->isFuture()
                             ? $record->trial_ends_at
                             : now();
@@ -346,9 +375,20 @@ class TenantResource extends Resource
                             'suspension_reason'  => null,
                         ]);
 
+                        $newEndDate = $record->fresh()->trial_ends_at->format('M j, Y');
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'trial_extended',
+                            fieldLabel: 'Trial End Date',
+                            oldValue: $oldEndDate,
+                            newValue: $newEndDate,
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                        );
+
                         Notification::make()
                             ->title('Trial Extended')
-                            ->body("New trial end date: {$record->fresh()->trial_ends_at->format('M j, Y')}")
+                            ->body("New trial end date: {$newEndDate}")
                             ->success()
                             ->send();
                     }),
@@ -362,12 +402,23 @@ class TenantResource extends Resource
                         Forms\Components\Textarea::make('reason')->label('Reason')->required()->rows(2),
                     ])
                     ->requiresConfirmation()
-                    ->action(function (Tenant $record, array $data) {
+                                      ->action(function (Tenant $record, array $data) {
                         $record->update([
                             'plan_status'       => 'suspended',
                             'suspended_at'      => now(),
                             'suspension_reason' => $data['reason'],
                         ]);
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'tenant_suspended',
+                            fieldLabel: 'Reason',
+                            oldValue: null,
+                            newValue: $data['reason'],
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: 'critical',
+                        );
+
                         Notification::make()->title('Tenant Suspended')->warning()->send();
                     }),
 
@@ -377,8 +428,16 @@ class TenantResource extends Resource
                     ->color('success')
                     ->visible(fn (Tenant $record) => $record->plan_status === 'suspended')
                     ->requiresConfirmation()
-                    ->action(function (Tenant $record) {
+                                      ->action(function (Tenant $record) {
                         $record->update(['plan_status' => 'active', 'suspended_at' => null, 'suspension_reason' => null]);
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'tenant_reactivated',
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: 'warning',
+                        );
+
                         Notification::make()->title('Tenant Reactivated')->success()->send();
                     }),
 
@@ -387,24 +446,43 @@ class TenantResource extends Resource
                     ->icon('heroicon-o-lifebuoy')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->action(function (Tenant $record) {
+                                       ->action(function (Tenant $record) {
                         $record->run(function () {
                             $admin = \App\Models\User::whereHas('roles', fn($q) => $q->where('name', 'Superadmin'))->first();
                             if ($admin) {
                                 $admin->update(['password' => Hash::make('jeweltag123'), 'pin_code' => '1234']);
                             }
                         });
+
+                        \App\Models\MasterAuditLog::record(
+                            action: 'emergency_reset',
+                            fieldLabel: 'Superadmin Credentials',
+                            oldValue: null,
+                            newValue: 'Password + PIN reset to default',
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: 'critical',
+                        );
+
                         Notification::make()->title('Reset Successful')->success()->send();
                     }),
 
-                Tables\Actions\DeleteAction::make()
+                             Tables\Actions\DeleteAction::make()
                     ->label('Archive Store')
                     ->icon('heroicon-o-archive-box')
                     ->color('danger')
                     ->modalHeading('Archive Store?')
                     ->modalDescription('Are you sure you want to archive this store? The store will be hidden and disabled, but the database and all its records will remain safely intact. You can restore it later.')
                     ->modalSubmitActionLabel('Yes, archive it')
-                    ->successNotificationTitle('Store successfully archived'),
+                    ->successNotificationTitle('Store successfully archived')
+                    ->before(function (Tenant $record) {
+                        \App\Models\MasterAuditLog::record(
+                            action: 'tenant_archived',
+                            tenantId: $record->id,
+                            tenantName: $record->id,
+                            severity: 'critical',
+                        );
+                    }),
             ]);
     }
 
