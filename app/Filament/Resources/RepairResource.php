@@ -715,11 +715,10 @@ class RepairResource extends Resource
                                 })
                                 ->columnSpanFull(),
 
-                            Select::make('payment_method')
+                                                        Select::make('payment_method')
                                 ->label('Payment Method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
-                                ->placeholder('Select Payment Method')
-                                ->required(fn(Forms\Get $get) => !$get('is_split_payment'))
+                                ->placeholder('Select Payment Method (optional)')
                                 ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
                                 ->live()
                                 ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
