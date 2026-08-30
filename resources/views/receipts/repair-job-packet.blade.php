@@ -604,8 +604,10 @@
             </tbody>
         </table>
 
-      {{-- 🚀 NEW — Paid / Balance summary, using the authoritative calculation
-             (includes tax, matches what RepairResource shows in the table/form) --}}
+      {{-- Paid / Balance summary — CUSTOMER COPY ONLY. Uses the authoritative
+             calculation (includes tax, matches what RepairResource shows in the
+             table/form). This block intentionally does NOT appear on the
+             workshop copy — the bench should never see pricing. --}}
         @if(!$repair->is_warranty)
         @php
             $calc = \App\Filament\Resources\RepairResource::calculateRepairTotal($repair);
@@ -632,9 +634,9 @@
             </tr>
         </table>
 
-        {{-- 🚀 NEW — Payment method breakdown, sourced from the actual Payment rows
-             so split payments (e.g. deposit via CASH + balance via KATAPULT) show
-             every method used, not just the total. --}}
+        {{-- Payment method breakdown — CUSTOMER COPY ONLY. Sourced from the
+             actual Payment rows so split payments (e.g. deposit via CASH +
+             balance via KATAPULT) show every method used, not just the total. --}}
         @if($repairPayments->isNotEmpty())
         <table style="width:100%;border-collapse:collapse;margin:2px 0 6px 0;font-size:8.5px;background:#fafafa;border:1px solid #e5e7eb;border-radius:4px;">
             <tr>
@@ -677,6 +679,12 @@
 
     {{-- ═══════════════════════════════════════════
      PAGE 2 — WORKSHOP COPY
+     🚀 FIX — No pricing/cost/balance information appears anywhere on this
+     page. The bench/workshop should only see what work to do, not what the
+     customer is being charged. All $ figures (balance-due banner, paid-in-full
+     banner, payment method breakdown, and per-service "Est: $X" tags) have
+     been removed from this page only. The customer copy above still shows
+     full pricing as before.
 ════════════════════════════════════════════ --}}
     <div class="page">
 
@@ -826,28 +834,6 @@
 
         @if($repair->is_warranty)
         <div class="warranty-box">&#9888; WARRANTY REPAIR — DO NOT CHARGE CUSTOMER &#9888;</div>
-        @else
-        @php
-            $workshopCalc = \App\Filament\Resources\RepairResource::calculateRepairTotal($repair);
-            $workshopPayments = \App\Models\Payment::where('repair_id', $repair->id)->orderBy('paid_at')->get();
-        @endphp
-        @if($workshopCalc['balance'] > 0)
-        <div style="background:#fef2f2;border:1.5px dashed #dc2626;padding:4px 10px;border-radius:4px;text-align:center;color:#dc2626;font-weight:900;font-size:10px;margin:4px 0;">
-            &#9888; BALANCE DUE ON PICKUP: ${{ number_format($workshopCalc['balance'], 2) }} &#9888;
-        </div>
-        @else
-        <div style="background:#f0fdf4;border:1.5px dashed #166534;padding:4px 10px;border-radius:4px;text-align:center;color:#166534;font-weight:900;font-size:10px;margin:4px 0;">
-            &#10003; PAID IN FULL
-        </div>
-        @endif
-        @if($workshopPayments->isNotEmpty())
-        <div style="font-size:8px;color:#555;text-align:center;margin-bottom:4px;">
-            Paid via:
-            @foreach($workshopPayments as $p)
-            <strong>{{ strtoupper($p->method) }}</strong> (${{ number_format($p->amount, 2) }}){{ !$loop->last ? ', ' : '' }}
-            @endforeach
-        </div>
-        @endif
         @endif
 
         <table class="workshop-table">
@@ -910,9 +896,6 @@
                             @endif
                             @if(!empty($svc['job_instructions']))
                             <div style="color:#374151;margin-top:2px;font-style:italic;">{{ $svc['job_instructions'] }}</div>
-                            @endif
-                            @if(!empty($svc['estimated_cost']) && floatval($svc['estimated_cost']) > 0)
-                            <span style="color:#1a6b65;font-weight:700;"> Est: ${{ number_format($svc['estimated_cost'], 2) }}</span>
                             @endif
                         </div>
                         @endforeach
