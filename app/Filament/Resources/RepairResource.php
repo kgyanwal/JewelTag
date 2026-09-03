@@ -566,7 +566,38 @@ class RepairResource extends Resource
                 ]),
 
                 // ── RIGHT ─────────────────────────────────────────────
-                Group::make()->columnSpan(['lg' => 4])->schema([
+                             Group::make()->columnSpan(['lg' => 4])->schema([
+
+                    // 🚀 NEW — mirrors SaleResource's "Record Creation Date" header,
+                    // same visual treatment, shown only on the edit page (there's no
+                    // created_at yet on create).
+                    Placeholder::make('repair_created_at_header')
+                        ->hiddenLabel()
+                        ->visible(fn(string $operation) => $operation === 'edit')
+                        ->content(function (?Repair $record) {
+                            if (!$record || !$record->created_at) return '';
+
+                            $date = $record->created_at->timezone(config('app.timezone'))->format('F d, Y');
+                            $time = $record->created_at->timezone(config('app.timezone'))->format('h:i A');
+
+                            return new HtmlString("
+                                <div style='
+                                    background: #0B3D3C;
+                                    border: 1px solid #C9A24B;
+                                    border-radius: 10px;
+                                    padding: 12px 16px;
+                                    margin-bottom: 12px;
+                                    box-shadow: 0 2px 8px rgba(11,61,60,0.15);
+                                '>
+                                    <div style='font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #E4CD8E; margin-bottom: 2px;'>
+                                        📅 Record Creation Date
+                                    </div>
+                                    <div style='font-size: 15px; font-weight: 800; color: #F8F6F1;'>
+                                        {$date} <span style='font-size: 12px; font-weight: 500; color: #E4CD8E; margin-left: 4px;'>at {$time}</span>
+                                    </div>
+                                </div>
+                            ");
+                        }),
 
                     Section::make('Staff Assignment')
                         ->icon('heroicon-o-identification')
