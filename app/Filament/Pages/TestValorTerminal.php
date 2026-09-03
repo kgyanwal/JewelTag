@@ -72,46 +72,51 @@ class TestValorTerminal extends Page
         return 'https://securelink-staging.valorpaytech.com';
     }
 
-    public function publishTest(): void
-    {
-        $d = $this->data;
-        $reqTxnId = 'TEST-' . now()->format('His');
-        $amountCents = (int) round(((float) $d['test_amount']) * 100);
+    public function publishTest(): void {
+    $d = $this->data;
+    $reqTxnId = 'TEST-' . now()->format('His');
+    $amountCents = (int) round(((float) $d['test_amount']) * 100);
 
-        $payload = [
-            'appid'      => $d['valor_app_id'],
-            'appkey'     => $d['valor_app_key'],
-            'epi'        => $d['valor_epi'],
-            'txn_type'   => 'vc_publish',
-            'channel_id' => $d['valor_channel_id'],
-            'version'    => '2',
-            'payload'    => [
-                'TRAN_MODE'  => '1',
-                'TRAN_CODE'  => '1',
-                'AMOUNT'     => (string) $amountCents,
-                'REQ_TXN_ID' => $reqTxnId,
-            ],
-        ];
+    $payload = [
+        'appid'      => (string) $d['valor_app_id'],
+        'appkey'     => (string) $d['valor_app_key'],
+        'epi'        => (string) $d['valor_epi'],
+        'txn_type'   => 'vc_publish',
+        'channel_id' => (string) $d['valor_channel_id'],
+        'version'    => '2',
+        'payload'    => [
+            'TRAN_MODE'  => '1',                 // 1 = Credit
+            'TRAN_CODE'  => '1',                 // 1 = Sale
+            'AMOUNT'     => sprintf('%.2f', (float) $d['test_amount']), // Formatted decimal string "1.00"
+            'REQ_TXN_ID' => $reqTxnId,
+            'CLERK_ID'   => '1',                 // Required by most host configurations
+            'TAX_AMOUNT' => '0.00',
+            'TIP_AMOUNT' => '0.00',
+        ],
+    ];
 
-        try {
-            $response = Http::acceptJson()->asJson()->timeout(45)
-                ->post($this->baseUrl() . '/?status=', $payload);
+    try {
+        $response = Http::acceptJson()
+            ->asJson()
+            ->timeout(45)
+            ->post($this->baseUrl() . '/?status=', $payload);
 
-            $this->currentReqTxnId = $reqTxnId;
-            $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
+        $this->currentReqTxnId = $reqTxnId;
+        $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
 
-            Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
+        Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
 
-            Notification::make()
-                ->title('Published — check the terminal now')
-                ->body("REQ_TXN_ID: {$reqTxnId}. Ask the customer/tester to tap the test card on the terminal, then click 'Check Status' below.")
-                ->info()
-                ->send();
-        } catch (\Throwable $e) {
-            $this->lastResponse = 'ERROR: ' . $e->getMessage();
-            Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
-        }
+        Notification::make()
+            ->title('Published — check terminal')
+            ->body("REQ_TXN_ID: {$reqTxnId}")
+            ->info()
+            ->send();
+
+    } catch (\Throwable $e) {
+        $this->lastResponse = 'ERROR: ' . $e->getMessage();
+        Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
     }
+}
 
     public function checkStatusTest(): void
     {
