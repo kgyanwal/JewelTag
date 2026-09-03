@@ -94,8 +94,8 @@ class TestValorTerminal extends Page
         ];
 
         try {
-            $response = Http::acceptJson()->asJson()->timeout(15)
-                ->post($this->baseUrl() . '/?status', $payload);
+            $response = Http::acceptJson()->asJson()->timeout(45)
+                ->post($this->baseUrl() . '/?status=', $payload);
 
             $this->currentReqTxnId = $reqTxnId;
             $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
