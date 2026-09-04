@@ -128,18 +128,17 @@ class TestValorTerminal extends Page
         // AMOUNT in cents, integer string — e.g. $1.00 -> "100"
         $amountCents = (string) (int) round(((float) $d['test_amount']) * 100);
 
-        // Matches CREDIT SALE - Format 6 from the official spec exactly.
-        // This is the minimal documented set that the terminal's parser
-        // will accept without throwing "Invalid Format".
+        // MINIMAL payload — exactly matching the readme.io Publish API doc,
+        // the ONLY confirmed-documented example for the Cloud (vc_publish)
+        // flow. The richer TIP_ENTRY/SIGNATURE/PAPER_RECEIPT/MOBILE_ENTRY
+        // fields come from a DIFFERENT document (TCP/USB local protocol)
+        // and may be exactly what's triggering ERROR-0600VI01 on Cloud,
+        // since that error code isn't documented anywhere in that PDF.
         $innerPayload = [
-            'TRAN_MODE'     => '1',   // 1 = Credit
-            'TRAN_CODE'     => '1',   // 1 = Sale
-            'AMOUNT'        => $amountCents,
-            'TIP_ENTRY'     => '0',   // 0 = no tip prompt (simplest case)
-            'SIGNATURE'     => '1',   // 1 = signature capture enabled
-            'PAPER_RECEIPT' => '2',   // FIX: spec examples always use "2", never "1"
-            'MOBILE_ENTRY'  => '0',   // 0 = no mobile number / e-receipt prompt
-            'REQ_TXN_ID'    => $reqTxnId,
+            'TRAN_MODE'  => '1',   // 1 = Credit
+            'TRAN_CODE'  => '1',   // 1 = Sale
+            'AMOUNT'     => $amountCents,
+            'REQ_TXN_ID' => $reqTxnId,
         ];
 
         $payload = [
