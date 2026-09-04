@@ -119,59 +119,63 @@ class TestValorTerminal extends Page
     }
 
     public function publishTest(): void
-    {
-        if ($this->credentialsMissing()) return;
+{
+    if ($this->credentialsMissing()) return;
 
-        $d = $this->data;
-        $reqTxnId = 'TEST-' . now()->format('His');
+    $d = $this->data;
+    $reqTxnId = 'TEST-' . now()->format('His');
 
-        // AMOUNT in cents, integer string — e.g. $1.00 -> "100"
-        $amountCents = (string) (int) round(((float) $d['test_amount']) * 100);
+    // Valor Connect Cloud API requires standard 2-decimal formatted string
+    $amountFormatted = number_format((float) $d['test_amount'], 2, '.', '');
 
-        // MINIMAL payload — exactly matching the readme.io Publish API doc,
-        // the ONLY confirmed-documented example for the Cloud (vc_publish)
-        // flow. The richer TIP_ENTRY/SIGNATURE/PAPER_RECEIPT/MOBILE_ENTRY
-        // fields come from a DIFFERENT document (TCP/USB local protocol)
-        // and may be exactly what's triggering ERROR-0600VI01 on Cloud,
-        // since that error code isn't documented anywhere in that PDF.
-        $innerPayload = [
-            'TRAN_MODE'  => '1',   // 1 = Credit
-            'TRAN_CODE'  => '1',   // 1 = Sale
-            'AMOUNT'     => $amountCents,
-            'REQ_TXN_ID' => $reqTxnId,
-        ];
+    // Inner transaction parameters according to Valor Connect Cloud API v2
+    $innerPayload = [
+        'TRAN_MODE'      => '1',                // 1 = Credit
+        'TRAN_CODE'      => '1',                // 1 = Sale
+        'AMOUNT'         => $amountFormatted,   // e.g. "1.00"
+        'TAX_AMOUNT'     => '0.00',
+        'TIP_AMOUNT'     => '0.00',
+        'SURCHARGE_AMT'  => '0.00',
+        'REQ_TXN_ID'     => $reqTxnId,
+        'INVOICE_NO'     => $reqTxnId,
+        'TIP_ENTRY'      => '0',                // 0 = Disabled/Bypass
+        'SIGNATURE'      => '0',                // 0 = On Terminal / Skip
+        'PAPER_RECEIPT'  => '1',                // 1 = Print
+        'MOBILE_ENTRY'   => '0',                // 0 = Disabled
+    ];
 
-        $payload = [
-            'appid'      => (string) $d['valor_app_id'],
-            'appkey'     => (string) $d['valor_app_key'],
-            'epi'        => (string) $d['valor_epi'],
-            'txn_type'   => 'vc_publish',
-            'channel_id' => (string) $d['valor_channel_id'],
-            'version'    => '2',
-            'payload'    => $innerPayload, // real nested object, NOT stringified
-        ];
+    $payload = [
+        'appid'      => (string) $d['valor_app_id'],
+        'appkey'     => (string) $d['valor_app_key'],
+        'epi'        => (string) $d['valor_epi'],
+        'txn_type'   => 'vc_publish',
+        'channel_id' => (string) $d['valor_channel_id'],
+        'version'    => '2',
+        'payload'    => $innerPayload,
+    ];
 
-        try {
-            $response = Http::acceptJson()
-                ->asJson()
-                ->timeout(45) // generous — terminal needs time for the tap/insert
-                ->post($this->baseUrl() . '/?status', $payload);
+    try {
+        // Appended '=' to query string as required by the endpoint spec
+        $response = Http::acceptJson()
+            ->asJson()
+            ->timeout(45)
+            ->post($this->baseUrl() . '/?status=', $payload);
 
-            $this->currentReqTxnId = $reqTxnId;
-            $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
+        $this->currentReqTxnId = $reqTxnId;
+        $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
 
-            Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
+        Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
 
-            Notification::make()
-                ->title('Published — check the terminal now')
-                ->body("REQ_TXN_ID: {$reqTxnId}. Tap/insert the card, then click Check Status.")
-                ->info()
-                ->send();
-        } catch (\Throwable $e) {
-            $this->lastResponse = 'ERROR: ' . $e->getMessage();
-            Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
-        }
+        Notification::make()
+            ->title('Published — check the terminal now')
+            ->body("REQ_TXN_ID: {$reqTxnId}. Tap/insert the card, then click Check Status.")
+            ->info()
+            ->send();
+    } catch (\Throwable $e) {
+        $this->lastResponse = 'ERROR: ' . $e->getMessage();
+        Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
     }
+}
 
     public function checkStatusTest(): void
     {
