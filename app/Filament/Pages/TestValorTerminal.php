@@ -137,7 +137,7 @@ class TestValorTerminal extends Page
             'AMOUNT'        => $amountCents,
             'TIP_ENTRY'     => '0',   // 0 = no tip prompt (simplest case)
             'SIGNATURE'     => '1',   // 1 = signature capture enabled
-            'PAPER_RECEIPT' => '1',   // 1 = print paper receipt
+            'PAPER_RECEIPT' => '2',   // FIX: spec examples always use "2", never "1"
             'MOBILE_ENTRY'  => '0',   // 0 = no mobile number / e-receipt prompt
             'REQ_TXN_ID'    => $reqTxnId,
         ];
