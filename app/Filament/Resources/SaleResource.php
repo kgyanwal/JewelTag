@@ -1915,10 +1915,34 @@ class SaleResource extends Resource
                                                     ]),
                                                 Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
                                             ])
-                                            ->createOptionUsing(function (array $data) {
+                                                                                       ->createOptionUsing(function (array $data) {
                                                 return Customer::create($data)->id;
                                             }),
                                     ]),
+
+                                    // 🚀 NEW — surfaces the customer's store credit right where staff
+                                    // are already looking, same notification-card treatment used
+                                    // elsewhere (CustomerResource, FindCustomer).
+                                    Placeholder::make('customer_credit_display')
+                                        ->hiddenLabel()
+                                        ->live()
+                                        ->visible(fn(Get $get) => $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
+                                        ->content(function (Get $get) {
+                                            $customer = Customer::find($get('customer_id'));
+                                            if (!$customer) return '';
+                                            $balance = floatval($customer->credit_balance ?? 0);
+                                            return new HtmlString("
+                                                <div style='background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:1.5px solid #c4b5fd;border-radius:10px;padding:10px 14px;margin-top:-8px;margin-bottom:4px;'>
+                                                    <div style='display:flex;align-items:center;gap:8px;'>
+                                                        <span style='font-size:16px;'>💳</span>
+                                                        <div>
+                                                            <div style='font-size:9px;font-weight:800;color:#6d28d9;text-transform:uppercase;letter-spacing:0.05em;'>Store Credit Available</div>
+                                                            <div style='font-size:16px;font-weight:900;color:#4c1d95;'>\$" . number_format($balance, 2) . "</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ");
+                                        }),
 
                                     Select::make('sales_person_list')
                                         ->label('Sales Staff')
@@ -2299,14 +2323,24 @@ class SaleResource extends Resource
                                     })
                                     ->live(),
 
-                                // ── AMOUNT RECEIVED (new money only) ────────────────────────
-                                TextInput::make('amount_paid')
+                                                              TextInput::make('amount_paid')
                                     ->label('Amount Received')
                                     ->numeric()
                                     ->prefix('$')
                                     ->default(0)
                                     ->live(onBlur: true)
                                     ->visible(fn(Get $get) => !$get('is_split_payment'))
+                                    ->rule(function (Get $get) {
+                                        return function (string $attribute, $value, \Closure $fail) use ($get) {
+                                            if (strtoupper($get('payment_method') ?? '') !== 'STORE_CREDIT') return;
+                                            $customerId = $get('customer_id');
+                                            $customer   = $customerId ? Customer::find($customerId) : null;
+                                            $balance    = floatval($customer?->credit_balance ?? 0);
+                                            if (floatval($value) > $balance) {
+                                                $fail("Cannot exceed available store credit of \$" . number_format($balance, 2));
+                                            }
+                                        };
+                                    })
                                     ->afterStateUpdated(function (Get $get, Set $set) {
                                         self::updateTotals($get, $set);
                                         self::syncStatus($get, $set);
@@ -2454,12 +2488,32 @@ class SaleResource extends Resource
                                                 ->required()
                                                 ->columnSpan(2),
 
-                                            TextInput::make('amount')
+                                                                                       TextInput::make('amount')
                                                 ->numeric()
                                                 ->prefix('$')
                                                 ->required()
                                                 ->label('Amount')
                                                 ->live(onBlur: true)
+                                                // 🚀 NEW — caps a Store Credit row at the customer's actual
+                                                // balance, so staff can never apply more credit than exists.
+                                                ->helperText(function (Get $get) {
+                                                    if (strtoupper($get('method') ?? '') !== 'STORE_CREDIT') return null;
+                                                    $customerId = $get('../../customer_id');
+                                                    $customer   = $customerId ? Customer::find($customerId) : null;
+                                                    $balance    = floatval($customer?->credit_balance ?? 0);
+                                                    return "Available credit: \$" . number_format($balance, 2, '.', ',');
+                                                })
+                                                ->rule(function (Get $get) {
+                                                    return function (string $attribute, $value, \Closure $fail) use ($get) {
+                                                        if (strtoupper($get('method') ?? '') !== 'STORE_CREDIT') return;
+                                                        $customerId = $get('../../customer_id');
+                                                        $customer   = $customerId ? Customer::find($customerId) : null;
+                                                        $balance    = floatval($customer?->credit_balance ?? 0);
+                                                        if (floatval($value) > $balance) {
+                                                            $fail("Cannot exceed available store credit of \$" . number_format($balance, 2));
+                                                        }
+                                                    };
+                                                })
                                                 ->hintAction(
                                                     FormAction::make('fill_split_remaining')
                                                         ->label('Collect Remaining Balance')
@@ -3403,7 +3457,7 @@ public static function resolveEnabledJobTargets(array $items, array $specialJobs
         $set('status', $fullyPaid ? 'completed' : 'pending');
     }
 
-    public static function getPaymentOptions(): array
+       public static function getPaymentOptions(): array
     {
         $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
         $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
@@ -3422,9 +3476,15 @@ public static function resolveEnabledJobTargets(array $items, array $specialJobs
         $regular = array_filter($options, fn($k) => $k !== 'laybuy', ARRAY_FILTER_USE_KEY);
         asort($regular);
 
-        return isset($options['laybuy'])
+        $result = isset($options['laybuy'])
             ? $regular + ['laybuy' => $options['laybuy']]
             : $regular;
+
+        // 🚀 NEW — always offer STORE_CREDIT as a method, regardless of site_settings
+        // config. Deduction logic lives in CreateSale/EditSale's payment loop.
+        $result['STORE_CREDIT'] = '💳 Store Credit';
+
+        return $result;
     }
 
     protected static function totalRow($label, $field)

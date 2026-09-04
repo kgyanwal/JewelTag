@@ -679,6 +679,59 @@
     </div>
   </section>
 
+    {{-- ═══ RECENT UPDATES / RELEASE NOTES ═══ --}}
+    @php
+        $publicReleaseNotes = \App\Models\ReleaseNote::where('is_published', true)
+            ->orderByDesc('published_at')
+            ->limit(3)
+            ->get();
+    @endphp
+
+    @if($publicReleaseNotes->isNotEmpty())
+    <section id="updates" class="py-20 jewel-pattern-bg">
+        <div class="container mx-auto px-6 lg:px-8">
+            <div class="text-center mb-12" data-aos="fade-up">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-4 playfair">
+                    <span style="color:var(--deep-sapphire)">What's New at</span>
+                    <span class="gold-gradient-text">JewelTag</span>
+                </h2>
+                <p class="text-lg text-gray-600 max-w-3xl mx-auto">We're constantly shipping improvements based on real feedback from jewelers like you.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                @foreach($publicReleaseNotes as $index => $note)
+                    @php
+                        $typeStyles = [
+                            'feature'      => ['icon' => 'fa-sparkles',       'label' => 'New Feature',  'color' => '#0f7a5c', 'bg' => '#EAF6EF'],
+                            'fix'          => ['icon' => 'fa-wrench',         'label' => 'Bug Fix',      'color' => '#b45309', 'bg' => '#FBF3E2'],
+                            'improvement'  => ['icon' => 'fa-bolt',           'label' => 'Improvement',  'color' => '#1E3A8A', 'bg' => '#EEF3F2'],
+                            'announcement' => ['icon' => 'fa-bullhorn',       'label' => 'Announcement', 'color' => '#6b7280', 'bg' => '#F3F4F6'],
+                        ];
+                        $style = $typeStyles[$note->type] ?? $typeStyles['announcement'];
+                    @endphp
+                    <div class="luxury-card p-7" data-aos="fade-up" data-aos-delay="{{ $index * 80 }}">
+                        <div class="flex items-center gap-2 mb-4">
+                            <span style="background:{{ $style['bg'] }};color:{{ $style['color'] }};font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;padding:4px 12px;border-radius:99px;">
+                                <i class="fas {{ $style['icon'] }} mr-1"></i>{{ $style['label'] }}
+                            </span>
+                            @if($note->version)
+                                <span class="text-xs text-gray-400 font-mono">{{ $note->version }}</span>
+                            @endif
+                        </div>
+                        <h3 class="text-lg font-bold mb-3 text-gray-900">{{ $note->title }}</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed mb-4" style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">
+                            {{ $note->body }}
+                        </p>
+                        <div class="text-xs text-gray-400 font-semibold">
+                            {{ $note->published_at?->format('F j, Y') ?? $note->created_at->format('F j, Y') }}
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+    @endif
+
     <footer class="footer-luxury py-14">
         <div class="container mx-auto px-6 lg:px-10">
             <div class="grid md:grid-cols-4 gap-10 mb-10 relative z-10">

@@ -20,6 +20,7 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Builder;
 use Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete;
 
 class CustomerResource extends Resource
@@ -190,7 +191,7 @@ CustomDatePicker::make('dob')
                     ])->columnSpan(['lg' => 2]),
 
                 // Sidebar Area
-                Group::make()
+                              Group::make()
                     ->schema([
                         Section::make('Profile Image')
                             ->schema([
@@ -206,6 +207,32 @@ CustomDatePicker::make('dob')
                                     ->directory('customer-photos')
                                     ->visibility('public'),
                             ]),
+
+                        // 🚀 NEW — visible only when the customer actually has a
+                        // balance, shown as a standalone notification-style card
+                        // (not just a plain editable field) so staff notice it
+                        // immediately when opening the profile.
+                        \Filament\Forms\Components\Placeholder::make('credit_balance_display')
+                            ->hiddenLabel()
+                            ->visible(fn(?Customer $record) => $record && floatval($record->credit_balance ?? 0) > 0)
+                            ->content(function (?Customer $record) {
+                                $balance = floatval($record->credit_balance ?? 0);
+                                return new \Illuminate\Support\HtmlString("
+                                    <div style='background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:1.5px solid #c4b5fd;border-radius:12px;padding:14px 16px;'>
+                                        <div style='display:flex;align-items:center;gap:10px;'>
+                                            <div style='background:#6d28d9;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'>
+                                                <span style='font-size:16px;'>💳</span>
+                                            </div>
+                                            <div>
+                                                <div style='font-size:10px;font-weight:800;color:#6d28d9;text-transform:uppercase;letter-spacing:0.06em;'>Store Credit Available</div>
+                                                <div style='font-size:20px;font-weight:900;color:#4c1d95;'>\$" . number_format($balance, 2) . "</div>
+                                            </div>
+                                        </div>
+                                        <div style='font-size:11px;color:#6b21a8;margin-top:8px;'>This customer can apply this balance toward any future purchase.</div>
+                                    </div>
+                                ");
+                            }),
+
                         Section::make('Status')
                             ->schema([
                                 Toggle::make('is_active')->label('Active Customer')->default(true),
@@ -282,6 +309,21 @@ CustomDatePicker::make('dob')
                 })
                 ->sortable(),
 
+                       // 🚀 NEW — only renders anything when the customer actually carries a
+            // balance, so it reads like a quiet notification rather than clutter
+            // on every row.
+            Tables\Columns\TextColumn::make('credit_balance')
+                ->label('Store Credit')
+                ->getStateUsing(fn($record) => floatval($record->credit_balance ?? 0))
+                ->formatStateUsing(function ($state) {
+                    if ($state <= 0) return '';
+                    return new \Illuminate\Support\HtmlString(
+                        "<span style='background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;'>💳 \$" . number_format($state, 2) . "</span>"
+                    );
+                })
+                ->html()
+                ->sortable(),
+
             Tables\Columns\IconColumn::make('is_active')
                 ->boolean()
                 ->label('Status')
@@ -291,6 +333,12 @@ CustomDatePicker::make('dob')
             Tables\Filters\SelectFilter::make('loyalty_tier'),
             Tables\Filters\TernaryFilter::make('is_active')
                 ->label('Active Status'),
+            // 🚀 NEW — quickly find every customer currently holding a store
+            // credit balance, e.g. for a "clear out our liabilities" report.
+            Tables\Filters\Filter::make('has_credit')
+                ->label('Has Store Credit')
+                ->query(fn(Builder $query) => $query->where('credit_balance', '>', 0))
+                ->toggle(),
         ])
         ->actions([
             Tables\Actions\ActionGroup::make([ // Grouping actions keeps the UI clean

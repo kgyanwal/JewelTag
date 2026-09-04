@@ -3,6 +3,12 @@
         {{ $this->form }}
     </form>
 
+    <div class="mt-4">
+        <x-filament::button color="gray" wire:click="saveCredentials" icon="heroicon-o-bookmark">
+            💾 Save Credentials
+        </x-filament::button>
+    </div>
+
     <div class="flex gap-3 mt-6">
         <x-filament::button color="success" wire:click="publishTest" icon="heroicon-o-credit-card">
             1. Publish (Charge)
@@ -18,8 +24,8 @@
     </div>
 
     @if ($lastResponse)
-        <div class="mt-6 p-4 bg-gray-900 rounded-lg overflow-auto">
-            <pre class="text-green-400 text-xs whitespace-pre-wrap">{{ $lastResponse }}</pre>
+        <div class="mt-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+            <pre class="text-gray-800 text-xs whitespace-pre-wrap">{{ $lastResponse }}</pre>
         </div>
     @endif
 

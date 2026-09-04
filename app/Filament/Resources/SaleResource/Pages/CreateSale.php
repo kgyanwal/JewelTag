@@ -497,9 +497,33 @@ class CreateSale extends CreateRecord
                 ];
             }
 
-            // Loop and insert only TRULY NEW money collected today
+                        // Loop and insert only TRULY NEW money collected today
             foreach ($paymentsToProcess as $p) {
                 if ($p['amount'] <= 0) continue;
+
+                // 🚀 NEW — STORE_CREDIT is not real money moving through a gateway;
+                // it deducts directly from the customer's own credit_balance instead
+                // of creating a normal Payment with an external method. Still creates
+                // a Payment row (so sale totals/reports reconcile correctly) but the
+                // method is tagged so refunds/reports can distinguish it.
+                if ($p['method'] === 'STORE_CREDIT') {
+                    $customer = \App\Models\Customer::find($sale->customer_id);
+                    if ($customer) {
+                        $available = floatval($customer->credit_balance ?? 0);
+                        $useAmount = min($p['amount'], $available);
+                        if ($useAmount > 0) {
+                            $customer->decrement('credit_balance', $useAmount);
+                        }
+                        // If staff somehow tried to use more than available (shouldn't
+                        // happen due to form validation), only the actual amount used
+                        // is recorded — never a fabricated Payment beyond real balance.
+                        $p['amount'] = $useAmount;
+                    } else {
+                        $p['amount'] = 0;
+                    }
+                    if ($p['amount'] <= 0) continue;
+                }
+
 $target   = $p['target'] ?? 'regular';
                 $isCustom = ($target === 'custom' && $customOrder);
                 // 🚀 Resolve either "repair_{id}" (item already had a Repair) or

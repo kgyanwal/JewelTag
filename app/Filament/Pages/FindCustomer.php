@@ -124,10 +124,24 @@ class FindCustomer extends Page implements HasTable
                     ->copyable()
                     ->toggleable(),
 
-                TextColumn::make('address')
+                               TextColumn::make('address')
                     ->label('ADDRESS')
                     ->getStateUsing(fn ($record) => trim("{$record->street} {$record->city}, {$record->state} {$record->postcode}"))
                     ->wrap(),
+
+                // 🚀 NEW — only renders when the customer actually carries a
+                // balance, same treatment as CustomerResource's own table.
+                TextColumn::make('credit_balance')
+                    ->label('STORE CREDIT')
+                    ->getStateUsing(fn ($record) => floatval($record->credit_balance ?? 0))
+                    ->formatStateUsing(function ($state) {
+                        if ($state <= 0) return '';
+                        return new HtmlString(
+                            "<span style='background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:800;white-space:nowrap;'>💳 \$" . number_format($state, 2) . "</span>"
+                        );
+                    })
+                    ->html()
+                    ->sortable(),
             ])
             ->actions([
                 // 🚀 VIEW DETAILS POPUP (Slide-over)
@@ -140,7 +154,7 @@ class FindCustomer extends Page implements HasTable
     ->modalCancelActionLabel('Close')
     ->form(fn (Customer $record): array => [
 
-        // ── CUSTOMER HEADER ───────────────────────────────────────────
+                // ── CUSTOMER HEADER ───────────────────────────────────────────
         Section::make('Customer Profile')
             ->schema([
                 Grid::make(2)->schema([
@@ -152,6 +166,31 @@ class FindCustomer extends Page implements HasTable
                     Placeholder::make('tier')->label('Loyalty Tier')->content(strtoupper($record->loyalty_tier ?? 'Standard')),
                 ]),
             ]),
+
+        // 🚀 NEW — only shown when the customer actually has a balance,
+        // styled as a standalone notification card so it's unmissable
+        // during a checkout lookup.
+        ...(floatval($record->credit_balance ?? 0) > 0 ? [
+            Section::make('Store Credit')
+                ->schema([
+                    Placeholder::make('credit_balance_display')
+                        ->hiddenLabel()
+                        ->content(new HtmlString("
+                            <div style='background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:1.5px solid #c4b5fd;border-radius:12px;padding:14px 16px;'>
+                                <div style='display:flex;align-items:center;gap:10px;'>
+                                    <div style='background:#6d28d9;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'>
+                                        <span style='font-size:16px;'>💳</span>
+                                    </div>
+                                    <div>
+                                        <div style='font-size:10px;font-weight:800;color:#6d28d9;text-transform:uppercase;letter-spacing:0.06em;'>Available Store Credit</div>
+                                        <div style='font-size:22px;font-weight:900;color:#4c1d95;'>\$" . number_format($record->credit_balance, 2) . "</div>
+                                    </div>
+                                </div>
+                                <div style='font-size:11px;color:#6b21a8;margin-top:8px;'>This customer can apply this balance toward any future purchase.</div>
+                            </div>
+                        ")),
+                ]),
+        ] : []),
 
         Section::make('Mailing Address')
             ->schema([

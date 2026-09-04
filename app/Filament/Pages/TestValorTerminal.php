@@ -4,21 +4,30 @@ namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
 use Filament\Forms\Form;
-use Filament\Forms\Components\{TextInput, Section, Grid, Placeholder};
+use Filament\Forms\Components\{TextInput, Section, Grid};
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\HtmlString;
 
 /**
- * STANDALONE TEST PAGE — completely isolated from SaleResource, CreateSale,
- * EditSale, and Laybuy. Nothing here touches your live sales flow. Safe to
- * click around in freely. Only visible to Superadmin.
+ * STANDALONE TEST PAGE — isolated from SaleResource/CreateSale/EditSale/Laybuy.
+ * Only visible to Superadmin.
  *
- * Purpose: prove the Publish -> Status -> Cancel flow actually works with
- * your real sandbox credentials and dummy device before wiring it into
- * the real checkout screen.
+ * FIXED VERSION — payload fields now match CREDIT SALE Format 6 from the
+ * official Valor POS Integration Specification (page 55), which is the
+ * simplest documented working example: TRAN_MODE, TRAN_CODE, AMOUNT,
+ * TIP_ENTRY, SIGNATURE, PAPER_RECEIPT, MOBILE_ENTRY, REQ_TXN_ID.
+ *
+ * Key corrections from the previous version:
+ *  - AMOUNT is a plain integer-string in CENTS ("1000" = $10.00), never a
+ *    decimal string like "10.00" — every example in the spec confirms this.
+ *  - payload stays a normal nested JSON object — NOT a stringified JSON
+ *    string. Every documented example shows it as a real object.
+ *  - TIP_ENTRY, SIGNATURE, PAPER_RECEIPT, MOBILE_ENTRY are REQUIRED, not
+ *    optional — omitting them is what caused ERROR-0600VI01 "Invalid Format".
+ *  - CLERK_ID / TAX_AMOUNT / TIP_AMOUNT are NOT part of the minimal working
+ *    example and were removed; they're optional extras for other formats.
  */
 class TestValorTerminal extends Page
 {
@@ -38,8 +47,16 @@ class TestValorTerminal extends Page
 
     public function mount(): void
     {
+        $settings = DB::table('site_settings')
+            ->whereIn('key', ['valor_app_id', 'valor_app_key', 'valor_epi', 'valor_channel_id'])
+            ->pluck('value', 'key');
+
         $this->form->fill([
-            'test_amount' => '1.00',
+            'valor_app_id'     => $settings['valor_app_id'] ?? '',
+            'valor_app_key'    => $settings['valor_app_key'] ?? '',
+            'valor_epi'        => $settings['valor_epi'] ?? '',
+            'valor_channel_id' => $settings['valor_channel_id'] ?? '',
+            'test_amount'      => '1.00',
         ]);
     }
 
@@ -47,17 +64,13 @@ class TestValorTerminal extends Page
     {
         return $form->schema([
             Section::make('Valor Sandbox Credentials')
-                ->description('Confirm these with PayKoncept before testing. Stored only for this test session, not saved to settings yet.')
+                ->description('Get these from PayKoncept. Never share these values outside your own app.')
                 ->schema([
                     Grid::make(2)->schema([
-                        TextInput::make('valor_app_id')->label('App ID')
-                            ->default(fn() => DB::table('site_settings')->where('key', 'valor_app_id')->value('value')),
-                        TextInput::make('valor_app_key')->label('App Key')
-                            ->default(fn() => DB::table('site_settings')->where('key', 'valor_app_key')->value('value')),
-                        TextInput::make('valor_epi')->label('EPI (Device ID)')
-                            ->default(fn() => DB::table('site_settings')->where('key', 'valor_epi')->value('value')),
-                        TextInput::make('valor_channel_id')->label('Channel ID')
-                            ->default(fn() => DB::table('site_settings')->where('key', 'valor_channel_id')->value('value')),
+                        TextInput::make('valor_app_id')->label('App ID')->required(),
+                        TextInput::make('valor_app_key')->label('App Key')->required(),
+                        TextInput::make('valor_epi')->label('EPI (Device ID)')->required(),
+                        TextInput::make('valor_channel_id')->label('Channel ID')->required(),
                     ]),
                 ]),
             Section::make('Send Test Charge')
@@ -72,51 +85,94 @@ class TestValorTerminal extends Page
         return 'https://securelink-staging.valorpaytech.com';
     }
 
-    public function publishTest(): void {
-    $d = $this->data;
-    $reqTxnId = 'TEST-' . now()->format('His');
-    $amountCents = (int) round(((float) $d['test_amount']) * 100);
+    protected function credentialsMissing(): bool
+    {
+        foreach (['valor_app_id', 'valor_app_key', 'valor_epi', 'valor_channel_id'] as $key) {
+            if (empty($this->data[$key] ?? null)) {
+                Notification::make()
+                    ->title('Missing credential')
+                    ->body(str_replace('_', ' ', $key) . ' is empty.')
+                    ->danger()
+                    ->send();
+                return true;
+            }
+        }
+        return false;
+    }
 
-    $payload = [
-        'appid'      => (string) $d['valor_app_id'],
-        'appkey'     => (string) $d['valor_app_key'],
-        'epi'        => (string) $d['valor_epi'],
-        'txn_type'   => 'vc_publish',
-        'channel_id' => (string) $d['valor_channel_id'],
-        'version'    => '2',
-        'payload'    => [
-            'TRAN_MODE'  => '1',                 // 1 = Credit
-            'TRAN_CODE'  => '1',                 // 1 = Sale
-            'AMOUNT'     => sprintf('%.2f', (float) $d['test_amount']), // Formatted decimal string "1.00"
-            'REQ_TXN_ID' => $reqTxnId,
-            'CLERK_ID'   => '1',                 // Required by most host configurations
-            'TAX_AMOUNT' => '0.00',
-            'TIP_AMOUNT' => '0.00',
-        ],
-    ];
+    public function saveCredentials(): void
+    {
+        $d = $this->data;
 
-    try {
-        $response = Http::acceptJson()
-            ->asJson()
-            ->timeout(45)
-            ->post($this->baseUrl() . '/?status=', $payload);
-
-        $this->currentReqTxnId = $reqTxnId;
-        $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
-
-        Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
+        foreach (['valor_app_id', 'valor_app_key', 'valor_epi', 'valor_channel_id'] as $key) {
+            DB::table('site_settings')->updateOrInsert(
+                ['key' => $key],
+                ['value' => (string) ($d[$key] ?? ''), 'updated_at' => now()]
+            );
+        }
 
         Notification::make()
-            ->title('Published — check terminal')
-            ->body("REQ_TXN_ID: {$reqTxnId}")
-            ->info()
+            ->title('✅ Credentials saved')
+            ->body('These will now auto-fill every time you open this page.')
+            ->success()
             ->send();
-
-    } catch (\Throwable $e) {
-        $this->lastResponse = 'ERROR: ' . $e->getMessage();
-        Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
     }
-}
+
+    public function publishTest(): void
+    {
+        if ($this->credentialsMissing()) return;
+
+        $d = $this->data;
+        $reqTxnId = 'TEST-' . now()->format('His');
+
+        // AMOUNT in cents, integer string — e.g. $1.00 -> "100"
+        $amountCents = (string) (int) round(((float) $d['test_amount']) * 100);
+
+        // Matches CREDIT SALE - Format 6 from the official spec exactly.
+        // This is the minimal documented set that the terminal's parser
+        // will accept without throwing "Invalid Format".
+        $innerPayload = [
+            'TRAN_MODE'     => '1',   // 1 = Credit
+            'TRAN_CODE'     => '1',   // 1 = Sale
+            'AMOUNT'        => $amountCents,
+            'TIP_ENTRY'     => '0',   // 0 = no tip prompt (simplest case)
+            'SIGNATURE'     => '1',   // 1 = signature capture enabled
+            'PAPER_RECEIPT' => '1',   // 1 = print paper receipt
+            'MOBILE_ENTRY'  => '0',   // 0 = no mobile number / e-receipt prompt
+            'REQ_TXN_ID'    => $reqTxnId,
+        ];
+
+        $payload = [
+            'appid'      => (string) $d['valor_app_id'],
+            'appkey'     => (string) $d['valor_app_key'],
+            'epi'        => (string) $d['valor_epi'],
+            'txn_type'   => 'vc_publish',
+            'channel_id' => (string) $d['valor_channel_id'],
+            'version'    => '2',
+            'payload'    => $innerPayload, // real nested object, NOT stringified
+        ];
+
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->timeout(45) // generous — terminal needs time for the tap/insert
+                ->post($this->baseUrl() . '/?status', $payload);
+
+            $this->currentReqTxnId = $reqTxnId;
+            $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);
+
+            Log::info('Valor test publish', ['request' => $payload, 'response' => $response->json()]);
+
+            Notification::make()
+                ->title('Published — check the terminal now')
+                ->body("REQ_TXN_ID: {$reqTxnId}. Tap/insert the card, then click Check Status.")
+                ->info()
+                ->send();
+        } catch (\Throwable $e) {
+            $this->lastResponse = 'ERROR: ' . $e->getMessage();
+            Notification::make()->title('Publish failed')->body($e->getMessage())->danger()->send();
+        }
+    }
 
     public function checkStatusTest(): void
     {
@@ -124,18 +180,19 @@ class TestValorTerminal extends Page
             Notification::make()->title('Nothing published yet')->warning()->send();
             return;
         }
+        if ($this->credentialsMissing()) return;
 
         $d = $this->data;
         $payload = [
-            'appid'      => $d['valor_app_id'],
-            'appkey'     => $d['valor_app_key'],
-            'epi'        => $d['valor_epi'],
+            'appid'      => (string) $d['valor_app_id'],
+            'appkey'     => (string) $d['valor_app_key'],
+            'epi'        => (string) $d['valor_epi'],
             'txn_type'   => 'vc_status',
             'req_txn_id' => $this->currentReqTxnId,
         ];
 
         try {
-            $response = Http::acceptJson()->asJson()->timeout(15)
+            $response = Http::acceptJson()->asJson()->timeout(20)
                 ->post($this->baseUrl() . '/?txn_status', $payload);
 
             $body = $response->json() ?? ['raw' => $response->body()];
@@ -143,11 +200,24 @@ class TestValorTerminal extends Page
 
             Log::info('Valor test status', ['request' => $payload, 'response' => $body]);
 
-            $state = $body['STATE'] ?? $body['state'] ?? null;
+            // Response may be flat or nested under "response" — handle both,
+            // since your real DEVICE OFFLINE / Invalid Format errors came
+            // back nested as {"error_no":..., "response": {...}}.
+            $inner = $body['response'] ?? $body;
+            $state = $inner['STATE'] ?? null;
+
             if ($state === '0') {
-                Notification::make()->title('✅ APPROVED')->body('Txn ID: ' . ($body['TXN_ID'] ?? '—'))->success()->send();
+                Notification::make()
+                    ->title('✅ APPROVED')
+                    ->body('Txn ID: ' . ($inner['TXN_ID'] ?? '—') . ' | Card: ' . ($inner['MASKED_PAN'] ?? '—'))
+                    ->success()
+                    ->send();
             } elseif ($state === '-1') {
-                Notification::make()->title('❌ DECLINED')->body($body['ERROR_MSG'] ?? $body['AUTH_RSP_TEXT'] ?? '')->danger()->send();
+                Notification::make()
+                    ->title('❌ DECLINED / ERROR')
+                    ->body(($inner['ERROR_MSG'] ?? '') . ' (' . ($inner['ERROR_CODE'] ?? '') . ')')
+                    ->danger()
+                    ->send();
             } else {
                 Notification::make()->title('⏳ Still pending — click Check Status again')->info()->send();
             }
@@ -159,17 +229,19 @@ class TestValorTerminal extends Page
 
     public function cancelTest(): void
     {
+        if ($this->credentialsMissing()) return;
+
         $d = $this->data;
         $payload = [
-            'appid'      => $d['valor_app_id'],
-            'appkey'     => $d['valor_app_key'],
-            'epi'        => $d['valor_epi'],
+            'appid'      => (string) $d['valor_app_id'],
+            'appkey'     => (string) $d['valor_app_key'],
+            'epi'        => (string) $d['valor_epi'],
             'txn_type'   => 'vc_cancel',
-            'channel_id' => $d['valor_channel_id'],
+            'channel_id' => (string) $d['valor_channel_id'],
         ];
 
         try {
-            $response = Http::acceptJson()->asJson()->timeout(15)
+            $response = Http::acceptJson()->asJson()->timeout(20)
                 ->post($this->baseUrl() . '/?cancel', $payload);
 
             $this->lastResponse = json_encode($response->json() ?? ['raw' => $response->body()], JSON_PRETTY_PRINT);

@@ -484,7 +484,7 @@ class EditSale extends EditRecord
                     $existingByMethod[$key] = ($existingByMethod[$key] ?? 0) + floatval($sp->amount);
                 }
 
-                foreach ($formPayments as $p) {
+                                foreach ($formPayments as $p) {
                     $amt    = floatval($p['amount'] ?? 0);
                     $method = strtoupper(trim($p['method'] ?? 'CASH'));
 
@@ -500,9 +500,26 @@ class EditSale extends EditRecord
                     $newAmt = $amt - $alreadyRecorded;
                     $existingByMethod[$method] = 0;
 
+                    // 🚀 NEW — same STORE_CREDIT deduction pattern as CreateSale.
+                    // Only the NEW delta amount (not the whole row) gets deducted here,
+                    // since $newAmt already accounts for money already recorded.
+                    if ($method === 'STORE_CREDIT') {
+                        $customer = \App\Models\Customer::find($sale->customer_id);
+                        if ($customer) {
+                            $available = floatval($customer->credit_balance ?? 0);
+                            $useAmount = min($newAmt, $available);
+                            if ($useAmount > 0) {
+                                $customer->decrement('credit_balance', $useAmount);
+                            }
+                            $newAmt = $useAmount;
+                        } else {
+                            $newAmt = 0;
+                        }
+                        if ($newAmt <= 0) continue;
+                    }
+
                     $target   = $p['payment_target'] ?? 'regular';
                     $isCustom = ($target === 'custom' && $customOrder);
-
                     $paymentRepairId = null;
                     if (str_starts_with($target, 'repair_')) {
                         $paymentRepairId = (int) substr($target, 7);

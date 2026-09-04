@@ -166,13 +166,14 @@ class FindStock extends Page implements HasForms, HasTable
                                                 ->placeholder('Gold, Necklace...')
                                                 ->live()->debounce(500),
 
-                                            Select::make('status')
+                                                                                       Select::make('status')
                                                 ->label('Status')
                                                 ->options([
-                                                    'in_stock' => 'In Stock',
-                                                    'sold'     => 'Sold',
-                                                    'on_hold'  => 'On Hold',
-                                                    'memo'     => 'On Memo',
+                                                    'in_stock'           => 'In Stock',
+                                                    'sold'               => 'Sold',
+                                                    'on_hold'            => 'On Hold',
+                                                    'memo'               => 'On Memo',
+                                                    'returned_to_vendor' => 'Returned to Vendor',
                                                 ])->live(),
 
                                             Select::make('department')
@@ -593,14 +594,15 @@ class FindStock extends Page implements HasForms, HasTable
                     ->falseColor('gray')
                     ->alignCenter(),
 
-                TextColumn::make('status')
+                               TextColumn::make('status')
                     ->badge()
                     ->color(fn($state) => match ($state) {
-                        'in_stock' => 'success',
-                        'sold'     => 'danger',
-                        'on_hold'  => 'warning',
-                        'memo'     => 'info',
-                        default    => 'gray',
+                        'in_stock'           => 'success',
+                        'sold'               => 'danger',
+                        'on_hold'            => 'warning',
+                        'memo'               => 'info',
+                        'returned_to_vendor' => 'gray',
+                        default              => 'gray',
                     })
                     ->formatStateUsing(fn($state) => Str::headline($state)),
 

@@ -19,6 +19,324 @@ $tzAbbreviation = $now->format('T');
 @endphp
 
     <div class="ultimate-jewel-dashboard" style="margin-top: -1rem;">
+        @php
+            // 🚀 NEW — latest published release note, pulled from the central
+            // `release_notes` table (owner-authored via Master Panel), shown
+            // right here on the main dashboard so staff see it the moment
+            // they log in — not just buried in a settings page.
+            $releaseNote = null;
+            try {
+                $releaseNote = \Illuminate\Support\Facades\DB::connection('mysql')
+                    ->table('release_notes')
+                    ->where('is_published', true)
+                    ->where(function ($q) {
+                        $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    })
+                    ->orderByDesc('published_at')
+                    ->first();
+            } catch (\Exception $e) {
+                $releaseNote = null;
+            }
+
+            $releaseStyles = [
+                'feature'      => ['bg' => '#EAF6EF', 'border' => '#0F7A5C', 'icon' => '#0F7A5C', 'text' => '#065f46', 'sub' => '#0F7A5C', 'label' => '✨ NEW FEATURE'],
+                'fix'          => ['bg' => '#FBF3E2', 'border' => '#C9A24B', 'icon' => '#C9A24B', 'text' => '#92400e', 'sub' => '#8A6A22', 'label' => '🔧 BUG FIX'],
+                'improvement'  => ['bg' => '#EEF3F2', 'border' => '#3D6B63', 'icon' => '#3D6B63', 'text' => '#0f172a', 'sub' => '#264E48', 'label' => '⚡ IMPROVEMENT'],
+                'announcement' => ['bg' => '#F3F4F6', 'border' => '#6B7280', 'icon' => '#6B7280', 'text' => '#1F2937', 'sub' => '#4B5563', 'label' => '📢 ANNOUNCEMENT'],
+            ];
+            $rs = $releaseStyles[$releaseNote?->type ?? 'announcement'] ?? $releaseStyles['announcement'];
+            $releaseKey = 'dashboard_release_note_dismissed_' . ($releaseNote->id ?? '0');
+            $releaseVersion = $releaseNote?->version ? '<span style="opacity:0.6;font-weight:600;">' . e($releaseNote->version) . ' — </span>' : '';
+        @endphp
+
+        @if($releaseNote)
+        <div id="jeweltag-dashboard-release-note" class="jt-release-wrapper" style="--rs-border: {{ $rs['border'] }}; --rs-bg: {{ $rs['bg'] }};">
+            
+            <div class="jt-release-pill">
+                <!-- Z-Index -1 Diamond Background inside the pill -->
+                <div class="jt-diamond-bg-container">
+                    <div class="jt-diamond-shape"></div>
+                    <div class="jt-diamond-shape jt-diamond-small"></div>
+                </div>
+
+                <!-- Premium Icon -->
+                <div class="jt-release-icon" style="background: linear-gradient(135deg, {{ $rs['border'] }}, {{ $rs['icon'] }}); box-shadow: 0 4px 10px {{ $rs['border'] }}40;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/>
+                    </svg>
+                </div>
+
+                <!-- Truncated Content -->
+                <div class="jt-release-body">
+                    <span class="jt-release-badge" style="background: {{ $rs['bg'] }}; color: {{ $rs['sub'] }}; border-color: {{ $rs['border'] }}40;">{{ $rs['label'] }}</span>
+                    <span class="jt-release-title">{!! $releaseVersion !!}{{ $releaseNote->title }}</span>
+                    <span class="jt-release-sep">—</span>
+                    <span class="jt-release-text">{{ Illuminate\Support\Str::limit(str_replace("\n", ' ', $releaseNote->body), 85) }}</span>
+                </div>
+
+                <!-- Actions -->
+                <div class="jt-release-actions">
+                    @if(strlen($releaseNote->body) > 85)
+                    <button type="button" class="jt-release-more" onclick="document.getElementById('jt-release-full-{{ $releaseNote->id }}').classList.toggle('jt-show')">Read more</button>
+                    @endif
+                    
+                    <div class="jt-action-divider"></div>
+                    
+                    <button onclick="document.getElementById('jeweltag-dashboard-release-note').style.display='none'; localStorage.setItem('{{ $releaseKey }}', '1');" title="Dismiss" class="jt-release-close">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pop-out Full Content (Absolute positioned below) -->
+            @if(strlen($releaseNote->body) > 85)
+            <div id="jt-release-full-{{ $releaseNote->id }}" class="jt-release-full">
+                <div class="jt-full-header">
+                    <span style="font-weight: 800; color: {{ $rs['icon'] }};">{!! $releaseVersion !!}{{ $releaseNote->title }}</span>
+                </div>
+                <div class="jt-full-text">{{ $releaseNote->body }}</div>
+            </div>
+            @endif
+        </div>
+
+        <style>
+           /* Wrapper handles absolute positioning context for dropdown */
+            .jt-release-wrapper {
+                position: relative;
+                margin-bottom: 1.5rem;
+                z-index: 10; /* ⬅️ CHANGED: Lowered from 40 to keep it behind the top navigation */
+                animation: jt-slide-down 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+
+            @keyframes jt-slide-down {
+                0% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+                100% { opacity: 1; transform: translateY(0) scale(1); }
+            }
+
+            /* Compact Pill */
+            .jt-release-pill {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: linear-gradient(120deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.9) 100%);
+                border: 1px solid var(--rs-border)33; /* 33 is hex for ~20% opacity */
+                border-radius: 999px;
+                padding: 6px 8px 6px 6px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.03), inset 0 2px 4px rgba(255,255,255,0.8);
+            }
+
+            /* 💎 Z-Index -1 Diamond Background */
+            .jt-diamond-bg-container {
+                position: absolute;
+                inset: 0;
+                border-radius: 999px;
+                overflow: hidden;
+                z-index: -1;
+                pointer-events: none;
+            }
+
+            .jt-diamond-shape {
+                position: absolute;
+                top: 50%;
+                right: 20%;
+                width: 140px;
+                height: 140px;
+                background: linear-gradient(135deg, var(--rs-border), transparent);
+                transform: translateY(-50%) rotate(45deg);
+                opacity: 0.05;
+                border-radius: 16px;
+                box-shadow: inset 0 0 20px rgba(255,255,255,0.5);
+            }
+            
+            .jt-diamond-small {
+                width: 60px;
+                height: 60px;
+                right: 5%;
+                opacity: 0.08;
+                border-radius: 8px;
+            }
+
+            /* Icon */
+            .jt-release-icon {
+                flex-shrink: 0;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .jt-release-icon svg { width: 16px; height: 16px; }
+
+            /* Body/Text Content */
+            .jt-release-body {
+                flex: 1;
+                min-width: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                white-space: nowrap;
+                overflow: hidden;
+            }
+
+            .jt-release-badge {
+                flex-shrink: 0;
+                font-size: 10px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                padding: 3px 8px;
+                border-radius: 999px;
+                border: 1px solid;
+            }
+
+            .jt-release-title {
+                flex-shrink: 0;
+                font-size: 13.5px;
+                font-weight: 800;
+                color: #0f172a;
+            }
+
+            .jt-release-sep { flex-shrink: 0; color: #cbd5e1; font-size: 12px; }
+
+            .jt-release-text {
+                font-size: 13px;
+                color: #64748b;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            /* Actions */
+            .jt-release-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding-right: 4px;
+            }
+
+            .jt-release-more {
+                background: var(--rs-bg);
+                color: var(--rs-border);
+                border: 1px solid var(--rs-border)40;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                padding: 4px 10px;
+                white-space: nowrap;
+                transition: all 0.2s ease;
+            }
+            .jt-release-more:hover {
+                background: var(--rs-border);
+                color: white;
+            }
+
+            .jt-action-divider {
+                width: 1px;
+                height: 16px;
+                background: #e2e8f0;
+            }
+
+            .jt-release-close {
+                background: transparent;
+                border: none;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #94a3b8;
+                transition: all 0.2s ease;
+            }
+            .jt-release-close svg { width: 13px; height: 13px; }
+            .jt-release-close:hover { background: #f1f5f9; color: #ef4444; }
+
+            /* Dropdown Full Text */
+            .jt-release-full {
+                position: absolute;
+                top: calc(100% + 8px);
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.98);
+                backdrop-filter: blur(16px);
+                border: 1px solid var(--rs-border)40;
+                border-radius: 16px;
+                padding: 16px 20px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.5) inset;
+                z-index: 50;
+                
+                /* Animation default state */
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(-8px);
+                transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            .jt-release-full.jt-show {
+                opacity: 1;
+                visibility: visible;
+                transform: translateY(0);
+            }
+
+            .jt-full-header {
+                font-size: 14px;
+                margin-bottom: 8px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f1f5f9;
+            }
+
+            .jt-full-text {
+                font-size: 13px;
+                line-height: 1.6;
+                color: #334155;
+                white-space: pre-wrap;
+            }
+
+            /* Responsive behavior for mobile */
+            @media (max-width: 900px) {
+                .jt-release-pill {
+                    flex-wrap: wrap;
+                    border-radius: 16px;
+                    padding: 12px;
+                }
+                .jt-diamond-bg-container { border-radius: 16px; }
+                .jt-release-body {
+                    width: 100%;
+                    white-space: normal;
+                    flex-wrap: wrap;
+                }
+                .jt-release-text {
+                    white-space: normal;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                }
+                .jt-release-actions {
+                    width: 100%;
+                    justify-content: flex-end;
+                    border-top: 1px solid #f1f5f9;
+                    padding-top: 8px;
+                    margin-top: 4px;
+                }
+            }
+        </style>
+
+        <script>
+            (function() {
+                var key = '{{ $releaseKey }}';
+                if (localStorage.getItem(key) === '1') {
+                    var el = document.getElementById('jeweltag-dashboard-release-note');
+                    if (el) el.style.display = 'none';
+                }
+            })();
+        </script>
+        @endif
         <!-- Premium Metallic Header -->
         <header class="dashboard-header">
             <div class="header-platinum">
@@ -133,7 +451,9 @@ $tzAbbreviation = $now->format('T');
                     </div>
                 </div>
             </div>
-        </header>
+           </header>
+
+      
 
         <div class="dashboard-body">
             <!-- Priority Actions Section - 5 symmetrical cards -->
