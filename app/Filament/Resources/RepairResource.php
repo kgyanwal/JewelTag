@@ -506,10 +506,20 @@ class RepairResource extends Resource
                                                                     }
                                                                     return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;color:#64748b;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;'>⏳ Pending Quote</span>");
                                                                 }
-                                                                $f = floatval($final);
-                                                                if ($f > 0) {
-                                                                    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($f, 2) . " charged</span>");
-                                                                }
+                                                               // AFTER
+$f = floatval($final);
+if ($f > 0) {
+    // 🚀 FIX — show the actual tax-inclusive charge here, matching Ticket
+    // Summary and Payment & Status, instead of the pre-tax service amount.
+    // Previously this badge said "$200.00 charged" while Payment & Status
+    // said "$215.26 to collect" for the same repair — same charge, two
+    // different numbers on screen.
+    $isTaxFreeItem = $get('../../is_tax_free');
+    $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+    $taxRate = floatval($dbTax) / 100;
+    $fWithTax = $isTaxFreeItem ? $f : round($f * (1 + $taxRate), 2);
+    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($fWithTax, 2) . " charged</span>");
+}
                                                                 return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ No Charge</span>");
                                                             }),
                                                     ])->columnSpanFull(),
@@ -694,15 +704,23 @@ class RepairResource extends Resource
                                         </div>";
                                     }
 
-                                    if (!$rows) {
-                                        return new HtmlString("<div style='text-align:center;color:#94a3b8;font-size:12px;padding:12px;'>No items added yet</div>");
-                                    }
+                                  // AFTER
+if (!$rows) {
+    return new HtmlString("<div style='text-align:center;color:#94a3b8;font-size:12px;padding:12px;'>No items added yet</div>");
+}
 
-                                    $totalColor  = $anyFinal ? '#059669' : '#b45309';
-                                    $totalLabel  = $anyFinal ? 'Final Total' : 'Quoted Total';
-                                    $totalAmount = $anyFinal ? $grandFinal : $grandEst;
+// 🚀 FIX — use the tax-inclusive repair_total (same value the
+// Payment & Status panel uses for "Total Amount to Collect")
+// instead of the pre-tax service sum. Previously this summary
+// showed "$35.00 charged" while Payment & Status showed
+// "$37.67 remaining" for the same repair — same total, two
+// different numbers on screen. Now both panels always agree.
+$taxInclusiveTotal = floatval($get('repair_total') ?? 0);
+$totalColor  = $anyFinal ? '#059669' : '#b45309';
+$totalLabel  = ($anyFinal ? 'Final Total' : 'Quoted Total') . ' (incl. tax)';
+$totalAmount = $taxInclusiveTotal > 0 ? $taxInclusiveTotal : ($anyFinal ? $grandFinal : $grandEst);
 
-                                    return new HtmlString("
+return new HtmlString("
                                         <div>{$rows}</div>
                                         <div style='display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:2px solid #0f172a;'>
                                             <span style='font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;'>{$totalLabel}</span>
