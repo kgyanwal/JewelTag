@@ -321,28 +321,24 @@ class RepairResource extends Resource
                                     Section::make('Item Origin')
                                         ->icon('heroicon-o-tag')
                                         ->schema([
-                                            Grid::make(3)->schema([
-                                                Toggle::make('is_warranty')
-                                                    ->label('Warranty')
-                                                    ->helperText('Zeroes all costs')
-                                                    ->onColor('success')->inline(false)->live()
-                                                    ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
-                                                        if ($state) {
-                                                            // Zero out all service costs via the services array
-                                                            $set('services', collect($get('services') ?? [])->map(function ($svc) {
-                                                                $svc['estimated_cost'] = 0;
-                                                                $svc['final_cost']     = 0;
-                                                                return $svc;
-                                                            })->toArray());
-                                                        }
-                                                    }),
-                                                Toggle::make('is_from_store_stock')->label('From Our Stock')->inline(false)->live(),
-                                                // 🚀 Tax-free flag per item, same role as is_tax_free on Sale/CustomOrder items
-                                                Toggle::make('is_tax_free')
-                                                    ->label('Tax Free')
-                                                    ->helperText('No sales tax')
-                                                    ->onColor('warning')->inline(false)->live(),
-                                            ]),
+                                            // AFTER
+Grid::make(2)->schema([
+    Toggle::make('is_warranty')
+        ->label('Warranty')
+        ->helperText('Zeroes all costs')
+        ->onColor('success')->inline(false)->live()
+        ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+            if ($state) {
+                // Zero out all service costs via the services array
+                $set('services', collect($get('services') ?? [])->map(function ($svc) {
+                    $svc['estimated_cost'] = 0;
+                    $svc['final_cost']     = 0;
+                    return $svc;
+                })->toArray());
+            }
+        }),
+    Toggle::make('is_from_store_stock')->label('From Our Stock')->inline(false)->live(),
+]),
                                             Select::make('original_product_id')
                                                 ->label('Search Store Stock No.')
                                                 ->placeholder('Search by stock number...')
@@ -459,28 +455,53 @@ class RepairResource extends Resource
                                                     ]),
 
                                                     // Resize fields
-                                                    Grid::make(2)->schema([
-                                                        TextInput::make('current_size')->label('Current Size')->placeholder('e.g. 7')->nullable(),
-                                                        TextInput::make('target_size')->label('Target Size')->placeholder('e.g. 8.5')->nullable(),
-                                                    ])->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize'),
+                                                   // AFTER
+Grid::make(2)->schema([
+    TextInput::make('current_size')->label('Current Size')->placeholder('e.g. 7')->nullable(),
+    TextInput::make('target_size')->label('Target Size')->placeholder('e.g. 8.5')->nullable(),
+])->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize'),
 
-                                                    // Bench notes
-                                                    Textarea::make('job_instructions')
-                                                        ->label('Bench Notes / Instructions')
-                                                        ->placeholder('Specific instructions for the bench jeweler...')
-                                                        ->columnSpanFull()->rows(2),
+// Bench notes
+Textarea::make('job_instructions')
+    ->label('Bench Notes / Instructions')
+    ->placeholder('Specific instructions for the bench jeweler...')
+    ->columnSpanFull()->rows(2),
 
-                                                    // ── PRICING ROW ─────────────────────────────────
-                                                    Placeholder::make('pricing_divider')->label('')->hiddenLabel()
-                                                        ->content(new HtmlString("
-                                                            <div style='border-top:1.5px dashed #e2e8f0;margin:8px 0 4px;position:relative;'>
-                                                                <span style='position:absolute;top:-9px;left:12px;background:#fff;padding:0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;'>Pricing</span>
-                                                            </div>
-                                                        "))->columnSpanFull(),
+// ── PRICING ROW ─────────────────────────────────
+Placeholder::make('pricing_divider')->label('')->hiddenLabel()
+    ->content(new HtmlString("
+        <div style='border-top:1.5px dashed #e2e8f0;margin:8px 0 4px;position:relative;'>
+            <span style='position:absolute;top:-9px;left:12px;background:#fff;padding:0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;'>Pricing</span>
+        </div>
+    "))->columnSpanFull(),
 
-                                                    Grid::make(3)->schema([
-                                                        TextInput::make('estimated_cost')
-                                                            ->label('Quoted to Customer')
+// AFTER
+Placeholder::make('is_tax_free_display')
+    ->key('is_tax_free_display') // 🚀 FIX — hintAction() requires a unique key on the component
+    ->label('')
+    ->hiddenLabel()
+    ->live()
+    ->content(function (Forms\Get $get) {
+        $isTaxFree = (bool) $get('../../is_tax_free');
+        $bg     = $isTaxFree ? '#fef3c7' : '#f1f5f9';
+        $color  = $isTaxFree ? '#92400e' : '#64748b';
+        $label  = $isTaxFree ? '✅ Tax Free — no sales tax on this item' : '🔲 Taxable — click to mark tax free';
+        return new HtmlString("<span style='display:inline-flex;align-items:center;gap:6px;background:{$bg};color:{$color};padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:default;'>{$label}</span>");
+    })
+    ->hintAction(
+        FormAction::make('toggle_item_tax_free')
+            ->label(fn(Forms\Get $get) => $get('../../is_tax_free') ? 'Mark Taxable' : 'Mark Tax Free')
+            ->icon('heroicon-o-receipt-percent')
+            ->color('warning')
+            ->action(function (Forms\Get $get, Forms\Set $set) {
+                $set('../../is_tax_free', !$get('../../is_tax_free'));
+            })
+    )
+    ->columnSpanFull(),
+
+Grid::make(3)->schema([
+    TextInput::make('estimated_cost')
+        ->label('Quoted to Customer')
                                                             ->numeric()->prefix('$')->default(0)->nullable()
                                                             ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;']),
 
@@ -518,7 +539,7 @@ if ($f > 0) {
     $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
     $taxRate = floatval($dbTax) / 100;
     $fWithTax = $isTaxFreeItem ? $f : round($f * (1 + $taxRate), 2);
-    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($fWithTax, 2) . " charged</span>");
+    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($fWithTax, 2) . " total</span>");
 }
                                                                 return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ No Charge</span>");
                                                             }),
