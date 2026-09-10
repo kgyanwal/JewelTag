@@ -17,4 +17,8 @@ protected $casts = [
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function processor(): BelongsTo { return $this->belongsTo(User::class, 'processed_by'); }
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
+    public function customOrder()
+{
+    return $this->belongsTo(\App\Models\CustomOrder::class);
+}
 }

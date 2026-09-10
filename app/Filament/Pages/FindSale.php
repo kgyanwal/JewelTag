@@ -727,12 +727,45 @@ class FindSale extends Page implements HasForms, HasTable
                                 ->send();
                         }),
 
-                    Action::make('refund_sale')
+                                        Action::make('refund_sale')
                         ->label('Refund Sale')
                         ->icon('heroicon-o-arrow-uturn-left')
                         ->color('warning')
-                        ->visible(fn(Sale $record) => $record->status === 'completed')
+                        // 🚀 FIX — previously only visible when status === 'completed',
+                        // which hid this action for any sale with an outstanding
+                        // balance (partial payment). A refund is legitimate any time
+                        // the sale actually has money paid against it, regardless of
+                        // whether the full balance has been collected yet.
+                        ->visible(function (Sale $record) {
+                            if (in_array($record->status, ['cancelled', 'void'])) return false;
+                            $paid = $record->payments()->sum('amount') + $record->salePayments()->sum('amount');
+                            if ($paid == 0) $paid = floatval($record->amount_paid);
+                            return $paid > 0;
+                        })
                         ->url(fn(Sale $record) => \App\Filament\Resources\RefundResource::getUrl('create', ['sale_id' => $record->id]))
+                        ->openUrlInNewTab(),
+
+                    // 🚀 NEW — refunding a Custom Order / Laybuy deposit BEFORE the
+                    // item has moved to Sales at all (no sale_id exists yet). Only
+                    // relevant when this "sale" row actually originated from — or is
+                    // linked to — a still-open custom order.
+                    Action::make('refund_custom_order_deposit')
+                        ->label('Refund Deposit')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('purple')
+                        ->visible(function (Sale $record) {
+                            $coId = $record->items->pluck('custom_order_id')->filter()->first();
+                            if (!$coId) return false;
+                            $co = \App\Models\CustomOrder::find($coId);
+                            return $co && $co->amount_paid > 0 && !in_array($co->status, ['exchanged', 'cancelled']);
+                        })
+                        ->url(function (Sale $record) {
+                            $coId = $record->items->pluck('custom_order_id')->filter()->first();
+                            return \App\Filament\Resources\RefundResource::getUrl('create', [
+                                'refund_source'   => 'custom_order',
+                                'custom_order_id' => $coId,
+                            ]);
+                        })
                         ->openUrlInNewTab(),
                 ])
                     ->icon('heroicon-m-ellipsis-vertical')

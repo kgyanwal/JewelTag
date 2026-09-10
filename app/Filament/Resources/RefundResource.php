@@ -7,6 +7,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Restock;
 use App\Models\VendorReturn;
+use App\Models\Customer;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -27,7 +28,13 @@ class RefundResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Partial Refund Selection')
+            // 🚀 FIX — collapsed back to ONE unified flow. Every custom order and
+            // laybuy already creates a real Sale record immediately (status =
+            // pending) and stays synced, so there is no separate "not yet moved
+            // to Sales" state to branch on. A refund always targets a sale_id —
+            // whether that sale is fully paid, partially paid, laybuy, or a
+            // custom order still in production.
+            Forms\Components\Section::make('Refund Selection')
                 ->schema([
                     Forms\Components\TextInput::make('refund_no')
                         ->label('Refund Receipt #')
@@ -38,11 +45,23 @@ class RefundResource extends Resource
 
                     Forms\Components\Select::make('sale_id')
                         ->label('Original Sale / Invoice')
+                        // 🚀 FIX — no longer restricted to status='completed'. A
+                        // partially-paid sale, a laybuy still in progress, or a
+                        // custom order still in production all have real money
+                        // sitting on a real Sale record and are equally valid
+                        // refund targets. Only exclude sales with nothing to
+                        // refund at all.
                         ->relationship(
                             'sale',
                             'invoice_number',
-                            fn(Builder $query) => $query->where('status', 'completed')
+                            fn(Builder $query) => $query->whereNotIn('status', ['cancelled', 'void'])
                         )
+                        ->getOptionLabelFromRecordUsing(function (Sale $sale) {
+                            $paid = $sale->payments()->sum('amount') + $sale->salePayments()->sum('amount');
+                            if ($paid == 0) $paid = floatval($sale->amount_paid);
+                            $balanceNote = floatval($sale->balance_due) > 0.01 ? ' — Balance Due' : ' — Paid in Full';
+                            return "#{$sale->invoice_number} — Paid: $" . number_format($paid, 2) . $balanceNote;
+                        })
                         ->default(fn() => request('sale_id') ? (int) request('sale_id') : null)
                         ->afterStateHydrated(function (Set $set, $state) {
                             if ($state) {
@@ -64,6 +83,32 @@ class RefundResource extends Resource
                             if ($sale) {
                                 $set('customer_id', $sale->customer_id);
                             }
+                        }),
+
+                    // 🚀 NEW — shows the sale's actual payment state right where staff
+                    // are choosing it, so a partially-paid sale is never mistaken for
+                    // a fully paid one before refunding.
+                    Forms\Components\Placeholder::make('sale_payment_status')
+                        ->hiddenLabel()
+                        ->visible(fn(Get $get) => $get('sale_id'))
+                        ->live()
+                        ->content(function (Get $get) {
+                            $sale = Sale::find($get('sale_id'));
+                            if (!$sale) return '';
+
+                            $paid = $sale->payments()->sum('amount') + $sale->salePayments()->sum('amount');
+                            if ($paid == 0) $paid = floatval($sale->amount_paid);
+                            $balance = max(0, floatval($sale->final_total) - $paid);
+
+                            $bg = $balance > 0.01 ? '#fef2f2' : '#f0fdf4';
+                            $border = $balance > 0.01 ? '#fca5a5' : '#86efac';
+                            $label = $balance > 0.01
+                                ? "⚠️ This sale still has a balance due of \$" . number_format($balance, 2) . " — only \$" . number_format($paid, 2) . " has actually been collected so far."
+                                : "✅ Fully paid — \$" . number_format($paid, 2) . " collected.";
+
+                            return new \Illuminate\Support\HtmlString("
+                                <div style='background:{$bg};border:1px solid {$border};border-radius:8px;padding:10px 14px;font-size:12px;'>{$label}</div>
+                            ");
                         }),
 
                     Forms\Components\CheckboxList::make('refunded_items')
@@ -106,11 +151,12 @@ class RefundResource extends Resource
                             'damaged'   => 'Damaged',
                         ])->required(),
 
-                    // 🚀 NEW — item disposition is now two independent toggles instead of
-                    // being bundled into refund_method. "How the customer gets paid back"
-                    // (cash/credit) and "where the physical item goes" (stock/vendor) are
-                    // separate decisions — e.g. a customer can get store credit while the
-                    // item is still in transit back to a vendor, not yet confirmed.
+                    // 🚀 Two independent toggles: "where the item goes" is a
+                    // separate decision from "how the customer gets refunded"
+                    // (see the Refund Method radio further below). Return to
+                    // Vendor is ALWAYS available here regardless of payment
+                    // status — a defective/unwanted item can be sent back to
+                    // the vendor whether the sale was fully paid or not.
                     Forms\Components\Grid::make(2)->schema([
                         Forms\Components\Toggle::make('should_restock')
                             ->label('Return checked items to Stock?')
@@ -130,12 +176,29 @@ class RefundResource extends Resource
                                 if ($state) $set('should_restock', false);
                             }),
                     ]),
+                ])->columns(2),
 
+            Forms\Components\Section::make('Refund Amount & Method')
+                ->schema([
                     Forms\Components\TextInput::make('refund_amount')
                         ->label('Refund Amount')
-                        ->helperText('Auto-filled from selected items — adjust if needed (e.g. restocking fee).')
+                        ->helperText('Auto-filled from selected items — adjust if needed (e.g. restocking fee, or only refunding the deposit collected so far).')
                         ->numeric()->prefix('$')->required()
-                        ->live(onBlur: true),
+                        ->live(onBlur: true)
+                        // 🚀 NEW — hard cap: can never refund more than has
+                        // actually been collected on this sale, whether it's
+                        // fully paid or still partial.
+                        ->rule(function (Get $get) {
+                            return function (string $attribute, $value, \Closure $fail) use ($get) {
+                                $sale = Sale::find($get('sale_id'));
+                                if (!$sale) return;
+                                $paid = $sale->payments()->sum('amount') + $sale->salePayments()->sum('amount');
+                                if ($paid == 0) $paid = floatval($sale->amount_paid);
+                                if (floatval($value) > $paid) {
+                                    $fail('Cannot refund more than the amount actually collected on this sale ($' . number_format($paid, 2) . ').');
+                                }
+                            };
+                        }),
 
                     Forms\Components\Radio::make('refund_method')
                         ->label('How Should the Customer Be Refunded?')
@@ -144,7 +207,7 @@ class RefundResource extends Resource
                             'store_credit' => 'Store Credit (added to customer\'s account)',
                         ])
                         ->descriptions([
-                            'cash'         => 'Reverses the payment on this sale directly.',
+                            'cash'         => 'Reverses the payment directly.',
                             'store_credit' => 'Customer keeps this value to use on any future purchase — no cash leaves the register.',
                         ])
                         ->default('cash')
@@ -159,7 +222,7 @@ class RefundResource extends Resource
                         ->content(function (Get $get) {
                             $customerId = $get('customer_id');
                             $amount     = floatval($get('refund_amount') ?? 0);
-                            $customer   = $customerId ? \App\Models\Customer::find($customerId) : null;
+                            $customer   = $customerId ? Customer::find($customerId) : null;
 
                             if (!$customer) {
                                 return new \Illuminate\Support\HtmlString("<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;font-size:12px;color:#991b1b;'>⚠️ Select a sale first so the customer's account can be identified.</div>");
@@ -177,8 +240,8 @@ class RefundResource extends Resource
                             ");
                         }),
 
-                    // 🚀 NEW — preview now keys off the return_to_vendor toggle, not
-                    // refund_method, so it shows regardless of how the customer is paid.
+                    // 🚀 Return-to-vendor preview is ALWAYS available (no gating on
+                    // payment status) — it just needs items checked above.
                     Forms\Components\Placeholder::make('vendor_return_preview')
                         ->hiddenLabel()
                         ->visible(fn(Get $get) => $get('return_to_vendor'))
@@ -230,6 +293,19 @@ class RefundResource extends Resource
         return $table->columns([
             Tables\Columns\TextColumn::make('refund_no')->label('Refund #')->searchable(),
             Tables\Columns\TextColumn::make('sale.invoice_number')->label('Invoice'),
+
+            // 🚀 NEW — shows whether the underlying sale was fully paid or still
+            // partial at the time of refund, since both are now valid targets.
+            Tables\Columns\TextColumn::make('sale_payment_state')
+                ->label('Sale Was')
+                ->getStateUsing(function (Refund $record) {
+                    $sale = $record->sale;
+                    if (!$sale) return '—';
+                    return floatval($sale->balance_due) > 0.01 ? 'Partially Paid' : 'Fully Paid';
+                })
+                ->badge()
+                ->color(fn($state) => $state === 'Partially Paid' ? 'warning' : 'success'),
+
             Tables\Columns\TextColumn::make('status')->badge()
                 ->color(fn($state) => match ($state) {
                     'approved' => 'success',
@@ -261,8 +337,7 @@ class RefundResource extends Resource
                     ->action(function (Refund $record) {
                         DB::transaction(function () use ($record) {
 
-                            // 🚀 NEW — vendor return branch, checked first since it now
-                            // controls item disposition independently of should_restock.
+                            // ── ITEM DISPOSITION — return to vendor OR restock ──
                             if ($record->return_to_vendor && !empty($record->refunded_items)) {
                                 $items = SaleItem::whereIn('id', $record->refunded_items)
                                     ->with('productItem.supplier')
@@ -310,21 +385,36 @@ class RefundResource extends Resource
                                 }
                             }
 
+                            // ── SALE STATUS SYNC ──
                             $sale = $record->sale;
                             if ($sale) {
                                 $totalItemsInSale   = $sale->items()->count();
                                 $totalItemsRefunded = collect($record->refunded_items)->count();
-                                $newStatus = ($totalItemsRefunded >= $totalItemsInSale)
-                                    ? 'refunded'
-                                    : 'partially_refunded';
-                                $sale->update(['status' => $newStatus]);
+
+                                // 🚀 FIX — a partially-paid sale (e.g. laybuy or
+                                // custom order still in production) getting a
+                                // refund isn't necessarily "refunded/partially
+                                // refunded" in the customer-facing sense the old
+                                // logic assumed (which was written only for fully
+                                // completed sales). We still mark item-level
+                                // refund status the same way, but leave sales that
+                                // were never 'completed' on their existing
+                                // workflow status (pending/in_production etc.)
+                                // rather than force-labeling them refunded.
+                                if ($sale->status === 'completed') {
+                                    $newStatus = ($totalItemsRefunded >= $totalItemsInSale)
+                                        ? 'refunded'
+                                        : 'partially_refunded';
+                                    $sale->update(['status' => $newStatus]);
+                                }
+
+                                // Always resync amount_paid/balance_due from the DB
+                                // after the refund payment below is inserted.
                             }
 
-                            // 🚀 Money side (cash vs store credit) is now completely
-                            // independent of the item-disposition branch above — a
-                            // vendor return can still pay the customer cash or credit.
+                            // ── MONEY SIDE — cash reversal vs store credit ──
                             if ($record->refund_method === 'store_credit') {
-                                $customer = \App\Models\Customer::find($record->customer_id);
+                                $customer = Customer::find($record->customer_id);
                                 if ($customer) {
                                     $customer->increment('credit_balance', abs($record->refund_amount));
                                 }
@@ -337,14 +427,28 @@ class RefundResource extends Resource
                                 ]);
                             }
 
+                            // 🚀 NEW — resync the Sale's amount_paid/balance_due
+                            // from the DB after the refund, same pattern used
+                            // everywhere else in CreateSale/EditSale, so a
+                            // partially-paid sale's balance reflects the refund
+                            // immediately instead of drifting stale.
+                            if ($sale) {
+                                $totalPaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount')
+                                    + $sale->salePayments()->sum('amount');
+                                $sale->update([
+                                    'amount_paid' => round($totalPaid, 2),
+                                    'balance_due' => max(0, round(floatval($sale->final_total) - $totalPaid, 2)),
+                                ]);
+                            }
+
                             $record->update([
                                 'status'      => 'approved',
                                 'approved_by' => auth()->id(),
                             ]);
                         });
 
-                        $moneyLabel  = $record->refund_method === 'store_credit' ? 'issued as store credit' : 'refunded to original payment method';
-                        $itemLabel   = $record->return_to_vendor ? ', item(s) sent for vendor return' : ($record->should_restock ? ', item(s) back in stock' : '');
+                        $moneyLabel = $record->refund_method === 'store_credit' ? 'issued as store credit' : 'refunded to original payment method';
+                        $itemLabel  = $record->return_to_vendor ? ', item(s) sent for vendor return' : ($record->should_restock ? ', item(s) back in stock' : '');
 
                         Notification::make()
                             ->title("Refund Approved — {$moneyLabel}{$itemLabel}.")
