@@ -151,20 +151,17 @@ class RefundResource extends Resource
                             'damaged'   => 'Damaged',
                         ])->required(),
 
-                    // 🚀 Two independent toggles: "where the item goes" is a
-                    // separate decision from "how the customer gets refunded"
-                    // (see the Refund Method radio further below). Return to
-                    // Vendor is ALWAYS available here regardless of payment
-                    // status — a defective/unwanted item can be sent back to
-                    // the vendor whether the sale was fully paid or not.
-                    Forms\Components\Grid::make(2)->schema([
+                                        Forms\Components\Grid::make(3)->schema([
                         Forms\Components\Toggle::make('should_restock')
                             ->label('Return checked items to Stock?')
                             ->helperText('Item goes back into your own sellable inventory.')
                             ->default(true)
                             ->live()
                             ->afterStateUpdated(function ($state, Set $set) {
-                                if ($state) $set('return_to_vendor', false);
+                                if ($state) {
+                                    $set('return_to_vendor', false);
+                                    $set('void_item', false);
+                                }
                             }),
 
                         Forms\Components\Toggle::make('return_to_vendor')
@@ -173,7 +170,28 @@ class RefundResource extends Resource
                             ->default(false)
                             ->live()
                             ->afterStateUpdated(function ($state, Set $set) {
-                                if ($state) $set('should_restock', false);
+                                if ($state) {
+                                    $set('should_restock', false);
+                                    $set('void_item', false);
+                                }
+                            }),
+
+                        // 🚀 NEW — for items that were NEVER real physical inventory to
+                        // begin with: a custom order that never went into production, a
+                        // service/non-tag line item, or a repair that was never actually
+                        // started. There's nothing to restock (never left the vendor/never
+                        // existed) and nothing to return to a vendor (nothing was ordered/
+                        // received). This just erases the item from the sale entirely.
+                        Forms\Components\Toggle::make('void_item')
+                            ->label('Erase / Void Item?')
+                            ->helperText('Use this for a custom order that never went into production, or a service that was never actually performed. Not real inventory — nothing to restock or return.')
+                            ->default(false)
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                if ($state) {
+                                    $set('should_restock', false);
+                                    $set('return_to_vendor', false);
+                                }
                             }),
                     ]),
                 ])->columns(2),
@@ -240,8 +258,35 @@ class RefundResource extends Resource
                             ");
                         }),
 
-                    // 🚀 Return-to-vendor preview is ALWAYS available (no gating on
-                    // payment status) — it just needs items checked above.
+                                        // 🚀 NEW — shows exactly what will be erased, and warns clearly
+                    // since this action is irreversible (the item disappears entirely,
+                    // not returned anywhere).
+                    Forms\Components\Placeholder::make('void_item_preview')
+                        ->hiddenLabel()
+                        ->visible(fn(Get $get) => $get('void_item'))
+                        ->live()
+                        ->content(function (Get $get) {
+                            $itemIds = $get('refunded_items') ?? [];
+                            if (empty($itemIds)) {
+                                return new \Illuminate\Support\HtmlString("<div style='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;font-size:12px;color:#991b1b;'>⚠️ Select at least one item above to void.</div>");
+                            }
+
+                            $items = SaleItem::whereIn('id', $itemIds)->with('customOrder')->get();
+                            $rows  = '';
+                            foreach ($items as $si) {
+                                $label = $si->customOrder ? "Custom Order #{$si->customOrder->order_no}" : ($si->custom_description ?? 'Item');
+                                $rows .= "<div style='padding:6px 0;border-bottom:1px dashed #e5e7eb;font-size:12px;'>{$label}</div>";
+                            }
+
+                            return new \Illuminate\Support\HtmlString("
+                                <div style='background:#f3f4f6;border:1.5px solid #9ca3af;border-radius:8px;padding:12px 14px;'>
+                                    <div style='font-size:11px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;'>⚠️ These Items Will Be Permanently Erased</div>
+                                    {$rows}
+                                    <div style='margin-top:8px;font-size:11px;color:#6b7280;'>This does not restock inventory or notify any vendor — it simply removes the item and voids any linked custom order.</div>
+                                </div>
+                            ");
+                        }),
+
                     Forms\Components\Placeholder::make('vendor_return_preview')
                         ->hiddenLabel()
                         ->visible(fn(Get $get) => $get('return_to_vendor'))
@@ -317,12 +362,20 @@ class RefundResource extends Resource
                 ->badge()
                 ->formatStateUsing(fn($state) => $state === 'store_credit' ? '💳 Store Credit' : '💵 Cash')
                 ->color(fn($state) => $state === 'store_credit' ? 'purple' : 'success'),
-            Tables\Columns\IconColumn::make('return_to_vendor')
+                        Tables\Columns\IconColumn::make('return_to_vendor')
                 ->label('To Vendor?')
                 ->boolean()
                 ->trueIcon('heroicon-o-arrow-uturn-left')
                 ->falseIcon('heroicon-o-minus')
                 ->trueColor('warning')
+                ->falseColor('gray'),
+
+            Tables\Columns\IconColumn::make('void_item')
+                ->label('Voided?')
+                ->boolean()
+                ->trueIcon('heroicon-o-x-circle')
+                ->falseIcon('heroicon-o-minus')
+                ->trueColor('danger')
                 ->falseColor('gray'),
             Tables\Columns\TextColumn::make('refund_amount')->money('USD'),
         ])
@@ -335,10 +388,27 @@ class RefundResource extends Resource
                     ->visible(fn($record) => $record->status === 'pending'
                         && auth()->user()->hasAnyRole(['Superadmin', 'Administration']))
                     ->action(function (Refund $record) {
-                        DB::transaction(function () use ($record) {
+                                               DB::transaction(function () use ($record) {
 
-                            // ── ITEM DISPOSITION — return to vendor OR restock ──
-                            if ($record->return_to_vendor && !empty($record->refunded_items)) {
+                            // ── ITEM DISPOSITION — void OR return to vendor OR restock ──
+                            if ($record->void_item && !empty($record->refunded_items)) {
+                                $items = SaleItem::whereIn('id', $record->refunded_items)
+                                    ->with('customOrder')
+                                    ->get();
+
+                                foreach ($items as $si) {
+                                    // Void any linked custom order permanently — it never
+                                    // went into production, so there's nothing to reverse
+                                    // physically, just close the paper trail.
+                                    if ($si->customOrder) {
+                                        $si->customOrder->update(['status' => 'exchanged']);
+                                    }
+                                    // Erase the line item from the sale entirely — it was
+                                    // never real inventory (custom order pre-production,
+                                    // a service never performed, etc.)
+                                    $si->delete();
+                                }
+                            } elseif ($record->return_to_vendor && !empty($record->refunded_items)) {
                                 $items = SaleItem::whereIn('id', $record->refunded_items)
                                     ->with('productItem.supplier')
                                     ->get();
@@ -385,31 +455,23 @@ class RefundResource extends Resource
                                 }
                             }
 
-                            // ── SALE STATUS SYNC ──
+                                                       // ── SALE STATUS SYNC ──
+                            // 🚀 FIX — previously only applied when status was
+                            // already 'completed', so a partially-paid sale
+                            // (status 'pending') never actually got locked after
+                            // a refund — it silently stayed 'pending' and remained
+                            // fully editable. A refund is a closed financial event
+                            // regardless of what the sale's payment status was
+                            // beforehand, so this now applies unconditionally.
                             $sale = $record->sale;
                             if ($sale) {
                                 $totalItemsInSale   = $sale->items()->count();
                                 $totalItemsRefunded = collect($record->refunded_items)->count();
 
-                                // 🚀 FIX — a partially-paid sale (e.g. laybuy or
-                                // custom order still in production) getting a
-                                // refund isn't necessarily "refunded/partially
-                                // refunded" in the customer-facing sense the old
-                                // logic assumed (which was written only for fully
-                                // completed sales). We still mark item-level
-                                // refund status the same way, but leave sales that
-                                // were never 'completed' on their existing
-                                // workflow status (pending/in_production etc.)
-                                // rather than force-labeling them refunded.
-                                if ($sale->status === 'completed') {
-                                    $newStatus = ($totalItemsRefunded >= $totalItemsInSale)
-                                        ? 'refunded'
-                                        : 'partially_refunded';
-                                    $sale->update(['status' => $newStatus]);
-                                }
-
-                                // Always resync amount_paid/balance_due from the DB
-                                // after the refund payment below is inserted.
+                                $newStatus = ($totalItemsRefunded >= $totalItemsInSale)
+                                    ? 'refunded'
+                                    : 'partially_refunded';
+                                $sale->update(['status' => $newStatus]);
                             }
 
                             // ── MONEY SIDE — cash reversal vs store credit ──

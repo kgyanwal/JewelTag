@@ -22,6 +22,8 @@ class Subscription extends Model
         'msa_version',
         'msa_agreed_at',
         'msa_agreed_ip',
+        'msa_signer_name',
+        'msa_signer_title',
         'contract_pdf_path',
     ];
 

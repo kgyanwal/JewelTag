@@ -49,8 +49,11 @@ class ManageSettings extends Page
         $rawCa    = $caJson ? json_decode($caJson, true) : ['GIA', 'IGI', 'AGS', 'HRD', 'EGL', 'GSI'];
         $fmtCa    = collect($rawCa)->map(fn($i) => ['name' => $i])->toArray();
 
-        $shopifyJson   = $settings['shopify_config'] ?? '{}';
+                $shopifyJson   = $settings['shopify_config'] ?? '{}';
         $shopifyConfig = json_decode($shopifyJson, true);
+
+        $valorJson   = $settings['valor_config'] ?? '{}';
+        $valorConfig = json_decode($valorJson, true);
 
         $this->form->fill([
             'tax_rate'                  => $settings['tax_rate'] ?? '7.63',
@@ -79,7 +82,15 @@ class ManageSettings extends Page
             'shopify_store_url'    => $shopifyConfig['store_url'] ?? '',
             'shopify_access_token' => $shopifyConfig['access_token'] ?? '',
             'shopify_api_version'  => $shopifyConfig['api_version'] ?? '2024-01',
-            'shopify_auto_sync'    => (bool) ($shopifyConfig['auto_sync'] ?? false),
+                      'shopify_auto_sync'    => (bool) ($shopifyConfig['auto_sync'] ?? false),
+
+            // Valor / PayKoncept Fields
+            'valor_app_id'     => $valorConfig['app_id']     ?? '',
+            'valor_app_key'    => $valorConfig['app_key']    ?? '',
+            'valor_epi'        => $valorConfig['epi']        ?? '',
+            'valor_channel_id' => $valorConfig['channel_id'] ?? '',
+            'valor_env'        => $valorConfig['env']        ?? 'sandbox',
+            'valor_enabled'    => (bool) ($valorConfig['enabled'] ?? false),
         ]);
     }
 
@@ -272,6 +283,93 @@ class ManageSettings extends Page
             ->send();
     }
 }
+
+   public function saveValor(): void
+    {
+        $state = $this->form->getState();
+        $config = [
+            'app_id'     => trim($state['valor_app_id'] ?? ''),
+            'app_key'    => trim($state['valor_app_key'] ?? ''),
+            'epi'        => trim($state['valor_epi'] ?? ''),
+            'channel_id' => trim($state['valor_channel_id'] ?? ''),
+            'env'        => $state['valor_env'] ?? 'sandbox',
+            'enabled'    => (bool) ($state['valor_enabled'] ?? false),
+        ];
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'valor_config'],
+            ['value' => json_encode($config), 'updated_at' => now()]
+        );
+        Notification::make()->title('✅ Valor settings saved')->success()->send();
+    }
+
+    public function testValor(): void
+    {
+        $state = $this->form->getState();
+        $appId     = trim($state['valor_app_id'] ?? '');
+        $appKey    = trim($state['valor_app_key'] ?? '');
+        $epi       = trim($state['valor_epi'] ?? '');
+        $channelId = trim($state['valor_channel_id'] ?? '');
+        $env       = $state['valor_env'] ?? 'sandbox';
+
+        if (empty($appId) || empty($appKey) || empty($epi) || empty($channelId)) {
+            Notification::make()
+                ->title('Missing credentials')
+                ->body('Fill in App ID, App Key, EPI, and Channel ID first.')
+                ->danger()
+                ->send();
+            return;
+        }
+
+        $baseUrl = $env === 'production'
+            ? 'https://securelink.valorpaytech.com'
+            : 'https://securelink-staging.valorpaytech.com';
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'accept'       => 'application/json',
+                'content-type' => 'application/json',
+            ])->timeout(10)->post("{$baseUrl}/?txn_status", [
+                'appid'      => $appId,
+                'appkey'     => $appKey,
+                'epi'        => $epi,
+                'txn_type'   => 'vc_status',
+                'req_txn_id' => 'PING-' . now()->timestamp,
+            ]);
+
+            $body = $response->json();
+
+            if ($response->status() >= 500 || empty($body)) {
+                Notification::make()
+                    ->title('❌ No response from Valor')
+                    ->body('Check network/firewall — request reached no valid endpoint.')
+                    ->danger()
+                    ->send();
+                return;
+            }
+
+            if (($body['error_no'] ?? null) === 'D01') {
+                Notification::make()
+                    ->title('❌ Invalid App ID')
+                    ->body('Valor rejected the App ID — double check it was copied correctly.')
+                    ->danger()
+                    ->persistent()
+                    ->send();
+                return;
+            }
+
+            Notification::make()
+                ->title('✅ Reached Valor Cloud')
+                ->body('Credentials accepted. (This does not confirm the terminal itself is online.)')
+                ->success()
+                ->send();
+        } catch (\Exception $e) {
+            Notification::make()
+                ->title('Connection Error')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
 
     public function form(Form $form): Form
     {
@@ -682,8 +780,145 @@ class ManageSettings extends Page
                                             ->color('success')
                                             ->action(fn() => $this->saveShopify()),
                                     ])
+                                 ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+
+                                Section::make('valor_section')
+                                    ->key('valor_section')
+                                    ->heading(false)
+                                    ->description(new \Illuminate\Support\HtmlString('
+                                        <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                                            <div style="width:52px;height:52px;background:linear-gradient(135deg,#1e3a8a,#1e40af);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(30,58,138,0.3);">💳</div>
+                                            <div>
+                                                <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Valor / PayKoncept Card Terminal</div>
+                                                <div style="font-size:12px;color:#64748b;margin-top:3px;">Live card charging via the VL550 terminal. Each store keeps its own merchant credentials. Leave "Enable" OFF until fully tested.</div>
+                                            </div>
+                                        </div>
+                                    '))
+                                    ->schema([
+                                        Grid::make(2)->schema([
+                                            TextInput::make('valor_app_id')
+                                                ->label('App ID')
+                                                ->password()
+                                                ->revealable(),
+                                            TextInput::make('valor_app_key')
+                                                ->label('App Key')
+                                                ->password()
+                                                ->revealable(),
+                                            TextInput::make('valor_epi')
+                                                ->label('EPI (Terminal Device ID)')
+                                                ->placeholder('10-digit number starting with 2'),
+                                            TextInput::make('valor_channel_id')
+                                                ->label('Channel ID'),
+                                            \Filament\Forms\Components\Select::make('valor_env')
+                                                ->label('Environment')
+                                                ->options(['sandbox' => 'Sandbox (Testing)', 'production' => 'Production (Live)'])
+                                                ->default('sandbox')
+                                                ->required(),
+                                            \Filament\Forms\Components\Toggle::make('valor_enabled')
+                                                ->label('Enable Live Card Charging')
+                                                ->helperText('⚠️ Leave OFF until fully tested with PayKoncept.')
+                                                ->default(false),
+                                        ]),
+                                    ])
+                                    ->footerActions([
+                                        \Filament\Forms\Components\Actions\Action::make('test_valor')
+                                            ->label('Test Connection')
+                                            ->icon('heroicon-o-signal')
+                                            ->color('info')
+                                            ->outlined()
+                                            ->action(fn() => $this->testValor()),
+                                        \Filament\Forms\Components\Actions\Action::make('save_valor')
+                                            ->label('Save Valor Settings')
+                                            ->icon('heroicon-o-check-circle')
+                                            ->color('success')
+                                            ->action(fn() => $this->saveValor()),
+                                    ])
                                     ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
                             ]),
+
+
+Tabs\Tab::make('🔐 Security')
+    ->schema([
+        Section::make('two_factor_section')
+            ->key('two_factor_section')
+            ->heading(false)
+            ->description(new \Illuminate\Support\HtmlString('
+                <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                    <div style="width:52px;height:52px;background:linear-gradient(135deg,#0B3D3C,#3D6B63);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(11,61,60,0.3);">🔐</div>
+                    <div>
+                        <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Two-Factor Authentication</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:3px;">Manage your 2FA method. Switching will require re-verification with the new method.</div>
+                    </div>
+                </div>
+            '))
+            ->schema([
+                \Filament\Forms\Components\Placeholder::make('current_2fa_status')
+                    ->label('Current 2FA Method')
+                    ->content(function () {
+                        $staff = \App\Helpers\Staff::user();
+                        if (!$staff) {
+                            return new \Illuminate\Support\HtmlString(
+                                '<span style="color:#94a3b8;">No active staff session.</span>'
+                            );
+                        }
+ 
+                        $method    = $staff->two_factor_method;
+                        $confirmed = $staff->two_factor_confirmed;
+ 
+                        if (!$confirmed || !$method) {
+                            return new \Illuminate\Support\HtmlString('
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 16px;">
+                                        <span style="font-size:14px;font-weight:700;color:#92400e;">⚠️ 2FA not set up yet</span>
+                                    </div>
+                                </div>
+                            ');
+                        }
+ 
+                        $methodLabel = $method === 'totp'
+                            ? '📱 Google Authenticator / Authy'
+                            : '💬 SMS to store phone';
+ 
+                        $methodColor = $method === 'totp' ? '#166534' : '#1e40af';
+                        $methodBg    = $method === 'totp' ? '#f0fdf4' : '#eff6ff';
+                        $methodBorder = $method === 'totp' ? '#bbf7d0' : '#bfdbfe';
+ 
+                        return new \Illuminate\Support\HtmlString("
+                            <div style='display:flex;align-items:center;gap:12px;flex-wrap:wrap;'>
+                                <div style='background:{$methodBg};border:1.5px solid {$methodBorder};border-radius:10px;padding:10px 16px;'>
+                                    <div style='font-size:14px;font-weight:700;color:{$methodColor};'>{$methodLabel}</div>
+                                    <div style='font-size:11px;color:#64748b;margin-top:2px;'>Active · Verified ✅</div>
+                                </div>
+                            </div>
+                        ");
+                    }),
+ 
+                \Filament\Forms\Components\Placeholder::make('switch_2fa_action')
+                    ->label('Switch Method')
+                    ->content(function () {
+                        $staff = \App\Helpers\Staff::user();
+                        if (!$staff || !$staff->two_factor_confirmed) return new \Illuminate\Support\HtmlString('');
+ 
+                        $method = $staff->two_factor_method;
+                        $switchTo = $method === 'totp' ? 'SMS' : 'Auth App';
+                        $switchIcon = $method === 'totp' ? '💬' : '📱';
+ 
+                        return new \Illuminate\Support\HtmlString("
+                            <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;'>
+                                <div style='font-size:13px;color:#374151;margin-bottom:10px;'>
+                                    Want to switch to <strong>{$switchIcon} {$switchTo}</strong>? 
+                                    This will reset your current 2FA setup and you'll need to re-verify with the new method.
+                                </div>
+                                <a href='/two-factor-reset' 
+                                   onclick=\"return confirm('Are you sure you want to switch your 2FA method? You will need to re-verify.')\"
+                                   style='display:inline-flex;align-items:center;gap:6px;background:#0B3D3C;color:white;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;'>
+                                    🔄 Switch to {$switchIcon} {$switchTo}
+                                </a>
+                            </div>
+                        ");
+                    }),
+            ]),
+    ]),
                     ])
                     ->persistTabInQueryString()
                     ->columnSpanFull(),
@@ -753,9 +988,22 @@ class ManageSettings extends Page
             'api_version'  => trim($state['shopify_api_version'] ?? '2024-01'),
             'auto_sync'    => (bool) ($state['shopify_auto_sync'] ?? false),
         ];
-        DB::table('site_settings')->updateOrInsert(
+                DB::table('site_settings')->updateOrInsert(
             ['key' => 'shopify_config'],
             ['value' => json_encode($shopifyConfig), 'updated_at' => now()]
+        );
+
+        $valorConfig = [
+            'app_id'     => trim($state['valor_app_id'] ?? ''),
+            'app_key'    => trim($state['valor_app_key'] ?? ''),
+            'epi'        => trim($state['valor_epi'] ?? ''),
+            'channel_id' => trim($state['valor_channel_id'] ?? ''),
+            'env'        => $state['valor_env'] ?? 'sandbox',
+            'enabled'    => (bool) ($state['valor_enabled'] ?? false),
+        ];
+        DB::table('site_settings')->updateOrInsert(
+            ['key' => 'valor_config'],
+            ['value' => json_encode($valorConfig), 'updated_at' => now()]
         );
 
         Notification::make()->title('✅ All settings saved successfully')->success()->send();

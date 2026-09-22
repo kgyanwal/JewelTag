@@ -19,13 +19,21 @@ class User extends Authenticatable implements FilamentUser
     }
 
     protected $fillable = [
-        'name', 'email', 'username', 'phone', 'password',
-        'employee_code', 'pin_code', 'is_landlord', // Removed store_id and is_active from fillable if rolled back
-    ];
+    'name', 'email', 'username', 'phone', 'password',
+    'employee_code', 'pin_code', 'is_landlord',
+    'two_factor_secret',
+    'two_factor_code',
+    'two_factor_expires_at',
+    'two_factor_method',
+    'two_factor_confirmed',
+];
 protected $casts = [
-    'is_landlord' => 'boolean',
-    'is_active' => 'boolean',
-    'password' => 'hashed',
+    'is_landlord'           => 'boolean',
+    'is_active'             => 'boolean',
+    'password'              => 'hashed',
+    'two_factor_confirmed'  => 'boolean',
+    'two_factor_expires_at' => 'datetime',
+    // two_factor_secret stored as plain base32 — no encryption needed
 ];
     protected $hidden = ['password', 'remember_token'];
 

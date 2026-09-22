@@ -401,9 +401,14 @@ class FindSale extends Page implements HasForms, HasTable
                     ->color('primary')
                     ->copyable(),
 
-                TextColumn::make('sale_type_badge')
+                                TextColumn::make('sale_type_badge')
                     ->label('TYPE')
                     ->getStateUsing(function ($record) {
+                        // 🚀 NEW — refunded status overrides the type badge here too.
+                        if (in_array($record->status, ['refunded', 'partially_refunded'])) {
+                            return new HtmlString("<span style='background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔄 REFUND</span>");
+                        }
+
                         $isLaybuy      = $record->payment_method === 'laybuy';
                         $hasRepair     = $record->items->contains(fn($i) => !empty($i->repair_id));
                         $hasCustom     = $record->items->contains(fn($i) => !empty($i->custom_order_id));
@@ -602,7 +607,7 @@ class FindSale extends Page implements HasForms, HasTable
                                             ->content($record->customer?->street ?? '—'),
                                     ]),
 
-                                Section::make('Quick Status')
+                                                                Section::make('Quick Status')
                                     ->columnSpan(1)
                                     ->schema([
                                         Placeholder::make('s_invoice')
@@ -610,6 +615,15 @@ class FindSale extends Page implements HasForms, HasTable
                                             ->content(new HtmlString(
                                                 "<span class='font-mono font-bold text-lg text-primary-600'>{$record->invoice_number}</span>"
                                             )),
+                                        // 🚀 NEW — refund summary right in the quick-view popup
+                                        Placeholder::make('s_refunds')
+                                            ->label('Refunds')
+                                            ->visible(fn() => \App\Models\Refund::where('sale_id', $record->id)->where('status', 'approved')->exists())
+                                            ->content(function () use ($record) {
+                                                $total = \App\Models\Refund::where('sale_id', $record->id)->where('status', 'approved')->sum('refund_amount');
+                                                $count = \App\Models\Refund::where('sale_id', $record->id)->where('status', 'approved')->count();
+                                                return new HtmlString("<span style='background:#fef2f2;color:#dc2626;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:800;'>⚠️ {$count} refund(s) — \$" . number_format($total, 2) . "</span>");
+                                            }),
                                         Placeholder::make('s_status')
                                             ->label('Status')
                                             ->content(new HtmlString(

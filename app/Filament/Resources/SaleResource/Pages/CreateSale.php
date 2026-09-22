@@ -483,10 +483,15 @@ class CreateSale extends CreateRecord
                     if (!empty($p['is_prior_deposit'])) {
                         continue;
                     }
-                    $paymentsToProcess[] = [
-                        'amount' => round((float) ($p['amount'] ?? 0), 2),
-                        'method' => strtoupper(trim($p['method'] ?? 'CASH')),
-                        'target' => $p['payment_target'] ?? 'regular'
+                   $paymentsToProcess[] = [
+                        'amount'         => round((float) ($p['amount'] ?? 0), 2),
+                        'method'         => strtoupper(trim($p['method'] ?? 'CASH')),
+                        'target'         => $p['payment_target'] ?? 'regular',
+                        'gateway'        => $p['gateway']        ?? 'manual',
+                        'gateway_txn_id' => $p['gateway_txn_id'] ?? null,
+                        'auth_code'      => $p['auth_code']      ?? null,
+                        'card_last4'     => $p['card_last4']     ?? null,
+                        'card_brand'     => $p['card_brand']     ?? null,
                     ];
                 }
             } else {
@@ -536,7 +541,7 @@ $target   = $p['target'] ?? 'regular';
                     $paymentRepairId = $jobUuidToRepairId[$jobUuid] ?? null;
                 }
 
-                \App\Models\Payment::create([
+              \App\Models\Payment::create([
                     'sale_id'         => $sale->id,
                     'custom_order_id' => $isCustom ? $customOrder->id : null,
                     'repair_id'       => $paymentRepairId,
@@ -544,6 +549,11 @@ $target   = $p['target'] ?? 'regular';
                     'method'          => $p['method'],
                     'paid_at'         => now(),
                     'store_id'        => $sale->store_id ?? 1,
+                    'gateway'         => $p['gateway']        ?? 'manual',
+                    'gateway_txn_id'  => $p['gateway_txn_id'] ?? null,
+                    'auth_code'       => $p['auth_code']      ?? null,
+                    'card_last4'      => $p['card_last4']     ?? null,
+                    'card_brand'      => $p['card_brand']     ?? null,
                 ]);
 
                 // 🚀 Resync immediately, same pattern as custom order below
@@ -646,6 +656,49 @@ $target   = $p['target'] ?? 'regular';
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    public function checkDeviceChargeStatus(): void
+    {
+        $reqTxnId = $this->data['pending_device_request_id'] ?? null;
+        if (!$reqTxnId) return;
+
+        $gateway = app(\App\Services\Payments\ValorGateway::class);
+        $status  = $gateway->checkStatus($reqTxnId);
+
+        if ($status['state'] === 'pending') return;
+
+        if ($status['state'] === 'approved') {
+            $splits = $this->data['split_payments'] ?? [];
+            $splits[(string) \Illuminate\Support\Str::uuid()] = [
+                'method'         => $status['card_brand'] ?? 'CARD',
+                'amount'         => number_format($this->data['pending_device_amount'] ?? 0, 2, '.', ''),
+                'payment_target' => 'regular',
+                'gateway'        => 'valor',
+                'gateway_txn_id' => $status['txn_id'],
+                'auth_code'      => $status['auth_code'],
+                'card_last4'     => $status['card_last4'],
+                'card_brand'     => $status['card_brand'],
+            ];
+            $this->data['split_payments']  = $splits;
+            $this->data['is_split_payment'] = true;
+
+            \Filament\Notifications\Notification::make()
+                ->title('Card Approved ✅')
+                ->body("Approved — {$status['card_brand']} ending {$status['card_last4']}")
+                ->success()
+                ->send();
+        } else {
+            \Filament\Notifications\Notification::make()
+                ->title($status['state'] === 'declined' ? 'Card Declined' : 'Terminal Error')
+                ->body($status['message'])
+                ->danger()
+                ->send();
+        }
+
+        $this->data['pending_device_request_id']  = null;
+        $this->data['pending_device_amount']      = null;
+        $this->data['pending_device_started_at']  = null;
     }
 
     public function updated($property): void

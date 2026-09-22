@@ -26,6 +26,20 @@ class EditSale extends EditRecord
                 </span>
             ");
         }
+
+        // 🚀 NEW — short subheading pointer to the full refund panel further
+        // down the page. Keeps this line brief; the Placeholder banner has
+        // the full breakdown (amount, method, disposition, reason, date).
+        $refundCount = \App\Models\Refund::where('sale_id', $this->record->id)->where('status', 'approved')->count();
+        if ($refundCount > 0) {
+            $totalRefunded = \App\Models\Refund::where('sale_id', $this->record->id)->where('status', 'approved')->sum('refund_amount');
+            return new \Illuminate\Support\HtmlString("
+                <span style='color: #dc2626; font-weight: 800; background-color: #fef2f2; padding: 4px 12px; border-radius: 6px; border: 1px solid #fee2e2; display: inline-block; margin-top: 4px;'>
+                    ⚠️ Invoice #{$this->record->invoice_number} has {$refundCount} refund(s) totaling \$" . number_format($totalRefunded, 2) . " — see details below.
+                </span>
+            ");
+        }
+
         return null;
     }
 
@@ -46,6 +60,22 @@ class EditSale extends EditRecord
     protected function canEditFreely(): bool
     {
         $user = Staff::user();
+
+        // 🚀 FIX — read status fresh from the DB, never the cached component
+        // property. $this->record can be stale if a refund was approved
+        // (e.g. in another tab, or by the very refund flow this same session
+        // just triggered) after this edit page's $this->record was set.
+        $freshStatus = DB::table('sales')->where('id', $this->record->id)->value('status');
+
+        // 🚀 FIX — locks BOTH fully refunded and partially refunded sales.
+        // A partial refund still permanently altered the money/items on this
+        // sale; it should not remain freely editable afterward. Only a
+        // Superadmin/Administration override (handled separately, see mount())
+        // can get back in — never through this normal free-edit path.
+        if (in_array($freshStatus, ['refunded', 'partially_refunded'])) {
+            return false;
+        }
+
         if ($user?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])) return true;
 
         $sale = $this->record;
@@ -63,40 +93,53 @@ class EditSale extends EditRecord
 
         return false;
     }
-
-    public function mount(int|string $record): void
+       public function mount(int|string $record): void
     {
         parent::mount($record);
 
-        if (!$this->canEditFreely()) {
+        // 🚀 CHANGED — a refunded sale is now allowed to OPEN for viewing (form
+        // fields are already visually disabled via SaleResource::canEdit's
+        // $isLocked), but is never editable/savable. No redirect anymore —
+        // staff can look at everything, they just can't change or save it.
+        // A sticky (persistent) notification makes that unmistakable.
+        $isRefunded = in_array($this->record->status, ['refunded', 'partially_refunded']);
+        if ($isRefunded) {
+            Notification::make()
+                ->title('View Only — Sale Refunded')
+                ->body("Invoice #{$this->record->invoice_number} has been refunded. This is a closed transaction — you're viewing it, but nothing here can be changed or saved.")
+                ->warning()
+                ->persistent()
+                ->send();
+        } elseif (!$this->canEditFreely()) {
             Notification::make()
                 ->title('Edit Restricted')
                 ->body('This day is EOD locked. Use "Request Edit" from the sales list.')
                 ->danger()
                 ->send();
-            redirect($this->getResource()::getUrl('index'));
-            $this->record->loadMissing('items');
-            $this->auditSnapshot = [
-                'sale' => [
-                    'status'         => $this->record->status,
-                    'final_total'    => (string) $this->record->final_total,
-                    'amount_paid'    => (string) $this->record->amount_paid,
-                    'balance_due'    => (string) $this->record->balance_due,
-                    'payment_method' => $this->record->payment_method,
-                ],
-                'items' => $this->record->items->mapWithKeys(fn($item) => [
-                    $item->id => [
-                        'label'               => $item->stock_no_display ?: $item->custom_description,
-                        'sold_price'          => (string) $item->sold_price,
-                        'sale_price_override' => (string) $item->sale_price_override,
-                        'discount_amount'     => (string) $item->discount_amount,
-                        'qty'                 => (string) $item->qty,
-                    ],
-                ])->toArray(),
-            ];
+            $this->redirect($this->getResource()::getUrl('index'));
+            return;
         }
-    }
 
+        $this->record->loadMissing('items');
+        $this->auditSnapshot = [
+            'sale' => [
+                'status'         => $this->record->status,
+                'final_total'    => (string) $this->record->final_total,
+                'amount_paid'    => (string) $this->record->amount_paid,
+                'balance_due'    => (string) $this->record->balance_due,
+                'payment_method' => $this->record->payment_method,
+            ],
+            'items' => $this->record->items->mapWithKeys(fn($item) => [
+                $item->id => [
+                    'label'               => $item->stock_no_display ?: $item->custom_description,
+                    'sold_price'          => (string) $item->sold_price,
+                    'sale_price_override' => (string) $item->sale_price_override,
+                    'discount_amount'     => (string) $item->discount_amount,
+                    'qty'                 => (string) $item->qty,
+                ],
+            ])->toArray(),
+        ];
+    }
     protected function getHeaderActions(): array
     {
         return [
@@ -243,6 +286,20 @@ class EditSale extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        // 🚀 FIX — check the fresh DB status directly here too, as the very
+        // last gate before any write happens. This is now a hard stop even
+        // if something upstream (mount, a stale page reload, an autosave)
+        // let a refunded sale's form render at all.
+        $freshStatus = DB::table('sales')->where('id', $this->record->id)->value('status');
+        if (in_array($freshStatus, ['refunded', 'partially_refunded'])) {
+            Notification::make()
+                ->title('Sale Locked — Refunded')
+                ->body('This sale has been refunded and can no longer be edited or saved.')
+                ->danger()
+                ->send();
+            $this->halt();
+        }
+
         if (!$this->canEditFreely()) {
             Notification::make()->title('Day Locked')->body('Cannot save — EOD closed.')->danger()->send();
             $this->halt();
@@ -292,6 +349,23 @@ class EditSale extends EditRecord
         }
 
         return $data;
+    }
+
+        // 🚀 NEW — removes the Save button entirely for a refunded sale, so
+    // there's no button to even click. mutateFormDataBeforeSave's halt still
+    // stands as the last line of defense if a save is ever triggered another way.
+    protected function getFormActions(): array
+    {
+        if (in_array($this->record->status, ['refunded', 'partially_refunded'])) {
+            return [
+                Actions\Action::make('back_to_list')
+                    ->label('Back to Sales')
+                    ->color('gray')
+                    ->url($this->getResource()::getUrl('index')),
+            ];
+        }
+
+        return parent::getFormActions();
     }
     protected function logAuditChanges(): void
     {
@@ -453,6 +527,7 @@ class EditSale extends EditRecord
 
 
             // 1. Existing POS payments in DB
+                   // 1. Existing POS payments in DB
             $existingDirectPayments = $sale->payments()->get();
             $existingSalePayments   = $sale->salePayments()->get();
 
@@ -470,6 +545,58 @@ class EditSale extends EditRecord
 
             $formTotal = round(collect($formPayments)->sum(fn($p) => floatval($p['amount'] ?? 0)), 2);
 
+            // 🚀 NEW — FIX: pure method-change detection. If the total amount
+            // paid hasn't changed at all (delta will be 0 below) but the payment
+            // method(s) in the form no longer match what's actually in the DB
+            // (e.g. admin just switched CASH → MASTERCARD without touching the
+            // amount), the old delta-only logic never touched the existing
+            // Payment row at all — it just silently kept the stale method
+            // forever, since nothing about "new money owed" ever changed.
+            // This block explicitly updates the method on existing Payment rows
+            // when this exact scenario is detected, for both non-split and
+            // split payment modes.
+                        if (round($formTotal - $totalAlreadyInDb, 2) === 0.0 && $formTotal > 0) {
+                if (empty($data['is_split_payment']) && $existingDirectPayments->count() >= 1) {
+                    // 🚀 FIX — was ->count() === 1 only, so any sale with more than
+                    // one existing Payment row (leftover rows from prior edits,
+                    // custom order deposits, etc.) silently skipped the method
+                    // update entirely. In non-split mode there's only ONE method
+                    // selected in the form — apply it to every existing direct
+                    // payment row on this sale so EOD (which reads Payment.method
+                    // directly) reflects the change immediately.
+                    $newMethod = strtoupper(trim($data['payment_method'] ?? 'CASH'));
+                    foreach ($existingDirectPayments as $existingPayment) {
+                        if (strtoupper(trim($existingPayment->method)) !== $newMethod) {
+                            $existingPayment->update(['method' => $newMethod]);
+                        }
+                    }
+                } elseif (!empty($data['is_split_payment']) && $existingDirectPayments->count() === count($formPayments)) {
+                    // Split mode with the same NUMBER of rows as already exist —
+                    // match them up by amount and update method where it changed.
+                    // (If row count differs, the normal delta logic below handles
+                    // additions/removals instead — this only covers pure edits.)
+                    $dbPaymentsPool = $existingDirectPayments->values()->all();
+                    foreach ($formPayments as $p) {
+                        $formAmt    = round((float) ($p['amount'] ?? 0), 2);
+                        $formMethod = strtoupper(trim($p['method'] ?? 'CASH'));
+
+                        foreach ($dbPaymentsPool as $idx => $dbPayment) {
+                            if (round((float) $dbPayment->amount, 2) === $formAmt) {
+                                if (strtoupper(trim($dbPayment->method)) !== $formMethod) {
+                                    $dbPayment->update(['method' => $formMethod]);
+                                }
+                                unset($dbPaymentsPool[$idx]); // consumed — don't match it twice
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Refresh the collections so the delta math below sees the
+                // updated methods too (though delta will still correctly be 0).
+                $existingDirectPayments = $sale->payments()->get();
+            }
+
             // 3. Delta = truly NEW money only
             $delta = round($formTotal - $totalAlreadyInDb, 2);
 
@@ -484,7 +611,7 @@ class EditSale extends EditRecord
                     $existingByMethod[$key] = ($existingByMethod[$key] ?? 0) + floatval($sp->amount);
                 }
 
-                                foreach ($formPayments as $p) {
+                foreach ($formPayments as $p) {
                     $amt    = floatval($p['amount'] ?? 0);
                     $method = strtoupper(trim($p['method'] ?? 'CASH'));
 
@@ -535,6 +662,11 @@ class EditSale extends EditRecord
                         'method'          => $method,
                         'paid_at'         => now(),
                         'store_id'        => $sale->store_id,
+                        'gateway'         => $p['gateway']        ?? 'manual',
+                        'gateway_txn_id'  => $p['gateway_txn_id'] ?? null,
+                        'auth_code'       => $p['auth_code']      ?? null,
+                        'card_last4'      => $p['card_last4']     ?? null,
+                        'card_brand'      => $p['card_brand']     ?? null,
                     ]);
 
                     // 🚀 Resync that repair's balance immediately, same as CreateSale
@@ -763,7 +895,48 @@ class EditSale extends EditRecord
         });
         $this->logAuditChanges();
     }
+    public function checkDeviceChargeStatus(): void
+    {
+        $reqTxnId = $this->data['pending_device_request_id'] ?? null;
+        if (!$reqTxnId) return;
 
+        $gateway = app(\App\Services\Payments\ValorGateway::class);
+        $status  = $gateway->checkStatus($reqTxnId);
+
+        if ($status['state'] === 'pending') return;
+
+        if ($status['state'] === 'approved') {
+            $splits = $this->data['split_payments'] ?? [];
+            $splits[(string) \Illuminate\Support\Str::uuid()] = [
+                'method'         => $status['card_brand'] ?? 'CARD',
+                'amount'         => number_format($this->data['pending_device_amount'] ?? 0, 2, '.', ''),
+                'payment_target' => 'regular',
+                'gateway'        => 'valor',
+                'gateway_txn_id' => $status['txn_id'],
+                'auth_code'      => $status['auth_code'],
+                'card_last4'     => $status['card_last4'],
+                'card_brand'     => $status['card_brand'],
+            ];
+            $this->data['split_payments']  = $splits;
+            $this->data['is_split_payment'] = true;
+
+            \Filament\Notifications\Notification::make()
+                ->title('Card Approved ✅')
+                ->body("Approved — {$status['card_brand']} ending {$status['card_last4']}")
+                ->success()
+                ->send();
+        } else {
+            \Filament\Notifications\Notification::make()
+                ->title($status['state'] === 'declined' ? 'Card Declined' : 'Terminal Error')
+                ->body($status['message'])
+                ->danger()
+                ->send();
+        }
+
+        $this->data['pending_device_request_id']  = null;
+        $this->data['pending_device_amount']      = null;
+        $this->data['pending_device_started_at']  = null;
+    }
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');

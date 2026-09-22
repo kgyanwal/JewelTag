@@ -92,9 +92,27 @@ class SaleResource extends Resource
     //         ->where('status', 'approved')
     //         ->exists();
     // }
-
+    public static function valorEnabled(): bool
+    {
+        $json = DB::table('site_settings')->where('key', 'valor_config')->value('value');
+        if (!$json) return false;
+        $config = json_decode($json, true) ?? [];
+        $hasCreds = !empty($config['app_id']) && !empty($config['app_key'])
+            && !empty($config['epi']) && !empty($config['channel_id']);
+        return $hasCreds && (bool) ($config['enabled'] ?? false);
+    }
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
+        // 🚀 NEW — a sale that's been fully refunded is permanently locked.
+        // The money reversal and item disposition (voided/returned to
+        // vendor/restocked) already happened — editing line items, payments,
+        // or totals on it afterward would corrupt a closed transaction.
+        // Superadmin/Administration can still get in if genuinely needed.
+        if (in_array($record->status, ['refunded'])) {
+            $user = Staff::user();
+            return $user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin');
+        }
+
         return true;
     }
 
@@ -429,7 +447,7 @@ class SaleResource extends Resource
                                                 ];
                                                 $set('items', $currentItems);
 
-                                              if ($deposit > 0) {
+                                                if ($deposit > 0) {
                                                     $set('is_split_payment', true);
                                                     // 🚀 FIX — keep ALL existing rows (including $0.00 placeholders
                                                     // created by "Enable Payment for this Repair"), only append the
@@ -1498,6 +1516,51 @@ class SaleResource extends Resource
                         ->disabled($isLocked)
                         ->schema([
 
+                            // 🚀 NEW — surfaces any refund(s) approved against this sale
+                            // right at the top of the edit page. Previously a refund
+                            // silently reversed money / erased items with nothing on
+                            // the Sale record itself indicating it had ever happened.
+                            Placeholder::make('refund_history_banner')
+                                ->hiddenLabel()
+                                ->visible(fn(?Sale $record) => $record && \App\Models\Refund::where('sale_id', $record->id)->where('status', 'approved')->exists())
+                                ->content(function (?Sale $record) {
+                                    if (!$record) return '';
+                                    $refunds = \App\Models\Refund::where('sale_id', $record->id)
+                                        ->where('status', 'approved')
+                                        ->orderByDesc('approved_at')
+                                        ->get();
+
+                                    $rows = '';
+                                    foreach ($refunds as $r) {
+                                        $method = $r->refund_method === 'store_credit' ? '💳 Store Credit' : '💵 Cash';
+                                        $disposition = $r->void_item
+                                            ? '🗑️ Item Erased/Voided'
+                                            : ($r->return_to_vendor ? '📦 Returned to Vendor' : ($r->should_restock ? '📥 Returned to Stock' : ''));
+                                        $when = $r->approved_at?->format('M d, Y h:i A') ?? '—';
+                                        $reason = $r->remarks ? "<div style='margin-top:4px;font-size:11px;color:#7f1d1d;font-style:italic;'>\"" . e($r->remarks) . "\"</div>" : '';
+
+                                        $rows .= "
+                                            <div style='padding:8px 0;border-bottom:1px dashed #fca5a5;'>
+                                                <div style='display:flex;justify-content:space-between;align-items:center;'>
+                                                    <span style='font-size:12px;font-weight:700;color:#991b1b;'>{$r->refund_no}</span>
+                                                    <span style='font-size:14px;font-weight:900;color:#dc2626;'>-\$" . number_format($r->refund_amount, 2) . "</span>
+                                                </div>
+                                                <div style='font-size:11px;color:#7f1d1d;margin-top:2px;'>{$method}" . ($disposition ? " &nbsp;·&nbsp; {$disposition}" : '') . " &nbsp;·&nbsp; {$when}</div>
+                                                {$reason}
+                                            </div>
+                                        ";
+                                    }
+
+                                    $total = $refunds->sum('refund_amount');
+
+                                    return new HtmlString("
+                                        <div style='background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:12px;'>
+                                            <div style='font-size:11px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;'>⚠️ This Sale Has Been Refunded — Total: \$" . number_format($total, 2) . "</div>
+                                            {$rows}
+                                        </div>
+                                    ");
+                                }),
+
                             Placeholder::make('sale_created_at_header')
                                 ->hiddenLabel()
                                 ->visible(fn(string $operation) => $operation === 'edit')
@@ -1915,14 +1978,16 @@ class SaleResource extends Resource
                                                     ]),
                                                 Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
                                             ])
-                                                                                       ->createOptionUsing(function (array $data) {
+                                            ->createOptionUsing(function (array $data) {
                                                 return Customer::create($data)->id;
                                             }),
                                     ]),
 
-                                    // 🚀 NEW — surfaces the customer's store credit right where staff
+                                                                     // 🚀 surfaces the customer's store credit right where staff
                                     // are already looking, same notification-card treatment used
-                                    // elsewhere (CustomerResource, FindCustomer).
+                                    // elsewhere (CustomerResource, FindCustomer). Now also includes
+                                    // a one-click button to apply it directly to the payment section
+                                    // below, instead of only being informational.
                                     Placeholder::make('customer_credit_display')
                                         ->hiddenLabel()
                                         ->live()
@@ -1943,6 +2008,66 @@ class SaleResource extends Resource
                                                 </div>
                                             ");
                                         }),
+
+                                    // 🚀 NEW — a real, clickable action right below the credit
+                                    // notice: sets payment_method to STORE_CREDIT and fills
+                                    // amount_paid in one step, since the passive Placeholder
+                                    // above can only display info, not set other fields.
+                                                                       // 🚀 UPDATED — much more visually prominent: full-width bold
+                                    // gradient button with a subtle pulse animation and the actual
+                                    // dollar amount shown in the label, so staff can't miss it.
+                                    \Filament\Forms\Components\Actions::make([
+                                        FormAction::make('apply_store_credit_now')
+                                            ->label(function (Get $get) {
+                                                $customer = Customer::find($get('customer_id'));
+                                                $balance  = floatval($customer?->credit_balance ?? 0);
+                                                return "💳 APPLY $" . number_format($balance, 2) . " STORE CREDIT TO THIS SALE";
+                                            })
+                                            ->color('purple')
+                                            ->button()
+                                            ->extraAttributes([
+                                                'style' => '
+                                                    width:100%;
+                                                    background:linear-gradient(135deg,#7c3aed,#5b21b6);
+                                                    border:none;
+                                                    padding:14px 20px;
+                                                    border-radius:12px;
+                                                    font-size:14px;
+                                                    font-weight:900;
+                                                    letter-spacing:0.02em;
+                                                    box-shadow:0 4px 14px rgba(124,58,237,0.45);
+                                                    animation: pulseCredit 2s ease-in-out infinite;
+                                                ',
+                                            ])
+                                            ->visible(fn(Get $get) => $get('customer_id')
+                                                && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0
+                                                && !$get('is_split_payment')
+                                                && strtoupper($get('payment_method') ?? '') !== 'STORE_CREDIT')
+                                            ->action(function (Get $get, Set $set, ?Sale $record) {
+                                                $customer  = Customer::find($get('customer_id'));
+                                                $available = floatval($customer?->credit_balance ?? 0);
+
+                                                $total     = floatval($get('final_total') ?? 0);
+                                                $dbPaid    = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+                                                $remaining = max(0, round($total - $dbPaid, 2));
+
+                                                $set('payment_method', 'STORE_CREDIT');
+                                                $set('amount_paid', number_format(min($available, $remaining), 2, '.', ''));
+                                                self::updateTotals($get, $set);
+                                            }),
+                                    ])->columnSpanFull(),
+
+                                    Placeholder::make('store_credit_pulse_style')
+                                        ->hiddenLabel()
+                                        ->visible(fn(Get $get) => $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
+                                        ->content(new HtmlString("
+                                            <style>
+                                                @keyframes pulseCredit {
+                                                    0%, 100% { transform: scale(1); box-shadow: 0 4px 14px rgba(124,58,237,0.45); }
+                                                    50% { transform: scale(1.015); box-shadow: 0 6px 20px rgba(124,58,237,0.6); }
+                                                }
+                                            </style>
+                                        ")),
 
                                     Select::make('sales_person_list')
                                         ->label('Sales Staff')
@@ -2235,6 +2360,111 @@ class SaleResource extends Resource
                                             ];
                                         }),
                                 ])->visible(fn(string $operation) => $operation === 'edit'),
+                                // ── VALOR TERMINAL CHARGE (only visible when enabled) ──
+                                \Filament\Forms\Components\Actions::make([
+
+                                    FormAction::make('charge_card_device')
+                                        ->label('💳 Charge on Terminal')
+                                        ->color('success')
+                                        ->icon('heroicon-o-credit-card')
+                                        ->visible(
+                                            fn(Get $get) =>
+                                            self::valorEnabled()
+                                                && !$get('is_split_payment')
+                                                && !in_array(strtoupper($get('payment_method') ?? ''), ['STORE_CREDIT', 'CASH', 'LAYBUY'])
+                                                && empty($get('pending_device_request_id'))
+                                        )
+                                        ->requiresConfirmation()
+                                        ->modalHeading('Charge Card on Terminal')
+                                        ->modalDescription(function (Get $get, ?Sale $record) {
+                                            $total  = floatval($get('final_total') ?? 0);
+                                            $dbPaid = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+                                            $amount = max(0, round($total - $dbPaid, 2));
+                                            $method = strtoupper($get('payment_method') ?? 'CARD');
+
+                                            return "This will send a charge for \${$amount} ({$method}) to the physical terminal. The customer will be prompted to tap or insert their card. Confirm to proceed.";
+                                        })
+                                        ->modalSubmitActionLabel('Send to Terminal')
+                                        ->action(function (Get $get, Set $set, ?Sale $record) {
+                                            $gateway = app(\App\Services\Payments\ValorGateway::class);
+                                            $total   = floatval($get('final_total') ?? 0);
+                                            $dbPaid  = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+                                            $amount  = max(0, round($total - $dbPaid, 2));
+
+                                            if ($amount <= 0) {
+                                                Notification::make()->title('Nothing to charge')->body('Balance is already $0.00.')->warning()->send();
+                                                return;
+                                            }
+
+                                            $invoice = $get('invoice_number') ?: ('DRAFT-' . now()->format('His'));
+
+                                            try {
+                                                $result = $gateway->publishSale($amount, $invoice);
+                                            } catch (\Throwable $e) {
+                                                Notification::make()->title('Valor not configured')->body($e->getMessage())->danger()->send();
+                                                return;
+                                            }
+
+                                            if (!$result['success']) {
+                                                Notification::make()->title('Could not reach terminal')->body($result['message'])->danger()->send();
+                                                return;
+                                            }
+
+                                            $set('pending_device_request_id', $result['req_txn_id']);
+                                            $set('pending_device_amount', $amount);
+                                            $set('pending_device_started_at', now()->timestamp);
+
+                                            Notification::make()
+                                                ->title('Waiting for customer...')
+                                                ->body('Ask the customer to tap or insert their card on the terminal now.')
+                                                ->info()
+                                                ->send();
+                                        }),
+
+                                    FormAction::make('cancel_device_charge')
+                                        ->label('Cancel Terminal Charge')
+                                        ->color('danger')
+                                        ->outlined()
+                                        ->visible(fn(Get $get) => self::valorEnabled() && !empty($get('pending_device_request_id')))
+                                        ->action(function (Get $get, Set $set) {
+                                            app(\App\Services\Payments\ValorGateway::class)->cancelSale();
+                                            $set('pending_device_request_id', null);
+                                            $set('pending_device_amount', null);
+                                            $set('pending_device_started_at', null);
+                                            Notification::make()->title('Charge Cancelled')->warning()->send();
+                                        }),
+                                ])->columnSpanFull(),
+
+                                // ── WAITING / DELAY MESSAGE ──
+                                Placeholder::make('device_charge_waiting')
+                                    ->hiddenLabel()
+                                    ->visible(fn(Get $get) => self::valorEnabled() && !empty($get('pending_device_request_id')))
+                                    ->content(function (Get $get) {
+                                        $startedAt = (int) ($get('pending_device_started_at') ?? now()->timestamp);
+                                        $elapsed   = now()->timestamp - $startedAt;
+
+                                        if ($elapsed > 45) {
+                                            return new HtmlString("
+                                                <div wire:poll.3s='checkDeviceChargeStatus' style='padding:14px;background:#fef2f2;border:2px dashed #ef4444;border-radius:10px;text-align:center;'>
+                                                    <div style='font-size:14px;font-weight:800;color:#991b1b;'>⏱️ This is taking longer than usual...</div>
+                                                    <div style='font-size:11px;color:#7f1d1d;margin-top:4px;'>Check the terminal screen. If the customer hasn't tapped their card yet, or the terminal shows an error, click \"Cancel Terminal Charge\" and try again.</div>
+                                                </div>
+                                            ");
+                                        }
+
+                                        return new HtmlString("
+                                            <div wire:poll.3s='checkDeviceChargeStatus' style='padding:14px;background:#fffbeb;border:2px dashed #f59e0b;border-radius:10px;text-align:center;'>
+                                                <div style='font-size:14px;font-weight:800;color:#92400e;'>⏳ Waiting for customer to tap/insert card...</div>
+                                                <div style='font-size:11px;color:#78350f;margin-top:4px;'>Checking terminal every few seconds.</div>
+                                            </div>
+                                        ");
+                                    })
+                                    ->columnSpanFull(),
+
+                                Hidden::make('pending_device_request_id')->dehydrated(false),
+                                Hidden::make('pending_device_amount')->dehydrated(false),
+                                Hidden::make('pending_device_started_at')->dehydrated(false),
+
                                 // ── SPLIT TOGGLE ─────────────────────────────────────────────
                                 Toggle::make('is_split_payment')
                                     ->label('Enable Split Payment')
@@ -2266,7 +2496,7 @@ class SaleResource extends Resource
                                     })
                                     ->columnSpanFull(),
 
-                                // ── NON-SPLIT: METHOD ────────────────────────────────────────
+                                                               // ── NON-SPLIT: METHOD ────────────────────────────────────────
                                 Select::make('payment_method')
                                     ->label('Payment Method')
                                     ->options(self::getPaymentOptions())
@@ -2274,7 +2504,27 @@ class SaleResource extends Resource
                                     ->required(fn(Get $get) => !$get('is_split_payment'))
                                     ->visible(fn(Get $get) => !$get('is_split_payment'))
                                     ->live()
-                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set, ?Sale $record) {
+                                        // 🚀 FIX — set amount_paid FIRST, then call updateTotals
+                                        // AFTER, since updateTotals reads amount_paid to compute
+                                        // balance/status — calling it before the amount was set
+                                        // meant the auto-fill value could be immediately
+                                        // overwritten or ignored downstream.
+                                        if (strtoupper($state ?? '') === 'STORE_CREDIT') {
+                                            $customerId = $get('customer_id');
+                                            $customer   = $customerId ? Customer::find($customerId) : null;
+                                            $available  = floatval($customer?->credit_balance ?? 0);
+
+                                            $total     = floatval($get('final_total') ?? 0);
+                                            $dbPaid    = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+                                            $remaining = max(0, round($total - $dbPaid, 2));
+                                            $fillAmt   = min($available, $remaining);
+
+                                            $set('amount_paid', number_format($fillAmt, 2, '.', ''));
+                                        }
+
+                                        self::updateTotals($get, $set);
+                                    }),
 
                                 Select::make('payment_target')
                                     ->label('Apply To')
@@ -2323,12 +2573,30 @@ class SaleResource extends Resource
                                     })
                                     ->live(),
 
-                                                              TextInput::make('amount_paid')
+                                                                                          TextInput::make('amount_paid')
                                     ->label('Amount Received')
                                     ->numeric()
                                     ->prefix('$')
                                     ->default(0)
                                     ->live(onBlur: true)
+                                    // 🚀 NEW — if this field ever hydrates while payment_method
+                                    // is already STORE_CREDIT (e.g. reopening a draft), auto-fill
+                                    // once on load too, not only on the method's afterStateUpdated.
+                                    ->afterStateHydrated(function (Get $get, Set $set, ?Sale $record) {
+                                        if (strtoupper($get('payment_method') ?? '') !== 'STORE_CREDIT') return;
+                                        $currentVal = floatval($get('amount_paid') ?? 0);
+                                        if ($currentVal > 0) return; // already has a value, don't clobber it
+
+                                        $customerId = $get('customer_id');
+                                        $customer   = $customerId ? Customer::find($customerId) : null;
+                                        $available  = floatval($customer?->credit_balance ?? 0);
+
+                                        $total     = floatval($get('final_total') ?? 0);
+                                        $dbPaid    = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+                                        $remaining = max(0, round($total - $dbPaid, 2));
+
+                                        $set('amount_paid', number_format(min($available, $remaining), 2, '.', ''));
+                                    })
                                     ->visible(fn(Get $get) => !$get('is_split_payment'))
                                     ->rule(function (Get $get) {
                                         return function (string $attribute, $value, \Closure $fail) use ($get) {
@@ -2486,9 +2754,32 @@ class SaleResource extends Resource
                                                     return $options;
                                                 })
                                                 ->required()
+                                                ->live()
+                                                // 🚀 NEW — same auto-fill behavior inside a split
+                                                // payment row: picking Store Credit fills that
+                                                // row's Amount with the full available balance,
+                                                // capped at whatever's still remaining on the sale
+                                                // after all other rows already in the split.
+                                                ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                                    if (strtoupper($state ?? '') !== 'STORE_CREDIT') return;
+
+                                                    $customerId = $get('../../customer_id');
+                                                    $customer   = $customerId ? Customer::find($customerId) : null;
+                                                    $available  = floatval($customer?->credit_balance ?? 0);
+
+                                                    $total          = floatval($get('../../final_total') ?? 0);
+                                                    $existingSplits = $get('../../split_payments') ?? [];
+                                                    $sumOtherRows   = collect($existingSplits)->sum(fn($p) => (float) ($p['amount'] ?? 0));
+                                                    $remaining      = max(0, $total - $sumOtherRows);
+
+                                                    $set('amount', number_format(min($available, $remaining), 2, '.', ''));
+                                                    // 🚀 The repeater's own top-level afterStateUpdated (on
+                                                    // split_payments itself) already recomputes totals whenever
+                                                    // any row changes — no need to duplicate that call here.
+                                                })
                                                 ->columnSpan(2),
 
-                                                                                       TextInput::make('amount')
+                                            TextInput::make('amount')
                                                 ->numeric()
                                                 ->prefix('$')
                                                 ->required()
@@ -2545,7 +2836,7 @@ class SaleResource extends Resource
                                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                         ]),
                                     ])
-                                   ->visible(fn(Get $get) => $get('is_split_payment'))
+                                    ->visible(fn(Get $get) => $get('is_split_payment'))
                                     // 🚀 FIX — defaultItems(1) pre-populates a blank row in the
                                     // repeater's internal state as soon as the form loads, even
                                     // while hidden. Every code path that does
@@ -2817,14 +3108,14 @@ class SaleResource extends Resource
                 </div>";
                                         }
 
-                                        if (($regularPaid - $repairPaid) > 0) {
+                                                                                if (($regularPaid - $repairPaid) > 0) {
                                             $html .= "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px solid #e2e8f0;padding-bottom:5px;'>
                     <span class='px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider bg-teal-50 text-teal-700 border-teal-200'>💵 PAYMENT</span>
-                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>+$" . number_format($regularPaid - $repairPaid, 2) . "</span>
+                    <span style='font-size:0.875rem;font-weight:bold;color:#10b981;'>-$" . number_format($regularPaid - $repairPaid, 2) . "</span>
                 </div>";
                                         }
 
-                                     if ($repairPaid > 0) {
+                                        if ($repairPaid > 0) {
                                             // 🚀 NEW — show whether this repair job charge was taxed, and if so
                                             // how much tax it contributed, mirroring how CUSTOM DEPOSIT already
                                             // shows its own line. Sums job_final_charge across every enabled
@@ -2917,6 +3208,13 @@ class SaleResource extends Resource
                 TextColumn::make('sale_type_badge')
                     ->label('TYPE')
                     ->getStateUsing(function ($record) {
+                        // 🚀 NEW — refunded status takes priority over the normal
+                        // type badge, since "this got refunded" is more important
+                        // to see at a glance than what it originally was.
+                        if (in_array($record->status, ['refunded', 'partially_refunded'])) {
+                            return new HtmlString("<span style='background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;white-space:nowrap;'>🔄 REFUND</span>");
+                        }
+
                         $isLaybuy     = $record->payment_method === 'laybuy';
                         $hasRepair    = $record->items->contains(fn($i) => !empty($i->repair_id));
                         $hasCustom    = $record->items->contains(fn($i) => !empty($i->custom_order_id));
@@ -3243,7 +3541,7 @@ class SaleResource extends Resource
     // with "Enable Payment" on, regardless of whether that job's item is stock,
     // non-tag, custom order, or an existing repair — the Repair record itself
     // gets created (or already exists) and mapped in CreateSale::afterCreate().
-public static function resolveEnabledJobTargets(array $items, array $specialJobs): array
+    public static function resolveEnabledJobTargets(array $items, array $specialJobs): array
     {
         $itemsFlat = array_values($items);
         $targets   = [];
@@ -3258,7 +3556,10 @@ public static function resolveEnabledJobTargets(array $items, array $specialJobs
             } else {
                 foreach (($job['applicable_item_indexes'] ?? []) as $idx) {
                     $candidate = $itemsFlat[$idx] ?? null;
-                    if ($candidate) { $item = $candidate; break; }
+                    if ($candidate) {
+                        $item = $candidate;
+                        break;
+                    }
                 }
             }
 
@@ -3286,7 +3587,7 @@ public static function resolveEnabledJobTargets(array $items, array $specialJobs
             }
         }
 
-      $itemsFlat = array_values($items);
+        $itemsFlat = array_values($items);
         foreach ($specialJobs as $job) {
             if (empty($job['enable_payment']) || empty($job['job_uuid'])) continue;
 
@@ -3457,7 +3758,7 @@ public static function resolveEnabledJobTargets(array $items, array $specialJobs
         $set('status', $fullyPaid ? 'completed' : 'pending');
     }
 
-       public static function getPaymentOptions(): array
+    public static function getPaymentOptions(): array
     {
         $json           = DB::table('site_settings')->where('key', 'payment_methods')->value('value');
         $defaultMethods = ['CASH', 'VISA', 'MASTERCARD', 'AMEX', 'LAYBUY'];
