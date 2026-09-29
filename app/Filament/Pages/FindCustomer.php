@@ -154,17 +154,49 @@ class FindCustomer extends Page implements HasTable
     ->modalCancelActionLabel('Close')
     ->form(fn (Customer $record): array => [
 
-                // ── CUSTOMER HEADER ───────────────────────────────────────────
-        Section::make('Customer Profile')
+                        // ── CUSTOMER HEADER ───────────────────────────────────────────
+        Section::make('')
             ->schema([
-                Grid::make(2)->schema([
-                    Placeholder::make('id')->label('Customer ID')->content($record->customer_no),
-                    Placeholder::make('created')->label('Member Since')->content($record->created_at->format('M d, Y')),
-                    Placeholder::make('name')->label('Name')->content("{$record->name} {$record->last_name}"),
-                    Placeholder::make('phone')->label('Phone')->content($record->phone),
-                    Placeholder::make('email')->label('Email')->content($record->email ?? 'N/A'),
-                    Placeholder::make('tier')->label('Loyalty Tier')->content(strtoupper($record->loyalty_tier ?? 'Standard')),
-                ]),
+                Placeholder::make('cinematic_header')
+                    ->hiddenLabel()
+                    ->content(function () use ($record) {
+                        $fullName = trim("{$record->name} {$record->last_name}");
+                        $tierColors = match ($record->loyalty_tier) {
+                            'gold'   => ['#fbbf24', '#92400e', '🥇'],
+                            'silver' => ['#cbd5e1', '#334155', '🥈'],
+                            default  => ['#93c5fd', '#1e3a8a', '⭐'],
+                        };
+                        [$tierBg, $tierText, $tierIcon] = $tierColors;
+                        $memberSince = $record->created_at->format('M d, Y');
+                        $avatar = $record->image
+                            ? "background-image:url('" . asset('storage/' . $record->image) . "');background-size:cover;background-position:center;"
+                            : "background:linear-gradient(135deg,#0B3D3C,#134e4a);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#F8F6F1;";
+                        $initial = strtoupper(substr($fullName, 0, 1));
+                        $avatarInner = $record->image ? '' : $initial;
+
+                        return new HtmlString("
+                            <div style='background:linear-gradient(135deg,#0B3D3C,#0f4c46);border-radius:16px;padding:20px 24px;box-shadow:0 6px 20px rgba(11,61,60,0.25);'>
+                                <div style='display:flex;align-items:center;gap:16px;'>
+                                    <div style='width:64px;height:64px;border-radius:50%;{$avatar}flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,0.2);border:2px solid #C9A24B;'>{$avatarInner}</div>
+                                    <div style='flex:1;'>
+                                        <div style='font-size:19px;font-weight:900;color:#F8F6F1;'>{$fullName}</div>
+                                        <div style='font-size:12px;color:#a7d4c9;margin-top:2px;'>#{$record->customer_no} &nbsp;·&nbsp; Member since {$memberSince}</div>
+                                    </div>
+                                    <span style='background:{$tierBg};color:{$tierText};padding:5px 14px;border-radius:99px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;'>{$tierIcon} " . ucfirst($record->loyalty_tier ?? 'Standard') . "</span>
+                                </div>
+                                <div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.12);'>
+                                    <div>
+                                        <div style='font-size:9px;font-weight:700;color:#a7d4c9;text-transform:uppercase;letter-spacing:0.08em;'>Phone</div>
+                                        <div style='font-size:13px;font-weight:700;color:#F8F6F1;margin-top:2px;'>" . ($record->phone ?? '—') . "</div>
+                                    </div>
+                                    <div>
+                                        <div style='font-size:9px;font-weight:700;color:#a7d4c9;text-transform:uppercase;letter-spacing:0.08em;'>Email</div>
+                                        <div style='font-size:13px;font-weight:700;color:#F8F6F1;margin-top:2px;'>" . ($record->email ?? '—') . "</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ");
+                    }),
             ]),
 
         // 🚀 NEW — only shown when the customer actually has a balance,
@@ -189,6 +221,69 @@ class FindCustomer extends Page implements HasTable
                                 <div style='font-size:11px;color:#6b21a8;margin-top:8px;'>This customer can apply this balance toward any future purchase.</div>
                             </div>
                         ")),
+                ]),
+        ] : []),
+
+               // 🚀 NEW — cinematic, only rendered when a spouse is on file. Uses a
+        // dark romantic gradient card with a connecting "&" motif between the
+        // two names, rather than a plain field list, since this is meant to
+        // read as a relationship snapshot at a glance during a checkout call.
+        ...(filled($record->spouse_name) ? [
+            Section::make('')
+                ->schema([
+                    Placeholder::make('spouse_cinematic_display')
+                        ->hiddenLabel()
+                        ->content(function () use ($record) {
+                            $customerName = trim("{$record->name} {$record->last_name}");
+                            $spouseName   = e($record->spouse_name);
+                            $spouseEmail  = $record->spouse_email;
+
+                            $anniversary = $record->wedding_anniversary
+                                ? \Carbon\Carbon::parse($record->wedding_anniversary)->format('F j, Y')
+                                : null;
+                            $yearsMarried = $record->wedding_anniversary
+                                ? \Carbon\Carbon::parse($record->wedding_anniversary)->diffInYears(now())
+                                : null;
+
+                            $anniversaryHtml = $anniversary
+                                ? "<div style='margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.15);text-align:center;'>
+                                        <div style='font-size:10px;font-weight:700;color:#d4a5c9;text-transform:uppercase;letter-spacing:0.1em;'>Anniversary</div>
+                                        <div style='font-size:15px;font-weight:700;color:#fdf2f8;margin-top:2px;'>{$anniversary}" .
+                                        ($yearsMarried !== null ? " <span style='color:#f0abfc;font-weight:500;'>({$yearsMarried} yrs)</span>" : '') . "</div>
+                                   </div>"
+                                : '';
+
+                            $emailHtml = $spouseEmail
+                                ? "<div style='font-size:11px;color:#e9d5ff;margin-top:4px;'>✉ " . e($spouseEmail) . "</div>"
+                                : '';
+
+                            return new HtmlString("
+                                <div style='
+                                    background:radial-gradient(circle at top left,#4c1d95,#1e1b3a 65%);
+                                    border-radius:16px;
+                                    padding:24px 28px;
+                                    box-shadow:0 8px 30px rgba(76,29,149,0.35);
+                                    position:relative;
+                                    overflow:hidden;
+                                '>
+                                    <div style='position:absolute;top:-30px;right:-20px;font-size:120px;opacity:0.06;line-height:1;'>💍</div>
+                                    <div style='font-size:10px;font-weight:800;color:#d8b4fe;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:14px;'>Family / Partner Snapshot</div>
+                                    <div style='display:flex;align-items:center;justify-content:center;gap:18px;'>
+                                        <div style='text-align:center;flex:1;'>
+                                            <div style='width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#7c3aed);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:20px;font-weight:900;color:#fff;box-shadow:0 4px 12px rgba(168,85,247,0.4);'>" . strtoupper(substr($customerName, 0, 1)) . "</div>
+                                            <div style='font-size:14px;font-weight:800;color:#f5f3ff;'>{$customerName}</div>
+                                        </div>
+                                        <div style='font-size:22px;color:#f0abfc;font-weight:300;'>&amp;</div>
+                                        <div style='text-align:center;flex:1;'>
+                                            <div style='width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#ec4899,#db2777);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:20px;font-weight:900;color:#fff;box-shadow:0 4px 12px rgba(219,39,119,0.4);'>" . strtoupper(substr($spouseName, 0, 1)) . "</div>
+                                            <div style='font-size:14px;font-weight:800;color:#fdf2f8;'>{$spouseName}</div>
+                                            {$emailHtml}
+                                        </div>
+                                    </div>
+                                    {$anniversaryHtml}
+                                </div>
+                            ");
+                        }),
                 ]),
         ] : []),
 

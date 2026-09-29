@@ -147,7 +147,7 @@ CustomDatePicker::make('dob')
 
                                     ]),
 
-                                // --- TAB 2: MARKETING & JEWELRY ---
+                                                               // --- TAB 2: MARKETING & JEWELRY ---
                                 Tabs\Tab::make('Personal Details')
                                     ->icon('heroicon-o-megaphone')
                                     ->schema([
@@ -164,6 +164,30 @@ CustomDatePicker::make('dob')
                                                 ->options(['Anniversary' => 'Anniversary', 'Birthday' => 'Birthday', 'Engagement' => 'Engagement']),
                                         ]),
                                         Textarea::make('special_interests')->rows(3)->placeholder('Enter any specific jewelry interests...'),
+
+                                        // 🚀 NEW — spouse_name / spouse_email already exist in the
+                                        // customers table but were never surfaced in the form.
+                                        // Styled as its own visually distinct card since it's
+                                        // relationship data, not a plain field group.
+                                        Section::make('💍 Spouse / Partner')
+                                            ->description('Useful for anniversary campaigns and gift-buying context.')
+                                            ->schema([
+                                                Grid::make(2)->schema([
+                                                    TextInput::make('spouse_name')
+                                                        ->label('Spouse / Partner Name')
+                                                        ->placeholder('e.g. Alex Johnson')
+                                                        ->prefixIcon('heroicon-o-heart'),
+                                                    TextInput::make('spouse_email')
+                                                        ->label('Spouse / Partner Email')
+                                                        ->email()
+                                                        ->placeholder('spouse@example.com')
+                                                        ->prefixIcon('heroicon-o-envelope'),
+                                                ]),
+                                            ])
+                                            ->collapsible()
+                                            ->extraAttributes([
+                                                'style' => 'background:linear-gradient(135deg,#fdf2f8,#fce7f3);border:1.5px solid #fbcfe8;border-radius:12px;',
+                                            ]),
                                     ]),
 
                                 // --- TAB 3: FINGER SIZES ---
@@ -229,6 +253,32 @@ CustomDatePicker::make('dob')
                                             </div>
                                         </div>
                                         <div style='font-size:11px;color:#6b21a8;margin-top:8px;'>This customer can apply this balance toward any future purchase.</div>
+                                    </div>
+                                ");
+                            }),
+
+                                               // 🚀 NEW — quick-glance spouse indicator in the sidebar, visible
+                        // only when a spouse name is on file, so staff instantly notice
+                        // it's a couple/family account without opening the tab.
+                        \Filament\Forms\Components\Placeholder::make('spouse_quick_view')
+                            ->hiddenLabel()
+                            ->visible(fn(\Filament\Forms\Get $get) => filled($get('spouse_name')))
+                            ->content(function (\Filament\Forms\Get $get) {
+                                $name  = e($get('spouse_name'));
+                                $email = $get('spouse_email');
+                                $emailLine = $email ? "<div style='font-size:11px;color:#9d174d;margin-top:2px;'>{$email}</div>" : '';
+                                return new \Illuminate\Support\HtmlString("
+                                    <div style='background:linear-gradient(135deg,#fdf2f8,#fce7f3);border:1.5px solid #fbcfe8;border-radius:12px;padding:12px 16px;'>
+                                        <div style='display:flex;align-items:center;gap:10px;'>
+                                            <div style='background:#db2777;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'>
+                                                <span style='font-size:14px;'>💍</span>
+                                            </div>
+                                            <div>
+                                                <div style='font-size:9px;font-weight:800;color:#be185d;text-transform:uppercase;letter-spacing:0.06em;'>Spouse / Partner</div>
+                                                <div style='font-size:14px;font-weight:800;color:#831843;'>{$name}</div>
+                                                {$emailLine}
+                                            </div>
+                                        </div>
                                     </div>
                                 ");
                             }),

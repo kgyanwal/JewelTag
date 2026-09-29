@@ -41,23 +41,36 @@ class TwoFactorService
         return $writer->writeString($uri);
     }
 
-    public function verifyTotp(User $user, string $code): bool
-    {
-        if (empty($user->two_factor_secret)) {
-            return false;
-        }
+   public function verifyTotp(User $user, string $code): bool
+{
+    // Use getRawOriginal to bypass any trait/accessor interference
+    $secret = $user->getRawOriginal('two_factor_secret') ?? $user->two_factor_secret;
 
-        $totp = TOTP::createFromSecret($user->two_factor_secret);
-        $totp->setLabel($user->email ?? $user->name);
-        $totp->setIssuer('JewelTag');
-
-        // ── FIX: Always use UTC timestamp explicitly ──
-        // Prevents timezone mismatch between server and authenticator app
-        $utcNow = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
-
-        // Allow ±2 windows (±60 seconds) for clock drift
-        return $totp->verify((string) $code, $utcNow, 2);
+    if (empty($secret)) {
+        Log::warning("TOTP: No secret found for user {$user->id}");
+        return false;
     }
+
+    $totp = TOTP::createFromSecret($secret);
+    $totp->setLabel($user->email ?? $user->name);
+    $totp->setIssuer('JewelTag');
+
+    $utcNow = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+
+    // Allow ±4 windows (±120 seconds) for clock drift
+    $result = $totp->verify((string) $code, $utcNow, 4);
+
+    Log::info('TOTP verify', [
+        'user'     => $user->id,
+        'secret'   => substr($secret, 0, 8) . '...',
+        'utc_time' => date('H:i:s', $utcNow),
+        'expected' => $totp->at($utcNow),
+        'entered'  => $code,
+        'result'   => $result,
+    ]);
+
+    return $result;
+}
 
     // ── SMS OTP ──────────────────────────────────────────────────────────────
 

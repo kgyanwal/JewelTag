@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
+
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,12 +11,13 @@ use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
+use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
 
 class User extends Authenticatable implements FilamentUser
 {
-    use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens,TwoFactorAuthenticatable {
-        hasPermissionTo as protected traitHasPermissionTo;
-    }
+use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens, TwoFactorAuthenticatable {
+    hasPermissionTo as protected traitHasPermissionTo;
+}
 
     protected $fillable = [
     'name', 'email', 'username', 'phone', 'password',
