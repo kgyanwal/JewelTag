@@ -730,7 +730,14 @@ class SaleResource extends Resource
                                             ->autosize(false)
                                             ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
                                             ->columnSpan(3),
-
+Textarea::make('job_description')
+    ->label('Job Description')
+    ->placeholder('e.g. resize to 7, replace clasp...')
+    ->maxLength(500)
+    ->rows(2)
+    ->autosize(false)
+    ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
+    ->columnSpan(3),
                                         TextInput::make('qty')
                                             ->numeric()
                                             ->default(1)

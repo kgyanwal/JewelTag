@@ -158,7 +158,7 @@ CustomDatePicker::make('dob')
                                         Grid::make(3)->schema([
                                             Select::make('gold_preference')
                                                 ->options(['Yellow' => 'Yellow', 'White' => 'White', 'Rose' => 'Rose', 'Platinum' => 'Platinum']),
-                                            Select::make('how_found_store')
+                                            Select::make('how_found_store')->label('How did you hear about us?')
                                                 ->options(['Facebook' => 'Facebook', 'Google' => 'Google', 'Friend' => 'Friend', 'Walked By' => 'Walked By']),
                                             Select::make('purchase_reason')
                                                 ->options(['Anniversary' => 'Anniversary', 'Birthday' => 'Birthday', 'Engagement' => 'Engagement']),
