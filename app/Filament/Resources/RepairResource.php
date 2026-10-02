@@ -58,7 +58,25 @@ class RepairResource extends Resource
         $tax     = round($taxableSubtotal * $taxRate, 2); // 🚀 CHANGED — tax only on taxable portion
         $total   = round($subtotal + $tax, 2);
 
-        $paid    = round(\App\Models\Payment::where('repair_id', $record->id)->sum('amount'), 2);
+              $saleId = $record->sale_id;
+        if (!$saleId) {
+            $saleId = \Illuminate\Support\Facades\DB::table('sale_items')
+                ->where('repair_id', $record->id)
+                ->value('sale_id');
+        }
+
+        $paid = round(
+            \App\Models\Payment::where(function ($q) use ($record, $saleId) {
+                $q->where('repair_id', $record->id);
+                if ($saleId) {
+                    $q->orWhere(function ($q2) use ($saleId) {
+                        $q2->where('sale_id', $saleId)
+                            ->whereNull('repair_id');
+                    });
+                }
+            })->sum('amount'),
+            2
+        );
         $balance = max(0, round($total - $paid, 2));
 
         return compact('subtotal', 'tax', 'total', 'paid', 'balance');
@@ -322,23 +340,23 @@ class RepairResource extends Resource
                                         ->icon('heroicon-o-tag')
                                         ->schema([
                                             // AFTER
-Grid::make(2)->schema([
-    Toggle::make('is_warranty')
-        ->label('Warranty')
-        ->helperText('Zeroes all costs')
-        ->onColor('success')->inline(false)->live()
-        ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
-            if ($state) {
-                // Zero out all service costs via the services array
-                $set('services', collect($get('services') ?? [])->map(function ($svc) {
-                    $svc['estimated_cost'] = 0;
-                    $svc['final_cost']     = 0;
-                    return $svc;
-                })->toArray());
-            }
-        }),
-    Toggle::make('is_from_store_stock')->label('From Our Stock')->inline(false)->live(),
-]),
+                                            Grid::make(2)->schema([
+                                                Toggle::make('is_warranty')
+                                                    ->label('Warranty')
+                                                    ->helperText('Zeroes all costs')
+                                                    ->onColor('success')->inline(false)->live()
+                                                    ->afterStateUpdated(function ($state, Forms\Get $get, Forms\Set $set) {
+                                                        if ($state) {
+                                                            // Zero out all service costs via the services array
+                                                            $set('services', collect($get('services') ?? [])->map(function ($svc) {
+                                                                $svc['estimated_cost'] = 0;
+                                                                $svc['final_cost']     = 0;
+                                                                return $svc;
+                                                            })->toArray());
+                                                        }
+                                                    }),
+                                                Toggle::make('is_from_store_stock')->label('From Our Stock')->inline(false)->live(),
+                                            ]),
                                             Select::make('original_product_id')
                                                 ->label('Search Store Stock No.')
                                                 ->placeholder('Search by stock number...')
@@ -455,53 +473,55 @@ Grid::make(2)->schema([
                                                     ]),
 
                                                     // Resize fields
-                                                   // AFTER
-Grid::make(2)->schema([
-    TextInput::make('current_size')->label('Current Size')->placeholder('e.g. 7')->nullable(),
-    TextInput::make('target_size')->label('Target Size')->placeholder('e.g. 8.5')->nullable(),
-])->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize'),
+                                                    // AFTER
+                                                    Grid::make(2)->schema([
+                                                        TextInput::make('current_size')->label('Current Size')->placeholder('e.g. 7')->nullable(),
+                                                        TextInput::make('target_size')->label('Target Size')->placeholder('e.g. 8.5')->nullable(),
+                                                    ])->visible(fn(Forms\Get $get) => $get('job_type') === 'Resize'),
 
-// Bench notes
-Textarea::make('job_instructions')
-    ->label('Bench Notes / Instructions')
-    ->placeholder('Specific instructions for the bench jeweler...')
-    ->columnSpanFull()->rows(2),
+                                                    // Bench notes
+                                                    Textarea::make('job_instructions')
+                                                        ->label('Bench Notes / Instructions')
+                                                        ->placeholder('Specific instructions for the bench jeweler...')
+                                                        ->columnSpanFull()->rows(2),
 
-// ── PRICING ROW ─────────────────────────────────
-Placeholder::make('pricing_divider')->label('')->hiddenLabel()
-    ->content(new HtmlString("
+                                                    // ── PRICING ROW ─────────────────────────────────
+                                                    Placeholder::make('pricing_divider')->label('')->hiddenLabel()
+                                                        ->content(new HtmlString("
         <div style='border-top:1.5px dashed #e2e8f0;margin:8px 0 4px;position:relative;'>
             <span style='position:absolute;top:-9px;left:12px;background:#fff;padding:0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;'>Pricing</span>
         </div>
     "))->columnSpanFull(),
+                                                    Hidden::make('is_tax_free')
+                                                        ->live()
+                                                        ->dehydrated(true),
+                                                    // AFTER
+                                                    Placeholder::make('is_tax_free_display')
+                                                        ->key('is_tax_free_display') // 🚀 FIX — hintAction() requires a unique key on the component
+                                                        ->label('')
+                                                        ->hiddenLabel()
+                                                        ->live()
+                                                        ->content(function (Forms\Get $get) {
+                                                            $isTaxFree = (bool) $get('../../is_tax_free');
+                                                            $bg     = $isTaxFree ? '#fef3c7' : '#f1f5f9';
+                                                            $color  = $isTaxFree ? '#92400e' : '#64748b';
+                                                            $label  = $isTaxFree ? '✅ Tax Free — no sales tax on this item' : '🔲 Taxable — click to mark tax free';
+                                                            return new HtmlString("<span style='display:inline-flex;align-items:center;gap:6px;background:{$bg};color:{$color};padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:default;'>{$label}</span>");
+                                                        })
+                                                        ->hintAction(
+                                                            FormAction::make('toggle_item_tax_free')
+                                                                ->label(fn(Forms\Get $get) => $get('../../is_tax_free') ? 'Mark Taxable' : 'Mark Tax Free')
+                                                                ->icon('heroicon-o-receipt-percent')
+                                                                ->color('warning')
+                                                                ->action(function (Forms\Get $get, Forms\Set $set) {
+                                                                    $set('../../is_tax_free', !$get('../../is_tax_free'));
+                                                                })
+                                                        )
+                                                        ->columnSpanFull(),
 
-// AFTER
-Placeholder::make('is_tax_free_display')
-    ->key('is_tax_free_display') // 🚀 FIX — hintAction() requires a unique key on the component
-    ->label('')
-    ->hiddenLabel()
-    ->live()
-    ->content(function (Forms\Get $get) {
-        $isTaxFree = (bool) $get('../../is_tax_free');
-        $bg     = $isTaxFree ? '#fef3c7' : '#f1f5f9';
-        $color  = $isTaxFree ? '#92400e' : '#64748b';
-        $label  = $isTaxFree ? '✅ Tax Free — no sales tax on this item' : '🔲 Taxable — click to mark tax free';
-        return new HtmlString("<span style='display:inline-flex;align-items:center;gap:6px;background:{$bg};color:{$color};padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:default;'>{$label}</span>");
-    })
-    ->hintAction(
-        FormAction::make('toggle_item_tax_free')
-            ->label(fn(Forms\Get $get) => $get('../../is_tax_free') ? 'Mark Taxable' : 'Mark Tax Free')
-            ->icon('heroicon-o-receipt-percent')
-            ->color('warning')
-            ->action(function (Forms\Get $get, Forms\Set $set) {
-                $set('../../is_tax_free', !$get('../../is_tax_free'));
-            })
-    )
-    ->columnSpanFull(),
-
-Grid::make(3)->schema([
-    TextInput::make('estimated_cost')
-        ->label('Quoted to Customer')
+                                                    Grid::make(3)->schema([
+                                                        TextInput::make('estimated_cost')
+                                                            ->label('Quoted to Customer')
                                                             ->numeric()->prefix('$')->default(0)->nullable()
                                                             ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;']),
 
@@ -527,20 +547,20 @@ Grid::make(3)->schema([
                                                                     }
                                                                     return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;color:#64748b;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;'>⏳ Pending Quote</span>");
                                                                 }
-                                                               // AFTER
-$f = floatval($final);
-if ($f > 0) {
-    // 🚀 FIX — show the actual tax-inclusive charge here, matching Ticket
-    // Summary and Payment & Status, instead of the pre-tax service amount.
-    // Previously this badge said "$200.00 charged" while Payment & Status
-    // said "$215.26 to collect" for the same repair — same charge, two
-    // different numbers on screen.
-    $isTaxFreeItem = $get('../../is_tax_free');
-    $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-    $taxRate = floatval($dbTax) / 100;
-    $fWithTax = $isTaxFreeItem ? $f : round($f * (1 + $taxRate), 2);
-    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($fWithTax, 2) . " total</span>");
-}
+                                                                // AFTER
+                                                                $f = floatval($final);
+                                                                if ($f > 0) {
+                                                                    // 🚀 FIX — show the actual tax-inclusive charge here, matching Ticket
+                                                                    // Summary and Payment & Status, instead of the pre-tax service amount.
+                                                                    // Previously this badge said "$200.00 charged" while Payment & Status
+                                                                    // said "$215.26 to collect" for the same repair — same charge, two
+                                                                    // different numbers on screen.
+                                                                    $isTaxFreeItem = $get('../../is_tax_free');
+                                                                    $dbTax   = \Illuminate\Support\Facades\DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                                                    $taxRate = floatval($dbTax) / 100;
+                                                                    $fWithTax = $isTaxFreeItem ? $f : round($f * (1 + $taxRate), 2);
+                                                                    return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#dcfce7;color:#166534;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ \$" . number_format($fWithTax, 2) . " total</span>");
+                                                                }
                                                                 return new HtmlString("<span style='display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;color:#16a34a;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #bbf7d0;'>✅ No Charge</span>");
                                                             }),
                                                     ])->columnSpanFull(),
@@ -597,7 +617,7 @@ if ($f > 0) {
                 ]),
 
                 // ── RIGHT ─────────────────────────────────────────────
-                             Group::make()->columnSpan(['lg' => 4])->schema([
+                Group::make()->columnSpan(['lg' => 4])->schema([
 
                     // 🚀 NEW — mirrors SaleResource's "Record Creation Date" header,
                     // same visual treatment, shown only on the edit page (there's no
@@ -649,7 +669,7 @@ if ($f > 0) {
                                 ->afterStateUpdated(fn($state, Forms\Set $set) => $set('sales_person_id', !empty($state) ? (int)$state[0] : null)),
                         ]),
 
-                                       Section::make('Repair Tracking')
+                    Section::make('Repair Tracking')
                         ->description('Drop-off, pickup, and repair location details.')
                         ->icon('heroicon-o-map-pin')
                         ->schema([
@@ -725,23 +745,23 @@ if ($f > 0) {
                                         </div>";
                                     }
 
-                                  // AFTER
-if (!$rows) {
-    return new HtmlString("<div style='text-align:center;color:#94a3b8;font-size:12px;padding:12px;'>No items added yet</div>");
-}
+                                    // AFTER
+                                    if (!$rows) {
+                                        return new HtmlString("<div style='text-align:center;color:#94a3b8;font-size:12px;padding:12px;'>No items added yet</div>");
+                                    }
 
-// 🚀 FIX — use the tax-inclusive repair_total (same value the
-// Payment & Status panel uses for "Total Amount to Collect")
-// instead of the pre-tax service sum. Previously this summary
-// showed "$35.00 charged" while Payment & Status showed
-// "$37.67 remaining" for the same repair — same total, two
-// different numbers on screen. Now both panels always agree.
-$taxInclusiveTotal = floatval($get('repair_total') ?? 0);
-$totalColor  = $anyFinal ? '#059669' : '#b45309';
-$totalLabel  = ($anyFinal ? 'Final Total' : 'Quoted Total') . ' (incl. tax)';
-$totalAmount = $taxInclusiveTotal > 0 ? $taxInclusiveTotal : ($anyFinal ? $grandFinal : $grandEst);
+                                    // 🚀 FIX — use the tax-inclusive repair_total (same value the
+                                    // Payment & Status panel uses for "Total Amount to Collect")
+                                    // instead of the pre-tax service sum. Previously this summary
+                                    // showed "$35.00 charged" while Payment & Status showed
+                                    // "$37.67 remaining" for the same repair — same total, two
+                                    // different numbers on screen. Now both panels always agree.
+                                    $taxInclusiveTotal = floatval($get('repair_total') ?? 0);
+                                    $totalColor  = $anyFinal ? '#059669' : '#b45309';
+                                    $totalLabel  = ($anyFinal ? 'Final Total' : 'Quoted Total') . ' (incl. tax)';
+                                    $totalAmount = $taxInclusiveTotal > 0 ? $taxInclusiveTotal : ($anyFinal ? $grandFinal : $grandEst);
 
-return new HtmlString("
+                                    return new HtmlString("
                                         <div>{$rows}</div>
                                         <div style='display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:2px solid #0f172a;'>
                                             <span style='font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0f172a;'>{$totalLabel}</span>
@@ -785,7 +805,7 @@ return new HtmlString("
                                 })
                                 ->columnSpanFull(),
 
-                                                        Select::make('payment_method')
+                            Select::make('payment_method')
                                 ->label('Payment Method')
                                 ->options(fn() => \App\Filament\Resources\SaleResource::getPaymentOptions())
                                 ->placeholder('Select Payment Method (optional)')
@@ -797,27 +817,47 @@ return new HtmlString("
                                 ->label('Total Amount to Collect')
                                 ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
                                 ->live()
-                                ->content(function (Forms\Get $get, ?Repair $record) {
-                                    $total     = floatval($get('repair_total') ?? 0);
-                                    $dbPaid    = $record ? \App\Models\Payment::where('repair_id', $record->id)->sum('amount') : 0;
-                                    $remaining = max(0, $total - $dbPaid);
-                                    $method    = strtoupper($get('payment_method') ?? '');
-                                    $badge     = $method
-                                        ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
-                                        : '';
-                                    $note = $dbPaid > 0
-                                        ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Repair total: \$" . number_format($total, 2) . "</div>"
-                                        : '';
-                                    return new HtmlString("
-                                        <div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
-                                            <div style='display:flex;align-items:center;'>
-                                                <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($remaining, 2) . "</span>
-                                                {$badge}
-                                            </div>
-                                            {$note}
-                                        </div>
-                                    ");
-                                }),
+                               ->content(function (Forms\Get $get, ?Repair $record) {
+    $total    = floatval($get('repair_total') ?? 0);
+    $method   = strtoupper($get('payment_method') ?? '');
+    $repairId = $record?->id;
+    $saleId   = $get('sale_id') ?: $record?->sale_id;
+
+    $dbPaid = 0;
+    if ($repairId) {
+        $dbPaid = round(
+            \App\Models\Payment::where(function ($q) use ($repairId, $saleId) {
+                $q->where('repair_id', $repairId);
+                if ($saleId) {
+                    $q->orWhere(function ($q2) use ($saleId) {
+                        $q2->where('sale_id', $saleId)
+                           ->whereNull('repair_id');
+                    });
+                }
+            })->sum('amount'),
+            2
+        );
+    }
+
+    $remaining = max(0, round($total - $dbPaid, 2));
+
+    $badge = $method
+        ? "<span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;'>{$method}</span>"
+        : '';
+    $note = $dbPaid > 0
+        ? "<div style='font-size:11px;color:#64748b;margin-top:4px;'>Already paid: <strong style='color:#16a34a;'>\$" . number_format($dbPaid, 2) . "</strong> &nbsp;·&nbsp; Repair total: \$" . number_format($total, 2) . "</div>"
+        : '';
+
+    return new HtmlString("
+        <div style='background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;'>
+            <div style='display:flex;align-items:center;'>
+                <span style='font-size:1.75rem;font-weight:900;color:#0284c7;'>\$" . number_format($remaining, 2) . "</span>
+                {$badge}
+            </div>
+            {$note}
+        </div>
+    ");
+}),
 
                             TextInput::make('amount_paid')
                                 ->label('Amount Received')
@@ -825,27 +865,47 @@ return new HtmlString("
                                 ->live(onBlur: true)
                                 ->visible(fn(Forms\Get $get) => !$get('is_split_payment'))
                                 ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set))
-                                ->helperText(function (Forms\Get $get, ?Repair $record) {
-                                    if (!$record) return 'What the customer is paying right now';
-                                    $dbPaid    = \App\Models\Payment::where('repair_id', $record->id)->sum('amount');
-                                    $total     = floatval($get('repair_total') ?? 0);
-                                    $remaining = max(0, $total - $dbPaid);
-                                    $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
-                                    $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
-                                    return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
-                                })
+                               ->helperText(function (Forms\Get $get, ?Repair $record) {
+    if (!$record) return 'What the customer is paying right now';
+    $repairId = $record->id;
+    $saleId   = $get('sale_id') ?: $record->sale_id;
+    $dbPaid   = round(
+        \App\Models\Payment::where(function ($q) use ($repairId, $saleId) {
+            $q->where('repair_id', $repairId);
+            if ($saleId) {
+                $q->orWhere(fn($q2) => $q2->where('sale_id', $saleId)->whereNull('repair_id'));
+            }
+        })->sum('amount'),
+        2
+    );
+    $total     = floatval($get('repair_total') ?? 0);
+    $remaining = max(0, $total - $dbPaid);
+    $color     = $remaining <= 0 ? '#16a34a' : '#dc2626';
+    $label     = $remaining <= 0 ? '✅ $0.00' : '$' . number_format($remaining, 2);
+    return new HtmlString("<strong style='color:{$color};'>Remaining Balance Due: {$label}</strong>");
+})
                                 ->hintAction(
                                     FormAction::make('fill_full_amount')
                                         ->label('Collect Remaining Balance')
                                         ->icon('heroicon-o-banknotes')
                                         ->color('success')
-                                        ->action(function (Forms\Get $get, Forms\Set $set, ?Repair $record) {
-                                            $total     = floatval($get('repair_total') ?? 0);
-                                            $dbPaid    = $record ? \App\Models\Payment::where('repair_id', $record->id)->sum('amount') : 0;
-                                            $remaining = max(0, round($total - $dbPaid, 2));
-                                            $set('amount_paid', number_format($remaining, 2, '.', ''));
-                                            self::updateRepairTotals($get, $set);
-                                        })
+                                       ->action(function (Forms\Get $get, Forms\Set $set, ?Repair $record) {
+    $total    = floatval($get('repair_total') ?? 0);
+    $repairId = $record?->id;
+    $saleId   = $get('sale_id') ?: $record?->sale_id;
+    $dbPaid   = $repairId ? round(
+        \App\Models\Payment::where(function ($q) use ($repairId, $saleId) {
+            $q->where('repair_id', $repairId);
+            if ($saleId) {
+                $q->orWhere(fn($q2) => $q2->where('sale_id', $saleId)->whereNull('repair_id'));
+            }
+        })->sum('amount'),
+        2
+    ) : 0;
+    $remaining = max(0, round($total - $dbPaid, 2));
+    $set('amount_paid', number_format($remaining, 2, '.', ''));
+    self::updateRepairTotals($get, $set);
+})
                                 ),
 
                             Placeholder::make('change_given_display')
@@ -961,12 +1021,17 @@ return new HtmlString("
                                     return new HtmlString("<span style='font-size:1.1rem;font-weight:900;color:{$color};'>\$" . number_format(max(0, $rem), 2) . "</span>");
                                 }),
 
-                            Hidden::make('repair_subtotal'),
-                            Hidden::make('repair_tax'),
-                            Hidden::make('repair_total')
-                                ->afterStateHydrated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
-                            Hidden::make('balance_due'),
-                            Hidden::make('change_given')->dehydrated(false),
+                          Hidden::make('repair_subtotal'),
+Hidden::make('repair_tax'),
+Hidden::make('repair_total')
+    ->afterStateHydrated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
+Hidden::make('balance_due'),
+Hidden::make('change_given')->dehydrated(false),
+Hidden::make('sale_id')
+    ->afterStateHydrated(function ($component, $state, ?Repair $record) {
+        $component->state($record?->sale_id);
+    })
+    ->dehydrated(false),
                         ]),
 
                     Section::make('Customer Contact')
@@ -1006,7 +1071,7 @@ return new HtmlString("
                 // Location, Pickup) at once, instead of toggling them one by
                 // one through the column-picker dropdown. State lives in
                 // session so it persists across page reloads for this user.
-            Tables\Actions\Action::make('toggle_expand_columns')
+                Tables\Actions\Action::make('toggle_expand_columns')
                     ->label(fn() => Session::get('repair_columns_expanded', false) ? '← Collapse Columns' : 'Expand Columns →')
                     ->icon(fn() => Session::get('repair_columns_expanded', false) ? 'heroicon-o-chevron-double-left' : 'heroicon-o-chevron-double-right')
                     ->color('danger')
@@ -1103,20 +1168,20 @@ return new HtmlString("
                     })
                     ->grow(false)->toggleable(),
 
-                             Tables\Columns\TextColumn::make('date_dropped')
+                Tables\Columns\TextColumn::make('date_dropped')
                     ->label('DROPPED')->date('m/d/y')->placeholder('—')->size('sm')->grow(false)
                     ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
-              Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
-                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                Tables\Columns\SelectColumn::make('dropped_by')->label('DROP BY')
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:110px;'])
+                    ->extraAttributes(['style' => 'min-width:110px;'])
                     ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
-              Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
-                    ->options(fn() => \App\Models\User::pluck('name','name')->toArray())
+                Tables\Columns\SelectColumn::make('picked_up_by')->label('PICK BY')
+                    ->options(fn() => \App\Models\User::pluck('name', 'name')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:110px;'])
+                    ->extraAttributes(['style' => 'min-width:110px;'])
                     ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\TextColumn::make('date_picked_up')
@@ -1134,25 +1199,26 @@ return new HtmlString("
                         default       => ['style' => 'min-width:90px;'],
                     })->toggleable(),
 
-                                Tables\Columns\ToggleColumn::make('is_ready_toggle')->label('READY?')
-                    ->getStateUsing(fn($record) => in_array($record->status,['ready','delivered']))
+                Tables\Columns\ToggleColumn::make('is_ready_toggle')->label('READY?')
+                    ->getStateUsing(fn($record) => in_array($record->status, ['ready', 'delivered']))
                     ->onColor('success')->offColor('gray')
-                    ->updateStateUsing(fn($record,$state) => $record->update(['status'=>$state?'ready':'received']))
+                    ->updateStateUsing(fn($record, $state) => $record->update(['status' => $state ? 'ready' : 'received']))
                     ->grow(false)
                     ->visible(fn() => Session::get('repair_columns_expanded', false)),
 
                 Tables\Columns\SelectColumn::make('repair_location')->label('LOCATION')
-                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location','!=','')->distinct()->pluck('repair_location','repair_location')->toArray())
+                    ->options(fn() => \App\Models\Repair::query()->whereNotNull('repair_location')->where('repair_location', '!=', '')->distinct()->pluck('repair_location', 'repair_location')->toArray())
                     ->selectablePlaceholder(true)->placeholder('—')->searchable()->grow(false)
-                    ->extraAttributes(['style'=>'min-width:150px;'])
+                    ->extraAttributes(['style' => 'min-width:150px;'])
                     ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\TextColumn::make('customer_pickup_date')->label('PICKUP')->placeholder('—')
-                    ->formatStateUsing(fn($state) => $state
-                        ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>".(\Carbon\Carbon::parse($state)->format('m/d/y'))."</span>")
-                        : '<span style="color:#9ca3af;">—</span>'
+                    ->formatStateUsing(
+                        fn($state) => $state
+                            ? new HtmlString("<span style='background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;'>" . (\Carbon\Carbon::parse($state)->format('m/d/y')) . "</span>")
+                            : '<span style="color:#9ca3af;">—</span>'
                     )->grow(false)
-                    ->toggleable(isToggledHiddenByDefault: false),  
+                    ->toggleable(isToggledHiddenByDefault: false),
 
                 Tables\Columns\TextColumn::make('origin')->label('ORIGIN')->html()
                     ->getStateUsing(function ($record) {
@@ -1408,7 +1474,7 @@ return new HtmlString("
                                 // that Sale's own payment log / totals, not just the repair's.
                                 \App\Models\Payment::create([
                                     'repair_id' => $record->id,
-                                    'sale_id'   => $record->sale_id,
+                                    'sale_id'   => null,
                                     'amount'    => round((float) $data['amount'], 2),
                                     'method'    => strtoupper(trim($data['payment_method'])),
                                     'paid_at'   => now(),
