@@ -1378,11 +1378,23 @@ Hidden::make('sale_id')
                                 self::handleRepairNotification($record, $data['notify_method'], $data['message']);
                         }),
 
-                    Tables\Actions\Action::make('billRepair')
-                        ->label('Bill to POS')->icon('heroicon-o-currency-dollar')->color('success')
-                        ->visible(fn(Repair $record) => !$record->sale_id)
-                        ->url(fn(Repair $record) => route('filament.admin.resources.sales.create', ['repair_id' => $record->id, 'customer_id' => $record->customer_id])),
-
+                  Tables\Actions\Action::make('billRepair')
+    ->label('Bill to POS')->icon('heroicon-o-currency-dollar')->color('success')
+    ->visible(fn(Repair $record) => !$record->sale_id)
+    ->requiresConfirmation()
+    ->modalHeading('Create Sale from Repair')
+    ->modalDescription('This will create a completed Sale record and link all existing deposits to it.')
+    ->modalSubmitActionLabel('Yes, Create Sale')
+    ->action(function (Repair $record) {
+        $sale = self::createSaleFromRepair($record);
+        Notification::make()
+            ->title("✅ Sale #{$sale->invoice_number} Created")
+            ->body('All existing deposits have been linked to this sale.')
+            ->success()
+            ->persistent()
+            ->send();
+        redirect(\App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]));
+    }),
                     // 🚀 NEW — Add Deposit, mirrors CustomOrderResource::recordPayment.
                     // Hidden if this repair is already linked to a Sale — in that case
                     // payment collection happens on the Sale side, not here, exactly like
@@ -1468,55 +1480,95 @@ Hidden::make('sale_id')
                             ];
                         })
                         ->action(function (Repair $record, array $data) {
-                            \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
-                                // 🚀 FIX — if this repair is already linked to a Sale (POS-origin
+                           \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data) {
+    $freshRecord = $record->fresh();
+    $amt    = round((float) $data['amount'], 2);
+    $method = strtoupper(trim($data['payment_method']));
+
+    // Deduplicate: block double-submit within 15 seconds
+    $alreadyExists = \App\Models\Payment::where('repair_id', $freshRecord->id)
+        ->where('amount', $amt)
+        ->where('method', $method)
+        ->where('paid_at', '>=', now()->subSeconds(15))
+        ->exists();
+
+    if ($alreadyExists) return;
+
+    // 🚀 FIX — if this repair is already linked to a Sale (POS-origin
                                 // repair), stamp sale_id on the new Payment too, so it shows up in
                                 // that Sale's own payment log / totals, not just the repair's.
-                                \App\Models\Payment::create([
-                                    'repair_id' => $record->id,
-                                    'sale_id'   => null,
-                                    'amount'    => round((float) $data['amount'], 2),
-                                    'method'    => strtoupper(trim($data['payment_method'])),
-                                    'paid_at'   => now(),
-                                    'store_id'  => $record->store_id ?? auth()->user()->store_id ?? 1,
-                                ]);
+                            \App\Models\Payment::create([
+    'repair_id' => $freshRecord->id,
+    'sale_id'   => $freshRecord->sale_id,
+    'amount'    => $amt,
+    'method'    => $method,
+    'paid_at'   => now(),
+    'store_id'  => $freshRecord->store_id ?? auth()->user()->store_id ?? 1,
+]);
                             });
 
-                            $calc = self::calculateRepairTotal($record->fresh());
-                            $record->update([
-                                'amount_paid' => $calc['paid'],
-                                'balance_due' => $calc['balance'],
-                            ]);
+                                                    $freshRecord = $record->fresh();
 
-                            // 🚀 FIX — resync the parent Sale's amount_paid/balance_due immediately
-                            // from the DB, exactly like CreateSale/EditSale do after their own
-                            // payment loops. Without this, the Sale record kept showing stale
-                            // totals even though a new Payment was just linked to it.
-                            if ($record->sale_id) {
-                                $sale = \App\Models\Sale::find($record->sale_id);
-                                if ($sale) {
-                                    $totalSalePaid = \App\Models\Payment::where('sale_id', $sale->id)->sum('amount');
-                                    $newBalance    = max(0, round(floatval($sale->final_total) - $totalSalePaid, 2));
-                                    $sale->update([
-                                        'amount_paid' => round($totalSalePaid, 2),
-                                        'balance_due' => $newBalance,
-                                        'status'      => $newBalance <= 0.01 ? 'completed' : $sale->status,
-                                    ]);
-                                }
-                            }
+                           \Illuminate\Support\Facades\DB::transaction(function () use ($record, $data, $freshRecord) {
+    $amt    = round((float) $data['amount'], 2);
+    $method = strtoupper(trim($data['payment_method']));
 
-                            if ($calc['balance'] <= 0.01 && !$record->sale_id) {
-                                $sale = self::createSaleFromRepair($record->fresh());
+    // Deduplicate: block double-submit within 15 seconds
+    $alreadyExists = \App\Models\Payment::where('repair_id', $freshRecord->id)
+        ->where('amount', $amt)
+        ->where('method', $method)
+        ->where('paid_at', '>=', now()->subSeconds(15))
+        ->exists();
+
+    if ($alreadyExists) return;
+
+    \App\Models\Payment::create([
+        'repair_id' => $freshRecord->id,
+        'sale_id'   => $freshRecord->sale_id,
+        'amount'    => $amt,
+        'method'    => $method,
+        'paid_at'   => now(),
+        'store_id'  => $freshRecord->store_id ?? auth()->user()->store_id ?? 1,
+    ]);
+});
+
+$calc = self::calculateRepairTotal($freshRecord->fresh());
+$freshRecord->update([
+    'amount_paid' => $calc['paid'],
+    'balance_due' => $calc['balance'],
+]);
+
+if ($freshRecord->sale_id) {
+    $sale = \App\Models\Sale::find($freshRecord->sale_id);
+    if ($sale) {
+        $totalSalePaid = \App\Models\Payment::where(function ($q) use ($sale, $freshRecord) {
+            $q->where('sale_id', $sale->id)
+              ->orWhere('repair_id', $freshRecord->id);
+        })->sum('amount');
+        $newBalance = max(0, round(floatval($sale->final_total) - $totalSalePaid, 2));
+        $sale->update([
+            'amount_paid' => round($totalSalePaid, 2),
+            'balance_due' => $newBalance,
+            'status'      => $newBalance <= 0.01 ? 'completed' : $sale->status,
+        ]);
+    }
+}
+
+if ($calc['balance'] <= 0.01 && !$freshRecord->sale_id) {
+    $sale = self::createSaleFromRepair($freshRecord->fresh());
                                 Notification::make()
                                     ->title("✅ Fully Paid — Sale #{$sale->invoice_number} Created")
                                     ->body('This repair now shows up in your Sales Report.')
                                     ->success()
                                     ->persistent()
                                     ->send();
-                            } else {
-                                Notification::make()->title('✅ Payment Recorded')->body('Balance updated successfully.')->success()->send();
-                            }
-                        }),
+                                      } else {
+                Notification::make()->title('✅ Payment Recorded')->body('Balance updated successfully.')->success()->send();
+            }
+
+            // Force the edit form to reload so Payment & Status reflects the new payment
+            redirect(\App\Filament\Resources\RepairResource::getUrl('edit', ['record' => $record->id]));
+        }),
                     Tables\Actions\Action::make('printJobPacket')
                         ->label('Print Job Packet')->icon('heroicon-o-printer')->color('info')
                         ->url(fn(Repair $record): string => route('repair.print', $record))->openUrlInNewTab(),

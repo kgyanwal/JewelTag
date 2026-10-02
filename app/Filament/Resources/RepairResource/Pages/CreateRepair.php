@@ -117,13 +117,26 @@ public function onWebcamPhotoRemoved(string $statePath, string $path): void
                     : strtoupper(trim($data['payment_method'] ?? 'CASH')),
             ]);
 
-            if ($calc['balance'] <= 0.01 && !$record->sale_id) {
+                       if ($calc['balance'] <= 0.01 && !$record->sale_id) {
                 $sale = RepairResource::createSaleFromRepair($record->fresh());
                 \Filament\Notifications\Notification::make()
                     ->title("✅ Fully Paid — Sale #{$sale->invoice_number} Created")
                     ->body('This repair now shows up in your Sales Report.')
                     ->success()
                     ->persistent()
+                    ->send();
+            } elseif ($calc['balance'] > 0.01 && !$record->sale_id) {
+                \Filament\Notifications\Notification::make()
+                    ->title('💰 Repair Created — Balance Remaining')
+                    ->body('$' . number_format($calc['balance'], 2) . ' still due. Use "Add Deposit" on the repair list to collect payment, or collect it from the linked Sale.')
+                    ->warning()
+                    ->persistent()
+                    ->actions([
+                        \Filament\Notifications\Actions\Action::make('got_it')
+                            ->label('Got it')
+                            ->color('gray')
+                            ->close(),
+                    ])
                     ->send();
             }
         });
