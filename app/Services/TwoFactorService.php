@@ -41,74 +41,85 @@ class TwoFactorService
         return $writer->writeString($uri);
     }
 
-   public function verifyTotp(User $user, string $code): bool
-{
-    // Use getRawOriginal to bypass any trait/accessor interference
-    $secret = $user->getRawOriginal('two_factor_secret') ?? $user->two_factor_secret;
+    /**
+     * Verify a 6-digit TOTP code against a given secret.
+     * Allows ±2 time windows (±60 seconds) for clock drift.
+     * Always uses UTC (time() is timezone-independent).
+     */
+    public function verifyTotpSecret(string $secret, string $code): bool
+    {
+        $code = preg_replace('/\D/', '', $code);
 
-    if (empty($secret)) {
-        Log::warning("TOTP: No secret found for user {$user->id}");
+        if ($secret === '' || strlen($code) !== 6) {
+            return false;
+        }
+
+        $totp = TOTP::createFromSecret($secret);
+        $now  = time();
+
+        foreach ([-2, -1, 0, 1, 2] as $offset) {
+            if (hash_equals($totp->at($now + ($offset * 30)), $code)) {
+                return true;
+            }
+        }
+
+        Log::warning('TOTP failed', ['server_utc' => gmdate('c')]);
+
         return false;
     }
 
-    $totp = TOTP::createFromSecret($secret);
-    $totp->setLabel($user->email ?? $user->name);
-    $totp->setIssuer('JewelTag');
+    /**
+     * Verify a TOTP code against the secret saved on the user.
+     */
+    public function verifyTotp(User $user, string $code): bool
+    {
+        $secret = (string) $user->two_factor_secret;
 
-    $utcNow = (new \DateTime('now', new \DateTimeZone('UTC')))->getTimestamp();
+        if ($secret === '') {
+            Log::warning("TOTP: No secret found for user {$user->id}");
+            return false;
+        }
 
-    // Allow ±4 windows (±120 seconds) for clock drift
-    $result = $totp->verify((string) $code, $utcNow, 4);
-
-    Log::info('TOTP verify', [
-        'user'     => $user->id,
-        'secret'   => substr($secret, 0, 8) . '...',
-        'utc_time' => date('H:i:s', $utcNow),
-        'expected' => $totp->at($utcNow),
-        'entered'  => $code,
-        'result'   => $result,
-    ]);
-
-    return $result;
-}
+        return $this->verifyTotpSecret($secret, $code);
+    }
 
     // ── SMS OTP ──────────────────────────────────────────────────────────────
 
-   public function sendSmsOtp(User $user): array
-{
-    // Get phone from STORE, not user
-    $store = \App\Models\Store::first();
-    $phone = $store?->phone;
+    public function sendSmsOtp(User $user): array
+    {
+        // Get phone from STORE, not user
+        $store = \App\Models\Store::first();
+        $phone = $store?->phone;
 
-    if (empty($phone)) {
-        return ['success' => false, 'error' => 'no_phone'];
+        if (empty($phone)) {
+            return ['success' => false, 'error' => 'no_phone'];
+        }
+
+        // Rate limit per user
+        $key      = 'otp_rate_' . $user->id;
+        $attempts = Cache::get($key, 0);
+        if ($attempts >= 5) {
+            return ['success' => false, 'error' => 'rate_limited'];
+        }
+        Cache::put($key, $attempts + 1, now()->addMinutes(10));
+
+        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        $user->update([
+            'two_factor_code'       => Hash::make($code),
+            'two_factor_expires_at' => now()->addMinutes(10),
+        ]);
+
+        $sent = $this->dispatchSns($phone, $code, $store);
+
+        if (!$sent) {
+            return ['success' => false, 'error' => 'sms_failed'];
+        }
+
+        Log::info("2FA SMS sent to store phone for user {$user->id} ({$user->name})");
+
+        return ['success' => true, 'phone' => $this->maskPhone($phone)];
     }
-
-    // Rate limit per user still
-    $key      = 'otp_rate_' . $user->id;
-    $attempts = Cache::get($key, 0);
-    if ($attempts >= 5) {
-        return ['success' => false, 'error' => 'rate_limited'];
-    }
-    Cache::put($key, $attempts + 1, now()->addMinutes(10));
-
-    $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
-    $user->update([
-        'two_factor_code'       => Hash::make($code),
-        'two_factor_expires_at' => now()->addMinutes(10),
-    ]);
-
-    $sent = $this->dispatchSns($phone, $code, $store);
-
-    if (!$sent) {
-        return ['success' => false, 'error' => 'sms_failed'];
-    }
-
-    Log::info("2FA SMS sent to store phone for user {$user->id} ({$user->name})");
-
-    return ['success' => true, 'phone' => $this->maskPhone($phone)];
-}
 
     public function verifySmsOtp(User $user, string $code): bool
     {
@@ -169,73 +180,77 @@ class TwoFactorService
     }
 
     /**
-     * Verify a backup code. Removes it after use (one-time).
+     * Verify a store backup code (stored on the tenant record).
+     * Codes are reusable until expiry; attempts are limited to 8 per day.
      */
-public function verifyBackupCode(User $user, string $code): bool
-{
-    if (!function_exists('tenant') || !tenant()) {
-        return false;
-    }
-
-    $tenantData = \Illuminate\Support\Facades\DB::connection('mysql')
-        ->table('tenants')
-        ->where('id', tenant()->id)
-        ->first();
-
-    // Check enabled
-    if (!($tenantData->backup_codes_enabled ?? true)) {
-        Log::warning("2FA: Backup codes disabled for tenant {$tenantData->id}");
-        return false;
-    }
-
-    // Check expiry
-    if (!empty($tenantData->backup_codes_expires_at) &&
-        now()->isAfter($tenantData->backup_codes_expires_at)) {
-        Log::warning("2FA: Backup codes expired for tenant {$tenantData->id}");
-        return false;
-    }
-
-    // ── Check daily attempt limit (8 per day) ────────────────────────────
-    $attemptKey = 'backup_code_attempts_' . tenant()->id . '_' . $user->id . '_' . now()->format('Y-m-d');
-    $attempts   = Cache::get($attemptKey, 0);
-
-    if ($attempts >= 8) {
-        Log::warning("2FA: Backup code daily limit reached for user {$user->id} tenant {$tenantData->id}");
-        return false;
-    }
-
-    // Get stored codes
-    $stored = json_decode($tenantData->two_factor_backup_codes ?? '[]', true);
-
-    if (empty($stored)) {
-        return false;
-    }
-
-    // Normalize input
-    $normalized = strtoupper(str_replace(['-', ' '], '', trim($code)));
-
-    foreach ($stored as $hashedCode) {
-        if (\Illuminate\Support\Facades\Hash::check($normalized, $hashedCode) ||
-            \Illuminate\Support\Facades\Hash::check($code, $hashedCode) ||
-            \Illuminate\Support\Facades\Hash::check(trim($code), $hashedCode)) {
-
-            // ── Code matched — increment attempt counter but DON'T remove code ──
-            Cache::put($attemptKey, $attempts + 1, now()->endOfDay());
-
-            Log::warning("2FA: Backup code used by user {$user->id} ({$user->name}) for tenant {$tenantData->id} — attempt " . ($attempts + 1) . "/8 today");
-
-            return true;
+    public function verifyBackupCode(User $user, string $code): bool
+    {
+        if (!function_exists('tenant') || !tenant()) {
+            return false;
         }
+
+        $tenantData = DB::connection('mysql')
+            ->table('tenants')
+            ->where('id', tenant()->id)
+            ->first();
+
+        if (!$tenantData) {
+            return false;
+        }
+
+        // Check enabled
+        if (!($tenantData->backup_codes_enabled ?? true)) {
+            Log::warning("2FA: Backup codes disabled for tenant {$tenantData->id}");
+            return false;
+        }
+
+        // Check expiry
+        if (!empty($tenantData->backup_codes_expires_at) &&
+            now()->isAfter($tenantData->backup_codes_expires_at)) {
+            Log::warning("2FA: Backup codes expired for tenant {$tenantData->id}");
+            return false;
+        }
+
+        // Daily attempt limit (8 per day)
+        $attemptKey = 'backup_code_attempts_' . tenant()->id . '_' . $user->id . '_' . now()->format('Y-m-d');
+        $attempts   = Cache::get($attemptKey, 0);
+
+        if ($attempts >= 8) {
+            Log::warning("2FA: Backup code daily limit reached for user {$user->id} tenant {$tenantData->id}");
+            return false;
+        }
+
+        // Get stored codes
+        $stored = json_decode($tenantData->two_factor_backup_codes ?? '[]', true);
+
+        if (empty($stored)) {
+            return false;
+        }
+
+        // Normalize input
+        $normalized = strtoupper(str_replace(['-', ' '], '', trim($code)));
+
+        foreach ($stored as $hashedCode) {
+            if (Hash::check($normalized, $hashedCode) ||
+                Hash::check($code, $hashedCode) ||
+                Hash::check(trim($code), $hashedCode)) {
+
+                // Matched — increment attempt counter but DON'T remove code
+                Cache::put($attemptKey, $attempts + 1, now()->endOfDay());
+
+                Log::warning("2FA: Backup code used by user {$user->id} ({$user->name}) for tenant {$tenantData->id} — attempt " . ($attempts + 1) . "/8 today");
+
+                return true;
+            }
+        }
+
+        // Wrong code — still increment to prevent brute force
+        Cache::put($attemptKey, $attempts + 1, now()->endOfDay());
+
+        Log::warning("2FA: Wrong backup code by user {$user->id} for tenant {$tenantData->id} — attempt " . ($attempts + 1) . "/8 today");
+
+        return false;
     }
-
-    // Wrong code — still increment attempt counter to prevent brute force
-    Cache::put($attemptKey, $attempts + 1, now()->endOfDay());
-
-    Log::warning("2FA: Wrong backup code by user {$user->id} for tenant {$tenantData->id} — attempt " . ($attempts + 1) . "/8 today");
-
-    return false;
-}
- 
 
     /**
      * Count remaining backup codes for a user.
@@ -243,14 +258,13 @@ public function verifyBackupCode(User $user, string $code): bool
     public function backupCodesRemaining(User $user): int
     {
         $stored = json_decode($user->two_factor_backup_codes ?? '[]', true);
-        return count($stored);
+        return is_array($stored) ? count($stored) : 0;
     }
 
     // ── Unified verify ───────────────────────────────────────────────────────
 
     /**
-     * Verify code using whichever method user has set up.
-     * Also checks backup codes as fallback.
+     * Verify code using whichever method the user has set up.
      */
     public function verify(User $user, string $code, bool $isBackupCode = false): bool
     {
@@ -278,45 +292,45 @@ public function verifyBackupCode(User $user, string $code): bool
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-   protected function dispatchSns(string $phone, string $code, ?\App\Models\Store $store = null): bool
-{
-    try {
-        $settings  = DB::table('site_settings')->pluck('value', 'key');
-        $accessKey = $settings['aws_sms_access_key_id']     ?? config('services.sns.key');
-        $secretKey = $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret');
-        $region    = $settings['aws_sms_default_region']    ?? 'us-east-2';
+    protected function dispatchSns(string $phone, string $code, ?\App\Models\Store $store = null): bool
+    {
+        try {
+            $settings  = DB::table('site_settings')->pluck('value', 'key');
+            $accessKey = $settings['aws_sms_access_key_id']     ?? config('services.sns.key');
+            $secretKey = $settings['aws_sms_secret_access_key'] ?? config('services.sns.secret');
+            $region    = $settings['aws_sms_default_region']    ?? 'us-east-2';
 
-        // Use store name as sender ID (max 11 chars, alphanumeric)
-        $storeName = $store?->name ?? 'JewelTag';
-        $senderId  = substr(preg_replace('/[^A-Za-z0-9]/', '', $storeName), 0, 11) ?: 'JewelTag';
+            // Use store name as sender ID (max 11 chars, alphanumeric)
+            $storeName = $store?->name ?? 'JewelTag';
+            $senderId  = substr(preg_replace('/[^A-Za-z0-9]/', '', $storeName), 0, 11) ?: 'JewelTag';
 
-        $sns = new SnsClient([
-            'version'     => 'latest',
-            'region'      => $region,
-            'credentials' => ['key' => $accessKey, 'secret' => $secretKey],
-        ]);
+            $sns = new SnsClient([
+                'version'     => 'latest',
+                'region'      => $region,
+                'credentials' => ['key' => $accessKey, 'secret' => $secretKey],
+            ]);
 
-        $sns->publish([
-            'Message'     => "{$senderId} login code: {$code}\nExpires in 10 min. Do NOT share.",
-            'PhoneNumber' => $this->formatPhone($phone),
-            'MessageAttributes' => [
-                'AWS.SNS.SMS.SMSType' => [
-                    'DataType'    => 'String',
-                    'StringValue' => 'Transactional',
+            $sns->publish([
+                'Message'     => "{$senderId} login code: {$code}\nExpires in 10 min. Do NOT share.",
+                'PhoneNumber' => $this->formatPhone($phone),
+                'MessageAttributes' => [
+                    'AWS.SNS.SMS.SMSType' => [
+                        'DataType'    => 'String',
+                        'StringValue' => 'Transactional',
+                    ],
+                    'AWS.SNS.SMS.SenderID' => [
+                        'DataType'    => 'String',
+                        'StringValue' => $senderId,
+                    ],
                 ],
-                'AWS.SNS.SMS.SenderID' => [
-                    'DataType'    => 'String',
-                    'StringValue' => $senderId,
-                ],
-            ],
-        ]);
+            ]);
 
-        return true;
-    } catch (\Exception $e) {
-        Log::error('2FA SNS Error: ' . $e->getMessage());
-        return false;
+            return true;
+        } catch (\Exception $e) {
+            Log::error('2FA SNS Error: ' . $e->getMessage());
+            return false;
+        }
     }
-}
 
     protected function formatPhone(string $phone): string
     {

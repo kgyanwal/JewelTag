@@ -166,10 +166,12 @@ class TwoFactorController extends Controller
             return redirect()->route('two-factor.challenge');
         }
 
-        $secret = $user->two_factor_secret ?? $this->twoFactor->generateTotpSecret();
-
-        if (!$user->two_factor_secret) {
-            $user->update(['two_factor_secret' => $secret]);
+        // Pending secret lives in the session until a code is confirmed.
+        // It is only saved to the user after the first valid code.
+        $secret = Session::get('two_factor_setup_secret');
+        if (!$secret) {
+            $secret = $this->twoFactor->generateTotpSecret();
+            Session::put('two_factor_setup_secret', $secret);
         }
 
         $uri    = $this->twoFactor->getTotpUri($user, $secret);
@@ -198,12 +200,27 @@ class TwoFactorController extends Controller
         }
 
         if ($method === 'totp') {
-            if (!$this->twoFactor->verifyTotp($user, $request->code)) {
+            $secret = Session::get('two_factor_setup_secret');
+
+            if (!$secret) {
+                return redirect()->route('two-factor.setup')
+                    ->withErrors(['code' => 'Setup expired. Please scan the new QR code.']);
+            }
+
+            if (!$this->twoFactor->verifyTotpSecret($secret, $request->code)) {
                 return back()->withErrors([
-                    'code' => 'Invalid code. Make sure your authenticator app time is correct.',
+                    'code' => 'Invalid code. Make sure you are using the latest JewelTag entry in your app.',
                 ]);
             }
-            $user->update(['two_factor_method' => 'totp', 'two_factor_confirmed' => true]);
+
+            // forceFill avoids silent failure if the columns are not in $fillable
+            $user->forceFill([
+                'two_factor_secret'    => $secret,
+                'two_factor_method'    => 'totp',
+                'two_factor_confirmed' => true,
+            ])->save();
+
+            Session::forget('two_factor_setup_secret');
         }
 
         if ($method === 'sms') {
@@ -289,48 +306,49 @@ class TwoFactorController extends Controller
 
     // ── BACK TO PIN ──────────────────────────────────────────────────────────
 
-   public function back()
-{
-    Session::forget([
-        'two_factor_verified',
-        'two_factor_sms_sent',
-        'active_staff_id',
-        'active_staff_name',
-        'active_staff_role',
-        'pin_verified_at',
-    ]);
+    public function back()
+    {
+        Session::forget([
+            'two_factor_verified',
+            'two_factor_sms_sent',
+            'two_factor_setup_secret',
+            'active_staff_id',
+            'active_staff_name',
+            'active_staff_role',
+            'pin_verified_at',
+        ]);
 
-    auth()->logout();
-    Session::invalidate();
-    Session::regenerateToken();
+        auth()->logout();
+        Session::invalidate();
+        Session::regenerateToken();
 
-    return redirect()->route('filament.admin.auth.login');
-}
-
-    public function resetMethod()
-{
-    $user = $this->staffUser();
- 
-    if (!$user) {
         return redirect()->route('filament.admin.auth.login');
     }
- 
-    // Clear 2FA setup — forces fresh setup on next middleware check
-    $user->update([
-        'two_factor_secret'    => null,
-        'two_factor_method'    => null,
-        'two_factor_confirmed' => false,
-        'two_factor_code'      => null,
-        'two_factor_expires_at'=> null,
-    ]);
- 
-    // Clear 2FA session so middleware sends to setup
-    Session::forget(['two_factor_verified', 'two_factor_sms_sent']);
- 
-    \Illuminate\Support\Facades\Log::info("2FA method reset by user {$user->id} ({$user->name})");
- 
-    // Redirect to setup page
-    return redirect()->route('two-factor.setup')
-        ->with('status', 'Your 2FA method has been reset. Please set up your new method.');
-}
+
+    public function resetMethod()
+    {
+        $user = $this->staffUser();
+
+        if (!$user) {
+            return redirect()->route('filament.admin.auth.login');
+        }
+
+        // Clear 2FA setup — forces fresh setup on next middleware check
+        $user->forceFill([
+            'two_factor_secret'     => null,
+            'two_factor_method'     => null,
+            'two_factor_confirmed'  => false,
+            'two_factor_code'       => null,
+            'two_factor_expires_at' => null,
+        ])->save();
+
+        // Clear 2FA session so middleware sends to setup
+        Session::forget(['two_factor_verified', 'two_factor_sms_sent', 'two_factor_setup_secret']);
+
+        \Illuminate\Support\Facades\Log::info("2FA method reset by user {$user->id} ({$user->name})");
+
+        // Redirect to setup page
+        return redirect()->route('two-factor.setup')
+            ->with('status', 'Your 2FA method has been reset. Please set up your new method.');
+    }
 }
