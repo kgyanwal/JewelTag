@@ -29,8 +29,8 @@ class SaleIntegrationTest extends TestCase
     // it). We manage the tenant transaction manually instead, so timing is
     // fully in our control from start to finish.
 
-    protected string $tenantId = 'random';
-    protected string $tenantDatabase = 'tenantrandom';
+ protected string $tenantId       = 'lxd';
+protected string $tenantDatabase = 'tenantlxd';
 
     protected Tenant $tenant;
     protected User $user;

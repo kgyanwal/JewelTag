@@ -513,22 +513,67 @@ class RepairResource extends Resource
                                                                 ->label(fn(Forms\Get $get) => $get('../../is_tax_free') ? 'Mark Taxable' : 'Mark Tax Free')
                                                                 ->icon('heroicon-o-receipt-percent')
                                                                 ->color('warning')
-                                                                ->action(function (Forms\Get $get, Forms\Set $set) {
-                                                                    $set('../../is_tax_free', !$get('../../is_tax_free'));
-                                                                })
+                                                               ->action(function (
+    Forms\Get $get,
+    Forms\Set $set,
+    \Filament\Forms\Contracts\HasForms $livewire
+) {
+    // Toggle tax-free state for this jewelry item.
+    $set('../../is_tax_free', !$get('../../is_tax_free'));
+
+    // IMPORTANT:
+    // The action is inside a nested Services repeater, so the parent
+    // Repeater::afterStateUpdated() does not reliably fire here.
+    // Recalculate the complete repair totals immediately.
+    self::updateRepairTotals(
+        fn ($path) => data_get($livewire->data, $path),
+        fn ($path, $value) => data_set($livewire->data, $path, $value)
+    );
+})
                                                         )
                                                         ->columnSpanFull(),
 
                                                     Grid::make(3)->schema([
                                                         TextInput::make('estimated_cost')
-                                                            ->label('Quoted to Customer')
-                                                            ->numeric()->prefix('$')->default(0)->nullable()
-                                                            ->extraInputAttributes(['style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;']),
+    ->label('Quoted to Customer')
+    ->numeric()
+    ->prefix('$')
+    ->default(0)
+    ->nullable()
+    ->live(onBlur: true)
+    ->afterStateUpdated(function (
+        Forms\Get $get,
+        Forms\Set $set,
+        \Filament\Forms\Contracts\HasForms $livewire
+    ) {
+        self::updateRepairTotals(
+            fn ($path) => data_get($livewire->data, $path),
+            fn ($path, $value) => data_set($livewire->data, $path, $value)
+        );
+    })
+    ->extraInputAttributes([
+        'style' => 'background:#fffbeb;border-color:#f59e0b;font-weight:700;font-size:1rem;'
+    ]),
 
-                                                        TextInput::make('final_cost')
-                                                            ->label('Final Charged')
-                                                            ->numeric()->prefix('$')->nullable()
-                                                            ->extraInputAttributes(['style' => 'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;']),
+                                                       TextInput::make('final_cost')
+    ->label('Final Charged')
+    ->numeric()
+    ->prefix('$')
+    ->nullable()
+    ->live(onBlur: true)
+    ->afterStateUpdated(function (
+        Forms\Get $get,
+        Forms\Set $set,
+        \Filament\Forms\Contracts\HasForms $livewire
+    ) {
+        self::updateRepairTotals(
+            fn ($path) => data_get($livewire->data, $path),
+            fn ($path, $value) => data_set($livewire->data, $path, $value)
+        );
+    })
+    ->extraInputAttributes([
+        'style' => 'background:#f0fdf4;border-color:#22c55e;font-weight:700;font-size:1rem;'
+    ]),
 
                                                         Placeholder::make('service_status')
                                                             ->label('Status')
@@ -607,12 +652,13 @@ class RepairResource extends Resource
                                                 ->columnSpanFull(),
                                         ]),
                                 ])
-                                ->defaultItems(1)
-                                ->addActionLabel('+ Add Another Jewelry Item')
-                                ->itemLabel(fn(array $state): ?string => $state['item_description'] ?? 'New Item')
-                                ->collapsible()->cloneable()->reorderable(true)
-                                ->live()
-                                ->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
+                              ->defaultItems(1)
+->addActionLabel('+ Add Another Jewelry Item')
+->itemLabel(fn(array $state): ?string => $state['item_description'] ?? 'New Item')
+->collapsible()
+->cloneable()
+->reorderable(true)
+->afterStateUpdated(fn(Forms\Get $get, Forms\Set $set) => self::updateRepairTotals($get, $set)),
                         ]),
                 ]),
 
