@@ -655,7 +655,8 @@ $target   = $p['target'] ?? 'regular';
 
     protected function getRedirectUrl(): string
     {
-        return $this->getResource()::getUrl('index');
+        // 🚀 After a sale is created, land on Find Sale instead of the Quick Sale list
+        return \App\Filament\Pages\FindSale::getUrl();
     }
 
     public function checkDeviceChargeStatus(): void

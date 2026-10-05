@@ -1,6 +1,22 @@
 <x-filament-panels::page>
 <style>
     /* ── RESET & BASE ── */
+        /* ── PAGE TITLE: dark text on this light page ── */
+    .fi-page:has(.eod) .fi-header-heading,
+    .fi-page:has(.eod) .fi-header-heading * {
+        color: #0f172a !important;
+        text-shadow: none !important;
+    }
+    .fi-page:has(.eod) .fi-breadcrumbs,
+    .fi-page:has(.eod) .fi-breadcrumbs * {
+        color: #64748b !important;
+    }
+    .fi-page:has(.eod) .fi-breadcrumbs-item:last-child,
+    .fi-page:has(.eod) .fi-breadcrumbs-item:last-child * {
+        color: #0f172a !important;
+    }
+
+    /* ── RESET & BASE ── */
     .fi-body, .fi-main, .fi-page, .fi-main-ctn { background: #f8fafc !important; }
     .dark .fi-body, .dark .fi-main, .dark .fi-page, .dark .fi-main-ctn { background: #09090b !important; }
 
