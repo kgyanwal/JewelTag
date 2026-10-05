@@ -31,25 +31,22 @@ class EditCustomOrder extends EditRecord
         if (empty($record->sales_person_list) && $record->staff_id) {
             $data['sales_person_list'] = [$record->staff_id];
         }
-        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-        $grandTotal = floatval($record->quoted_price) * (1 + $taxRate);
+        // AFTER
+$isTaxFree  = (bool)($record->is_tax_free ?? false);
+$dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+$taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
 
-        // ── SOURCE OF TRUTH: all payments linked to this custom order ──────
-        // Includes payments made directly on the custom order AND
-        // payments made via the linked sale (e.g. $500 paid at sale checkout)
-        $directPayments = Payment::where('custom_order_id', $record->id)->sum('amount');
+// 🚀 FIX — same math as CustomOrderResource::calculateBalance(): include discount,
+// trade-in and warranty, not just quoted_price.
+$discAmt    = floatval($record->discount_amount ?? 0);
+$tradeIn    = $record->has_trade_in ? floatval($record->trade_in_value ?? 0) : 0;
+$warranty   = $record->has_warranty ? floatval($record->warranty_charge ?? 0) : 0;
+$afterDisc  = max(0, floatval($record->quoted_price) - $discAmt - $tradeIn);
+$grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
 
-        // Also check sale payments if linked — don't double-count
-        $salePayments = 0;
-        if ($record->sale_id) {
-            $salePayments = Payment::where('sale_id', $record->sale_id)
-                ->whereNull('custom_order_id')
-                ->sum('amount');
-        }
-
-        $actualPaid = $directPayments + $salePayments;
+// 🚀 FIX — ONLY payments tagged to THIS custom order count. Regular sale payments
+// and store credit on the same invoice belong to the sale's other line items.
+$actualPaid = Payment::where('custom_order_id', $record->id)->sum('amount');
 
         // Fallback if no payments recorded at all
         if ($actualPaid == 0) {
@@ -74,6 +71,21 @@ class EditCustomOrder extends EditRecord
         $data['balance_due'] = $trueBalance;
         $data['amount_paid'] = round($actualPaid, 2);
 
+
+        $orderPayments = Payment::where('custom_order_id', $record->id)->orderBy('paid_at')->get();
+
+if ($orderPayments->isNotEmpty()) {
+    // Rows are always loaded, so switching Split on shows the real payments
+    $data['split_deposit_payments'] = $orderPayments->map(fn($p) => [
+        'id'     => $p->id,
+        'method' => strtoupper($p->method),
+        'amount' => round((float) $p->amount, 2),
+    ])->values()->toArray();
+
+    // Toggle starts ON only when there are several payments
+    $data['is_split_deposit']       = $orderPayments->count() > 1;
+    $data['initial_payment_method'] = strtoupper($orderPayments->first()->method);
+}
         return $data;
     }
 
@@ -88,7 +100,7 @@ class EditCustomOrder extends EditRecord
         $quoted         = floatval($data['quoted_price'] ?? $this->record->quoted_price ?? 0);
         $discountAmount = floatval($data['discount_amount'] ?? $this->record->discount_amount ?? 0);
         $tradeIn        = ($data['has_trade_in'] ?? 0) == 1 ? floatval($data['trade_in_value'] ?? 0) : 0;
-        $afterDiscount  = max(0, $quoted - $discountAmount);
+        $afterDiscount  = max(0, $quoted - $discountAmount - $tradeIn);
 
         $hasWarranty    = ($data['has_warranty'] ?? $this->record->has_warranty ?? 0) == 1;
         $warrantyCharge = $hasWarranty ? floatval($data['warranty_charge'] ?? $this->record->warranty_charge ?? 0) : 0;
@@ -105,14 +117,9 @@ class EditCustomOrder extends EditRecord
 
         if (\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])) {
             $actualPaid = $formAmountPaid;
-        } else {
-            $directPayments = Payment::where('custom_order_id', $this->record->id)->sum('amount');
-            $salePayments   = 0;
-            if ($this->record->sale_id) {
-                $salePayments = Payment::where('sale_id', $this->record->sale_id)->whereNull('custom_order_id')->sum('amount');
-            }
-            $actualPaid = $directPayments + $salePayments;
-        }
+      } else {
+    $actualPaid = Payment::where('custom_order_id', $this->record->id)->sum('amount');
+}
 
         $data['amount_paid'] = round($actualPaid, 2);
         $data['balance_due'] = round(max(0, $grandTotal - $actualPaid), 2);
@@ -137,20 +144,36 @@ class EditCustomOrder extends EditRecord
 
         DB::transaction(function () use ($order) {
 
-            if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
-                // ── SPLIT: delete old payments and re-create ───────────────
-                Payment::where('custom_order_id', $order->id)->delete();
+            // AFTER
+if ($this->isSplitDeposit && !empty($this->splitDepositPayments)) {
+    $keepIds = [];
 
-                foreach ($this->splitDepositPayments as $payment) {
-                    Payment::create([
-                        'custom_order_id' => $order->id,
-                        'sale_id'         => $order->sale_id ?? null,
-                        'amount'          => round((float) $payment['amount'], 2),
-                        'method'          => strtoupper(trim($payment['method'])),
-                        'paid_at'         => now(),
-                    ]);
-                }
-            } elseif ($this->depositMethod) {
+    foreach ($this->splitDepositPayments as $payment) {
+        $attrs    = [
+            'amount' => round((float) $payment['amount'], 2),
+            'method' => strtoupper(trim($payment['method'])),
+        ];
+        $existing = !empty($payment['id'])
+            ? Payment::where('custom_order_id', $order->id)->find($payment['id'])
+            : null;
+
+        if ($existing) {
+            $existing->update($attrs);          // keeps id + original paid_at
+            $keepIds[] = $existing->id;
+        } else {
+            $new = Payment::create($attrs + [
+                'custom_order_id' => $order->id,
+                'sale_id'         => $order->sale_id ?? null,
+                'paid_at'         => now(),
+                'store_id'        => $order->sale?->store_id ?? auth()->user()->store_id ?? 1,
+            ]);
+            $keepIds[] = $new->id;
+        }
+    }
+
+    // rows the admin removed from the repeater
+    Payment::where('custom_order_id', $order->id)->whereNotIn('id', $keepIds)->delete();
+} elseif ($this->depositMethod) {
                 // ── SINGLE: get all payments for this custom order ─────────
                 $existingPayments = Payment::where('custom_order_id', $order->id)
                     ->orderBy('paid_at', 'asc')

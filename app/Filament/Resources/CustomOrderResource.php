@@ -55,59 +55,59 @@ class CustomOrderResource extends Resource
                     ->disabled(fn(?CustomOrder $record) => $record?->status === 'exchanged')
                     ->schema([
 
-                    Section::make('Customer & Assignment')
-                        ->description('Assign this custom piece to a customer and sales rep.')
-                        ->icon('heroicon-o-user-group')
-                        ->schema([
-                            Grid::make(2)->schema([
-                                Select::make('customer_id')
-                                    ->label('Select Customer')
-                                    ->relationship('customer', 'name')
-                                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
-                                    ->searchable()
-                                    ->getSearchResultsUsing(function (string $search) {
-                                        return \App\Models\Customer::query()
-                                            ->where(function ($q) use ($search) {
-                                                $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
-                                                    ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
-                                                    ->orWhere('phone', 'like', "%{$search}%")
-                                                    ->orWhere('customer_no', 'like', "%{$search}%");
-                                            })
-                                            ->limit(50)
-                                            ->get()
-                                            ->mapWithKeys(function ($customer) {
-                                                return [
-                                                    $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
-                                                ];
-                                            });
-                                    })
-                                    ->preload()
-                                    ->required()
-                                    ->live()
-                                    ->hintAction(
-                                        FormAction::make('view_customer_details')
-                                            ->label('View Profile')
-                                            ->icon('heroicon-o-user-circle')
-                                            ->color('info')
-                                            ->visible(fn(Get $get) => $get('customer_id'))
-                                            ->modalHeading('Customer Profile Details')
-                                            ->modalSubmitActionLabel('Save Changes')
-                                            ->modalCancelActionLabel('Close')
-                                            ->slideOver()
-                                            ->form(function (Get $get) {
-                                                $customer = \App\Models\Customer::find($get('customer_id'));
-                                                if (!$customer) return [];
-                                                return [
-                                                    \Filament\Forms\Components\Tabs::make('CustomerDetailsTabs')
-                                                        ->tabs([
-                                                            // ── TAB 1: VIEW & HISTORY ──
-                                                            \Filament\Forms\Components\Tabs\Tab::make('Profile & History')
-                                                                ->icon('heroicon-o-document-text')
-                                                                ->schema([
-                                                                    Grid::make(2)->schema([
-                                                                        Placeholder::make('img')
-                                                                            ->label('')
-                                                                            ->content(new HtmlString("
+                        Section::make('Customer & Assignment')
+                            ->description('Assign this custom piece to a customer and sales rep.')
+                            ->icon('heroicon-o-user-group')
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    Select::make('customer_id')
+                                        ->label('Select Customer')
+                                        ->relationship('customer', 'name')
+                                        ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
+                                        ->searchable()
+                                        ->getSearchResultsUsing(function (string $search) {
+                                            return \App\Models\Customer::query()
+                                                ->where(function ($q) use ($search) {
+                                                    $q->whereRaw("CONCAT(name, ' ', last_name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhereRaw("CONCAT(last_name, ' ', name) LIKE ?", ["%{$search}%"])
+                                                        ->orWhere('phone', 'like', "%{$search}%")
+                                                        ->orWhere('customer_no', 'like', "%{$search}%");
+                                                })
+                                                ->limit(50)
+                                                ->get()
+                                                ->mapWithKeys(function ($customer) {
+                                                    return [
+                                                        $customer->id => "{$customer->name} {$customer->last_name} | {$customer->phone} (#{$customer->customer_no})"
+                                                    ];
+                                                });
+                                        })
+                                        ->preload()
+                                        ->required()
+                                        ->live()
+                                        ->hintAction(
+                                            FormAction::make('view_customer_details')
+                                                ->label('View Profile')
+                                                ->icon('heroicon-o-user-circle')
+                                                ->color('info')
+                                                ->visible(fn(Get $get) => $get('customer_id'))
+                                                ->modalHeading('Customer Profile Details')
+                                                ->modalSubmitActionLabel('Save Changes')
+                                                ->modalCancelActionLabel('Close')
+                                                ->slideOver()
+                                                ->form(function (Get $get) {
+                                                    $customer = \App\Models\Customer::find($get('customer_id'));
+                                                    if (!$customer) return [];
+                                                    return [
+                                                        \Filament\Forms\Components\Tabs::make('CustomerDetailsTabs')
+                                                            ->tabs([
+                                                                // ── TAB 1: VIEW & HISTORY ──
+                                                                \Filament\Forms\Components\Tabs\Tab::make('Profile & History')
+                                                                    ->icon('heroicon-o-document-text')
+                                                                    ->schema([
+                                                                        Grid::make(2)->schema([
+                                                                            Placeholder::make('img')
+                                                                                ->label('')
+                                                                                ->content(new HtmlString("
                                                                                 <div class='flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200'>
                                                                                     <img src='" . ($customer->image ? asset('storage/' . $customer->image) : asset('jeweltaglogo.png')) . "' class='w-20 h-20 rounded-full object-cover shadow-sm'>
                                                                                     <div>
@@ -119,60 +119,60 @@ class CustomOrderResource extends Resource
                                                                                     </div>
                                                                                 </div>
                                                                             "))->columnSpanFull(),
-                                                                        TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
-                                                                        TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
-                                                                        TextInput::make('view_addr')
-                                                                            ->label('Full Address')
-                                                                            ->default(trim("{$customer->street} {$customer->city} {$customer->state} {$customer->postcode}"))
-                                                                            ->readOnly()
-                                                                            ->columnSpanFull(),
-                                                                    ]),
+                                                                            TextInput::make('view_phone')->label('Phone')->default($customer->phone)->readOnly(),
+                                                                            TextInput::make('view_email')->label('Email')->default($customer->email)->readOnly(),
+                                                                            TextInput::make('view_addr')
+                                                                                ->label('Full Address')
+                                                                                ->default(trim("{$customer->street} {$customer->city} {$customer->state} {$customer->postcode}"))
+                                                                                ->readOnly()
+                                                                                ->columnSpanFull(),
+                                                                        ]),
 
-                                                                    Placeholder::make('purchase_history')
-                                                                        ->label('Purchase History')
-                                                                        ->content(function () use ($customer) {
-                                                                            $sales = $customer->sales()
-                                                                                ->with(['items.productItem', 'payments'])
-                                                                                ->whereNotIn('status', ['void', 'cancelled'])
-                                                                                ->latest()
-                                                                                ->limit(5)
-                                                                                ->get();
+                                                                        Placeholder::make('purchase_history')
+                                                                            ->label('Purchase History')
+                                                                            ->content(function () use ($customer) {
+                                                                                $sales = $customer->sales()
+                                                                                    ->with(['items.productItem', 'payments'])
+                                                                                    ->whereNotIn('status', ['void', 'cancelled'])
+                                                                                    ->latest()
+                                                                                    ->limit(5)
+                                                                                    ->get();
 
-                                                                            if ($sales->isEmpty()) {
-                                                                                return new HtmlString("<p class='text-sm text-gray-400 italic'>No prior purchase history.</p>");
-                                                                            }
-
-                                                                            $rowsHtml = '';
-                                                                            foreach ($sales as $sale) {
-                                                                                $total      = floatval($sale->final_total);
-                                                                                $paid       = floatval($sale->payments->sum('amount'));
-                                                                                if ($paid == 0 && floatval($sale->amount_paid) > 0) {
-                                                                                    $paid = floatval($sale->amount_paid);
-                                                                                }
-                                                                                $balance    = max(0, $total - $paid);
-                                                                                $isOwing    = $balance > 0.01;
-
-                                                                                $statusColor = match ($sale->status) {
-                                                                                    'completed'          => 'bg-success-100 text-success-700',
-                                                                                    'refunded'           => 'bg-danger-100 text-danger-700',
-                                                                                    'partially_refunded' => 'bg-warning-100 text-warning-700',
-                                                                                    default              => 'bg-gray-100 text-gray-700',
-                                                                                };
-                                                                                $statusLabel = ucfirst(str_replace('_', ' ', $sale->status));
-
-                                                                                $itemPills = '';
-                                                                                foreach ($sale->items->take(2) as $item) {
-                                                                                    $label = \Illuminate\Support\Str::limit($item->custom_description ?? 'Item', 20);
-                                                                                    $itemPills .= "<span class='inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mt-1 border border-gray-200'>{$label}</span>";
+                                                                                if ($sales->isEmpty()) {
+                                                                                    return new HtmlString("<p class='text-sm text-gray-400 italic'>No prior purchase history.</p>");
                                                                                 }
 
-                                                                                $balanceHtml = $isOwing
-                                                                                    ? "<p class='text-[10px] text-danger-600 font-bold mt-1 m-0'>Balance: \$" . number_format($balance, 2) . "</p>"
-                                                                                    : '';
+                                                                                $rowsHtml = '';
+                                                                                foreach ($sales as $sale) {
+                                                                                    $total      = floatval($sale->final_total);
+                                                                                    $paid       = floatval($sale->payments->sum('amount'));
+                                                                                    if ($paid == 0 && floatval($sale->amount_paid) > 0) {
+                                                                                        $paid = floatval($sale->amount_paid);
+                                                                                    }
+                                                                                    $balance    = max(0, $total - $paid);
+                                                                                    $isOwing    = $balance > 0.01;
 
-                                                                                $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
+                                                                                    $statusColor = match ($sale->status) {
+                                                                                        'completed'          => 'bg-success-100 text-success-700',
+                                                                                        'refunded'           => 'bg-danger-100 text-danger-700',
+                                                                                        'partially_refunded' => 'bg-warning-100 text-warning-700',
+                                                                                        default              => 'bg-gray-100 text-gray-700',
+                                                                                    };
+                                                                                    $statusLabel = ucfirst(str_replace('_', ' ', $sale->status));
 
-                                                                                $rowsHtml .= "
+                                                                                    $itemPills = '';
+                                                                                    foreach ($sale->items->take(2) as $item) {
+                                                                                        $label = \Illuminate\Support\Str::limit($item->custom_description ?? 'Item', 20);
+                                                                                        $itemPills .= "<span class='inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mt-1 border border-gray-200'>{$label}</span>";
+                                                                                    }
+
+                                                                                    $balanceHtml = $isOwing
+                                                                                        ? "<p class='text-[10px] text-danger-600 font-bold mt-1 m-0'>Balance: \$" . number_format($balance, 2) . "</p>"
+                                                                                        : '';
+
+                                                                                    $editUrl = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
+
+                                                                                    $rowsHtml .= "
                                                                                     <div class='border " . ($isOwing ? 'border-warning-300' : 'border-gray-200') . " rounded-lg p-3 mb-2 bg-white shadow-sm'>
                                                                                         <div class='flex justify-between items-start'>
                                                                                             <div>
@@ -188,444 +188,444 @@ class CustomOrderResource extends Resource
                                                                                         </div>
                                                                                     </div>
                                                                                 ";
-                                                                            }
-                                                                            return new HtmlString("<div class='mt-2 max-h-[300px] overflow-y-auto pr-2'>{$rowsHtml}</div>");
-                                                                        }),
-                                                                ]),
-
-                                                            // ── TAB 2: EDIT CUSTOMER ──
-                                                            \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
-                                                                ->icon('heroicon-o-pencil-square')
-                                                                ->schema([
-                                                                    Grid::make(2)->schema([
-                                                                        TextInput::make('edit_name')
-                                                                            ->label('First Name')
-                                                                            ->default($customer->name)
-                                                                            ->required(),
-                                                                        TextInput::make('edit_last_name')
-                                                                            ->label('Last Name')
-                                                                            ->default($customer->last_name),
-                                                                        TextInput::make('edit_phone')
-                                                                            ->label('Phone')
-                                                                            ->tel()
-                                                                            ->prefix('+1')
-                                                                            ->default(preg_replace('/[^0-9]/', '', $customer->phone))
-                                                                            ->mask('(999) 999-9999')
-                                                                            ->stripCharacters(['(', ')', '-', ' '])
-                                                                            ->required(),
-                                                                        TextInput::make('edit_email')
-                                                                            ->label('Email')
-                                                                            ->email()
-                                                                            ->default($customer->email),
-
-                                                                        \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
-                                                                            ->label('Search Address')
-                                                                            ->autocompletePlaceholder('Start typing address...')
-                                                                            ->countries(['US'])
-                                                                            ->columnSpanFull()
-                                                                            ->withFields([
-                                                                                TextInput::make('edit_street')
-                                                                                    ->label('Street Address')
-                                                                                    ->default($customer->street)
-                                                                                    ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
-                                                                                    ->columnSpanFull(),
-                                                                                TextInput::make('edit_city')
-                                                                                    ->label('City')
-                                                                                    ->default($customer->city)
-                                                                                    ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
-                                                                                TextInput::make('edit_state')
-                                                                                    ->label('State')
-                                                                                    ->default($customer->state)
-                                                                                    ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
-                                                                                TextInput::make('edit_postcode')
-                                                                                    ->label('Zip Code')
-                                                                                    ->default($customer->postcode)
-                                                                                    ->extraInputAttributes(['data-google-field' => 'postal_code']),
-                                                                            ]),
-                                                                    ])
-                                                                ]),
-                                                        ]),
-                                                ];
-                                            })
-                                            ->action(function (array $data, Get $get) {
-                                                $customer = \App\Models\Customer::find($get('customer_id'));
-                                                if ($customer && isset($data['edit_name'])) {
-                                                    $customer->update([
-                                                        'name'      => $data['edit_name'],
-                                                        'last_name' => $data['edit_last_name'] ?? null,
-                                                        'phone'     => $data['edit_phone'],
-                                                        'email'     => $data['edit_email'] ?? null,
-                                                        'street'    => $data['edit_street'] ?? null,
-                                                        'city'      => $data['edit_city'] ?? null,
-                                                        'state'     => $data['edit_state'] ?? null,
-                                                        'postcode'  => $data['edit_postcode'] ?? null,
-                                                    ]);
-                                                    Notification::make()->title('Customer Updated Successfully')->success()->send();
-                                                }
-                                            })
-                                    )
-                                    ->createOptionModalHeading('Quick Add New Customer')
-                                    ->createOptionForm([
-                                        Forms\Components\Tabs::make('New Customer')
-                                            ->tabs([
-                                                Forms\Components\Tabs\Tab::make('Contact')
-                                                    ->icon('heroicon-o-user')
-                                                    ->schema([
-                                                        Forms\Components\Grid::make(2)->schema([
-                                                            Forms\Components\TextInput::make('name')->label('First Name')->required(),
-                                                            Forms\Components\TextInput::make('last_name')->label('Last Name'),
-                                                        ]),
-                                                        Forms\Components\Grid::make(2)->schema([
-                                                            Forms\Components\TextInput::make('phone')
-                                                                ->label('Mobile Phone')
-                                                                ->tel()
-                                                                ->prefix('+1')
-                                                                ->mask('(999) 999-9999')
-                                                                ->placeholder('(555) 555-5555')
-                                                                ->stripCharacters(['(', ')', '-', ' '])
-                                                                ->rule('regex:/^[0-9]{10}$/')
-                                                                ->unique('customers', 'phone')
-                                                                ->afterStateHydrated(function ($component, $state) {
-                                                                    if ($state && preg_match('/^[0-9]{10}$/', $state)) {
-                                                                        $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
-                                                                    }
-                                                                }),
-                                                            Forms\Components\TextInput::make('email')->label('Email')->email()->unique('customers', 'email'),
-                                                        ]),
-                                                        Forms\Components\Grid::make(2)->schema([
-                                                            CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
-                                                            CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
-                                                        ]),
-                                                        Forms\Components\Section::make('Customer Address')
-                                                            ->description('Search for an address to automatically fill the fields below.')
-                                                            ->columns(2)
-                                                            ->collapsible()
-                                                            ->schema([
-                                                                \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('address_search')
-                                                                    ->label('Search Address')
-                                                                    ->countries(['US'])
-                                                                    ->columnSpanFull()
-                                                                    ->withFields([
-                                                                        TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
-                                                                        TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality']),
-                                                                        TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
-                                                                        TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                                }
+                                                                                return new HtmlString("<div class='mt-2 max-h-[300px] overflow-y-auto pr-2'>{$rowsHtml}</div>");
+                                                                            }),
                                                                     ]),
-                                                                Forms\Components\Select::make('country')->label('Country')->default('United States')->searchable(),
+
+                                                                // ── TAB 2: EDIT CUSTOMER ──
+                                                                \Filament\Forms\Components\Tabs\Tab::make('Edit Customer')
+                                                                    ->icon('heroicon-o-pencil-square')
+                                                                    ->schema([
+                                                                        Grid::make(2)->schema([
+                                                                            TextInput::make('edit_name')
+                                                                                ->label('First Name')
+                                                                                ->default($customer->name)
+                                                                                ->required(),
+                                                                            TextInput::make('edit_last_name')
+                                                                                ->label('Last Name')
+                                                                                ->default($customer->last_name),
+                                                                            TextInput::make('edit_phone')
+                                                                                ->label('Phone')
+                                                                                ->tel()
+                                                                                ->prefix('+1')
+                                                                                ->default(preg_replace('/[^0-9]/', '', $customer->phone))
+                                                                                ->mask('(999) 999-9999')
+                                                                                ->stripCharacters(['(', ')', '-', ' '])
+                                                                                ->required(),
+                                                                            TextInput::make('edit_email')
+                                                                                ->label('Email')
+                                                                                ->email()
+                                                                                ->default($customer->email),
+
+                                                                            \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('edit_address_search')
+                                                                                ->label('Search Address')
+                                                                                ->autocompletePlaceholder('Start typing address...')
+                                                                                ->countries(['US'])
+                                                                                ->columnSpanFull()
+                                                                                ->withFields([
+                                                                                    TextInput::make('edit_street')
+                                                                                        ->label('Street Address')
+                                                                                        ->default($customer->street)
+                                                                                        ->extraInputAttributes(['data-google-field' => '{street_number} {route}'])
+                                                                                        ->columnSpanFull(),
+                                                                                    TextInput::make('edit_city')
+                                                                                        ->label('City')
+                                                                                        ->default($customer->city)
+                                                                                        ->extraInputAttributes(['data-google-field' => 'locality', 'data-google-value' => 'short_name']),
+                                                                                    TextInput::make('edit_state')
+                                                                                        ->label('State')
+                                                                                        ->default($customer->state)
+                                                                                        ->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                                    TextInput::make('edit_postcode')
+                                                                                        ->label('Zip Code')
+                                                                                        ->default($customer->postcode)
+                                                                                        ->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                                ]),
+                                                                        ])
+                                                                    ]),
                                                             ]),
-                                                    ]),
-                                            ]),
-                                        Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
-                                    ])
-                                    ->createOptionUsing(function (array $data) {
-                                        return \App\Models\Customer::create($data)->id;
-                                    }),
-
-                                Select::make('sales_person_list')
-                                    ->label('Sales Person(s)')
-                                    ->multiple()
-                                    ->options(User::pluck('name', 'id'))
-                                    ->default(function () {
-                                        $activeName = Session::get('active_staff_name');
-                                        if ($activeName) {
-                                            $user = User::where('name', 'LIKE', "%{$activeName}%")->first();
-                                            if ($user) return [$user->id];
-                                        }
-                                        return auth()->id() ? [auth()->id()] : [];
-                                    })
-                                    ->searchable()
-                                    ->preload()
-                                    ->prefixIcon('heroicon-o-identification')
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set) {
-                                        $set('staff_id', !empty($state) ? (int) $state[0] : null);
-                                    }),
-
-                                Hidden::make('staff_id'),
-                            ]),
-                        ]),
-
-                    Section::make('Order Type')
-                        ->icon('heroicon-o-tag')
-                        ->schema([
-                            Select::make('order_type')
-                                ->label('What kind of order is this?')
-                                ->options([
-                                    'custom'       => 'Custom Made Item (new from scratch)',
-                                    'stock_modify' => 'Modify Existing Stock Item',
-                                ])
-                                ->default('custom')
-                                ->required()
-                                ->live()
-                                ->afterStateUpdated(fn(Set $set) => $set('items', [])),
-                        ]),
-
-                    Section::make('Order Items')
-                        ->description('Add one or more items to this order.')
-                        ->icon('heroicon-o-sparkles')
-                        ->schema([
-                            Repeater::make('items')
-                                ->label('')
-                                ->schema([
-                                    Select::make('stock_item_id')
-                                        ->label('Select Stock Item to Modify')
-                                        ->placeholder('Search by barcode or description...')
-                                        ->options(
-                                            fn() => ProductItem::whereIn('status', ['in_stock', 'sold'])
-                                                ->get()
-                                                ->mapWithKeys(fn($i) => [
-                                                    $i->id => "{$i->barcode} — " . Str::limit($i->custom_description, 40)
-                                                ])
+                                                    ];
+                                                })
+                                                ->action(function (array $data, Get $get) {
+                                                    $customer = \App\Models\Customer::find($get('customer_id'));
+                                                    if ($customer && isset($data['edit_name'])) {
+                                                        $customer->update([
+                                                            'name'      => $data['edit_name'],
+                                                            'last_name' => $data['edit_last_name'] ?? null,
+                                                            'phone'     => $data['edit_phone'],
+                                                            'email'     => $data['edit_email'] ?? null,
+                                                            'street'    => $data['edit_street'] ?? null,
+                                                            'city'      => $data['edit_city'] ?? null,
+                                                            'state'     => $data['edit_state'] ?? null,
+                                                            'postcode'  => $data['edit_postcode'] ?? null,
+                                                        ]);
+                                                        Notification::make()->title('Customer Updated Successfully')->success()->send();
+                                                    }
+                                                })
                                         )
+                                        ->createOptionModalHeading('Quick Add New Customer')
+                                        ->createOptionForm([
+                                            Forms\Components\Tabs::make('New Customer')
+                                                ->tabs([
+                                                    Forms\Components\Tabs\Tab::make('Contact')
+                                                        ->icon('heroicon-o-user')
+                                                        ->schema([
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('name')->label('First Name')->required(),
+                                                                Forms\Components\TextInput::make('last_name')->label('Last Name'),
+                                                            ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                Forms\Components\TextInput::make('phone')
+                                                                    ->label('Mobile Phone')
+                                                                    ->tel()
+                                                                    ->prefix('+1')
+                                                                    ->mask('(999) 999-9999')
+                                                                    ->placeholder('(555) 555-5555')
+                                                                    ->stripCharacters(['(', ')', '-', ' '])
+                                                                    ->rule('regex:/^[0-9]{10}$/')
+                                                                    ->unique('customers', 'phone')
+                                                                    ->afterStateHydrated(function ($component, $state) {
+                                                                        if ($state && preg_match('/^[0-9]{10}$/', $state)) {
+                                                                            $component->state('(' . substr($state, 0, 3) . ') ' . substr($state, 3, 3) . '-' . substr($state, 6));
+                                                                        }
+                                                                    }),
+                                                                Forms\Components\TextInput::make('email')->label('Email')->email()->unique('customers', 'email'),
+                                                            ]),
+                                                            Forms\Components\Grid::make(2)->schema([
+                                                                CustomDatePicker::make('dob')->rule('before_or_equal:today')->label('Birth Date'),
+                                                                CustomDatePicker::make('wedding_anniversary')->label('Wedding Date'),
+                                                            ]),
+                                                            Forms\Components\Section::make('Customer Address')
+                                                                ->description('Search for an address to automatically fill the fields below.')
+                                                                ->columns(2)
+                                                                ->collapsible()
+                                                                ->schema([
+                                                                    \Tapp\FilamentGoogleAutocomplete\Forms\Components\GoogleAutocomplete::make('address_search')
+                                                                        ->label('Search Address')
+                                                                        ->countries(['US'])
+                                                                        ->columnSpanFull()
+                                                                        ->withFields([
+                                                                            TextInput::make('street')->label('Street Address')->extraInputAttributes(['data-google-field' => '{street_number} {route}']),
+                                                                            TextInput::make('city')->label('City')->extraInputAttributes(['data-google-field' => 'locality']),
+                                                                            TextInput::make('state')->label('State')->extraInputAttributes(['data-google-field' => 'administrative_area_level_1']),
+                                                                            TextInput::make('postcode')->label('Zip Code')->extraInputAttributes(['data-google-field' => 'postal_code']),
+                                                                        ]),
+                                                                    Forms\Components\Select::make('country')->label('Country')->default('United States')->searchable(),
+                                                                ]),
+                                                        ]),
+                                                ]),
+                                            Forms\Components\Hidden::make('customer_no')->default(fn() => 'CUST-' . strtoupper(Str::random(6))),
+                                        ])
+                                        ->createOptionUsing(function (array $data) {
+                                            return \App\Models\Customer::create($data)->id;
+                                        }),
+
+                                    Select::make('sales_person_list')
+                                        ->label('Sales Person(s)')
+                                        ->multiple()
+                                        ->options(User::pluck('name', 'id'))
+                                        ->default(function () {
+                                            $activeName = Session::get('active_staff_name');
+                                            if ($activeName) {
+                                                $user = User::where('name', 'LIKE', "%{$activeName}%")->first();
+                                                if ($user) return [$user->id];
+                                            }
+                                            return auth()->id() ? [auth()->id()] : [];
+                                        })
                                         ->searchable()
+                                        ->preload()
+                                        ->prefixIcon('heroicon-o-identification')
+                                        ->required()
                                         ->live()
                                         ->afterStateUpdated(function ($state, Set $set) {
-                                            if (!$state) return;
-                                            $item = ProductItem::find($state);
-                                            if (!$item) return;
-                                            $set('product_name',   $item->custom_description ?? $item->barcode);
-                                            $set('metal_type',     $item->metal_type);
-                                            $set('metal_weight',   $item->metal_weight);
-                                            $set('diamond_weight', $item->diamond_weight);
-                                            $set('size',           $item->size);
-                                            $set('quoted_price',   $item->retail_price);
-                                        })
-                                        ->visible(
-                                            fn(Get $get, $livewire) =>
-                                            data_get($livewire->data, 'order_type') === 'stock_modify'
-                                        )
-                                        ->columnSpanFull(),
+                                            $set('staff_id', !empty($state) ? (int) $state[0] : null);
+                                        }),
 
-                                    Grid::make(2)->schema([
-                                        Select::make('product_name')
-                                            ->label('Product / Jewelry Type')
-                                            ->placeholder('e.g. Diamond Tennis Bracelet')
+                                    Hidden::make('staff_id'),
+                                ]),
+                            ]),
+
+                        Section::make('Order Type')
+                            ->icon('heroicon-o-tag')
+                            ->schema([
+                                Select::make('order_type')
+                                    ->label('What kind of order is this?')
+                                    ->options([
+                                        'custom'       => 'Custom Made Item (new from scratch)',
+                                        'stock_modify' => 'Modify Existing Stock Item',
+                                    ])
+                                    ->default('custom')
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(fn(Set $set) => $set('items', [])),
+                            ]),
+
+                        Section::make('Order Items')
+                            ->description('Add one or more items to this order.')
+                            ->icon('heroicon-o-sparkles')
+                            ->schema([
+                                Repeater::make('items')
+                                    ->label('')
+                                    ->schema([
+                                        Select::make('stock_item_id')
+                                            ->label('Select Stock Item to Modify')
+                                            ->placeholder('Search by barcode or description...')
                                             ->options(
-                                                fn() => CustomOrder::distinct()
-                                                    ->whereNotNull('product_name')
-                                                    ->pluck('product_name', 'product_name')
+                                                fn() => ProductItem::whereIn('status', ['in_stock', 'sold'])
+                                                    ->get()
+                                                    ->mapWithKeys(fn($i) => [
+                                                        $i->id => "{$i->barcode} — " . Str::limit($i->custom_description, 40)
+                                                    ])
                                             )
                                             ->searchable()
-                                            ->createOptionForm([
-                                                TextInput::make('new_product_name')->required()->label('New Product Name')
-                                            ])
-                                            ->createOptionUsing(fn(array $data) => $data['new_product_name'])
-                                            ->required(),
+                                            ->live()
+                                            ->afterStateUpdated(function ($state, Set $set) {
+                                                if (!$state) return;
+                                                $item = ProductItem::find($state);
+                                                if (!$item) return;
+                                                $set('product_name',   $item->custom_description ?? $item->barcode);
+                                                $set('metal_type',     $item->metal_type);
+                                                $set('metal_weight',   $item->metal_weight);
+                                                $set('diamond_weight', $item->diamond_weight);
+                                                $set('size',           $item->size);
+                                                $set('quoted_price',   $item->retail_price);
+                                            })
+                                            ->visible(
+                                                fn(Get $get, $livewire) =>
+                                                data_get($livewire->data, 'order_type') === 'stock_modify'
+                                            )
+                                            ->columnSpanFull(),
 
-                                        Select::make('metal_type')
-                                            ->label('Metal Karat/Type')
-                                            ->options([
-                                                '10k'      => '10k Gold',
-                                                '14k'      => '14k Gold',
-                                                '18k'      => '18k Gold',
-                                                'platinum' => 'Platinum',
-                                                'silver'   => 'Silver',
-                                            ])
-                                            ->required(),
-                                    ]),
+                                        Grid::make(2)->schema([
+                                            Select::make('product_name')
+                                                ->label('Product / Jewelry Type')
+                                                ->placeholder('e.g. Diamond Tennis Bracelet')
+                                                ->options(
+                                                    fn() => CustomOrder::distinct()
+                                                        ->whereNotNull('product_name')
+                                                        ->pluck('product_name', 'product_name')
+                                                )
+                                                ->searchable()
+                                                ->createOptionForm([
+                                                    TextInput::make('new_product_name')->required()->label('New Product Name')
+                                                ])
+                                                ->createOptionUsing(fn(array $data) => $data['new_product_name'])
+                                                ->required(),
 
-                                    Grid::make(3)->schema([
-                                        TextInput::make('metal_weight')->label('Metal Wt. (g)')->numeric()->placeholder('e.g. 4.5'),
-                                        TextInput::make('diamond_weight')->label('Diamond (CTW)')->numeric()->placeholder('e.g. 1.25'),
-                                        TextInput::make('size')->label('Size')->placeholder('e.g. 6.5'),
-                                    ]),
-
-                                    TextInput::make('quoted_price')
-                                        ->label('Item Price')
-                                        ->numeric()
-                                        ->prefix('$')
-                                        ->required()
-                                        ->dehydrated(true)
-                                        ->live(onBlur: true)
-                                        ->columnSpanFull()
-                                        ->helperText('Enter the agreed price for this item')
-                                        ->extraInputAttributes([
-                                            'class' => 'font-black text-2xl text-success-700',
-                                            'style' => 'font-size:1.5rem;height:3rem;border:2px solid #10b981;background:#f0fdf4;',
+                                            Select::make('metal_type')
+                                                ->label('Metal Karat/Type')
+                                                ->options([
+                                                    '10k'      => '10k Gold',
+                                                    '14k'      => '14k Gold',
+                                                    '18k'      => '18k Gold',
+                                                    'platinum' => 'Platinum',
+                                                    'silver'   => 'Silver',
+                                                ])
+                                                ->required(),
                                         ]),
 
-                                    Textarea::make('design_notes')
-                                        ->label('Design Notes / Instructions')
-                                        ->placeholder('Describe stone placements, engraving, specific styles...')
-                                        ->rows(3)
-                                        ->columnSpanFull(),
+                                        Grid::make(3)->schema([
+                                            TextInput::make('metal_weight')->label('Metal Wt. (g)')->numeric()->placeholder('e.g. 4.5'),
+                                            TextInput::make('diamond_weight')->label('Diamond (CTW)')->numeric()->placeholder('e.g. 1.25'),
+                                            TextInput::make('size')->label('Size')->placeholder('e.g. 6.5'),
+                                        ]),
 
-                                    // 🚀 NEW AUTO-GENERATING AI REFERENCE IMAGE FIELD
-                                    TextInput::make('reference_image')
-                                        ->label('Reference Image URL')
-                                        ->placeholder('https://...')
-                                        ->url()
-                                        ->columnSpanFull()
-                                        ->hintAction(
-                                            \Filament\Forms\Components\Actions\Action::make('ai_concept_generator')
-                                                ->label('✨ Auto-Generate Image')
-                                                ->color('fuchsia')
-                                                ->icon('heroicon-s-sparkles')
-                                                ->modalHeading('AI Concept Generator')
-                                                ->modalWidth('4xl')
-                                                ->modalSubmitActionLabel('✅ Save Selected Image to Order')
-                                                // 🚀 1. Gather all the data the user already typed into the form!
-                                                ->mountUsing(function (\Filament\Forms\Form $form, Get $get) {
-                                                    $product = $get('product_name') ?? 'jewelry piece';
-                                                    $metal   = $get('metal_type') ?? '';
-                                                    $size    = $get('size') ? "Size {$get('size')}" : '';
-                                                    $diamond = $get('diamond_weight') ? "{$get('diamond_weight')} CTW" : '';
-                                                    $notes   = $get('design_notes') ?? '';
+                                        TextInput::make('quoted_price')
+                                            ->label('Item Price')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->required()
+                                            ->dehydrated(true)
+                                            ->live(onBlur: true)
+                                            ->columnSpanFull()
+                                            ->helperText('Enter the agreed price for this item')
+                                            ->extraInputAttributes([
+                                                'class' => 'font-black text-2xl text-success-700',
+                                                'style' => 'font-size:1.5rem;height:3rem;border:2px solid #10b981;background:#f0fdf4;',
+                                            ]),
 
-                                                    // Combine it all into a perfect, invisible master prompt
-                                                    $prompt = trim("Highly detailed professional jewelry photography, bright studio lighting, realistic, 8k resolution, white background. A {$metal} {$product}. {$size}. {$diamond}. {$notes}");
+                                        Textarea::make('design_notes')
+                                            ->label('Design Notes / Instructions')
+                                            ->placeholder('Describe stone placements, engraving, specific styles...')
+                                            ->rows(3)
+                                            ->columnSpanFull(),
 
-                                                    // Load it into the modal invisibly
-                                                    $form->fill([
-                                                        'generated_prompt' => $prompt,
-                                                        'has_generated'    => false,
-                                                        'generated_images' => [],
-                                                    ]);
-                                                })
-                                                ->form([
-                                                    Hidden::make('generated_prompt'),
-                                                    Hidden::make('has_generated'),
-                                                    Hidden::make('generated_images'),
+                                        // 🚀 NEW AUTO-GENERATING AI REFERENCE IMAGE FIELD
+                                        TextInput::make('reference_image')
+                                            ->label('Reference Image URL')
+                                            ->placeholder('https://...')
+                                            ->url()
+                                            ->columnSpanFull()
+                                            ->hintAction(
+                                                \Filament\Forms\Components\Actions\Action::make('ai_concept_generator')
+                                                    ->label('✨ Auto-Generate Image')
+                                                    ->color('fuchsia')
+                                                    ->icon('heroicon-s-sparkles')
+                                                    ->modalHeading('AI Concept Generator')
+                                                    ->modalWidth('4xl')
+                                                    ->modalSubmitActionLabel('✅ Save Selected Image to Order')
+                                                    // 🚀 1. Gather all the data the user already typed into the form!
+                                                    ->mountUsing(function (\Filament\Forms\Form $form, Get $get) {
+                                                        $product = $get('product_name') ?? 'jewelry piece';
+                                                        $metal   = $get('metal_type') ?? '';
+                                                        $size    = $get('size') ? "Size {$get('size')}" : '';
+                                                        $diamond = $get('diamond_weight') ? "{$get('diamond_weight')} CTW" : '';
+                                                        $notes   = $get('design_notes') ?? '';
 
-                                                    // 🚀 2. Automatically trigger the API as soon as the modal opens
-                                                    Placeholder::make('ai_trigger')
-                                                        ->hiddenLabel()
-                                                        ->content(function (Get $get, Set $set) {
-                                                            $prompt = $get('generated_prompt');
-                                                            $alreadyGenerated = $get('has_generated');
+                                                        // Combine it all into a perfect, invisible master prompt
+                                                        $prompt = trim("Highly detailed professional jewelry photography, bright studio lighting, realistic, 8k resolution, white background. A {$metal} {$product}. {$size}. {$diamond}. {$notes}");
 
-                                                            if (!$prompt || $alreadyGenerated) return new HtmlString("<div class='text-gray-500 italic'>Loading AI engine...</div>");
+                                                        // Load it into the modal invisibly
+                                                        $form->fill([
+                                                            'generated_prompt' => $prompt,
+                                                            'has_generated'    => false,
+                                                            'generated_images' => [],
+                                                        ]);
+                                                    })
+                                                    ->form([
+                                                        Hidden::make('generated_prompt'),
+                                                        Hidden::make('has_generated'),
+                                                        Hidden::make('generated_images'),
 
-                                                            // 🚀 Allow PHP extra time to prevent 30-second timeouts
-                                                            set_time_limit(120);
+                                                        // 🚀 2. Automatically trigger the API as soon as the modal opens
+                                                        Placeholder::make('ai_trigger')
+                                                            ->hiddenLabel()
+                                                            ->content(function (Get $get, Set $set) {
+                                                                $prompt = $get('generated_prompt');
+                                                                $alreadyGenerated = $get('has_generated');
 
-                                                            try {
-                                                                $apiKey = env('GEMINI_API_KEY');
+                                                                if (!$prompt || $alreadyGenerated) return new HtmlString("<div class='text-gray-500 italic'>Loading AI engine...</div>");
 
-                                                                // 1. Try Google Gemini with the correct generateContent endpoint
-                                                                $response = \Illuminate\Support\Facades\Http::withHeaders([
-                                                                    'Content-Type' => 'application/json',
-                                                                ])->timeout(30)->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={$apiKey}", [
-                                                                    "contents" => [
-                                                                        [
-                                                                            "role" => "user",
-                                                                            "parts" => [
-                                                                                ["text" => $prompt]
+                                                                // 🚀 Allow PHP extra time to prevent 30-second timeouts
+                                                                set_time_limit(120);
+
+                                                                try {
+                                                                    $apiKey = env('GEMINI_API_KEY');
+
+                                                                    // 1. Try Google Gemini with the correct generateContent endpoint
+                                                                    $response = \Illuminate\Support\Facades\Http::withHeaders([
+                                                                        'Content-Type' => 'application/json',
+                                                                    ])->timeout(30)->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={$apiKey}", [
+                                                                        "contents" => [
+                                                                            [
+                                                                                "role" => "user",
+                                                                                "parts" => [
+                                                                                    ["text" => $prompt]
+                                                                                ]
                                                                             ]
                                                                         ]
-                                                                    ]
-                                                                ]);
+                                                                    ]);
 
-                                                                $images = [];
+                                                                    $images = [];
 
-                                                                if ($response->successful()) {
-                                                                    $data = $response->json();
+                                                                    if ($response->successful()) {
+                                                                        $data = $response->json();
 
-                                                                    // Extract the base64 image data from the Gemini response structure
-                                                                    if (isset($data['candidates'])) {
-                                                                        foreach ($data['candidates'] as $candidate) {
-                                                                            if (isset($candidate['content']['parts'])) {
-                                                                                foreach ($candidate['content']['parts'] as $part) {
-                                                                                    if (isset($part['inlineData']['data'])) {
-                                                                                        $b64 = $part['inlineData']['data'];
-                                                                                        $filename = 'ai-concepts/' . \Illuminate\Support\Str::uuid() . '.jpg';
-                                                                                        \Illuminate\Support\Facades\Storage::disk('public')->put($filename, base64_decode($b64));
-                                                                                        $images[] = asset('storage/' . $filename);
+                                                                        // Extract the base64 image data from the Gemini response structure
+                                                                        if (isset($data['candidates'])) {
+                                                                            foreach ($data['candidates'] as $candidate) {
+                                                                                if (isset($candidate['content']['parts'])) {
+                                                                                    foreach ($candidate['content']['parts'] as $part) {
+                                                                                        if (isset($part['inlineData']['data'])) {
+                                                                                            $b64 = $part['inlineData']['data'];
+                                                                                            $filename = 'ai-concepts/' . \Illuminate\Support\Str::uuid() . '.jpg';
+                                                                                            \Illuminate\Support\Facades\Storage::disk('public')->put($filename, base64_decode($b64));
+                                                                                            $images[] = asset('storage/' . $filename);
+                                                                                        }
                                                                                     }
                                                                                 }
                                                                             }
                                                                         }
                                                                     }
-                                                                }
 
-                                                                // If Gemini succeeded but only returned 1 image, or if it failed entirely, 
-                                                                // we pad the remaining slots using the backend free fallback so the UI always has 3 options.
-                                                                if (count($images) < 3) {
-                                                                    $errorMsg = $response->json()['error']['message'] ?? 'Unknown Gemini API Error';
-                                                                    $wasGeminiFailure = empty($images);
-                                                                    $needed = 3 - count($images);
+                                                                    // If Gemini succeeded but only returned 1 image, or if it failed entirely, 
+                                                                    // we pad the remaining slots using the backend free fallback so the UI always has 3 options.
+                                                                    if (count($images) < 3) {
+                                                                        $errorMsg = $response->json()['error']['message'] ?? 'Unknown Gemini API Error';
+                                                                        $wasGeminiFailure = empty($images);
+                                                                        $needed = 3 - count($images);
 
-                                                                    // 🚀 FETCH CONCURRENTLY to bypass 30 second timeouts
-                                                                    $fallbackResponses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($prompt, $needed) {
-                                                                        $reqs = [];
-                                                                        for ($i = 1; $i <= $needed; $i++) {
-                                                                            $seed = rand(1, 999999);
-                                                                            $safePrompt = urlencode($prompt . " design variation " . $i);
-                                                                            $url = "https://image.pollinations.ai/prompt/{$safePrompt}?seed={$seed}&width=1024&height=1024&nologo=true";
-                                                                            $reqs[] = $pool->timeout(30)->get($url);
+                                                                        // 🚀 FETCH CONCURRENTLY to bypass 30 second timeouts
+                                                                        $fallbackResponses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($prompt, $needed) {
+                                                                            $reqs = [];
+                                                                            for ($i = 1; $i <= $needed; $i++) {
+                                                                                $seed = rand(1, 999999);
+                                                                                $safePrompt = urlencode($prompt . " design variation " . $i);
+                                                                                $url = "https://image.pollinations.ai/prompt/{$safePrompt}?seed={$seed}&width=1024&height=1024&nologo=true";
+                                                                                $reqs[] = $pool->timeout(30)->get($url);
+                                                                            }
+                                                                            return $reqs;
+                                                                        });
+
+                                                                        foreach ($fallbackResponses as $res) {
+                                                                            if ($res instanceof \Illuminate\Http\Client\Response && $res->ok()) {
+                                                                                $filename = 'ai-concepts/fallback-' . \Illuminate\Support\Str::uuid() . '.jpg';
+                                                                                \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $res->body());
+                                                                                $images[] = asset('storage/' . $filename);
+                                                                            }
                                                                         }
-                                                                        return $reqs;
-                                                                    });
 
-                                                                    foreach ($fallbackResponses as $res) {
-                                                                        if ($res instanceof \Illuminate\Http\Client\Response && $res->ok()) {
-                                                                            $filename = 'ai-concepts/fallback-' . \Illuminate\Support\Str::uuid() . '.jpg';
-                                                                            \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $res->body());
-                                                                            $images[] = asset('storage/' . $filename);
+                                                                        if ($wasGeminiFailure) {
+                                                                            Notification::make()
+                                                                                ->title('Switched to Free AI Generator')
+                                                                                ->body("Gemini fallback engaged. (" . \Illuminate\Support\Str::limit($errorMsg, 40) . ")")
+                                                                                ->warning()
+                                                                                ->send();
                                                                         }
                                                                     }
 
-                                                                    if ($wasGeminiFailure) {
-                                                                        Notification::make()
-                                                                            ->title('Switched to Free AI Generator')
-                                                                            ->body("Gemini fallback engaged. (" . \Illuminate\Support\Str::limit($errorMsg, 40) . ")")
-                                                                            ->warning()
-                                                                            ->send();
-                                                                    }
+                                                                    $set('generated_images', $images);
+                                                                    $set('has_generated', true);
+                                                                } catch (\Exception $e) {
+                                                                    Notification::make()->title('Connection Error')->body($e->getMessage())->danger()->send();
                                                                 }
+                                                                return '';
+                                                            }),
 
-                                                                $set('generated_images', $images);
-                                                                $set('has_generated', true);
-                                                            } catch (\Exception $e) {
-                                                                Notification::make()->title('Connection Error')->body($e->getMessage())->danger()->send();
-                                                            }
-                                                            return '';
-                                                        }),
-
-                                                    // 🚀 3. Show the generated images
-                                                    \Filament\Forms\Components\Radio::make('selected_image')
-                                                        ->label('Select the best concept:')
-                                                        ->inline()
-                                                        ->inlineLabel(false)
-                                                        ->options(function (Get $get) {
-                                                            $images = $get('generated_images') ?? [];
-                                                            $options = [];
-                                                            foreach ($images as $imgUrl) {
-                                                                $options[$imgUrl] = new HtmlString("
+                                                        // 🚀 3. Show the generated images
+                                                        \Filament\Forms\Components\Radio::make('selected_image')
+                                                            ->label('Select the best concept:')
+                                                            ->inline()
+                                                            ->inlineLabel(false)
+                                                            ->options(function (Get $get) {
+                                                                $images = $get('generated_images') ?? [];
+                                                                $options = [];
+                                                                foreach ($images as $imgUrl) {
+                                                                    $options[$imgUrl] = new HtmlString("
                                 <div style='padding: 10px; cursor: pointer;'>
                                     <img src='{$imgUrl}' style='width: 200px; height: 200px; object-fit: cover; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid transparent;' class='hover:border-purple-500 transition-all'/>
                                 </div>
                             ");
-                                                            }
-                                                            return $options;
-                                                        })
-                                                        ->visible(fn(Get $get) => !empty($get('generated_images')))
-                                                        ->required(),
-                                                ])
-                                                ->action(function (array $data, Set $set, Get $get, $livewire) {
-                                                    if (!empty($data['selected_image'])) {
-                                                        // $set() inside a hintAction modal targets the modal form scope
-                                                        // We need to update the parent repeater item directly via livewire data
-                                                        $set('reference_image', $data['selected_image']);
+                                                                }
+                                                                return $options;
+                                                            })
+                                                            ->visible(fn(Get $get) => !empty($get('generated_images')))
+                                                            ->required(),
+                                                    ])
+                                                    ->action(function (array $data, Set $set, Get $get, $livewire) {
+                                                        if (!empty($data['selected_image'])) {
+                                                            // $set() inside a hintAction modal targets the modal form scope
+                                                            // We need to update the parent repeater item directly via livewire data
+                                                            $set('reference_image', $data['selected_image']);
 
-                                                        // Also force-update via livewire data path as a safety net
-                                                        // The repeater item key is in the component path
-                                                        Notification::make()
-                                                            ->title('✅ AI Concept Attached')
-                                                            ->body('The selected image has been saved to this item. You will see the preview below the URL field.')
-                                                            ->success()
-                                                            ->send();
-                                                    }
-                                                })
-                                        ),
-                                    \Filament\Forms\Components\Placeholder::make('selection_confirm')
-                                        ->hiddenLabel()
-                                        ->visible(fn(Get $get) => !empty($get('selected_image')))
-                                        ->content(function (Get $get) {
-                                            $url = $get('selected_image');
-                                            if (!$url) return '';
-                                            return new \Illuminate\Support\HtmlString("
+                                                            // Also force-update via livewire data path as a safety net
+                                                            // The repeater item key is in the component path
+                                                            Notification::make()
+                                                                ->title('✅ AI Concept Attached')
+                                                                ->body('The selected image has been saved to this item. You will see the preview below the URL field.')
+                                                                ->success()
+                                                                ->send();
+                                                        }
+                                                    })
+                                            ),
+                                        \Filament\Forms\Components\Placeholder::make('selection_confirm')
+                                            ->hiddenLabel()
+                                            ->visible(fn(Get $get) => !empty($get('selected_image')))
+                                            ->content(function (Get $get) {
+                                                $url = $get('selected_image');
+                                                if (!$url) return '';
+                                                return new \Illuminate\Support\HtmlString("
             <div style='background:#f0fdf4;border:2px solid #10b981;border-radius:10px;padding:12px;display:flex;align-items:center;gap:12px;'>
                 <img src='{$url}' style='width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0;' />
                 <div>
@@ -634,26 +634,26 @@ class CustomOrderResource extends Resource
                 </div>
             </div>
         ");
-                                        }),
+                                            }),
 
-                                    \Filament\Forms\Components\FileUpload::make('customer_reference_images')
-                                        ->label('Upload Customer Reference Photos')
-                                        ->helperText('Upload photos the customer brought in or sent — style inspiration, sketches, etc.')
-                                        ->image()
-                                        ->multiple()
-                                        ->maxFiles(5)
-                                        ->disk('public')
-                                        ->directory('custom-order-references')
-                                        ->panelLayout('grid')
-                                        ->uploadingMessage('Uploading reference photos...')
-                                        ->columnSpanFull(),
-                                    \Filament\Forms\Components\Placeholder::make('reference_image_preview')
-                                        ->label('AI Concept Preview')
-                                        ->visible(fn(\Filament\Forms\Get $get) => !empty($get('reference_image')))
-                                        ->content(function (\Filament\Forms\Get $get) {
-                                            $url = $get('reference_image');
-                                            if (!$url) return '';
-                                            return new \Illuminate\Support\HtmlString("
+                                        \Filament\Forms\Components\FileUpload::make('customer_reference_images')
+                                            ->label('Upload Customer Reference Photos')
+                                            ->helperText('Upload photos the customer brought in or sent — style inspiration, sketches, etc.')
+                                            ->image()
+                                            ->multiple()
+                                            ->maxFiles(5)
+                                            ->disk('public')
+                                            ->directory('custom-order-references')
+                                            ->panelLayout('grid')
+                                            ->uploadingMessage('Uploading reference photos...')
+                                            ->columnSpanFull(),
+                                        \Filament\Forms\Components\Placeholder::make('reference_image_preview')
+                                            ->label('AI Concept Preview')
+                                            ->visible(fn(\Filament\Forms\Get $get) => !empty($get('reference_image')))
+                                            ->content(function (\Filament\Forms\Get $get) {
+                                                $url = $get('reference_image');
+                                                if (!$url) return '';
+                                                return new \Illuminate\Support\HtmlString("
             <div style='margin-top:8px;'>
                 <img src='{$url}'
                      style='max-width:200px;border-radius:12px;border:2px solid #e5e7eb;box-shadow:0 4px 12px rgba(0,0,0,0.1);'
@@ -661,49 +661,49 @@ class CustomOrderResource extends Resource
                 <div style='font-size:10px;color:#9ca3af;margin-top:4px;'>AI Generated Concept</div>
             </div>
         ");
-                                        })
-                                        ->columnSpanFull(),
+                                            })
+                                            ->columnSpanFull(),
 
-                                    Toggle::make('is_tax_free')
-                                        ->label('Tax Free Item?')
-                                        ->default(false)
-                                        ->inline(false),
-                                ])
-                                ->defaultItems(1)
-                                ->addActionLabel('+ Add Another Item')
-                                ->itemLabel(
-                                    fn(array $state): ?string => ($state['product_name'] ?? 'New Item') .
-                                        (!empty($state['quoted_price']) ? ' — $' . number_format((float)$state['quoted_price'], 2) : '')
-                                )
-                                ->collapsible()
-                                ->cloneable()
-                                ->reorderable(true)
-                                ->live()
-                                ->afterStateUpdated(function (Get $get, Set $set) {
-                                    $total = collect($get('items') ?? [])
-                                        ->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
-                                    $set('quoted_price', number_format($total, 2, '.', ''));
-                                    self::calculateBalance($get, $set);
-                                }),
-                        ]),
+                                        Toggle::make('is_tax_free')
+                                            ->label('Tax Free Item?')
+                                            ->default(false)
+                                            ->inline(false),
+                                    ])
+                                    ->defaultItems(1)
+                                    ->addActionLabel('+ Add Another Item')
+                                    ->itemLabel(
+                                        fn(array $state): ?string => ($state['product_name'] ?? 'New Item') .
+                                            (!empty($state['quoted_price']) ? ' — $' . number_format((float)$state['quoted_price'], 2) : '')
+                                    )
+                                    ->collapsible()
+                                    ->cloneable()
+                                    ->reorderable(true)
+                                    ->live()
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        $total = collect($get('items') ?? [])
+                                            ->sum(fn($i) => (float)($i['quoted_price'] ?? 0));
+                                        $set('quoted_price', number_format($total, 2, '.', ''));
+                                        self::calculateBalance($get, $set);
+                                    }),
+                            ]),
 
-                    Section::make('Vendor & Scheduling')
-                        ->description('Track external production and deadlines.')
-                        ->icon('heroicon-o-calendar-days')
-                        ->collapsible()
-                        ->collapsed()
-                        ->schema([
-                            Grid::make(2)->schema([
-                                TextInput::make('vendor_name')->label('Vendor Name')->prefixIcon('heroicon-o-building-storefront')->placeholder('Who is making this?'),
-                                TextInput::make('vendor_info')->label('Vendor Contact/Info')->prefixIcon('heroicon-o-phone'),
+                        Section::make('Vendor & Scheduling')
+                            ->description('Track external production and deadlines.')
+                            ->icon('heroicon-o-calendar-days')
+                            ->collapsible()
+                            ->collapsed()
+                            ->schema([
+                                Grid::make(2)->schema([
+                                    TextInput::make('vendor_name')->label('Vendor Name')->prefixIcon('heroicon-o-building-storefront')->placeholder('Who is making this?'),
+                                    TextInput::make('vendor_info')->label('Vendor Contact/Info')->prefixIcon('heroicon-o-phone'),
+                                ]),
+                                Grid::make(3)->schema([
+                                    CustomDatePicker::make('due_date')->label('Vendor Due Date'),
+                                    CustomDatePicker::make('expected_delivery_date')->label('Cust. Delivery Date'),
+                                    CustomDatePicker::make('follow_up_date')->label('Follow Up Date'),
+                                ]),
                             ]),
-                            Grid::make(3)->schema([
-                                CustomDatePicker::make('due_date')->label('Vendor Due Date'),
-                                CustomDatePicker::make('expected_delivery_date')->label('Cust. Delivery Date'),
-                                CustomDatePicker::make('follow_up_date')->label('Follow Up Date'),
-                            ]),
-                        ]),
-                ]),
+                    ]),
 
                 // ── RIGHT COLUMN ──────────────────────────────────────
                 // ── RIGHT COLUMN ──────────────────────────────────────
@@ -712,246 +712,293 @@ class CustomOrderResource extends Resource
                     ->disabled(fn(?CustomOrder $record) => $record?->status === 'exchanged')
                     ->schema([
 
-                    Section::make('Financials & Status')
-                        ->icon('heroicon-o-banknotes')
-                        ->schema([
+                        Section::make('Financials & Status')
+                            ->icon('heroicon-o-banknotes')
+                            ->schema([
 
-                            TextInput::make('budget')
-                                ->label('Customer Budget')
-                                ->numeric()
-                                ->prefix('$'),
-
-                            TextInput::make('quoted_price')
-                                ->label('Total Quoted Price (Before Discount)')
-                                ->numeric()
-                                ->prefix('$')
-                                ->required()
-                                ->readOnly()
-                                ->live(onBlur: true)
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
-
-                            // ── DISCOUNT FIELDS ───────────────────────────────
-                            Grid::make(2)->schema([
-                                TextInput::make('discount_percent')
-                                    ->label('Discount %')
+                                TextInput::make('budget')
+                                    ->label('Customer Budget')
                                     ->numeric()
-                                    ->suffix('%')
-                                    ->default(0)
-                                    ->minValue(0)
-                                    ->maxValue(100)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        $quoted  = floatval($get('quoted_price') ?? 0);
-                                        $pct     = min(100, max(0, floatval($state ?? 0)));
-                                        $discAmt = $quoted * $pct / 100;
-                                        $set('discount_amount', round($discAmt, 2));
-                                        self::calculateBalance($get, $set);
-                                    }),
+                                    ->prefix('$'),
 
-                                TextInput::make('discount_amount')
-                                    ->label('Discount $')
+                                TextInput::make('quoted_price')
+                                    ->label('Total Quoted Price (Before Discount)')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->required()
+                                    ->readOnly()
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                    ->extraInputAttributes(['class' => 'font-bold text-green-600 bg-green-50']),
+
+                                // ── DISCOUNT FIELDS ───────────────────────────────
+                                Grid::make(2)->schema([
+                                    TextInput::make('discount_percent')
+                                        ->label('Discount %')
+                                        ->numeric()
+                                        ->suffix('%')
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->maxValue(100)
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $quoted  = floatval($get('quoted_price') ?? 0);
+                                            $pct     = min(100, max(0, floatval($state ?? 0)));
+                                            $discAmt = $quoted * $pct / 100;
+                                            $set('discount_amount', round($discAmt, 2));
+                                            self::calculateBalance($get, $set);
+                                        }),
+
+                                    TextInput::make('discount_amount')
+                                        ->label('Discount $')
+                                        ->numeric()
+                                        ->prefix('$')
+                                        ->default(0)
+                                        ->live(onBlur: true)
+                                        ->extraInputAttributes(['class' => 'font-bold text-danger-600'])
+                                        ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                            $quoted  = floatval($get('quoted_price') ?? 0);
+                                            $discAmt = min($quoted, max(0, floatval($state ?? 0)));
+                                            $pct     = $quoted > 0 ? round(($discAmt / $quoted) * 100, 2) : 0;
+                                            $set('discount_amount', round($discAmt, 2));
+                                            $set('discount_percent', $pct);
+                                            self::calculateBalance($get, $set);
+                                        }),
+                                ]),
+
+                                // ── TRADE IN DETAILS ─────────────────────────────
+                                Section::make('Trade-In Details')
+                                    ->schema([
+                                        Select::make('has_trade_in')
+                                            ->label('Is there a Trade-In?')
+                                            ->options([1 => 'Yes', 0 => 'No'])
+                                            ->default(0)
+                                            ->required()
+                                            ->live()
+                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                        Grid::make(2)
+                                            ->visible(fn(Get $get) => $get('has_trade_in') == 1)
+                                            ->schema([
+                                                TextInput::make('trade_in_value')
+                                                    ->label('Trade-In Value (Deduction)')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                    ->live(onBlur: true)
+                                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                                TextInput::make('trade_in_receipt_no')
+                                                    ->label('Trade-In Tracking #')
+                                                    ->default(fn() => 'TRD-' . date('Ymd-His'))
+                                                    ->readOnly(),
+                                                Textarea::make('trade_in_description')
+                                                    ->label('Item Description')
+                                                    ->required(fn(Get $get) => $get('has_trade_in') == 1)
+                                                    ->columnSpanFull()
+                                                    ->rows(2),
+                                            ]),
+                                    ]),
+
+                                // ── WARRANTY SECTION ─────────────────────────────
+                                Section::make('Warranty')
+                                    ->icon('heroicon-o-shield-check')
+                                    ->collapsible()
+                                    ->schema([
+                                        Grid::make(2)->schema([
+                                            Select::make('has_warranty')
+                                                ->label('Include Warranty?')
+                                                ->options([0 => 'No', 1 => 'Yes'])
+                                                ->default(0)
+                                                ->live()
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                            Select::make('warranty_period')
+                                                ->label('Warranty Duration')
+                                                ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                                ->required(fn(Get $get) => $get('has_warranty') == 1)
+                                                ->options(function () {
+                                                    $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
+                                                    $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
+                                                    return array_combine($options, $options);
+                                                }),
+                                            TextInput::make('warranty_charge')
+                                                ->label('Warranty Charge ($)')
+                                                ->numeric()
+                                                ->prefix('$')
+                                                ->default(0)
+                                                ->visible(fn(Get $get) => $get('has_warranty') == 1)
+                                                ->live(onBlur: true)
+                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
+                                            CustomDatePicker::make('follow_up_date')
+                                                ->label('Follow Up (2 Weeks)')
+                                                ->default(now()->addWeeks(2)->format('Y-m-d'))
+                                                ->displayFormat('m/d/Y'),
+                                        ]),
+                                    ]),
+
+                                TextInput::make('amount_paid')
+                                    ->label('Initial Deposit / Amount Paid')
                                     ->numeric()
                                     ->prefix('$')
                                     ->default(0)
                                     ->live(onBlur: true)
-                                    ->extraInputAttributes(['class' => 'font-bold text-danger-600'])
-                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        $quoted  = floatval($get('quoted_price') ?? 0);
-                                        $discAmt = min($quoted, max(0, floatval($state ?? 0)));
-                                        $pct     = $quoted > 0 ? round(($discAmt / $quoted) * 100, 2) : 0;
-                                        $set('discount_amount', round($discAmt, 2));
-                                        $set('discount_percent', $pct);
-                                        self::calculateBalance($get, $set);
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                    ->readOnly(
+                                        fn(string $operation) =>
+                                        $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                    )
+                                    ->dehydrated(true)
+                                    ->helperText(
+                                        fn(string $operation) =>
+                                        $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                            ? '⚠️ Admin: editing this will recalculate balance'
+                                            : null
+                                    )
+                                    ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
+
+                                Placeholder::make('deposit_source_trail')
+                                    ->label('Deposit Paid From')
+                                    ->dehydrated(false)
+                                    ->visible(fn(?CustomOrder $record) => $record && \App\Models\Payment::where('custom_order_id', $record->id)->exists())
+                                    ->content(function (?CustomOrder $record) {
+                                        if (!$record) return '';
+                                        $rows = '';
+                                        foreach (\App\Models\Payment::where('custom_order_id', $record->id)->orderBy('paid_at')->get() as $p) {
+                                            $method = strtoupper($p->method ?? '—');
+                                            $date   = \Carbon\Carbon::parse($p->paid_at)->format('M d, Y h:i A');
+                                            $amount = number_format((float) $p->amount, 2);
+                                            $sale     = $p->sale_id ? \App\Models\Sale::find($p->sale_id) : null;
+                                            $fromSale = $sale && abs(\Carbon\Carbon::parse($p->paid_at)->diffInMinutes($sale->created_at)) <= 5;
+                                            $badge = $fromSale
+                                                ? "<a href='" . \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]) . "' target='_blank' style='background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:99px;padding:2px 10px;font-size:10px;font-weight:700;text-decoration:none;'>🧾 Paid from Sale {$sale->invoice_number}</a>"
+                                                : "<span style='background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:99px;padding:2px 10px;font-size:10px;font-weight:700;'>✨ Paid on Custom Order</span>";
+                                            $rows .= "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #e5e7eb;'>
+                                            <div><span style='background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;'>{$method}</span> {$badge}
+                                            <div style='font-size:10px;color:#9ca3af;margin-top:3px;'>{$date}</div></div>
+                                            <span style='font-size:13px;font-weight:800;color:#10b981;'>+\${$amount}</span></div>";
+                                        }
+                                        return new HtmlString("<div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;'>{$rows}</div>");
                                     }),
-                            ]),
 
-                            // ── TRADE IN DETAILS ─────────────────────────────
-                            Section::make('Trade-In Details')
-                                ->schema([
-                                    Select::make('has_trade_in')
-                                        ->label('Is there a Trade-In?')
-                                        ->options([1 => 'Yes', 0 => 'No'])
-                                        ->default(0)
-                                        ->required()
-                                        ->live()
-                                        ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
-                                    Grid::make(2)
-                                        ->visible(fn(Get $get) => $get('has_trade_in') == 1)
-                                        ->schema([
-                                            TextInput::make('trade_in_value')
-                                                ->label('Trade-In Value (Deduction)')
-                                                ->numeric()
-                                                ->prefix('$')
-                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                                ->live(onBlur: true)
-                                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
-                                            TextInput::make('trade_in_receipt_no')
-                                                ->label('Trade-In Tracking #')
-                                                ->default(fn() => 'TRD-' . date('Ymd-His'))
-                                                ->readOnly(),
-                                            Textarea::make('trade_in_description')
-                                                ->label('Item Description')
-                                                ->required(fn(Get $get) => $get('has_trade_in') == 1)
-                                                ->columnSpanFull()
-                                                ->rows(2),
-                                        ]),
-                                ]),
-
-                            // ── WARRANTY SECTION ─────────────────────────────
-                            Section::make('Warranty')
-                                ->icon('heroicon-o-shield-check')
-                                ->collapsible()
-                                ->schema([
-                                    Grid::make(2)->schema([
-                                        Select::make('has_warranty')
-                                            ->label('Include Warranty?')
-                                            ->options([0 => 'No', 1 => 'Yes'])
-                                            ->default(0)
-                                            ->live()
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
-                                        Select::make('warranty_period')
-                                            ->label('Warranty Duration')
-                                            ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                                            ->required(fn(Get $get) => $get('has_warranty') == 1)
-                                            ->options(function () {
-                                                $json    = DB::table('site_settings')->where('key', 'warranty_options')->value('value');
-                                                $options = $json ? json_decode($json, true) : ['1 Year', '2 Years', 'Lifetime'];
-                                                return array_combine($options, $options);
-                                            }),
-                                        TextInput::make('warranty_charge')
-                                            ->label('Warranty Charge ($)')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->default(0)
-                                            ->visible(fn(Get $get) => $get('has_warranty') == 1)
-                                            ->live(onBlur: true)
-                                            ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set)),
-                                        CustomDatePicker::make('follow_up_date')
-                                            ->label('Follow Up (2 Weeks)')
-                                            ->default(now()->addWeeks(2)->format('Y-m-d'))
-                                            ->displayFormat('m/d/Y'),
-                                    ]),
-                                ]),
-
-                            TextInput::make('amount_paid')
-                                ->label('Initial Deposit / Amount Paid')
-                                ->numeric()
-                                ->prefix('$')
-                                ->default(0)
-                                ->live(onBlur: true)
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->readOnly(
-                                    fn(string $operation) =>
-                                    $operation === 'edit' && !\App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
-                                )
-                                ->dehydrated(true)
-                                ->helperText(
-                                    fn(string $operation) =>
-                                    $operation === 'edit' && \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
-                                        ? '⚠️ Admin: editing this will recalculate balance'
-                                        : null
-                                )
-                                ->extraInputAttributes(['class' => 'font-bold text-blue-600']),
-
-                            Toggle::make('is_split_deposit')
+                                                           Toggle::make('is_split_deposit')
                                 ->label('Split Deposit Payment?')
                                 ->onColor('warning')
                                 ->live()
-                                ->default(false)
-                                ->visible(
-                                    fn(string $operation) =>
-                                    $operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
-                                )
-                                ->dehydrated(false),
+                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                    ->default(false)
+                                    ->visible(
+                                        fn(string $operation) =>
+                                        $operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager'])
+                                    )
+                                    ->dehydrated(false),
 
-                            Select::make('initial_payment_method')
-    ->label('Deposit Payment Method')
-    ->options(self::getPaymentOptions())
-    ->default('CASH')
-    ->required(fn(string $operation, Get $get) =>
-        $operation === 'create' && floatval($get('amount_paid')) > 0 && !$get('is_split_deposit')
-    )
-    ->visible(
-        fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-            && !$get('is_split_deposit')
-    )
-    ->dehydrated(false),
+                                Select::make('initial_payment_method')
+                                    ->label('Deposit Payment Method')
+                                    ->options(self::getPaymentOptions())
+                                    ->default('CASH')
+                                    ->required(
+                                        fn(string $operation, Get $get) =>
+                                        $operation === 'create' && floatval($get('amount_paid')) > 0 && !$get('is_split_deposit')
+                                    )
+                                    ->visible(
+                                        fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                                            && !$get('is_split_deposit')
+                                    )
+                                    ->dehydrated(false),
 
-                            Repeater::make('split_deposit_payments')
-                                ->label('Split Deposit Breakdown')
-                                ->visible(
-                                    fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
-                                        && $get('is_split_deposit')
-                                )
-                                ->schema([
-                                    Grid::make(2)->schema([
-                                        Select::make('method')->options(self::getPaymentOptions())->required()->label('Method'),
-                                        TextInput::make('amount')->numeric()->prefix('$')->required()->label('Amount')->live(onBlur: true),
+                                Repeater::make('split_deposit_payments')
+                                    ->label('Split Deposit Breakdown')
+                                    ->visible(
+                                        fn(string $operation, Get $get) => ($operation === 'create' || \App\Helpers\Staff::user()?->hasAnyRole(['Superadmin', 'Administration', 'Manager']))
+                                            && $get('is_split_deposit')
+                                    )
+                                    // AFTER
+                                    ->schema([
+                                        Hidden::make('id'),
+                                        Grid::make(2)->schema([
+                                            Select::make('method')
+                                                ->options(function (?CustomOrder $record) {
+                                                    $options = self::getPaymentOptions();
+                                                    if ($record) {
+                                                        \App\Models\Payment::where('custom_order_id', $record->id)->pluck('method')
+                                                            ->map(fn($m) => strtoupper(trim($m)))->unique()
+                                                            ->each(function ($m) use (&$options) {
+                                                                $options[$m] ??= $m;
+                                                            });
+                                                    }
+                                                    return $options;
+                                                })
+                                                ->required()->label('Method'),
+                                                                                TextInput::make('amount')->numeric()->prefix('$')->required()->label('Amount')->live(onBlur: true)
+                                            ->afterStateUpdated(function ($state, \Filament\Forms\Contracts\HasForms $livewire) {
+                                                self::calculateBalance(
+                                                    fn($p) => data_get($livewire->data, $p),
+                                                    fn($p, $v) => data_set($livewire->data, $p, $v)
+                                                );
+                                            }),
                                     ]),
                                 ])
-                                ->defaultItems(2)
-                                ->maxItems(4)
-                                ->reorderable(false)
-                                ->live()
-                                ->dehydrated(false),
+                                ->defaultItems(0)
+                                    ->maxItems(4)
+                                    ->reorderable(false)
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                    ->dehydrated(false),
 
-                            Placeholder::make('split_deposit_calc')
-                                ->label('Deposit Remaining')
-                                ->visible(fn(Get $get) => $get('is_split_deposit'))
-                                ->content(function (Get $get) {
-                                    $total     = floatval($get('amount_paid') ?? 0);
-                                    $payments  = $get('split_deposit_payments') ?? [];
-                                    $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
-                                    $remaining = $total - $sum;
-                                    $color     = round($remaining, 2) <= 0 ? 'text-success-600' : 'text-danger-600';
-                                    return new HtmlString("<span class='{$color} font-bold text-lg'>$" . number_format(max(0, $remaining), 2) . " remaining</span>");
-                                }),
+                                Placeholder::make('split_deposit_calc')
+                                    ->label('Deposit Remaining')
+                                    ->visible(fn(Get $get) => $get('is_split_deposit'))
+                                    ->content(function (Get $get) {
+                                        $total     = floatval($get('amount_paid') ?? 0);
+                                        $payments  = $get('split_deposit_payments') ?? [];
+                                        $sum       = collect($payments)->sum(fn($p) => (float)($p['amount'] ?? 0));
+                                        $remaining = $total - $sum;
+                                        $color     = round($remaining, 2) <= 0 ? 'text-success-600' : 'text-danger-600';
+                                        return new HtmlString("<span class='{$color} font-bold text-lg'>$" . number_format(max(0, $remaining), 2) . " remaining</span>");
+                                    }),
 
-                            Toggle::make('is_tax_free')
-                                ->label('Tax Free Order?')
-                                ->helperText('Toggle on if this order is financed or exempt from tax.')
-                                ->default(false)
-                                ->live()
-                                ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
-                                ->dehydrated(true),
+                                Toggle::make('is_tax_free')
+                                    ->label('Tax Free Order?')
+                                    ->helperText('Toggle on if this order is financed or exempt from tax.')
+                                    ->default(false)
+                                    ->live()
+                                    ->afterStateUpdated(fn(Get $get, Set $set) => self::calculateBalance($get, $set))
+                                    ->dehydrated(true),
 
-                            TextInput::make('balance_due')
-                                ->label('Remaining Balance')
-                                ->numeric()
-                                ->prefix('$')
-                                ->default(0)
-                                ->readOnly()
-                                ->dehydrated(true)
-                                ->afterStateHydrated(function (Get $get, Set $set) {
-                                    self::calculateBalance($get, $set);
-                                })
-                                ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
+                                TextInput::make('balance_due')
+                                    ->label('Remaining Balance')
+                                    ->numeric()
+                                    ->prefix('$')
+                                    ->default(0)
+                                    ->readOnly()
+                                    ->dehydrated(true)
+                                    ->afterStateHydrated(function (Get $get, Set $set) {
+                                        self::calculateBalance($get, $set);
+                                    })
+                                    ->extraInputAttributes(['class' => 'font-bold text-red-600 bg-red-50']),
 
-                            // ── FINANCIAL SUMMARY ─────────────────────────────
-                            Placeholder::make('financial_summary')
-                                ->label('Order Summary')
-                                ->live()
-                                ->content(function (Get $get) {
-                                    $quoted    = floatval($get('quoted_price') ?? 0);
-                                    $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
-                                    $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
-                                    $afterDisc = $quoted - $discAmt;
-                                    $paid      = floatval($get('amount_paid') ?? 0);
-                                    $isTaxFree = (bool)($get('is_tax_free') ?? false);
+                                // ── FINANCIAL SUMMARY ─────────────────────────────
+                                Placeholder::make('financial_summary')
+                                    ->label('Order Summary')
+                                    ->live()
+                                    ->content(function (Get $get) {
+                                        $quoted    = floatval($get('quoted_price') ?? 0);
+                                        $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
+                                        $discAmt   = floatval($get('discount_amount') ?? ($quoted * $discPct / 100));
+                                        $afterDisc = $quoted - $discAmt;
+                                        $paid      = floatval($get('amount_paid') ?? 0);
+                                        $isTaxFree = (bool)($get('is_tax_free') ?? false);
 
-                                    // Warranty math
-                                    $hasWarranty = $get('has_warranty') == 1;
-                                    $warrantyCharge = $hasWarranty ? floatval($get('warranty_charge') ?? 0) : 0;
-                                    $warrantyPeriod = $hasWarranty ? $get('warranty_period') : '';
+                                        // Warranty math
+                                        $hasWarranty = $get('has_warranty') == 1;
+                                        $warrantyCharge = $hasWarranty ? floatval($get('warranty_charge') ?? 0) : 0;
+                                        $warrantyPeriod = $hasWarranty ? $get('warranty_period') : '';
 
-                                    $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                                    $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                                    $tax     = ($afterDisc + $warrantyCharge) * $taxRate;
-                                    $total   = $afterDisc + $warrantyCharge + $tax;
-                                    $balance = max(0, $total - $paid);
+                                        $dbTax   = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+                                        $taxRate = $isTaxFree ? 0 : floatval($dbTax) / 100;
+                                        $tax     = ($afterDisc + $warrantyCharge) * $taxRate;
+                                        $total   = $afterDisc + $warrantyCharge + $tax;
+                                        $balance = max(0, $total - $paid);
 
-                                    return new HtmlString("
+                                        return new HtmlString("
                                         <div class='rounded-lg border border-gray-200 overflow-hidden text-sm'>
                                             <div class='flex justify-between px-3 py-2 bg-gray-50'>
                                                 <span class='text-gray-500'>Quoted Price</span>
@@ -989,36 +1036,36 @@ class CustomOrderResource extends Resource
                                             </div>
                                         </div>
                                     ");
-                                }),
+                                    }),
 
-                           Select::make('status')
-                                ->options([
-                                    'draft'         => 'Draft',
-                                    'quoted'        => 'Quoted',
-                                    'approved'      => 'Approved',
-                                    'in_production' => 'In Production',
-                                    'received'      => 'Ready for Pickup',
-                                    'completed'     => 'Picked Up / Completed',
-                                    'exchanged'     => 'Voided / Exchanged 🔄',
-                                ])
-                                ->default('draft')
-                                ->live()
-                                ->extraAttributes(['class' => 'font-bold']),
+                                Select::make('status')
+                                    ->options([
+                                        'draft'         => 'Draft',
+                                        'quoted'        => 'Quoted',
+                                        'approved'      => 'Approved',
+                                        'in_production' => 'In Production',
+                                        'received'      => 'Ready for Pickup',
+                                        'completed'     => 'Picked Up / Completed',
+                                        'exchanged'     => 'Voided / Exchanged 🔄',
+                                    ])
+                                    ->default('draft')
+                                    ->live()
+                                    ->extraAttributes(['class' => 'font-bold']),
 
-                            Section::make('Communication Log')
-                                ->schema([
-                                    Toggle::make('is_customer_notified')
-                                        ->label('Mark as Notified')
-                                        ->onColor('success')
-                                        ->offColor('gray'),
-                                    DateTimePicker::make('notified_at')
-                                        ->label('Last Notified Timestamp')
-                                        ->readOnly(),
-                                ])
-                                ->visible(fn(Get $get) => in_array($get('status'), ['received', 'completed']))
-                                ->compact(),
-                        ]),
-                ]),
+                                Section::make('Communication Log')
+                                    ->schema([
+                                        Toggle::make('is_customer_notified')
+                                            ->label('Mark as Notified')
+                                            ->onColor('success')
+                                            ->offColor('gray'),
+                                        DateTimePicker::make('notified_at')
+                                            ->label('Last Notified Timestamp')
+                                            ->readOnly(),
+                                    ])
+                                    ->visible(fn(Get $get) => in_array($get('status'), ['received', 'completed']))
+                                    ->compact(),
+                            ]),
+                    ]),
             ]),
         ]);
     }
@@ -1027,7 +1074,7 @@ class CustomOrderResource extends Resource
     {
         return $table
             ->columns([
-                 Tables\Columns\TextColumn::make('created_at')
+                Tables\Columns\TextColumn::make('created_at')
                     ->label('DATE')->date('m/d/y')->sortable()->size('sm')->grow(false),
                 Tables\Columns\TextColumn::make('order_no')
                     ->label('ORDER #')
@@ -1067,8 +1114,12 @@ class CustomOrderResource extends Resource
                         $names = explode('||', $state);
                         return collect($names)->map(function ($name) {
                             $palette = [
-                                ['#DBEAFE', '#1D4ED8'], ['#EDE9FE', '#6D28D9'], ['#CCFBF1', '#0F766E'],
-                                ['#FEF3C7', '#B45309'], ['#DCFCE7', '#15803D'], ['#FCE7F3', '#BE185D'],
+                                ['#DBEAFE', '#1D4ED8'],
+                                ['#EDE9FE', '#6D28D9'],
+                                ['#CCFBF1', '#0F766E'],
+                                ['#FEF3C7', '#B45309'],
+                                ['#DCFCE7', '#15803D'],
+                                ['#FCE7F3', '#BE185D'],
                             ];
                             $index       = abs(crc32(strtolower(trim($name)))) % count($palette);
                             [$bg, $text] = $palette[$index];
@@ -1171,23 +1222,23 @@ class CustomOrderResource extends Resource
                     ])
                     ->selectablePlaceholder(false)
                     ->grow(false),
-                    Tables\Columns\TextColumn::make('sale_link')
-    ->label('SALE')
-    ->getStateUsing(fn(CustomOrder $record) => $record->sale_id)
-    ->formatStateUsing(function ($state, CustomOrder $record) {
-        if (!$record->sale_id) {
-            return new \Illuminate\Support\HtmlString(
-                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
-            );
-        }
-        $sale = \App\Models\Sale::find($record->sale_id);
-        if (!$sale) {
-            return new \Illuminate\Support\HtmlString(
-                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
-            );
-        }
-        $url = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
-        return new \Illuminate\Support\HtmlString("
+                Tables\Columns\TextColumn::make('sale_link')
+                    ->label('SALE')
+                    ->getStateUsing(fn(CustomOrder $record) => $record->sale_id)
+                    ->formatStateUsing(function ($state, CustomOrder $record) {
+                        if (!$record->sale_id) {
+                            return new \Illuminate\Support\HtmlString(
+                                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
+                            );
+                        }
+                        $sale = \App\Models\Sale::find($record->sale_id);
+                        if (!$sale) {
+                            return new \Illuminate\Support\HtmlString(
+                                "<span style='font-size:10px;color:#9ca3af;'>Not linked to sale</span>"
+                            );
+                        }
+                        $url = \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id]);
+                        return new \Illuminate\Support\HtmlString("
             <a href='{$url}'
                style='display:inline-flex;align-items:center;gap:4px;
                       font-size:10px;font-weight:700;color:#0369a1;
@@ -1199,31 +1250,31 @@ class CustomOrderResource extends Resource
                 🧾 {$sale->invoice_number}
             </a>
         ");
-    })
-    ->html()
-    ->grow(false),
+                    })
+                    ->html()
+                    ->grow(false),
 
 
- Tables\Columns\TextColumn::make('workflow_hint')
-    ->label('NEXT ACTION')
-    ->getStateUsing(function (CustomOrder $record) {
-        return match($record->status) {
-            'draft'         => 'approve|Approve & Send to Production',
-            'quoted'        => 'approve|Approve & Send to Production',
-            'approved'      => 'production|Mark In Production',
-            'in_production' => 'ready|Mark Ready for Pickup',
-            'received'      => 'sale|Convert to Sale →',
-            'completed'     => 'done|Fully Completed ✅',
-            'exchanged'     => 'voided|Voided / Exchanged 🔄',
-            default         => 'none|—',
-        };
-    })
-    ->formatStateUsing(function ($state, CustomOrder $record) {
-        [$type, $label] = explode('|', $state, 2);
+                Tables\Columns\TextColumn::make('workflow_hint')
+                    ->label('NEXT ACTION')
+                    ->getStateUsing(function (CustomOrder $record) {
+                        return match ($record->status) {
+                            'draft'         => 'approve|Approve & Send to Production',
+                            'quoted'        => 'approve|Approve & Send to Production',
+                            'approved'      => 'production|Mark In Production',
+                            'in_production' => 'ready|Mark Ready for Pickup',
+                            'received'      => 'sale|Convert to Sale →',
+                            'completed'     => 'done|Fully Completed ✅',
+                            'exchanged'     => 'voided|Voided / Exchanged 🔄',
+                            default         => 'none|—',
+                        };
+                    })
+                    ->formatStateUsing(function ($state, CustomOrder $record) {
+                        [$type, $label] = explode('|', $state, 2);
 
-        // ── If exchanged/voided, show locked pill ──
-        if ($type === 'voided') {
-            return new \Illuminate\Support\HtmlString("
+                        // ── If exchanged/voided, show locked pill ──
+                        if ($type === 'voided') {
+                            return new \Illuminate\Support\HtmlString("
                 <span style='display:inline-flex;flex-direction:column;
                              background:#fef2f2;color:#991b1b;
                              border:1px solid #fecaca;
@@ -1233,25 +1284,25 @@ class CustomOrderResource extends Resource
                     {$label}
                 </span>
             ");
-        }
+                        }
 
-        // ── If completed AND already has a linked sale, show "Converted" pill ──
-        if ($type === 'done' && $record->sale_id) {
-            $sale = \App\Models\Sale::find($record->sale_id);
-            $url  = $sale
-                ? \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id])
-                : null;
+                        // ── If completed AND already has a linked sale, show "Converted" pill ──
+                        if ($type === 'done' && $record->sale_id) {
+                            $sale = \App\Models\Sale::find($record->sale_id);
+                            $url  = $sale
+                                ? \App\Filament\Resources\SaleResource::getUrl('edit', ['record' => $sale->id])
+                                : null;
 
-            $inner = $url
-                ? "<a href='{$url}' style='color:#15803d;text-decoration:none;font-size:10px;font-weight:700;'>
+                            $inner = $url
+                                ? "<a href='{$url}' style='color:#15803d;text-decoration:none;font-size:10px;font-weight:700;'>
                        ✅ Converted to Sale
                        <span style='font-size:9px;font-weight:600;display:block;margin-top:1px;color:#16a34a;'>
                            {$sale->invoice_number}
                        </span>
                    </a>"
-                : "<span style='font-size:10px;font-weight:700;color:#15803d;'>✅ Converted to Sale</span>";
+                                : "<span style='font-size:10px;font-weight:700;color:#15803d;'>✅ Converted to Sale</span>";
 
-            return new \Illuminate\Support\HtmlString("
+                            return new \Illuminate\Support\HtmlString("
                 <span style='display:inline-flex;flex-direction:column;
                              background:#f0fdf4;color:#15803d;
                              border:1px solid #bbf7d0;
@@ -1260,41 +1311,41 @@ class CustomOrderResource extends Resource
                     {$inner}
                 </span>
             ");
-        }
+                        }
 
-       $configs = [
-            'approve'    => ['#7c3aed', '#f5f3ff', '#ddd6fe', '⚡'],
-            'production' => ['#b45309', '#fffbeb', '#fde68a', '🔧'],
-            'ready'      => ['#0369a1', '#f0f9ff', '#bae6fd', '📦'],
-            'sale'       => ['#15803d', '#f0fdf4', '#bbf7d0', '🛒'],
-            'done'       => ['#6b7280', '#f9fafb', '#e5e7eb', '✅'],
-            'voided'     => ['#991b1b', '#fef2f2', '#fecaca', '🔄'],
-            'none'       => ['#9ca3af', '#f9fafb', '#e5e7eb', '—'],
-        ];
+                        $configs = [
+                            'approve'    => ['#7c3aed', '#f5f3ff', '#ddd6fe', '⚡'],
+                            'production' => ['#b45309', '#fffbeb', '#fde68a', '🔧'],
+                            'ready'      => ['#0369a1', '#f0f9ff', '#bae6fd', '📦'],
+                            'sale'       => ['#15803d', '#f0fdf4', '#bbf7d0', '🛒'],
+                            'done'       => ['#6b7280', '#f9fafb', '#e5e7eb', '✅'],
+                            'voided'     => ['#991b1b', '#fef2f2', '#fecaca', '🔄'],
+                            'none'       => ['#9ca3af', '#f9fafb', '#e5e7eb', '—'],
+                        ];
 
-        [$color, $bg, $border, $icon] = $configs[$type] ?? $configs['none'];
+                        [$color, $bg, $border, $icon] = $configs[$type] ?? $configs['none'];
 
-        $staffIds = $record->sales_person_list;
-        if (is_string($staffIds)) {
-            $decoded = json_decode($staffIds, true);
-            $staffIds = is_array($decoded) ? $decoded : [];
-        }
-        if (empty($staffIds) || !is_array($staffIds)) {
-            $staffIds = $record->staff_id ? [$record->staff_id] : [];
-        }
-        $idsParam = implode(',', $staffIds);
+                        $staffIds = $record->sales_person_list;
+                        if (is_string($staffIds)) {
+                            $decoded = json_decode($staffIds, true);
+                            $staffIds = is_array($decoded) ? $decoded : [];
+                        }
+                        if (empty($staffIds) || !is_array($staffIds)) {
+                            $staffIds = $record->staff_id ? [$record->staff_id] : [];
+                        }
+                        $idsParam = implode(',', $staffIds);
 
-        $convertUrl = $type === 'sale'
-            ? \App\Filament\Resources\SaleResource::getUrl('create', [
-                'customer_id'      => $record->customer_id,
-                'custom_order_id'  => $record->id,
-                'sales_person_ids' => $idsParam,
-            ])
-            : null;
+                        $convertUrl = $type === 'sale'
+                            ? \App\Filament\Resources\SaleResource::getUrl('create', [
+                                'customer_id'      => $record->customer_id,
+                                'custom_order_id'  => $record->id,
+                                'sales_person_ids' => $idsParam,
+                            ])
+                            : null;
 
-        if ($convertUrl) {
-            $animId = 'blk' . $record->id;
-            return new \Illuminate\Support\HtmlString("
+                        if ($convertUrl) {
+                            $animId = 'blk' . $record->id;
+                            return new \Illuminate\Support\HtmlString("
                 <style>
                     @-webkit-keyframes {$animId} {
                         0%, 100% { background-color: #16a34a; color: #ffffff; }
@@ -1320,9 +1371,9 @@ class CustomOrderResource extends Resource
                     {$icon} {$label}
                 </a>
             ");
-        }
+                        }
 
-        return new \Illuminate\Support\HtmlString("
+                        return new \Illuminate\Support\HtmlString("
             <span style='display:inline-flex;align-items:center;gap:5px;
                          background:{$bg};color:{$color};
                          border:1px solid {$border};
@@ -1332,9 +1383,9 @@ class CustomOrderResource extends Resource
                 {$icon} {$label}
             </span>
         ");
-    })
-    ->html()
-    ->grow(false),
+                    })
+                    ->html()
+                    ->grow(false),
                 Tables\Columns\TextColumn::make('notified_at')
                     ->label('NOTIFIED')
                     ->getStateUsing(
@@ -1362,7 +1413,7 @@ class CustomOrderResource extends Resource
                         'stock_modify' => 'Modify Stock',
                     ]),
             ])
-           ->actions([
+            ->actions([
                 Tables\Actions\EditAction::make()
                     ->iconButton()
                     ->visible(fn(CustomOrder $record) => !in_array($record->status, ['completed', 'exchanged'])),
@@ -1404,7 +1455,7 @@ class CustomOrderResource extends Resource
                             ->send();
                     }),
 
-              Tables\Actions\Action::make('recordPayment')
+                Tables\Actions\Action::make('recordPayment')
                     ->label('Add Deposit')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
@@ -1413,35 +1464,18 @@ class CustomOrderResource extends Resource
                     ->visible(function (CustomOrder $record) {
                         if (in_array($record->status, ['completed', 'cancelled', 'exchanged'])) return false;
 
-                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $discAmt    = floatval($record->discount_amount ?? 0);
-                        $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
-
-                        $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
-                        $paid       = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
-
-                        return ($grandTotal - $paid) > 0.01;
+                        return self::orderTotals($record)['balance'] > 0.01;
                     })
                     ->modalHeading(fn(CustomOrder $record) => "Add Payment — Order {$record->order_no}")
                     ->modalSubmitActionLabel('✓ Record Payment')
                     ->modalWidth('lg')
                     ->form(function (CustomOrder $record) {
-                        $record     = $record->fresh(['payments']);
-                        $payments   = $record->payments()->orderBy('paid_at')->get();
-                        $totalPaid  = $payments->sum('amount');
-
-                        $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                        $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                        $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                        $discAmt    = floatval($record->discount_amount ?? 0);
-                        $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                        $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
-
-                        $grandTotal = ($afterDisc + $warranty) + (($afterDisc + $warranty) * $taxRate);
-                        $balance    = max(0, $grandTotal - $totalPaid);
+                        $record     = $record->fresh();
+                        $payments   = \App\Models\Payment::where('custom_order_id', $record->id)->orderBy('paid_at')->get();
+                        $calc       = self::orderTotals($record);
+                        $grandTotal = $calc['grand'];
+                        $totalPaid  = $calc['paid'];
+                        $balance    = $calc['balance'];
 
                         $rows = '';
                         if ($payments->isEmpty()) {
@@ -1501,10 +1535,7 @@ class CustomOrderResource extends Resource
                                 ->numeric()
                                 ->required()
                                 ->prefix('$')
-                                ->default(function () use ($record, $grandTotal) {
-                                    $paid = $record->payments()->sum('amount') ?: floatval($record->amount_paid);
-                                    return round(max(0, $grandTotal - $paid), 2);
-                                })
+                                ->default(fn() => $balance)
                                 ->extraInputAttributes([
                                     'style' => 'font-size:1.4rem;font-weight:900;height:3rem;border:2px solid #10b981;background:#f0fdf4;color:#15803d;',
                                 ])
@@ -1539,18 +1570,15 @@ class CustomOrderResource extends Resource
                     })
                     ->action(function (CustomOrder $record, array $data, $livewire) {
                         DB::transaction(function () use ($record, $data) {
-                            $amountPaid = round((float) $data['amount'], 2);
-                            $isTaxFree  = (bool)($record->is_tax_free ?? false);
-                            $dbTax      = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-                            $taxRate    = $isTaxFree ? 0 : floatval($dbTax) / 100;
-                            $discAmt    = floatval($record->discount_amount ?? 0);
-                            $afterDisc  = floatval($record->quoted_price) - $discAmt;
-                            $warranty   = $record->has_warranty ? floatval($record->warranty_charge) : 0;
-                            $grandTotal = ($afterDisc + $warranty) * (1 + $taxRate);
+                            // When split is on, the real amount is the sum of the split rows
+                            $amountPaid = ($data['is_split'] ?? false)
+                                ? round(collect($data['split_payments'] ?? [])->sum(fn($p) => (float) ($p['amount'] ?? 0)), 2)
+                                : round((float) $data['amount'], 2);
 
-                            $alreadyPaid   = $record->payments()->sum('amount');
-                            $newTotalPaid  = round($alreadyPaid + $amountPaid, 2);
-                            $newBalanceDue = round(max(0, $grandTotal - $newTotalPaid), 2);
+                            // Read totals BEFORE inserting the new payment rows
+                            $before        = self::orderTotals($record);
+                            $newTotalPaid  = round($before['paid'] + $amountPaid, 2);
+                            $newBalanceDue = round(max(0, $before['grand'] - $newTotalPaid), 2);
 
                             $record->update([
                                 'amount_paid' => $newTotalPaid,
@@ -1598,7 +1626,7 @@ class CustomOrderResource extends Resource
                             }
                         });
 
-                       if ($record->refresh()->balance_due <= 0 && !$record->sale_id) {
+                        if ($record->refresh()->balance_due <= 0 && !$record->sale_id) {
                             Notification::make()
                                 ->title('✅ Payment Recorded — Fully Paid')
                                 ->body('Opening PIN verification to create the sale...')
@@ -1805,7 +1833,27 @@ class CustomOrderResource extends Resource
         return $options;
     }
 
-    public static function calculateBalance(Get $get, Set $set): void
+    // 🚀 NEW — single source of truth for grand total / paid / balance.
+    public static function orderTotals(CustomOrder $record): array
+    {
+        $isTaxFree = (bool) ($record->is_tax_free ?? false);
+        $dbTax     = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+        $taxRate   = $isTaxFree ? 0 : floatval($dbTax) / 100;
+        $discAmt   = floatval($record->discount_amount ?? 0);
+        $tradeIn   = $record->has_trade_in ? floatval($record->trade_in_value ?? 0) : 0;
+        $warranty  = $record->has_warranty ? floatval($record->warranty_charge ?? 0) : 0;
+        $afterDisc = max(0, floatval($record->quoted_price) - $discAmt - $tradeIn);
+        $grand     = round(($afterDisc + $warranty) * (1 + $taxRate), 2);
+
+        $paid = round((float) \App\Models\Payment::where('custom_order_id', $record->id)->sum('amount'), 2);
+        if ($paid <= 0) {
+            $paid = round((float) $record->amount_paid, 2); // legacy orders with no payment rows
+        }
+
+        return ['grand' => $grand, 'paid' => $paid, 'balance' => round(max(0, $grand - $paid), 2)];
+    }
+
+    public static function calculateBalance(callable|Get $get, callable|Set $set): void
     {
         $quoted    = floatval($get('quoted_price') ?? 0);
         $discPct   = min(100, max(0, floatval($get('discount_percent') ?? 0)));
@@ -1819,8 +1867,8 @@ class CustomOrderResource extends Resource
 
         $isSplit = (bool)($get('is_split_deposit') ?? false);
 
-        if ($isSplit) {
-            $splitPayments = $get('split_deposit_payments') ?? [];
+        if ($isSplit && !empty($get('split_deposit_payments'))) {
+            $splitPayments = $get('split_deposit_payments');
             $paid = collect($splitPayments)->sum(fn($p) => (float)($p['amount'] ?? 0));
             // Also sync amount_paid to reflect the split total
             $set('amount_paid', round($paid, 2));
@@ -1839,84 +1887,84 @@ class CustomOrderResource extends Resource
     }
 
     public static function createSaleDirectly(CustomOrder $record): \App\Models\Sale
-{
-    return DB::transaction(function () use ($record) {
-        // ── Build staff list exactly like the existing logic does ──
-        $staffIds = $record->sales_person_list;
-        if (is_string($staffIds)) {
-            $decoded  = json_decode($staffIds, true);
-            $staffIds = is_array($decoded) ? $decoded : [];
-        }
-        if (empty($staffIds) || !is_array($staffIds)) {
-            $staffIds = $record->staff_id ? [$record->staff_id] : [];
-        }
-        $staffNames = User::whereIn('id', $staffIds)->pluck('name')->toArray();
-        if (empty($staffNames)) {
-            $staffNames = [auth()->user()->name ?? 'Unknown'];
-        }
+    {
+        return DB::transaction(function () use ($record) {
+            // ── Build staff list exactly like the existing logic does ──
+            $staffIds = $record->sales_person_list;
+            if (is_string($staffIds)) {
+                $decoded  = json_decode($staffIds, true);
+                $staffIds = is_array($decoded) ? $decoded : [];
+            }
+            if (empty($staffIds) || !is_array($staffIds)) {
+                $staffIds = $record->staff_id ? [$record->staff_id] : [];
+            }
+            $staffNames = User::whereIn('id', $staffIds)->pluck('name')->toArray();
+            if (empty($staffNames)) {
+                $staffNames = [auth()->user()->name ?? 'Unknown'];
+            }
 
-        // ── Recompute the exact pre-tax line amount, same math CreateSale::mount() uses ──
-        $isTaxFree  = (bool) $record->is_tax_free;
-        $discAmt    = floatval($record->discount_amount ?? 0);
-        $afterDisc  = max(0, floatval($record->quoted_price) - $discAmt);
-        $warranty   = $record->has_warranty ? floatval($record->warranty_charge ?? 0) : 0;
-        $preTaxAmount = round($afterDisc + $warranty, 2);
+            // ── Recompute the exact pre-tax line amount, same math CreateSale::mount() uses ──
+            $isTaxFree  = (bool) $record->is_tax_free;
+            $discAmt    = floatval($record->discount_amount ?? 0);
+            $afterDisc  = max(0, floatval($record->quoted_price) - $discAmt);
+            $warranty   = $record->has_warranty ? floatval($record->warranty_charge ?? 0) : 0;
+            $preTaxAmount = round($afterDisc + $warranty, 2);
 
-        $dbTaxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
-        $taxRate   = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
-        $taxAmount = round($preTaxAmount * $taxRate, 2);
-        $finalTotal = round($preTaxAmount + $taxAmount, 2);
+            $dbTaxRate = DB::table('site_settings')->where('key', 'tax_rate')->value('value') ?? 7.63;
+            $taxRate   = $isTaxFree ? 0 : floatval($dbTaxRate) / 100;
+            $taxAmount = round($preTaxAmount * $taxRate, 2);
+            $finalTotal = round($preTaxAmount + $taxAmount, 2);
 
-        // ── Pull every payment already recorded against this custom order ──
-        $existingPayments = \App\Models\Payment::where('custom_order_id', $record->id)
-            ->orderBy('paid_at')
-            ->get();
-        $totalPaid = $existingPayments->sum('amount');
+            // ── Pull every payment already recorded against this custom order ──
+            $existingPayments = \App\Models\Payment::where('custom_order_id', $record->id)
+                ->orderBy('paid_at')
+                ->get();
+            $totalPaid = $existingPayments->sum('amount');
 
-        $invoiceNumber = 'D' . str_pad((string) (\App\Models\Sale::max('id') + 1), 4, '0', STR_PAD_LEFT);
+            $invoiceNumber = 'D' . str_pad((string) (\App\Models\Sale::max('id') + 1), 4, '0', STR_PAD_LEFT);
 
-        $sale = \App\Models\Sale::create([
-            'invoice_number'     => $invoiceNumber,
-            'customer_id'        => $record->customer_id,
-            'store_id'           => auth()->user()->store_id ?? \App\Models\Store::first()?->id ?? 1,
-            'sales_person_list'  => $staffNames,
-            'subtotal'           => $preTaxAmount,
-            'tax_amount'         => $taxAmount,
-            'final_total'        => $finalTotal,
-            'amount_paid'        => round($totalPaid, 2),
-            'balance_due'        => max(0, round($finalTotal - $totalPaid, 2)),
-            'payment_method'     => 'split',
-            'is_split_payment'   => true,
-            'status'             => 'completed',
-            'completed_at'       => now(),
-        ]);
+            $sale = \App\Models\Sale::create([
+                'invoice_number'     => $invoiceNumber,
+                'customer_id'        => $record->customer_id,
+                'store_id'           => auth()->user()->store_id ?? \App\Models\Store::first()?->id ?? 1,
+                'sales_person_list'  => $staffNames,
+                'subtotal'           => $preTaxAmount,
+                'tax_amount'         => $taxAmount,
+                'final_total'        => $finalTotal,
+                'amount_paid'        => round($totalPaid, 2),
+                'balance_due'        => max(0, round($finalTotal - $totalPaid, 2)),
+                'payment_method'     => 'split',
+                'is_split_payment'   => true,
+                'status'             => 'completed',
+                'completed_at'       => now(),
+            ]);
 
-        $sale->items()->create([
-            'custom_order_id'     => $record->id,
-            'stock_no_display'    => 'CUSTOM #' . $record->order_no,
-            'custom_description'  => "Custom {$record->product_name}",
-            'qty'                 => 1,
-            'sold_price'          => $preTaxAmount,
-            'sale_price_override' => $preTaxAmount,
-            'is_tax_free'         => $isTaxFree,
-            'is_non_stock'        => false,
-            'discount_percent'    => 0,
-            'discount_amount'     => 0,
-            'discount'            => 0,
-        ]);
+            $sale->items()->create([
+                'custom_order_id'     => $record->id,
+                'stock_no_display'    => 'CUSTOM #' . $record->order_no,
+                'custom_description'  => "Custom {$record->product_name}",
+                'qty'                 => 1,
+                'sold_price'          => $preTaxAmount,
+                'sale_price_override' => $preTaxAmount,
+                'is_tax_free'         => $isTaxFree,
+                'is_non_stock'        => false,
+                'discount_percent'    => 0,
+                'discount_amount'     => 0,
+                'discount'            => 0,
+            ]);
 
-        // ── Re-point existing payments to this new sale, exactly like CreateSale::afterCreate() ──
-        \App\Models\Payment::where('custom_order_id', $record->id)
-            ->update(['sale_id' => $sale->id]);
+            // ── Re-point existing payments to this new sale, exactly like CreateSale::afterCreate() ──
+            \App\Models\Payment::where('custom_order_id', $record->id)
+                ->update(['sale_id' => $sale->id]);
 
-        $record->update([
-            'sale_id' => $sale->id,
-            'status'  => 'completed',
-        ]);
+            $record->update([
+                'sale_id' => $sale->id,
+                'status'  => 'completed',
+            ]);
 
-        return $sale;
-    });
-}
+            return $sale;
+        });
+    }
     public static function handleNotification(CustomOrder $record, string $method, string $message): void
     {
         $record->update([
