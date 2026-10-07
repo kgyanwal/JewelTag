@@ -53,7 +53,7 @@ class ZebraPrinterService
 
             // BUTTERFLY TAG CALIBRATION — 3in x 1in total label; keeper square is the
             // right-hand 1in x 1in portion (x: 600-900), split into two 1in x 0.5in panels.
-            $zpl = "^XA^CI28^MD30^PW900^LL300^LS0^PR2";
+            $zpl = "^XA^CI28^MD30^PW900^LH0,0^LT0^LS0^PON^PR2";
 
             // --- RFID CHIP ENCODING ---
             if ($useRFID && !empty($record->rfid_code)) { 
