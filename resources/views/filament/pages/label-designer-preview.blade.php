@@ -22,10 +22,10 @@
     {{-- Order here = order of the table rows --}}
     labels: {
         stock_no: 'Stock No',
-        desc: 'Description',
+        dwmtmk: 'Metal/Stone',
         barcode: 'Barcode',
         price: 'Price Tag',
-        dwmtmk: 'Metal/Stone',
+        desc: 'Description',
         deptcat: 'Category',
         rfid: 'RFID Hex'
     },

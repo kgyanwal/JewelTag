@@ -22,55 +22,46 @@ class LabelDesigner extends Page implements HasForms
     public array $data = [];
     public string $activeField = 'stock_no';
 
+    /**
+     * Fallbacks used only when a store has no saved row for a field.
+     * Keep these identical to ZebraPrinterService::setDefaultLayout().
+     * Order = order of the table in the designer.
+     * [x, y, font size, bold, sample value]
+     */
+    private const FIELDS = [
+        'stock_no' => [550,  60, 30, true,  'D1001'],
+        'dwmtmk'   => [550, 110, 20, false, '1.38g 14K'],
+        'barcode'  => [550, 150,  1, false, 'D1001'],
+        'price'    => [550, 220, 30, true,  '$1,299.00'],
+        'desc'     => [550, 260, 20, false, 'Gold Rope Chain'],
+        'deptcat'  => [550, 290, 20, false, 'GOLD/CHAIN'],
+        'rfid'     => [560, 310, 17, false, '303405C0'],
+    ];
+
     public function mount(): void { $this->loadLayout(); }
 
     public function loadLayout(): void {
         $settings = LabelLayout::all()->keyBy('field_id');
-        
-        // 🚀 RESTORED EXACT DEFAULTS AND MAPPINGS
-        $this->data = [
-            'stock_no_x' => $settings->get('stock_no')->x_pos ?? 60,
-            'stock_no_y' => $settings->get('stock_no')->y_pos ?? 6,
-            'stock_no_font' => $settings->get('stock_no')->font_size ?? 1,
-            'stock_no_is_bold' => $settings->get('stock_no')->is_bold ?? false,
-            'stock_no_val' => 'D1001',
+        $data = [];
 
-            'desc_x' => $settings->get('desc')->x_pos ?? 60,
-            'desc_y' => $settings->get('desc')->y_pos ?? 9,
-            'desc_font' => $settings->get('desc')->font_size ?? 1,
-            'desc_is_bold' => $settings->get('desc')->is_bold ?? false,
-            'desc_val' => 'Gold Rope Chain',
+        foreach (self::FIELDS as $id => [$x, $y, $font, $bold, $sample]) {
+            $row = $settings->get($id);
 
-            'barcode_x' => $settings->get('barcode')->x_pos ?? 60,
-            'barcode_y' => $settings->get('barcode')->y_pos ?? 12,
-            'barcode_height' => $settings->get('barcode')->height ?? 4, // Exact Default
-            'barcode_width' => $settings->get('barcode')->width ?? 0.2,   // Exact Default
-            'barcode_val' => 'D1001',
+            $data[$id . '_x'] = (int) ($row->x_pos ?? $x);
+            $data[$id . '_y'] = (int) ($row->y_pos ?? $y);
+            $data[$id . '_val'] = $sample;
 
-            'price_x' => $settings->get('price')->x_pos ?? 60,
-            'price_y' => $settings->get('price')->y_pos ?? 19,
-            'price_font' => $settings->get('price')->font_size ?? 1,
-            'price_is_bold' => $settings->get('price')->is_bold ?? false,
-            'price_val' => '$1,299.00',
+            if ($id === 'barcode') {
+                $data['barcode_height'] = max(1, (int) ($row->height ?? 20));
+                // whole dots only, 1-3
+                $data['barcode_width']  = min(3, max(1, (int) round((float) ($row->width ?? 1))));
+            } else {
+                $data[$id . '_font']    = (int) ($row->font_size ?? $font);
+                $data[$id . '_is_bold'] = (bool) ($row->is_bold ?? $bold);
+            }
+        }
 
-            'dwmtmk_x' => $settings->get('dwmtmk')->x_pos ?? 60,
-            'dwmtmk_y' => $settings->get('dwmtmk')->y_pos ?? 22,
-            'dwmtmk_font' => $settings->get('dwmtmk')->font_size ?? 1,
-            'dwmtmk_is_bold' => $settings->get('dwmtmk')->is_bold ?? false,
-            'dwmtmk_val' => '1.38g 14K',
-
-            'deptcat_x' => $settings->get('deptcat')->x_pos ?? 60,
-            'deptcat_y' => $settings->get('deptcat')->y_pos ?? 24,
-            'deptcat_font' => $settings->get('deptcat')->font_size ?? 1,
-            'deptcat_is_bold' => $settings->get('deptcat')->is_bold ?? false,
-            'deptcat_val' => 'GOLD/CHAIN',
-
-            'rfid_x' => $settings->get('rfid')->x_pos ?? 60,
-            'rfid_y' => $settings->get('rfid')->y_pos ?? 26, // Exact Default
-            'rfid_font' => $settings->get('rfid')->font_size ?? 1,
-            'rfid_is_bold' => $settings->get('rfid')->is_bold ?? false,
-            'rfid_val' => '303405C0',
-        ];
+        $this->data = $data;
     }
 
     public function resetToDefault(): void {
@@ -80,16 +71,23 @@ class LabelDesigner extends Page implements HasForms
     }
 
     public function saveMasterLayout(): void {
-        foreach (['stock_no', 'desc', 'barcode', 'price', 'dwmtmk', 'deptcat', 'rfid'] as $f) {
+        // make sure older store databases have the newer columns
+        (new ZebraPrinterService())->ensureLayoutColumns();
+
+        foreach (array_keys(self::FIELDS) as $f) {
+            $isBarcode = $f === 'barcode';
+
             LabelLayout::updateOrCreate(['field_id' => $f], [
-                'x_pos' => $this->data[$f.'_x'] ?? 60,
-                'y_pos' => $this->data[$f.'_y'] ?? 0,
-                'font_size' => $this->data[$f.'_font'] ?? 1,
-                'is_bold' => $this->data[$f.'_is_bold'] ?? false,
-                'height' => $this->data[$f.'_height'] ?? ($f == 'barcode' ? 4 : 0),
-                'width' => $this->data[$f.'_width'] ?? ($f == 'barcode' ? 0.2 : 0),
+                'x_pos'     => (int) ($this->data[$f . '_x'] ?? self::FIELDS[$f][0]),
+                'y_pos'     => (int) ($this->data[$f . '_y'] ?? self::FIELDS[$f][1]),
+                'font_size' => $isBarcode ? 1 : max(1, (int) ($this->data[$f . '_font'] ?? self::FIELDS[$f][2])),
+                'is_bold'   => $isBarcode ? false : (bool) ($this->data[$f . '_is_bold'] ?? false),
+                'height'    => $isBarcode ? max(1, (int) ($this->data['barcode_height'] ?? 20)) : 0,
+                'width'     => $isBarcode ? min(3, max(1, (int) round((float) ($this->data['barcode_width'] ?? 1)))) : 0,
             ]);
         }
+
+        $this->loadLayout();
         Notification::make()->title('Layout Synchronized')->success()->send();
     }
 
