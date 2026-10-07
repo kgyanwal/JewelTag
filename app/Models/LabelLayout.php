@@ -16,11 +16,14 @@ class LabelLayout extends Model
      *
      * @var array<int, string>
      */
-    protected $fillable = [
+        protected $fillable = [
         'field_id',
         'x_pos',
         'y_pos',
         'font_size',
+        'is_bold',
+        'height',
+        'width',
     ];
 
     /**

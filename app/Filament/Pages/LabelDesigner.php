@@ -74,16 +74,7 @@ class LabelDesigner extends Page implements HasForms
     }
 
     public function resetToDefault(): void {
-        $defaults = [
-            'stock_no' => ['x_pos' => 60, 'y_pos' => 6, 'font_size' => 1, 'is_bold' => false],
-            'desc'     => ['x_pos' => 60, 'y_pos' => 9, 'font_size' => 1, 'is_bold' => false],
-            'barcode'  => ['x_pos' => 60, 'y_pos' => 12, 'height' => 4, 'width' => 0.2],
-            'price'    => ['x_pos' => 60, 'y_pos' => 19, 'font_size' => 1, 'is_bold' => false],
-            'dwmtmk'   => ['x_pos' => 60, 'y_pos' => 22, 'font_size' => 1, 'is_bold' => false],
-            'deptcat'  => ['x_pos' => 60, 'y_pos' => 24, 'font_size' => 1, 'is_bold' => false],
-            'rfid'     => ['x_pos' => 60, 'y_pos' => 26, 'font_size' => 1, 'is_bold' => false],
-        ];
-        foreach ($defaults as $id => $v) { LabelLayout::updateOrCreate(['field_id' => $id], $v); }
+        (new ZebraPrinterService())->setDefaultLayout();
         $this->loadLayout();
         Notification::make()->title('Reset to Defaults')->success()->send();
     }

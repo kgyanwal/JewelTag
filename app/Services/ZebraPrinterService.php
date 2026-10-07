@@ -38,8 +38,9 @@ class ZebraPrinterService
                 return $layouts->get($id);
             };
 
-            // 💎 PRODUCTION CALIBRATION (PW900 / LL150)
-            $zpl = "^XA^CI28^MD30^PW900^LL150^LS0^PR2";
+            // BUTTERFLY TAG CALIBRATION — 3in x 1in total label; keeper square is the
+            // right-hand 1in x 1in portion (x: 600-900), split into two 1in x 0.5in panels.
+            $zpl = "^XA^CI28^MD30^PW900^LL300^LS0^PR2";
 
             // --- RFID CHIP ENCODING ---
             if ($useRFID && !empty($record->rfid_code)) { 
@@ -71,10 +72,10 @@ class ZebraPrinterService
                 }
             }
 
-            // --- LINE 3: BARCODE (BARS) ---
+            // --- TOP PANEL: BARCODE (BARS) ---
             $lBarcode = $getL('barcode');
             if ($lBarcode && !empty($record->barcode)) {
-                $bW = ($lBarcode->width > 1) ? 1 : $lBarcode->width;
+                $bW = ($lBarcode->width > 1) ? 2 : max(1, $lBarcode->width);
                 $zpl .= "\n^FO{$lBarcode->x_pos},{$lBarcode->y_pos}^BY{$bW},2.0";
                 $zpl .= "^BCN,{$lBarcode->height},N,N,N,N^FD{$record->barcode}^FS";
             }
@@ -225,58 +226,14 @@ class ZebraPrinterService
     }
 
     public function setDefaultLayout() {
-        // Label canvas: PW900 x LL150 (3in x 0.5in @ 300dpi)
-        $labelHeight = 150;
-        $marginTop   = (int) round($labelHeight * 0.06);   // ~9 dots
-        $marginBot   = (int) round($labelHeight * 0.06);   // ~9 dots
-        $usableH     = $labelHeight - $marginTop - $marginBot;
-
-        // Rows stacked in the left text column: stock_no, desc, price, dwmtmk
-        // Ratio of usable height each row consumes (must sum to <= 1)
-        $rows = [
-            'stock_no' => ['ratio' => 0.20, 'font_ratio' => 0.16, 'bold' => true],
-            'desc'     => ['ratio' => 0.28, 'font_ratio' => 0.12, 'bold' => false],
-            'price'    => ['ratio' => 0.24, 'font_ratio' => 0.16, 'bold' => true],
-            'dwmtmk'   => ['ratio' => 0.28, 'font_ratio' => 0.10, 'bold' => false],
-        ];
-
-        $defaults = [];
-        $cursorY  = $marginTop;
-
-        foreach ($rows as $field => $cfg) {
-            $slotHeight = (int) round($usableH * $cfg['ratio']);
-            $fontSize   = max(10, (int) round($labelHeight * $cfg['font_ratio']));
-
-            $defaults[$field] = [
-                'x_pos'     => 20,
-                'y_pos'     => $cursorY,
-                'font_size' => $fontSize,
-                'is_bold'   => $cfg['bold'],
-                'height'    => 0,
-                'width'     => 0,
-            ];
-
-            $cursorY += $slotHeight;
-        }
-
-        // RFID / category share the last line (rarely both printed at once)
-        $lastLineY = $labelHeight - $marginBot - (int) round($labelHeight * 0.10);
-        $defaults['rfid'] = [
-            'x_pos' => 20, 'y_pos' => $lastLineY,
-            'font_size' => max(10, (int) round($labelHeight * 0.09)),
-            'is_bold' => false, 'height' => 0, 'width' => 0,
-        ];
-        $defaults['deptcat'] = [
-            'x_pos' => 20, 'y_pos' => $lastLineY,
-            'font_size' => max(10, (int) round($labelHeight * 0.09)),
-            'is_bold' => false, 'height' => 0, 'width' => 0,
-        ];
-
-        // Barcode sits in its own right-side column
-        $defaults['barcode'] = [
-            'x_pos' => 400, 'y_pos' => (int) round($labelHeight * 0.20),
-            'font_size' => 1, 'is_bold' => false,
-            'height' => (int) round($labelHeight * 0.40), 'width' => 2,
+        $defaults = [
+            'stock_no' => ['x_pos' => 550, 'y_pos' => 60,  'font_size' => 30, 'is_bold' => true,  'height' => 0,  'width' => 0],
+            'desc'     => ['x_pos' => 550, 'y_pos' => 120, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
+            'barcode'  => ['x_pos' => 550, 'y_pos' => 160, 'font_size' => 1,  'is_bold' => false, 'height' => 20, 'width' => 1],
+            'price'    => ['x_pos' => 550, 'y_pos' => 220, 'font_size' => 30, 'is_bold' => true,  'height' => 0,  'width' => 0],
+            'dwmtmk'   => ['x_pos' => 550, 'y_pos' => 260, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
+            'deptcat'  => ['x_pos' => 550, 'y_pos' => 290, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
+            'rfid'     => ['x_pos' => 560, 'y_pos' => 310, 'font_size' => 17, 'is_bold' => false, 'height' => 0,  'width' => 0],
         ];
 
         foreach ($defaults as $fieldId => $data) {
