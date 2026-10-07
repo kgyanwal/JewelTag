@@ -6,6 +6,8 @@ use App\Models\ProductItem;
 use App\Models\LabelLayout;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 
 class ZebraPrinterService
 {
@@ -17,6 +19,17 @@ class ZebraPrinterService
             ->value('value');
             
         $this->ZEBRA_PRINTER_IP = $dbIp ?: config('services.zebra.ip', '192.168.1.60');
+    }
+
+    public function ensureLayoutColumns(): void
+    {
+        if (!Schema::hasTable('label_layouts')) return;
+
+        Schema::table('label_layouts', function (Blueprint $t) {
+            if (!Schema::hasColumn('label_layouts', 'is_bold')) $t->boolean('is_bold')->default(false);
+            if (!Schema::hasColumn('label_layouts', 'height'))  $t->integer('height')->default(0);
+            if (!Schema::hasColumn('label_layouts', 'width'))   $t->integer('width')->default(0);
+        });
     }
 
     /**
@@ -226,6 +239,7 @@ class ZebraPrinterService
     }
 
     public function setDefaultLayout() {
+        $this->ensureLayoutColumns();
         $defaults = [
             'stock_no' => ['x_pos' => 550, 'y_pos' => 60,  'font_size' => 30, 'is_bold' => true,  'height' => 0,  'width' => 0],
             'desc'     => ['x_pos' => 550, 'y_pos' => 120, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
