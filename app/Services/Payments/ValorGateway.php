@@ -91,13 +91,13 @@ class ValorGateway
         ];
 
         try {
-            $response = Http::acceptJson()->asJson()->timeout(45)
+            $response = Http::acceptJson()->asJson()->connectTimeout(8)->timeout(12)
                 ->post("{$this->baseUrl}/?status", $payload);
                 } catch (\Throwable $e) {
             Log::error('Valor publishSale failed', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'error' => $e->getMessage()]);
             // We got no answer, but the terminal may still have received it.
-            return ['success' => false, 'uncertain' => true, 'req_txn_id' => $reqTxnId, 'message' => 'No answer from Valor: ' . $e->getMessage()];
-        }
+            $uncertain = str_contains($e->getMessage(), 'Operation timed out');
+            return ['success' => false, 'uncertain' => $uncertain, 'req_txn_id' => $reqTxnId, 'message' => 'No answer from Valor: ' . $e->getMessage()];
 
         $body = $response->json() ?? [];
         Log::info('Valor publishSale response', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'http' => $response->status(), 'body' => $body]);
