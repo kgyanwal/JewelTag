@@ -264,12 +264,12 @@ class TenantResource extends Resource
 
                         Forms\Components\Placeholder::make('backup_codes_status')
                             ->label('Current Backup Codes')
-                            ->content(function ($record) {
-                                if (!$record) {
-                                    return new \Illuminate\Support\HtmlString(
-                                        '<span style="color:#94a3b8;font-size:13px;">Save first, then use the Backup Codes action to generate codes.</span>'
-                                    );
-                                }
+                             ->content(function ($record) {
+        if (!$record || !$record->exists) {   // <-- add ->exists check
+            return new \Illuminate\Support\HtmlString(
+                '<span style="color:#94a3b8;font-size:13px;">Save first, then use the Backup Codes action to generate codes.</span>'
+            );
+        }
 
                                 $stored  = json_decode($record->two_factor_backup_codes ?? '[]', true);
                                 $count   = count($stored);

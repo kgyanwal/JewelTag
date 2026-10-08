@@ -503,13 +503,26 @@
                 ← Back to {{ $method === 'totp' ? 'Auth App' : 'SMS' }} Code
             </button>
         </div>
-        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid #f1f5f9;">
-            <a href="{{ route('two-factor.reset') }}"
-                onclick="return confirm('Switch your 2FA method? You will need to re-verify with the new method.')"
-                style="font-size:12px;color:#94a3b8;text-decoration:none;">
-                🔄 Switch to {{ $method === 'totp' ? '💬 SMS Code' : '📱 Auth App' }} instead
-            </a>
-        </div>
+       <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid #f1f5f9;">
+    <details>
+        <summary style="font-size:12px;color:#94a3b8;cursor:pointer;">
+            🔄 Authenticator not working? Reset (owner only)
+        </summary>
+
+        <form action="{{ route('two-factor.reset.confirm') }}" method="POST" style="margin-top:12px;">
+            @csrf
+            <p style="font-size:12px;color:#64748b;margin-bottom:8px;">
+                Enter the master account password to get a new QR code.
+            </p>
+            <input type="password" name="password" placeholder="Master account password" required
+                   style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:10px;margin-bottom:8px;">
+            <button type="submit"
+                    style="width:100%;padding:11px;background:#0B3D3C;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;">
+                Reset &amp; Show New QR
+            </button>
+        </form>
+    </details>
+</div>
 
     </div>
 

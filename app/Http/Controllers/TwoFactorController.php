@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Session;
-
+use Illuminate\Support\Facades\Hash;
 class TwoFactorController extends Controller
 {
     public function __construct(
@@ -325,30 +325,40 @@ class TwoFactorController extends Controller
         return redirect()->route('filament.admin.auth.login');
     }
 
-    public function resetMethod()
-    {
-        $user = $this->staffUser();
+   public function showReset()
+{
+    return redirect()->route('two-factor.challenge');
+}
 
-        if (!$user) {
-            return redirect()->route('filament.admin.auth.login');
-        }
+public function resetMethod(Request $request)
+{
+    $request->validate(['password' => 'required|string']);
 
-        // Clear 2FA setup — forces fresh setup on next middleware check
-        $user->forceFill([
-            'two_factor_secret'     => null,
-            'two_factor_method'     => null,
-            'two_factor_confirmed'  => false,
-            'two_factor_code'       => null,
-            'two_factor_expires_at' => null,
-        ])->save();
+    $user = $this->staffUser();
 
-        // Clear 2FA session so middleware sends to setup
-        Session::forget(['two_factor_verified', 'two_factor_sms_sent', 'two_factor_setup_secret']);
-
-        \Illuminate\Support\Facades\Log::info("2FA method reset by user {$user->id} ({$user->name})");
-
-        // Redirect to setup page
-        return redirect()->route('two-factor.setup')
-            ->with('status', 'Your 2FA method has been reset. Please set up your new method.');
+    if (!$user) {
+        return redirect()->route('filament.admin.auth.login');
     }
+
+    // Owner check: master account password required
+    if (!Hash::check($request->password, $user->password)) {
+        \Illuminate\Support\Facades\Log::warning("2FA reset: wrong password for user {$user->id} IP:" . $request->ip());
+        return back()->withErrors(['password' => 'Incorrect password.']);
+    }
+
+    $user->forceFill([
+        'two_factor_secret'     => null,
+        'two_factor_method'     => null,
+        'two_factor_confirmed'  => false,
+        'two_factor_code'       => null,
+        'two_factor_expires_at' => null,
+    ])->save();
+
+    Session::forget(['two_factor_verified', 'two_factor_sms_sent', 'two_factor_setup_secret']);
+
+    \Illuminate\Support\Facades\Log::info("2FA method reset by user {$user->id} ({$user->name})");
+
+    return redirect()->route('two-factor.setup')
+        ->with('status', 'Your 2FA has been reset. Scan the new QR code with your authenticator app.');
+}
 }

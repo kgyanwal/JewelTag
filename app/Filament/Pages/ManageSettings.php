@@ -90,7 +90,11 @@ class ManageSettings extends Page
             'valor_epi'        => $valorConfig['epi']        ?? '',
             'valor_channel_id' => $valorConfig['channel_id'] ?? '',
             'valor_env'        => $valorConfig['env']        ?? 'sandbox',
-            'valor_enabled'    => (bool) ($valorConfig['enabled'] ?? false),
+                        'valor_enabled'    => (bool) ($valorConfig['enabled'] ?? false),
+
+            // Store features
+            'store_credit_enabled' => (bool) ($settings['store_credit_enabled'] ?? true),
+            'loyalty_enabled'      => (bool) ($settings['loyalty_enabled'] ?? false),
         ]);
     }
 
@@ -197,6 +201,23 @@ class ManageSettings extends Page
             DB::table('site_settings')->updateOrInsert(['key' => $key], ['value' => $state[$key] ?? '', 'updated_at' => now()]);
         }
         Notification::make()->title('✅ SMS settings saved')->success()->send();
+    }
+
+        private function persistFeatures(array $state): void
+    {
+        foreach (['store_credit_enabled', 'loyalty_enabled'] as $key) {
+            DB::table('site_settings')->updateOrInsert(
+                ['key' => $key],
+                ['value' => !empty($state[$key]) ? '1' : '0', 'updated_at' => now()]
+            );
+        }
+        \App\Services\StoreFeatures::flush();
+    }
+
+    public function saveFeatures(): void
+    {
+        $this->persistFeatures($this->form->getState());
+        Notification::make()->title('✅ Store features saved')->body('Reload the page to refresh the menu.')->success()->send();
     }
 
     public function saveShopify(): void
@@ -837,6 +858,38 @@ class ManageSettings extends Page
                             ]),
 
 
+Tabs\Tab::make('🎁 Features')
+    ->schema([
+        Section::make('features_section')
+            ->key('features_section')
+            ->heading(false)
+            ->description(new \Illuminate\Support\HtmlString('
+                <div style="display:flex;align-items:center;gap:14px;padding:10px 0 6px;">
+                    <div style="width:52px;height:52px;background:linear-gradient(135deg,#C9A24B,#a07820);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 4px 12px rgba(201,162,75,0.3);">🎁</div>
+                    <div>
+                        <div style="font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-0.01em;">Store Credit & Loyalty</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:3px;">Turn these on or off for this store. Turning a feature off only hides it. No balances or points are deleted.</div>
+                    </div>
+                </div>
+            '))
+            ->schema([
+                Grid::make(2)->schema([
+                    \Filament\Forms\Components\Toggle::make('store_credit_enabled')
+                        ->label('Enable Store Credit')
+                        ->helperText('Credit balances, "Apply store credit" at checkout, and credit shown on customers.'),
+                    \Filament\Forms\Components\Toggle::make('loyalty_enabled')
+                        ->label('Enable Loyalty Points')
+                        ->helperText('Points earned on new sales, tiers, and the Loyalty Center page.'),
+                ]),
+            ])
+            ->footerActions([
+                \Filament\Forms\Components\Actions\Action::make('save_features')
+                    ->label('Save Features')->icon('heroicon-o-check-circle')->color('success')
+                    ->action(fn() => $this->saveFeatures()),
+            ])
+            ->footerActionsAlignment(\Filament\Support\Enums\Alignment::End),
+    ]),
+
 Tabs\Tab::make('🔐 Security')
     ->schema([
         Section::make('two_factor_section')
@@ -980,6 +1033,8 @@ Tabs\Tab::make('🔐 Security')
 
         $flatCa = collect($state['certificate_agencies'] ?? [])->pluck('name')->filter()->values()->toArray();
         DB::table('site_settings')->updateOrInsert(['key' => 'certificate_agencies'], ['value' => json_encode($flatCa), 'updated_at' => now()]);
+
+                $this->persistFeatures($state);
 
         // Save Shopify Config
         $shopifyConfig = [

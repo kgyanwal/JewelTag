@@ -95,6 +95,19 @@ if ($importedPayments->count() > 0) {
 }
 
 $totalPaid = $allPayments->sum('amount');
+
+// Loyalty points redeemed as a discount on this sale (already deducted from final_total)
+$loyaltyPointsUsed = 0;
+$loyaltyDiscount   = 0;
+try {
+    $loyaltyPointsUsed = abs((int) \App\Models\LoyaltyTransaction::where('sale_id', $sale->id)
+        ->where('type', 'redeem')->sum('points'));
+    if ($loyaltyPointsUsed > 0) {
+        $loyaltyDiscount = round($loyaltyPointsUsed / \App\Services\LoyaltyService::pointsPerDollar(), 2);
+    }
+} catch (\Throwable $e) {
+    // loyalty tables not available for this store, ignore
+}
 $balance   = max(0, $displayTotal - $totalPaid);
     $isFullyPaid = $balance <= 0.01;
     $isLaybuy = $sale->payment_method === 'laybuy';
@@ -646,6 +659,15 @@ $balance   = max(0, $displayTotal - $totalPaid);
                             <tr>
                                 <td style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#ffeb3b;">Trade-In Credit</td>
                                 <td align="right" style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#ffeb3b;">-${{ number_format($sale->trade_in_value, 2) }}</td>
+                            </tr>
+                            @endif
+                                                        @if($loyaltyDiscount > 0)
+                            <tr>
+                                <td style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;font-weight:600;">
+                                    <i class="fas fa-star"></i> Loyalty Discount
+                                    <span style="font-size:8px;opacity:.8;">({{ number_format($loyaltyPointsUsed) }} pts)</span>
+                                </td>
+                                <td align="right" style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.2);color:#fde68a;font-weight:600;">-${{ number_format($loyaltyDiscount, 2) }}</td>
                             </tr>
                             @endif
                             @if($sale->shipping_charges > 0)

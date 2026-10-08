@@ -69,29 +69,6 @@ class SaleResource extends Resource
         return DailyClosing::whereDate('closing_date', $date)->exists();
     }
 
-    // public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
-    // {
-    //     $user = Staff::user();
-    //     if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) {
-    //         return true;
-    //     }
-
-    //     if ($record->payment_method === 'laybuy') return true;
-
-    //     $record->loadMissing('items');
-    //     if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-
-    //     if ($record->status !== 'completed') return true;
-    //     if (floatval($record->balance_due) > 0.01) return true;
-
-    //     $dayClosed = self::isDateClosed($record->created_at->format('Y-m-d'));
-    //     if (!$dayClosed) return true;
-
-    //     return SaleEditRequest::where('sale_id', $record->id)
-    //         ->where('user_id', auth()->id())
-    //         ->where('status', 'approved')
-    //         ->exists();
-    // }
     public static function valorEnabled(): bool
     {
         $json = DB::table('site_settings')->where('key', 'valor_config')->value('value');
@@ -100,6 +77,29 @@ class SaleResource extends Resource
         $hasCreds = !empty($config['app_id']) && !empty($config['app_key'])
             && !empty($config['epi']) && !empty($config['channel_id']);
         return $hasCreds && (bool) ($config['enabled'] ?? false);
+    }
+
+    // ── Terminal panel helpers ───────────────────────────────────────────────
+    public static function terminalCollected(Get $get, ?Sale $record): float
+    {
+        if ($get('is_split_payment')) {
+            return round(collect($get('split_payments') ?? [])->sum(fn($r) => (float) ($r['amount'] ?? 0)), 2);
+        }
+        $dbPaid = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
+        return round($dbPaid + (float) ($get('amount_paid') ?? 0), 2);
+    }
+
+    public static function terminalRemaining(Get $get, ?Sale $record): float
+    {
+        return max(0, round((float) ($get('final_total') ?? 0) - self::terminalCollected($get, $record), 2));
+    }
+
+    // Typed amount (capped at the remaining balance), or the full remaining balance if empty.
+    public static function terminalChargeAmount(Get $get, ?Sale $record): float
+    {
+        $remaining = self::terminalRemaining($get, $record);
+        $want      = (float) ($get('terminal_amount') ?? 0);
+        return round($want > 0 ? min($want, $remaining) : $remaining, 2);
     }
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
@@ -144,17 +144,31 @@ class SaleResource extends Resource
                                         ->icon('heroicon-m-trash')
                                         ->color('danger')
                                         ->requiresConfirmation()
-                                        ->action(function () {
+                                                                               ->action(function ($livewire) {
                                             foreach (array_keys(session()->all()) as $key) {
                                                 if (str_starts_with($key, 'sale_draft_')) {
                                                     session()->forget($key);
                                                 }
                                             }
-                                            return redirect(static::getUrl('create'));
+                                                                                        $draftId = $livewire->draftId ?? null;
+                                            if ($draftId) {
+                                                \App\Services\LoyaltyService::releaseHold($draftId);
+                                                \App\Models\SaleDraft::where('draft_id', $draftId)->delete();
+                                            }
+                                            return redirect(static::getUrl('create', ['new' => 1]));
                                         }),
                                 ])
                                 ->schema([
                                     Grid::make(4)->schema([
+                                                                                TextInput::make('draft_name')
+                                            ->label('Draft Name (optional)')
+                                            ->placeholder('e.g. Mrs Smith – ring, back at 3pm')
+                                            ->default(fn() => 'Draft ' . now()->format('M d, h:i A'))
+                                            ->dehydrated(false)
+                                            ->live(onBlur: true)
+                                            ->visible(fn(string $operation) => $operation === 'create')
+                                            ->columnSpanFull(),
+
                                         Select::make('current_item_search')
                                             ->label('Select Stock #')
                                             ->searchable()
@@ -731,13 +745,15 @@ class SaleResource extends Resource
                                             ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
                                             ->columnSpan(3),
 Textarea::make('job_description')
-    ->label('Job Description')
-    ->placeholder('e.g. resize to 7, replace clasp...')
-    ->maxLength(500)
-    ->rows(2)
-    ->autosize(false)
-    ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
-    ->columnSpan(3),
+                                            ->label('Job Description')
+                                            ->placeholder('e.g. resize to 7, replace clasp...')
+                                            ->maxLength(500)
+                                            ->rows(2)
+                                            ->autosize(false)
+                                            ->extraInputAttributes(['style' => 'max-height:60px; overflow-y:auto; resize:none;'])
+                                            ->columnSpan(3)
+                                            ->visible(fn(Get $get) => (bool) preg_match('/^D\d+[-]/i', $get('stock_no_display') ?? '')),
+                                            
                                         TextInput::make('qty')
                                             ->numeric()
                                             ->default(1)
@@ -1638,7 +1654,15 @@ Textarea::make('job_description')
                                 ->schema([
                                     Grid::make(1)->schema([
                                         Select::make('customer_id')
-                                            ->label('Select Customer')
+                                                                                        ->label('Select Customer')
+                                            ->afterStateUpdated(function (Get $get, Set $set, $livewire) {
+                                                if (isset($livewire->draftId)) {
+                                                    \App\Services\LoyaltyService::releaseHold($livewire->draftId);
+                                                }
+                                                $set('loyalty_points_redeemed', 0);
+                                                $set('loyalty_discount', 0);
+                                                self::updateTotals($get, $set);
+                                            })
                                             ->relationship('customer', 'name')
                                             ->getOptionLabelFromRecordUsing(fn($record) => "{$record->name} {$record->last_name} | {$record->phone} (#{$record->customer_no})")
                                             ->searchable()
@@ -1998,7 +2022,7 @@ Textarea::make('job_description')
                                     Placeholder::make('customer_credit_display')
                                         ->hiddenLabel()
                                         ->live()
-                                        ->visible(fn(Get $get) => $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
+                                        ->visible(fn(Get $get) => \App\Services\StoreFeatures::storeCredit() && $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
                                         ->content(function (Get $get) {
                                             $customer = Customer::find($get('customer_id'));
                                             if (!$customer) return '';
@@ -2024,7 +2048,8 @@ Textarea::make('job_description')
                                     // gradient button with a subtle pulse animation and the actual
                                     // dollar amount shown in the label, so staff can't miss it.
                                     \Filament\Forms\Components\Actions::make([
-                                        FormAction::make('apply_store_credit_now')
+                                                                                FormAction::make('apply_store_credit_now')
+                                            ->hidden(fn() => !\App\Services\StoreFeatures::storeCredit())
                                             ->label(function (Get $get) {
                                                 $customer = Customer::find($get('customer_id'));
                                                 $balance  = floatval($customer?->credit_balance ?? 0);
@@ -2066,7 +2091,7 @@ Textarea::make('job_description')
 
                                     Placeholder::make('store_credit_pulse_style')
                                         ->hiddenLabel()
-                                        ->visible(fn(Get $get) => $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
+                                        ->visible(fn(Get $get) => \App\Services\StoreFeatures::storeCredit() && $get('customer_id') && floatval(Customer::find($get('customer_id'))?->credit_balance ?? 0) > 0)
                                         ->content(new HtmlString("
                                             <style>
                                                 @keyframes pulseCredit {
@@ -2075,6 +2100,89 @@ Textarea::make('job_description')
                                                 }
                                             </style>
                                         ")),
+
+                                                                        // ── LOYALTY POINTS (separate from store credit; applied as a discount) ──
+                                    Placeholder::make('customer_loyalty_display')
+                                        ->hiddenLabel()
+                                        ->live()
+                                        ->visible(fn(Get $get, $livewire) => \App\Services\StoreFeatures::loyalty() && $get('customer_id')
+                                            && (\App\Services\LoyaltyService::availableFor((int) $get('customer_id'), $livewire->draftId ?? null) > 0 || floatval($get('loyalty_discount') ?? 0) > 0))
+                                        ->content(function (Get $get, $livewire) {
+                                            $pts = \App\Services\LoyaltyService::availableFor((int) $get('customer_id'), $livewire->draftId ?? null);
+                                            $ppd = \App\Services\LoyaltyService::pointsPerDollar();
+                                            $val = number_format($pts / max(1, $ppd), 2);
+                                            $applied = floatval($get('loyalty_discount') ?? 0);
+                                            $line = $applied > 0
+                                                ? "<div style='font-size:11px;font-weight:800;color:#047857;margin-top:4px;'>✅ " . number_format((int) $get('loyalty_points_redeemed')) . " pts applied = -\$" . number_format($applied, 2) . " discount</div>"
+                                                : '';
+                                            return new HtmlString("
+                                                <div style='background:#ecfdf5;border:1.5px solid #C9A24B;border-radius:10px;padding:10px 14px;margin-top:-8px;margin-bottom:4px;'>
+                                                    <div style='font-size:9px;font-weight:800;color:#0B3D3C;text-transform:uppercase;letter-spacing:.05em;'>⭐ Loyalty Points Available</div>
+                                                    <div style='font-size:16px;font-weight:900;color:#0B3D3C;'>" . number_format($pts) . " pts <span style='font-size:12px;color:#8a6a22;'>(= \${$val})</span></div>
+                                                    {$line}
+                                                </div>");
+                                        }),
+
+                                    \Filament\Forms\Components\Actions::make([
+                                        FormAction::make('apply_loyalty_points')
+                                            ->label('⭐ APPLY LOYALTY POINTS')
+                                            ->color('warning')
+                                            ->button()
+                                            ->extraAttributes(['style' => 'width:100%;font-weight:900;'])
+                                            ->visible(fn(Get $get, string $operation, $livewire) => $operation === 'create'
+                                                && \App\Services\StoreFeatures::loyalty()
+                                                && $get('customer_id')
+                                                && floatval($get('loyalty_discount') ?? 0) <= 0
+                                                && \App\Services\LoyaltyService::availableFor((int) $get('customer_id'), $livewire->draftId ?? null) > 0)
+                                            ->modalHeading('Redeem Loyalty Points')
+                                            ->modalDescription('Points are deducted from the invoice as a discount.')
+                                            ->fillForm(function (Get $get, $livewire) {
+                                                $ppd   = \App\Services\LoyaltyService::pointsPerDollar();
+                                                $pts   = \App\Services\LoyaltyService::availableFor((int) $get('customer_id'), $livewire->draftId ?? null);
+                                                $total = (float) ($get('final_total') ?? 0);
+                                                return ['points' => min($pts, (int) ceil($total * $ppd))];
+                                            })
+                                            ->form([
+                                                TextInput::make('points')->label('Points to redeem')->numeric()->required()->minValue(1),
+                                            ])
+                                            ->action(function (array $data, Get $get, Set $set, $livewire) {
+                                                $ppd   = \App\Services\LoyaltyService::pointsPerDollar();
+                                                $avail = \App\Services\LoyaltyService::availableFor((int) $get('customer_id'), $livewire->draftId ?? null);
+                                                $pre   = (float) ($get('final_total') ?? 0) + (float) ($get('loyalty_discount') ?? 0);
+
+                                                $req      = min((int) $data['points'], $avail);
+                                                $discount = round(min($req / max(1, $ppd), $pre), 2);
+                                                $used     = (int) ceil($discount * $ppd);
+
+                                                if ($discount <= 0 || $used <= 0) {
+                                                    Notification::make()->title('Nothing to redeem')->warning()->send();
+                                                    return;
+                                                }
+
+                                                \App\Services\LoyaltyService::holdPoints(
+                                                    $livewire->draftId,
+                                                    (int) $get('customer_id'),
+                                                    $used,
+                                                    $discount,
+                                                    $get('draft_name'),
+                                                    auth()->id()
+                                                );
+                                                $set('loyalty_points_redeemed', $used);
+                                                $set('loyalty_discount', $discount);
+                                                self::updateTotals($get, $set);
+                                            }),
+
+                                        FormAction::make('remove_loyalty_points')
+                                            ->label('Remove Loyalty Discount')
+                                            ->color('gray')->outlined()
+                                            ->visible(fn(Get $get, string $operation) => $operation === 'create' && floatval($get('loyalty_discount') ?? 0) > 0)
+                                            ->action(function (Get $get, Set $set, $livewire) {
+                                                \App\Services\LoyaltyService::releaseHold($livewire->draftId ?? null);
+                                                $set('loyalty_points_redeemed', 0);
+                                                $set('loyalty_discount', 0);
+                                                self::updateTotals($get, $set);
+                                            }),
+                                    ])->columnSpanFull(),
 
                                     Select::make('sales_person_list')
                                         ->label('Sales Staff')
@@ -2367,82 +2475,170 @@ Textarea::make('job_description')
                                             ];
                                         }),
                                 ])->visible(fn(string $operation) => $operation === 'edit'),
-                                // ── VALOR TERMINAL CHARGE (only visible when enabled) ──
+                                // ── VALOR TERMINAL PANEL (collapsed until staff opens it) ──
+                                Section::make('💳 Pay with card terminal')
+                                    ->description('Click to open. Leave closed for cash / manual payments.')
+                                    // ->collapsible()
+                                    // ->collapsed(fn(Get $get) => empty($get('pending_device_request_id')))
+                                    ->visible(fn() => self::valorEnabled())
+                                    ->columnSpanFull()
+                                    ->schema([
+                                        Placeholder::make('terminal_summary')
+                                            ->hiddenLabel()
+                                            ->content(function (Get $get, ?Sale $record) {
+                                                $total     = round((float) ($get('final_total') ?? 0), 2);
+                                                $collected = self::terminalCollected($get, $record);
+                                                $remaining = max(0, round($total - $collected, 2));
+                                                $over      = max(0, round($collected - $total, 2));
+                                                $cards     = collect($get('split_payments') ?? [])->filter(fn($r) => ($r['gateway'] ?? null) === 'valor');
+                                                $cardTotal = round($cards->sum(fn($r) => (float) ($r['amount'] ?? 0)), 2);
+                                                $pct       = $total > 0 ? min(100, round($collected / $total * 100)) : 0;
+                                                $done      = $remaining <= 0 && $total > 0;
+                                                $accent    = $done ? '#16a34a' : '#0ea5e9';
+                                                $remColor  = $done ? '#16a34a' : '#ef4444';
+                                                $remLabel  = $over > 0 ? 'Overpaid' : ($done ? 'Paid in full' : 'Remaining');
+                                                $remValue  = $over > 0 ? $over : $remaining;
+                                                $fmt       = fn($n) => '$' . number_format((float) $n, 2);
+
+                                                $brandColors = ['VISA' => '#1a1f71', 'MASTERCARD' => '#eb001b', 'AMEX' => '#006fcf', 'DISCOVER' => '#ff6000'];
+
+                                                $stat = fn($label, $value, $color) => "
+                                                    <div style='flex:1;min-width:130px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.25);border-radius:12px;padding:10px 14px;'>
+                                                        <div style='font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.6;'>{$label}</div>
+                                                        <div style='font-size:20px;font-weight:900;color:{$color};margin-top:2px;'>{$value}</div>
+                                                    </div>";
+
+                                                $rows = '';
+                                                foreach ($cards as $c) {
+                                                    $brand = strtoupper($c['card_brand'] ?? 'CARD');
+                                                    $bg    = $brandColors[$brand] ?? '#475569';
+                                                    $rows .= "
+                                                    <div style='display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(148,163,184,.25);border-radius:10px;margin-top:8px;'>
+                                                        <span style='background:{$bg};color:#fff;font-size:10px;font-weight:900;letter-spacing:.05em;padding:4px 9px;border-radius:6px;'>" . e($brand) . "</span>
+                                                        <div style='flex:1;'>
+                                                            <div style='font-weight:800;font-size:13px;'>•••• " . e($c['card_last4'] ?? '----') . "</div>
+                                                            <div style='font-size:11px;opacity:.6;'>Auth " . e($c['auth_code'] ?? '-') . " · Txn " . e($c['gateway_txn_id'] ?? '-') . "</div>
+                                                        </div>
+                                                        <div style='font-weight:900;color:#16a34a;font-size:15px;'>✓ " . $fmt($c['amount'] ?? 0) . "</div>
+                                                    </div>";
+                                                }
+                                                if ($rows === '') {
+                                                    $rows = "<div style='font-size:12px;opacity:.55;margin-top:10px;text-align:center;padding:10px;border:1px dashed rgba(148,163,184,.4);border-radius:10px;'>No card charged yet — enter an amount below or charge the full balance.</div>";
+                                                }
+
+                                                return new HtmlString("
+                                                    <div style='border:1px solid rgba(14,165,233,.35);border-radius:16px;padding:16px;background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(99,102,241,.06));'>
+                                                        <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;'>
+                                                            <div style='display:flex;align-items:center;gap:10px;'>
+                                                                <div style='width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);display:flex;align-items:center;justify-content:center;font-size:17px;'>💳</div>
+                                                                <div>
+                                                                    <div style='font-size:14px;font-weight:900;'>Card Terminal</div>
+                                                                    <div style='font-size:11px;opacity:.6;'>Valor VL550 · live tracking</div>
+                                                                </div>
+                                                            </div>
+                                                            <div style='font-size:12px;font-weight:900;color:{$accent};'>{$pct}% collected</div>
+                                                        </div>
+                                                        <div style='display:flex;gap:10px;flex-wrap:wrap;'>
+                                                            " . $stat('Invoice total', $fmt($total), 'inherit') . "
+                                                            " . $stat('On terminal', $fmt($cardTotal), '#6366f1') . "
+                                                            " . $stat('Collected', $fmt($collected), '#16a34a') . "
+                                                            " . $stat($remLabel, $fmt($remValue), $remColor) . "
+                                                        </div>
+                                                        <div style='background:rgba(148,163,184,.25);border-radius:99px;height:8px;margin:14px 0 2px;overflow:hidden;'>
+                                                            <div style='background:linear-gradient(90deg,{$accent},#6366f1);width:{$pct}%;height:100%;border-radius:99px;transition:width .4s;'></div>
+                                                        </div>
+                                                        {$rows}
+                                                    </div>
+                                                ");
+                                            })
+                                            ->live()
+                                            ->columnSpanFull(),
+
+                                        Grid::make(['default' => 1, 'md' => 2])
+                                            ->visible(fn(Get $get) => empty($get('pending_device_request_id')))
+                                            ->schema([
+                                                TextInput::make('terminal_amount')
+                                                    ->label('Amount to charge now')
+                                                    ->helperText('Empty = full remaining balance. Type less for a partial card payment.')
+                                                    ->numeric()
+                                                    ->prefix('$')
+                                                    ->dehydrated(false)
+                                                    ->live(onBlur: true),
+
+                                                \Filament\Forms\Components\Actions::make([
+                                                    FormAction::make('charge_card_device')
+                                                        ->label(fn(Get $get, ?Sale $record) => '💳 Charge $' . number_format(self::terminalChargeAmount($get, $record), 2) . ' on Terminal')
+                                                        ->color('info')
+                                                        ->size('lg')
+                                                        ->icon('heroicon-o-credit-card')
+                                                        ->visible(fn(Get $get, ?Sale $record) =>
+                                                            self::terminalRemaining($get, $record) > 0
+                                                            && ($get('is_split_payment')
+                                                                || !in_array(strtoupper($get('payment_method') ?? ''), ['STORE_CREDIT', 'CASH', 'LAYBUY']))
+                                                        )
+                                                        ->requiresConfirmation()
+                                                        ->modalHeading('Charge card on terminal')
+                                                        ->modalDescription(function (Get $get, ?Sale $record) {
+                                                            $amt = self::terminalChargeAmount($get, $record);
+                                                            return 'The terminal will ask the customer for $' . number_format($amt, 2)
+                                                                . '. Remaining after this charge: $' . number_format(max(0, self::terminalRemaining($get, $record) - $amt), 2) . '.';
+                                                        })
+                                                        ->modalSubmitActionLabel('Send to Terminal')
+                                                        ->action(function (Get $get, Set $set, ?Sale $record) {
+                                                            $amount = self::terminalChargeAmount($get, $record);
+
+                                                            if ($amount <= 0) {
+                                                                Notification::make()->title('Nothing to charge')->body('Balance is already $0.00.')->warning()->send();
+                                                                return;
+                                                            }
+
+                                                            $reqId = 'JT' . now()->format('ymdHis') . strtoupper(Str::random(4));
+
+                                                            try {
+                                                                $result = app(\App\Services\Payments\ValorGateway::class)->publishSale($amount, $reqId);
+                                                            } catch (\Throwable $e) {
+                                                                Notification::make()->title('Valor not configured')->body($e->getMessage())->danger()->send();
+                                                                return;
+                                                            }
+
+                                                            if (!$result['success'] && empty($result['uncertain'])) {
+                                                                Notification::make()->title('Terminal rejected the request')->body($result['message'])->danger()->send();
+                                                                return;
+                                                            }
+
+                                                            if (!$result['success']) {
+                                                                Notification::make()
+                                                                    ->title('Still checking the terminal…')
+                                                                    ->body('No instant answer from Valor. If the customer taps the card it will be recorded automatically.')
+                                                                    ->warning()->send();
+                                                            }
+
+                                                            $set('pending_device_request_id', $result['req_txn_id']);
+                                                            $set('pending_device_amount', $amount);
+                                                            $set('pending_device_started_at', now()->timestamp);
+                                                            $set('terminal_amount', null);
+
+                                                            Notification::make()
+                                                                ->title('Waiting for customer...')
+                                                                ->body('Ask the customer to tap or insert their card for $' . number_format($amount, 2) . '.')
+                                                                ->info()->send();
+                                                        }),
+                                                ])->extraAttributes(['class' => 'md:mt-7']),
+                                            ])
+                                            ->columnSpanFull(),
+                                    ]),
+
                                 \Filament\Forms\Components\Actions::make([
-
-                                    FormAction::make('charge_card_device')
-                                        ->label('💳 Charge on Terminal')
-                                        ->color('success')
-                                        ->icon('heroicon-o-credit-card')
-                                        ->visible(
-                                            fn(Get $get) =>
-                                            self::valorEnabled()
-                                                && !$get('is_split_payment')
-                                                && !in_array(strtoupper($get('payment_method') ?? ''), ['STORE_CREDIT', 'CASH', 'LAYBUY'])
-                                                && empty($get('pending_device_request_id'))
-                                        )
-                                        ->requiresConfirmation()
-                                        ->modalHeading('Charge Card on Terminal')
-                                        ->modalDescription(function (Get $get, ?Sale $record) {
-                                            $total  = floatval($get('final_total') ?? 0);
-                                            $dbPaid = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
-                                            $amount = max(0, round($total - $dbPaid, 2));
-                                            $method = strtoupper($get('payment_method') ?? 'CARD');
-
-                                            return "This will send a charge for \${$amount} ({$method}) to the physical terminal. The customer will be prompted to tap or insert their card. Confirm to proceed.";
-                                        })
-                                        ->modalSubmitActionLabel('Send to Terminal')
-                                        ->action(function (Get $get, Set $set, ?Sale $record) {
-                                            $gateway = app(\App\Services\Payments\ValorGateway::class);
-                                            $total   = floatval($get('final_total') ?? 0);
-                                            $dbPaid  = $record ? ($record->payments()->sum('amount') + $record->salePayments()->sum('amount')) : 0;
-                                            $amount  = max(0, round($total - $dbPaid, 2));
-
-                                            if ($amount <= 0) {
-                                                Notification::make()->title('Nothing to charge')->body('Balance is already $0.00.')->warning()->send();
-                                                return;
-                                            }
-
-                                            $invoice = 'JT' . now()->format('ymdHis') . strtoupper(\Illuminate\Support\Str::random(4));
-
-                                            try {
-                                                $result = $gateway->publishSale($amount, $invoice);
-                                            } catch (\Throwable $e) {
-                                                Notification::make()->title('Valor not configured')->body($e->getMessage())->danger()->send();
-                                                return;
-                                            }
-
-                                                                                        if (!$result['success'] && empty($result['uncertain'])) {
-                                                Notification::make()->title('Terminal rejected the request')->body($result['message'])->danger()->send();
-                                                return;
-                                            }
-
-                                            if (!$result['success']) {
-                                                Notification::make()
-                                                    ->title('Still checking the terminal…')
-                                                    ->body('No instant answer from Valor. If the customer taps the card it will be recorded automatically.')
-                                                    ->warning()
-                                                    ->send();
-                                            }
-
-                                            $set('pending_device_request_id', $result['req_txn_id']);
-                                            $set('pending_device_amount', $amount);
-                                            $set('pending_device_started_at', now()->timestamp);
-
-                                            Notification::make()
-                                                ->title('Waiting for customer...')
-                                                ->body('Ask the customer to tap or insert their card on the terminal now.')
-                                                ->info()
-                                                ->send();
-                                        }),
-
                                     FormAction::make('cancel_device_charge')
                                         ->label('Cancel Terminal Charge')
                                         ->color('danger')
                                         ->outlined()
                                         ->visible(fn(Get $get) => self::valorEnabled() && !empty($get('pending_device_request_id')))
                                         ->action(function (Get $get, Set $set) {
-                                            app(\App\Services\Payments\ValorGateway::class)->cancelSale();
+                                            try {
+                                                app(\App\Services\Payments\ValorGateway::class)->cancelSale();
+                                            } catch (\Throwable $e) {
+                                            }
                                             $set('pending_device_request_id', null);
                                             $set('pending_device_amount', null);
                                             $set('pending_device_started_at', null);
@@ -2450,27 +2646,26 @@ Textarea::make('job_description')
                                         }),
                                 ])->columnSpanFull(),
 
-                                // ── WAITING / DELAY MESSAGE ──
                                 Placeholder::make('device_charge_waiting')
                                     ->hiddenLabel()
                                     ->visible(fn(Get $get) => self::valorEnabled() && !empty($get('pending_device_request_id')))
                                     ->content(function (Get $get) {
-                                        $startedAt = (int) ($get('pending_device_started_at') ?? now()->timestamp);
-                                        $elapsed   = now()->timestamp - $startedAt;
+                                        $elapsed = now()->timestamp - (int) ($get('pending_device_started_at') ?? now()->timestamp);
+                                        $amt     = number_format((float) ($get('pending_device_amount') ?? 0), 2);
 
                                         if ($elapsed > 45) {
                                             return new HtmlString("
-                                                <div wire:poll.3s='checkDeviceChargeStatus' style='padding:14px;background:#fef2f2;border:2px dashed #ef4444;border-radius:10px;text-align:center;'>
-                                                    <div style='font-size:14px;font-weight:800;color:#991b1b;'>⏱️ This is taking longer than usual...</div>
-                                                    <div style='font-size:11px;color:#7f1d1d;margin-top:4px;'>Check the terminal screen. If the customer hasn't tapped their card yet, or the terminal shows an error, click \"Cancel Terminal Charge\" and try again.</div>
+                                                <div wire:poll.3s='checkDeviceChargeStatus' style='padding:16px;background:rgba(239,68,68,.10);border:2px dashed #ef4444;border-radius:14px;text-align:center;'>
+                                                    <div style='font-size:14px;font-weight:800;color:#ef4444;'>⏱️ Still waiting on \${$amt}...</div>
+                                                    <div style='font-size:11px;opacity:.75;margin-top:4px;'>Check the terminal screen. If the customer has not tapped, or it shows an error, click \"Cancel Terminal Charge\" and try again.</div>
                                                 </div>
                                             ");
                                         }
 
                                         return new HtmlString("
-                                            <div wire:poll.3s='checkDeviceChargeStatus' style='padding:14px;background:#fffbeb;border:2px dashed #f59e0b;border-radius:10px;text-align:center;'>
-                                                <div style='font-size:14px;font-weight:800;color:#92400e;'>⏳ Waiting for customer to tap/insert card...</div>
-                                                <div style='font-size:11px;color:#78350f;margin-top:4px;'>Checking terminal every few seconds.</div>
+                                            <div wire:poll.3s='checkDeviceChargeStatus' style='padding:16px;background:rgba(245,158,11,.10);border:2px dashed #f59e0b;border-radius:14px;text-align:center;'>
+                                                <div style='font-size:14px;font-weight:800;color:#d97706;'>⏳ Waiting for customer to pay \${$amt}...</div>
+                                                <div style='font-size:11px;opacity:.75;margin-top:4px;'>Checking the terminal every few seconds.</div>
                                             </div>
                                         ");
                                     })
@@ -2850,6 +3045,11 @@ Textarea::make('job_description')
                                                 ->live()
                                                 ->afterStateUpdated(fn(Get $get, Set $set) => self::updateTotals($get, $set)),
                                         ]),
+                                        Hidden::make('gateway')->dehydrated(),
+                                        Hidden::make('gateway_txn_id')->dehydrated(),
+                                        Hidden::make('auth_code')->dehydrated(),
+                                        Hidden::make('card_last4')->dehydrated(),
+                                        Hidden::make('card_brand')->dehydrated(),
                                     ])
                                     ->visible(fn(Get $get) => $get('is_split_payment'))
                                     // 🚀 FIX — defaultItems(1) pre-populates a blank row in the
@@ -3070,7 +3270,12 @@ Textarea::make('job_description')
                                     ->prefix('$')
                                     ->readOnly()
                                     ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
-                                self::totalRow('SUBTOTAL', 'subtotal'),
+                                                                self::totalRow('SUBTOTAL', 'subtotal'),
+                                Placeholder::make('loyalty_discount_line')
+                                    ->label('LOYALTY POINTS REDEEMED')
+                                    ->visible(fn(Get $get) => floatval($get('loyalty_discount') ?? 0) > 0)
+                                    ->content(fn(Get $get) => new HtmlString("<span style='font-weight:800;color:#047857;'>-\$" . number_format((float) $get('loyalty_discount'), 2) . " (" . number_format((int) $get('loyalty_points_redeemed')) . " pts)</span>"))
+                                    ->live(),
 
                                 // Form pre-fills DB payments into split_payments.
                                 // Just use form values — do NOT add $dbPaid separately.
@@ -3190,24 +3395,15 @@ Textarea::make('job_description')
                 Hidden::make('store_id')->default(fn() => auth()->user()->store_id ?? Store::first()?->id ?? 1),
                 Hidden::make('invoice_number')->dehydrated(true),
                 Hidden::make('change_given')->dehydrated(false),
-                Hidden::make('balance_due'),
+                                Hidden::make('balance_due'),
+                Hidden::make('loyalty_points_redeemed')->default(0)->dehydrated(false),
+                Hidden::make('loyalty_discount')->default(0)->dehydrated(false),
                 Hidden::make('custom_order_id')->dehydrated(false),
                 Hidden::make('repair_id')->dehydrated(false),
                 Hidden::make('enable_repair_payment')->dehydrated(false),
                 Hidden::make('target_repair_id')->dehydrated(false),
             ])
             ->statePath('data');
-    }
-
-    public function recordNewPayment(Sale $sale, $amount, $method)
-    {
-        \App\Models\Payment::create([
-            'sale_id'  => $sale->id,
-            'amount'   => $amount,
-            'method'   => $method,
-            'paid_at'  => now(),
-            'store_id' => $sale->store_id,
-        ]);
     }
 
     public static function table(Table $table): Table
@@ -3319,25 +3515,6 @@ Textarea::make('job_description')
                     ]),
             ])
             ->actions([
-                // Tables\Actions\EditAction::make()
-                //     ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record]))
-                //     ->visible(function (Sale $record) {
-                //         $user = Staff::user();
-                //         if ($user?->hasAnyRole(['Superadmin', 'Administration']) || auth()->user()->hasRole('Superadmin')) return true;
-                //         if ($record->payment_method === 'laybuy') return true;
-                //         $record->loadMissing('items');
-                //         if ($record->items->contains(fn($i) => !empty($i->custom_order_id))) return true;
-                //         if ($record->status === 'pending') return true;
-                //         if ($record->status === 'completed' && floatval($record->balance_due) > 0) return true;
-
-                //         $dayClosed = DailyClosing::whereDate('closing_date', $record->created_at->format('Y-m-d'))->exists();
-                //         if (!$dayClosed) return true;
-
-                //         return SaleEditRequest::where('sale_id', $record->id)
-                //             ->where('user_id', auth()->id())
-                //             ->where('status', 'approved')
-                //             ->exists();
-                //     }),
 
                 Tables\Actions\EditAction::make()
                     ->url(fn(Sale $record) => SaleResource::getUrl('edit', ['record' => $record])),
@@ -3723,7 +3900,12 @@ Textarea::make('job_description')
 
         // Grand total includes everything
         $totalTax = $itemsTax + $warrantyTax;
-        $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
+                $grandTotal = ($itemsSubtotal + $shipping + $totalTax + $warrantyCharge) - $tradeIn;
+
+        // Loyalty points redeemed as a discount (separate from store credit)
+        $loyaltyDiscount = round(max(0, (float) ($get('loyalty_discount') ?? 0)), 2);
+        $loyaltyDiscount = min($loyaltyDiscount, max(0, $grandTotal));
+        $grandTotal     -= $loyaltyDiscount;
 
         // Update form state
         $set('subtotal',            number_format($itemsSubtotal, 2, '.', ''));
@@ -3798,7 +3980,9 @@ Textarea::make('job_description')
 
         // 🚀 NEW — always offer STORE_CREDIT as a method, regardless of site_settings
         // config. Deduction logic lives in CreateSale/EditSale's payment loop.
-        $result['STORE_CREDIT'] = '💳 Store Credit';
+               if (\App\Services\StoreFeatures::storeCredit()) {
+            $result['STORE_CREDIT'] = '💳 Store Credit';
+        }
 
         return $result;
     }

@@ -35,8 +35,15 @@ trait LogsActivity
         $changes = count($changesArray) > 0 ? json_encode($changesArray) : null;
     }
 
+        // No logged-in user (migrations, seeders, console): there is nobody to
+    // attribute this to, and user 1 may not exist in this tenant (FK failure).
+    $userId = auth()->id();
+    if (!$userId && app()->runningInConsole()) {
+        return;
+    }
+
     \App\Models\ActivityLog::create([
-        'user_id' => auth()->id() ?? 1,
+        'user_id' => $userId ?? 1,
         'action' => $action,
         'module' => class_basename($model),
         'identifier' => $model->invoice_number ?? $model->barcode ?? $model->id ?? 'System',

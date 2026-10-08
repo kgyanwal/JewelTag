@@ -425,7 +425,7 @@ $tzAbbreviation = $now->format('T');
 
                         <a href="{{ $crmLink }}" target="_blank" class="crm-tile-link" style="text-decoration: none; display: block; padding-left: 15rem;">
                             <div class="stat-item crm-link-item" style="
-                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                        background: white;
                         border: 1px solid rgba(255,255,255,0.2);
                         padding: 6px 16px;
                         border-radius: 12px;
@@ -443,7 +443,7 @@ $tzAbbreviation = $now->format('T');
                                     <svg style="width: 16px; height: 16px; color: #fbbf24;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                                     </svg>
-                                    <span style="color: #ffffff; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;">CRM</span>
+                                    <span style="color: #0B3D3C; font-weight: 800; font-size: 14px; letter-spacing: 0.5px;">CRM</span>
                                 </div>
                                 <span style="color: #94a3b8; font-size: 9px; text-transform: uppercase; font-weight: 600; margin-top: 1px;">Portal</span>
                             </div>

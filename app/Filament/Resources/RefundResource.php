@@ -503,10 +503,18 @@ class RefundResource extends Resource
                                 ]);
                             }
 
-                            $record->update([
+                                                      $record->update([
                                 'status'      => 'approved',
                                 'approved_by' => auth()->id(),
                             ]);
+
+                            if ($sale && \App\Services\StoreFeatures::loyalty()) {
+                                try {
+                                    \App\Services\LoyaltyService::reverseForRefund($sale, (float) $record->refund_amount, auth()->id());
+                                } catch (\Throwable $e) {
+                                    \Log::warning('Loyalty refund reversal failed: ' . $e->getMessage());
+                                }
+                            }
                         });
 
                         $moneyLabel = $record->refund_method === 'store_credit' ? 'issued as store credit' : 'refunded to original payment method';

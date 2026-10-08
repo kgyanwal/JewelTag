@@ -20,8 +20,9 @@ class CreateSale extends CreateRecord
 {
     use HandlesTerminalCharge;
     protected static string $resource = SaleResource::class;
-    protected bool $hasUnsavedChangesAlert = true;
+    protected bool $hasUnsavedChangesAlert = false;
     public ?string $draftId = null;
+    public ?string $draftHash = null;
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
@@ -46,26 +47,34 @@ class CreateSale extends CreateRecord
     {
         parent::mount();
 
-        // ── TAB-ISOLATED DRAFT ────────────────────────────────────────────────
-        $this->draftId = request()->query('draft_id', Str::uuid()->toString());
-
-        if (!request()->has('draft_id')) {
-            $this->redirect(request()->fullUrlWithQuery(['draft_id' => $this->draftId]));
-            return;
-        }
-
-        $sessionKey = "sale_draft_{$this->draftId}";
-
+        // ── DB-BACKED DRAFT ───────────────────────────────────────────────────
         $repairId      = request()->get('repair_id');
         $customOrderId = request()->get('custom_order_id');
 
-        if ($repairId || $customOrderId) {
-            session()->forget($sessionKey);
-            $this->data = [];
-        } elseif (session()->has($sessionKey)) {
-            $this->data = session($sessionKey);
-        }
+        $draftId = request()->query('draft_id');
+        if (!$draftId) {
+            $staff  = Session::get('active_staff_name') ?? auth()->user()?->name;
+            $latest = (request()->boolean('new') || $repairId || $customOrderId)
+                ? null
+                : \App\Models\SaleDraft::where('status', 'open')
+                ->where('staff_name', $staff)
+                ->where('updated_at', '>=', now()->subHours(12))
+                ->latest('updated_at')->first();
 
+            $this->draftId = $latest?->draft_id ?? Str::uuid()->toString();
+            $this->redirect(request()->fullUrlWithQuery(['draft_id' => $this->draftId, 'new' => null]));
+            return;
+        }
+        $this->draftId = $draftId;
+
+        if (!$repairId && !$customOrderId) {
+            $draft = \App\Models\SaleDraft::where('draft_id', $draftId)->where('status', 'open')->first();
+            if ($draft && is_array($draft->data)) {
+                $this->data = $draft->data;
+            }
+        } else {
+            $this->data = [];
+        }
         // ── HANDLE REPAIR ────────────────────────────────────────────────────
         if ($repairId) {
             $repair = \App\Models\Repair::find($repairId);
@@ -304,7 +313,30 @@ class CreateSale extends CreateRecord
                     $this->create();
                 }),
 
-            parent::getCancelFormAction(),
+                        Action::make('exit_sale')
+                ->label('Exit')
+                ->color('gray')
+                ->modalHeading('Leave this sale?')
+                ->modalDescription('Do you want to save this sale as a draft so you can continue it later?')
+                ->modalSubmitActionLabel('Save in Draft & Exit')
+                ->modalCancelActionLabel('Stay Here')
+                ->requiresConfirmation()
+                ->action(function () {
+                    $this->persistDraft();
+                    return redirect(SaleResource::getUrl('index'));
+                })
+                ->extraModalFooterActions([
+                    Action::make('discard_exit')
+                        ->label('Discard & Exit')
+                        ->color('danger')
+                        ->cancelParentActions()
+                        ->action(function () {
+                            \App\Services\LoyaltyService::releaseHold($this->draftId);
+                            \App\Models\SaleDraft::where('draft_id', $this->draftId)->delete();
+                            $this->draftHash = null;
+                            return redirect(SaleResource::getUrl('index'));
+                        }),
+                ]),
         ];
     }
 
@@ -324,6 +356,16 @@ class CreateSale extends CreateRecord
                 ->send();
             $this->halt();
             return;
+        }
+
+        $redeemPts = (int) ($this->data['loyalty_points_redeemed'] ?? 0);
+        if ($redeemPts > 0) {
+            $bal = \App\Services\LoyaltyService::availableFor((int) $this->data['customer_id'], $this->draftId);
+            if (!\App\Services\StoreFeatures::loyalty() || $redeemPts > $bal) {
+                Notification::make()->title('Loyalty points changed')->body('The customer no longer has enough points. Remove the loyalty discount and retry.')->danger()->send();
+                $this->halt();
+                return;
+            }
         }
 
         $items = $this->data['items'] ?? [];
@@ -370,7 +412,7 @@ class CreateSale extends CreateRecord
             $specialJobs = $sale->special_jobs ?? [];
             $isLaybuy = $sale->payment_method === 'laybuy';
             $sale->update(['effective_sale_date' => $sale->completed_at ?? now()]);
-       // Find the custom order if one exists in this cart
+            // Find the custom order if one exists in this cart
             $customOrderId = $sale->items->pluck('custom_order_id')->filter()->first();
             $customOrder = $customOrderId ? \App\Models\CustomOrder::find($customOrderId) : null;
 
@@ -381,7 +423,7 @@ class CreateSale extends CreateRecord
             if (!empty($specialJobs) && is_array($specialJobs)) {
                 $saleItemsArrayForJobs = $sale->items->values();
 
-               foreach ($specialJobs as $job) {
+                foreach ($specialJobs as $job) {
                     if (empty($job['job_type'])) continue;
 
                     $itemDescription = null;
@@ -431,7 +473,7 @@ class CreateSale extends CreateRecord
                         'customer_pickup_date' => $job['date_required'] ?? null,
                         'estimated_cost'       => $jobCharge,
                         'final_cost'           => $jobCharge,
-                      'items'                => [[
+                        'items'                => [[
                             'item_description' => $itemDescription,
                             'reported_issue'   => $job['job_type'],
                             'is_warranty'       => false,
@@ -450,7 +492,7 @@ class CreateSale extends CreateRecord
                         ]],
                     ]);
 
-                 if (!empty($job['job_uuid'])) {
+                    if (!empty($job['job_uuid'])) {
                         $jobUuidToRepairId[$job['job_uuid']] = $newRepair->id;
                     }
                 }
@@ -485,7 +527,7 @@ class CreateSale extends CreateRecord
                     if (!empty($p['is_prior_deposit'])) {
                         continue;
                     }
-                   $paymentsToProcess[] = [
+                    $paymentsToProcess[] = [
                         'amount'         => round((float) ($p['amount'] ?? 0), 2),
                         'method'         => strtoupper(trim($p['method'] ?? 'CASH')),
                         'target'         => $p['payment_target'] ?? 'regular',
@@ -504,7 +546,7 @@ class CreateSale extends CreateRecord
                 ];
             }
 
-                        // Loop and insert only TRULY NEW money collected today
+            // Loop and insert only TRULY NEW money collected today
             foreach ($paymentsToProcess as $p) {
                 if ($p['amount'] <= 0) continue;
 
@@ -513,6 +555,9 @@ class CreateSale extends CreateRecord
                 // of creating a normal Payment with an external method. Still creates
                 // a Payment row (so sale totals/reports reconcile correctly) but the
                 // method is tagged so refunds/reports can distinguish it.
+                if ($p['method'] === 'STORE_CREDIT' && !\App\Services\StoreFeatures::storeCredit()) {
+                    continue; // feature off for this store: never touch credit_balance
+                }
                 if ($p['method'] === 'STORE_CREDIT') {
                     $customer = \App\Models\Customer::find($sale->customer_id);
                     if ($customer) {
@@ -531,7 +576,7 @@ class CreateSale extends CreateRecord
                     if ($p['amount'] <= 0) continue;
                 }
 
-$target   = $p['target'] ?? 'regular';
+                $target   = $p['target'] ?? 'regular';
                 $isCustom = ($target === 'custom' && $customOrder);
                 // 🚀 Resolve either "repair_{id}" (item already had a Repair) or
                 // "job_{uuid}" (Repair just got created above this loop) to a real id.
@@ -543,7 +588,7 @@ $target   = $p['target'] ?? 'regular';
                     $paymentRepairId = $jobUuidToRepairId[$jobUuid] ?? null;
                 }
 
-              \App\Models\Payment::create([
+                \App\Models\Payment::create([
                     'sale_id'         => $sale->id,
                     'custom_order_id' => $isCustom ? $customOrder->id : null,
                     'repair_id'       => $paymentRepairId,
@@ -647,11 +692,27 @@ $target   = $p['target'] ?? 'regular';
                     ->warning()
                     ->send();
             }
+        });
 
+        try {
+            // ORDER MATTERS: earn first, then redeem
+            $earned   = \App\Services\LoyaltyService::awardForSale($this->record, auth()->id());
+            $redeemed = (int) ($this->data['loyalty_points_redeemed'] ?? 0);
+            if ($redeemed > 0) {
+                \App\Services\LoyaltyService::commitHold($this->draftId, $this->record, $redeemed, auth()->id());
+            } else {
+                \App\Services\LoyaltyService::releaseHold($this->draftId);
+            }
+            if ($earned > 0 || $redeemed > 0) {
+                Notification::make()->title('Loyalty')
+                    ->body(($earned > 0 ? "+{$earned} pts earned. " : '') . ($redeemed > 0 ? "-{$redeemed} pts redeemed." : ''))
+                    ->success()->send();
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Loyalty failed: ' . $e->getMessage());
+        }
 
-           });
-
-        session()->forget("sale_draft_{$this->draftId}");
+        \App\Models\SaleDraft::where('draft_id', $this->draftId)->delete();
         $this->data = [];
     }
 
@@ -660,11 +721,92 @@ $target   = $p['target'] ?? 'regular';
         // 🚀 After a sale is created, land on Find Sale instead of the Quick Sale list
         return \App\Filament\Pages\FindSale::getUrl();
     }
-    
+
     public function updated($property): void
     {
-        if ($this->draftId) {
-            session(["sale_draft_{$this->draftId}" => $this->data]);
-        }
+        $this->persistDraft();
+    }
+
+    public function dehydrate(): void
+    {
+        $this->persistDraft();
+    }
+
+    public function saveDraftNow(): void
+    {
+        $this->persistDraft();
+    }
+
+    public function getSubheading(): string|\Illuminate\Contracts\Support\Htmlable|null
+    {
+        $name = $this->data['draft_name'] ?? null;
+        $badge = $name ? '<span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;">📝 ' . e($name) . '</span>' : '';
+        return new \Illuminate\Support\HtmlString($badge . '<div wire:poll.5s="saveDraftNow" style="display:none"></div>');
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('save_and_new')
+                ->label('Save Draft & New Sale')
+                ->icon('heroicon-o-plus-circle')
+                ->color('warning')
+                ->action(function () {
+                    $this->persistDraft();
+                    return redirect(SaleResource::getUrl('create', ['new' => 1]));
+                }),
+
+            Action::make('my_drafts')
+                ->label('Drafts')
+                ->icon('heroicon-o-document-duplicate')
+                ->color('gray')
+                ->modalHeading('Saved Sale Drafts')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Close')
+                ->modalContent(function () {
+                    $drafts = \App\Models\SaleDraft::where('status', 'open')->latest('updated_at')->limit(50)->get();
+                    $rows = '';
+                    foreach ($drafts as $d) {
+                        $name  = e($d->name ?: ('Draft ' . substr($d->draft_id, 0, 6)));
+                        $cust  = $d->customer_id ? e(\App\Models\Customer::find($d->customer_id)?->name ?? '') : 'No customer yet';
+                        $staff = e($d->staff_name ?? '—');
+                        $total = number_format((float) $d->total, 2);
+                        $when  = $d->updated_at?->diffForHumans();
+                        $url   = SaleResource::getUrl('create', ['draft_id' => $d->draft_id]);
+                        $cur   = $d->draft_id === $this->draftId ? ' (current)' : '';
+                        $rows .= "<a href='{$url}' style='display:block;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;text-decoration:none;'>
+                            <div style='font-weight:800;color:#0B3D3C;'>📝 {$name}{$cur}</div>
+                            <div style='font-size:12px;color:#64748b;'>{$cust} · {$d->item_count} item(s) · \${$total} · by {$staff} · {$when}</div></a>";
+                    }
+                    return new \Illuminate\Support\HtmlString($rows ?: "<p style='color:#94a3b8;font-style:italic;'>No saved drafts.</p>");
+                }),
+        ];
+    }
+
+    protected function persistDraft(): void
+    {
+        if ($this->record || !$this->draftId) return;
+
+        $d     = $this->data ?? [];
+        $items = $d['items'] ?? [];
+        if (empty($d['customer_id']) && empty($items)) return;
+
+        $hash = md5(json_encode($d));
+        if ($hash === $this->draftHash) return;
+        $this->draftHash = $hash;
+
+        \App\Models\SaleDraft::updateOrCreate(
+            ['draft_id' => $this->draftId],
+            [
+                'name'        => $d['draft_name'] ?? null,
+                'staff_name'  => Session::get('active_staff_name') ?? auth()->user()?->name,
+                'user_id'     => auth()->id(),
+                'customer_id' => $d['customer_id'] ?? null,
+                'item_count'  => count($items),
+                'total'       => (float) ($d['final_total'] ?? 0),
+                'data'        => $d,
+                'status'      => 'open',
+            ]
+        );
     }
 }

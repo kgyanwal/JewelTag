@@ -862,6 +862,7 @@ HTML;
                 \App\Filament\Pages\WarrantyReport::class,
                 \App\Filament\Pages\TestValorTerminal::class,
                 \App\Filament\Pages\VendorReturns::class,
+                \App\Filament\Pages\LoyaltyCenter::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,

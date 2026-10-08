@@ -149,6 +149,9 @@ Route::middleware([
         ->name('two-factor.back')->middleware('auth');
 
 
-        Route::get('/two-factor-reset', [TwoFactorController::class, 'resetMethod'])
-    ->name('two-factor.reset')->middleware('auth');
+    Route::get('/two-factor-reset', [TwoFactorController::class, 'showReset'])
+        ->name('two-factor.reset')->middleware('auth');
+
+    Route::post('/two-factor-reset', [TwoFactorController::class, 'resetMethod'])
+        ->name('two-factor.reset.confirm')->middleware(['auth', 'throttle:5,1']);
 });

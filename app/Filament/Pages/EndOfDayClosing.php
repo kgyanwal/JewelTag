@@ -122,8 +122,11 @@ class EndOfDayClosing extends Page
 
         foreach ($payments as $payment) {
             $key = strtolower(trim($payment->method));
-            if (array_key_exists($key, $systemTotals)) {
+                       if (array_key_exists($key, $systemTotals)) {
                 $systemTotals[$key] += (float) $payment->amount;
+                       } elseif (($payment->gateway ?? null) === 'valor') {
+                $systemTotals[$key] = ($systemTotals[$key] ?? 0.0) + (float) $payment->amount;
+                $this->paymentMethods[$key] = strtoupper(trim($payment->method));
             }
         }
 

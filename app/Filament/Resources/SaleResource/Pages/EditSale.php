@@ -95,7 +95,7 @@ class EditSale extends EditRecord
 
         return false;
     }
-       public function mount(int|string $record): void
+    public function mount(int|string $record): void
     {
         parent::mount($record);
 
@@ -214,6 +214,11 @@ class EditSale extends EditRecord
                     'amount'           => floatval($p->amount),
                     'payment_target'   => $target,
                     'is_prior_deposit' => (bool) ($p->custom_order_id || $p->repair_id),
+                    'gateway'          => $p->gateway,
+                    'gateway_txn_id'   => $p->gateway_txn_id,
+                    'auth_code'        => $p->auth_code,
+                    'card_last4'       => $p->card_last4,
+                    'card_brand'       => $p->card_brand,
                 ];
             }
 
@@ -276,6 +281,14 @@ class EditSale extends EditRecord
                 }
             }
         }
+
+        // Loyalty points redeemed on this sale, so updateTotals() keeps the discount on edit
+        $redeemed = \App\Models\LoyaltyTransaction::where('sale_id', $record->id)
+            ->where('type', 'redeem')
+            ->sum('points');
+        $redeemed = abs((int) $redeemed);
+        $data['loyalty_points_redeemed'] = $redeemed;
+        $data['loyalty_discount'] = round($redeemed / max(1, \App\Services\LoyaltyService::pointsPerDollar()), 2);
 
         // 🚀 CRITICAL FIX: Explicitly lock final values out of the original parent parameters on load
         $data['final_total']   = number_format(floatval($record->final_total), 2, '.', '');
@@ -353,7 +366,7 @@ class EditSale extends EditRecord
         return $data;
     }
 
-        // 🚀 NEW — removes the Save button entirely for a refunded sale, so
+    // 🚀 NEW — removes the Save button entirely for a refunded sale, so
     // there's no button to even click. mutateFormDataBeforeSave's halt still
     // stands as the last line of defense if a save is ever triggered another way.
     protected function getFormActions(): array
@@ -527,9 +540,7 @@ class EditSale extends EditRecord
                 }
             }
 
-
             // 1. Existing POS payments in DB
-                   // 1. Existing POS payments in DB
             $existingDirectPayments = $sale->payments()->get();
             $existingSalePayments   = $sale->salePayments()->get();
 
@@ -557,7 +568,7 @@ class EditSale extends EditRecord
             // This block explicitly updates the method on existing Payment rows
             // when this exact scenario is detected, for both non-split and
             // split payment modes.
-                        if (round($formTotal - $totalAlreadyInDb, 2) === 0.0 && $formTotal > 0) {
+            if (round($formTotal - $totalAlreadyInDb, 2) === 0.0 && $formTotal > 0) {
                 if (empty($data['is_split_payment']) && $existingDirectPayments->count() >= 1) {
                     // 🚀 FIX — was ->count() === 1 only, so any sale with more than
                     // one existing Payment row (leftover rows from prior edits,
@@ -792,102 +803,14 @@ class EditSale extends EditRecord
                 }
             }
 
-            // 🚀 CRITICAL REPAIR FLOW: PROCESS SPECIAL REPAIR JOBS ON EDIT SAVE
-            $specialJobs = $data['special_jobs'] ?? [];
-            if (!empty($specialJobs) && is_array($specialJobs)) {
-                $saleItemsArray = $sale->items->values();
-                $updatedJobsLedger = [];
-
-                foreach ($specialJobs as $job) {
-                    if (empty($job['job_type'])) continue;
-
-                    // Skip if repair record already exists
-                    if (!empty($job['repair_id'])) {
-                        $updatedJobsLedger[] = $job;
-                        continue;
-                    }
-
-                    $itemDescription = null;
-
-                    if (!empty($job['job_applies_to_store_item']) && !empty($job['store_item_id'])) {
-                        $storeItem = \App\Models\ProductItem::find($job['store_item_id']);
-                        if ($storeItem) {
-                            $itemDescription = $storeItem->barcode . ' — ' . ($storeItem->custom_description ?? '');
-                        }
-                    }
-
-                    if (empty($itemDescription)) {
-                        $selectedIndexes = $job['applicable_item_indexes'] ?? [0];
-                        if (empty($selectedIndexes)) $selectedIndexes = [0];
-
-                        $selectedItems = collect($selectedIndexes)->map(function ($idx) use ($saleItemsArray) {
-                            return $saleItemsArray->get((int)$idx);
-                        })->filter();
-
-                        $itemDescription = $selectedItems->map(function ($item) {
-                            if ($item->productItem) {
-                                return $item->productItem->barcode . ' — ' . ($item->productItem->custom_description ?? '');
-                            }
-                            return $item->custom_description ?? 'Item';
-                        })->filter()->implode(', ');
-                    }
-
-                    if (empty($itemDescription)) {
-                        $itemDescription = 'Item from Sale #' . $sale->invoice_number;
-                    }
-
-                    $datePrefix = now()->format('ymd');
-                    $sequence   = \App\Models\Repair::whereDate('created_at', today())->count() + 1;
-                    while (\App\Models\Repair::where('repair_no', $datePrefix . '-' . $sequence)->exists()) {
-                        $sequence++;
-                    }
-                    $repairNo = $datePrefix . '-' . $sequence;
-
-                    // 🚀 FIX — was hardcoded 0/null. Pulls from job_final_charge instead.
-                    $jobCharge = round((float) ($job['job_final_charge'] ?? 0), 2);
-
-                    $newRepair = \App\Models\Repair::create([
-                        'sale_id'              => $sale->id,
-                        'repair_no'            => $repairNo,
-                        'customer_id'          => $sale->customer_id,
-                        'store_id'             => $sale->store_id,
-                        'staff_id'             => auth()->id(),
-                        'sales_person_list'    => is_array($sale->sales_person_list) ? $sale->sales_person_list : [$sale->sales_person_list],
-                        'status'               => 'received',
-                        'item_description'     => $itemDescription,
-                        'reported_issue'       => $job['job_type']
-                            . (!empty($job['current_size']) ? ' | Current: ' . $job['current_size'] : '')
-                            . (!empty($job['target_size'])  ? ' → Target: '  . $job['target_size']  : '')
-                            . (!empty($job['metal_type'])   ? ' | Metal: '   . $job['metal_type']   : ''),
-                        'repair_notes'         => $job['job_instructions'] ?? null,
-                        'customer_pickup_date' => $job['date_required'] ?? null,
-                        'estimated_cost'       => $jobCharge,
-                        'final_cost'           => $jobCharge,
-                        'items'                => [[
-                            'item_description' => $itemDescription,
-                            'reported_issue'   => $job['job_type'],
-                            'is_warranty'       => false,
-                            'is_tax_free'       => (bool) ($job['job_is_tax_free'] ?? false),
-                            'services'          => [[
-                                'job_type'         => $job['job_type'],
-                                'metal_type'       => $job['metal_type'] ?? null,
-                                'current_size'     => $job['current_size'] ?? null,
-                                'target_size'      => $job['target_size'] ?? null,
-                                'send_to'          => $job['send_to'] ?? null,
-                                'job_instructions' => $job['job_instructions'] ?? null,
-                                'date_required'    => $job['date_required'] ?? null,
-                                'estimated_cost'   => $jobCharge,
-                                'final_cost'       => $jobCharge,
-                            ]],
-                        ]],
-                    ]);
-
-                    // Store the newly generated ID into this row array item
-                    $job['repair_id'] = $newRepair->id;
-                    $updatedJobsLedger[] = $job;
-                }
-                // Update the parent record columns without breaking data cycles
-                $sale->updateQuietly(['special_jobs' => $updatedJobsLedger]);
+            // Persist the repair_id of every special job back onto the sale
+            // (new repairs were already created above, before the payment loop).
+            $specialJobs = collect($data['special_jobs'] ?? [])
+                ->filter(fn($job) => !empty($job['job_type']))
+                ->values()
+                ->all();
+            if (!empty($specialJobs)) {
+                $sale->updateQuietly(['special_jobs' => $specialJobs]);
             }
 
             \Filament\Notifications\Notification::make()
@@ -897,7 +820,7 @@ class EditSale extends EditRecord
         });
         $this->logAuditChanges();
     }
-    
+
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
