@@ -2403,7 +2403,7 @@ Textarea::make('job_description')
                                                 return;
                                             }
 
-                                            $invoice = $get('invoice_number') ?: ('DRAFT-' . now()->format('His'));
+                                            $invoice = 'JT' . now()->format('ymdHis') . strtoupper(\Illuminate\Support\Str::random(4));
 
                                             try {
                                                 $result = $gateway->publishSale($amount, $invoice);
@@ -2412,9 +2412,17 @@ Textarea::make('job_description')
                                                 return;
                                             }
 
-                                            if (!$result['success']) {
-                                                Notification::make()->title('Could not reach terminal')->body($result['message'])->danger()->send();
+                                                                                        if (!$result['success'] && empty($result['uncertain'])) {
+                                                Notification::make()->title('Terminal rejected the request')->body($result['message'])->danger()->send();
                                                 return;
+                                            }
+
+                                            if (!$result['success']) {
+                                                Notification::make()
+                                                    ->title('Still checking the terminal…')
+                                                    ->body('No instant answer from Valor. If the customer taps the card it will be recorded automatically.')
+                                                    ->warning()
+                                                    ->send();
                                             }
 
                                             $set('pending_device_request_id', $result['req_txn_id']);
