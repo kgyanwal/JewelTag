@@ -12,9 +12,11 @@ use App\Models\DailyClosing;
 use App\Models\SaleEditRequest;
 use Illuminate\Support\Facades\DB;
 use App\Models\SaleAuditLog;
+use App\Filament\Concerns\HandlesTerminalCharge;
 
 class EditSale extends EditRecord
 {
+    use HandlesTerminalCharge;
     protected static string $resource = SaleResource::class;
     protected array $auditSnapshot = [];
     public function getSubheading(): ?\Illuminate\Support\HtmlString
@@ -895,48 +897,7 @@ class EditSale extends EditRecord
         });
         $this->logAuditChanges();
     }
-    public function checkDeviceChargeStatus(): void
-    {
-        $reqTxnId = $this->data['pending_device_request_id'] ?? null;
-        if (!$reqTxnId) return;
-
-        $gateway = app(\App\Services\Payments\ValorGateway::class);
-        $status  = $gateway->checkStatus($reqTxnId);
-
-        if ($status['state'] === 'pending') return;
-
-        if ($status['state'] === 'approved') {
-            $splits = $this->data['split_payments'] ?? [];
-            $splits[(string) \Illuminate\Support\Str::uuid()] = [
-                'method'         => $status['card_brand'] ?? 'CARD',
-                'amount'         => number_format($this->data['pending_device_amount'] ?? 0, 2, '.', ''),
-                'payment_target' => 'regular',
-                'gateway'        => 'valor',
-                'gateway_txn_id' => $status['txn_id'],
-                'auth_code'      => $status['auth_code'],
-                'card_last4'     => $status['card_last4'],
-                'card_brand'     => $status['card_brand'],
-            ];
-            $this->data['split_payments']  = $splits;
-            $this->data['is_split_payment'] = true;
-
-            \Filament\Notifications\Notification::make()
-                ->title('Card Approved ✅')
-                ->body("Approved — {$status['card_brand']} ending {$status['card_last4']}")
-                ->success()
-                ->send();
-        } else {
-            \Filament\Notifications\Notification::make()
-                ->title($status['state'] === 'declined' ? 'Card Declined' : 'Terminal Error')
-                ->body($status['message'])
-                ->danger()
-                ->send();
-        }
-
-        $this->data['pending_device_request_id']  = null;
-        $this->data['pending_device_amount']      = null;
-        $this->data['pending_device_started_at']  = null;
-    }
+    
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');

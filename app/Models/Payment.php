@@ -18,6 +18,11 @@ class Payment extends Model
         'method',
         'paid_at',
         'store_id',
+        'gateway',
+        'gateway_txn_id',
+        'auth_code',
+        'card_last4',
+        'card_brand',
     ];
 
     /**

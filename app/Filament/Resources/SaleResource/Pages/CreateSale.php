@@ -14,9 +14,11 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Illuminate\Support\Str;
+use App\Filament\Concerns\HandlesTerminalCharge;
 
 class CreateSale extends CreateRecord
 {
+    use HandlesTerminalCharge;
     protected static string $resource = SaleResource::class;
     protected bool $hasUnsavedChangesAlert = true;
     public ?string $draftId = null;
@@ -658,50 +660,7 @@ $target   = $p['target'] ?? 'regular';
         // 🚀 After a sale is created, land on Find Sale instead of the Quick Sale list
         return \App\Filament\Pages\FindSale::getUrl();
     }
-
-    public function checkDeviceChargeStatus(): void
-    {
-        $reqTxnId = $this->data['pending_device_request_id'] ?? null;
-        if (!$reqTxnId) return;
-
-        $gateway = app(\App\Services\Payments\ValorGateway::class);
-        $status  = $gateway->checkStatus($reqTxnId);
-
-        if ($status['state'] === 'pending') return;
-
-        if ($status['state'] === 'approved') {
-            $splits = $this->data['split_payments'] ?? [];
-            $splits[(string) \Illuminate\Support\Str::uuid()] = [
-                'method'         => $status['card_brand'] ?? 'CARD',
-                'amount'         => number_format($this->data['pending_device_amount'] ?? 0, 2, '.', ''),
-                'payment_target' => 'regular',
-                'gateway'        => 'valor',
-                'gateway_txn_id' => $status['txn_id'],
-                'auth_code'      => $status['auth_code'],
-                'card_last4'     => $status['card_last4'],
-                'card_brand'     => $status['card_brand'],
-            ];
-            $this->data['split_payments']  = $splits;
-            $this->data['is_split_payment'] = true;
-
-            \Filament\Notifications\Notification::make()
-                ->title('Card Approved ✅')
-                ->body("Approved — {$status['card_brand']} ending {$status['card_last4']}")
-                ->success()
-                ->send();
-        } else {
-            \Filament\Notifications\Notification::make()
-                ->title($status['state'] === 'declined' ? 'Card Declined' : 'Terminal Error')
-                ->body($status['message'])
-                ->danger()
-                ->send();
-        }
-
-        $this->data['pending_device_request_id']  = null;
-        $this->data['pending_device_amount']      = null;
-        $this->data['pending_device_started_at']  = null;
-    }
-
+    
     public function updated($property): void
     {
         if ($this->draftId) {
