@@ -68,7 +68,7 @@ class ValorGateway
 
     public function publishSale(float $amount, string $reqTxnId): array
     {
-        $reqTxnId = substr($reqTxnId, 0, 25);
+        $reqTxnId    = substr($reqTxnId, 0, 25);
         $amountCents = (string) (int) round($amount * 100);
 
         $payload = [
@@ -77,12 +77,6 @@ class ValorGateway
             'channel_id' => $this->channelId,
             'version'    => '2',
             'payload'    => [
-                // MINIMAL — exactly matches the readme.io Publish API doc's
-                // only confirmed example for Cloud (vc_publish). The extra
-                // fields tried previously (TIP_ENTRY, SIGNATURE, etc.) come
-                // from the separate TCP/USB local-protocol PDF and are the
-                // suspected cause of ERROR-0600VI01 on Cloud, since that
-                // error code is undocumented for local-protocol parsing.
                 'TRAN_MODE'  => '1', // Credit
                 'TRAN_CODE'  => '1', // Sale
                 'AMOUNT'     => $amountCents,
@@ -93,11 +87,20 @@ class ValorGateway
         try {
             $response = Http::acceptJson()->asJson()->connectTimeout(8)->timeout(12)
                 ->post("{$this->baseUrl}/?status", $payload);
-                } catch (\Throwable $e) {
+        } catch (\Throwable $e) {
             Log::error('Valor publishSale failed', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'error' => $e->getMessage()]);
-            // We got no answer, but the terminal may still have received it.
+
+            // "Operation timed out" = Valor took the request but never answered.
+            // The terminal may still have it, so the page keeps watching.
             $uncertain = str_contains($e->getMessage(), 'Operation timed out');
-            return ['success' => false, 'uncertain' => $uncertain, 'req_txn_id' => $reqTxnId, 'message' => 'No answer from Valor: ' . $e->getMessage()];
+
+            return [
+                'success'    => false,
+                'uncertain'  => $uncertain,
+                'req_txn_id' => $reqTxnId,
+                'message'    => 'No answer from Valor: ' . $e->getMessage(),
+            ];
+        }
 
         $body = $response->json() ?? [];
         Log::info('Valor publishSale response', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'http' => $response->status(), 'body' => $body]);
@@ -107,14 +110,6 @@ class ValorGateway
             'uncertain'  => false,
             'req_txn_id' => $reqTxnId,
             'message'    => $body['desc'] ?? $body['mesg'] ?? ('Valor said HTTP ' . $response->status()),
-            'raw'        => $body,
-        ];
-
-        $body = $response->json() ?? [];
-        return [
-            'success'    => $response->successful() && ($body['error_no'] ?? null) !== 'VC03',
-            'req_txn_id' => $reqTxnId,
-            'message'    => $body['desc'] ?? $body['mesg'] ?? 'Published',
             'raw'        => $body,
         ];
     }
