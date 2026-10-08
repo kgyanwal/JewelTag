@@ -93,10 +93,22 @@ class ValorGateway
         try {
             $response = Http::acceptJson()->asJson()->timeout(45)
                 ->post("{$this->baseUrl}/?status", $payload);
-        } catch (\Throwable $e) {
-            Log::error('Valor publishSale failed', ['tenant' => $this->tenantId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'req_txn_id' => $reqTxnId, 'message' => 'Could not reach terminal.'];
+                } catch (\Throwable $e) {
+            Log::error('Valor publishSale failed', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'error' => $e->getMessage()]);
+            // We got no answer, but the terminal may still have received it.
+            return ['success' => false, 'uncertain' => true, 'req_txn_id' => $reqTxnId, 'message' => 'No answer from Valor: ' . $e->getMessage()];
         }
+
+        $body = $response->json() ?? [];
+        Log::info('Valor publishSale response', ['tenant' => $this->tenantId, 'req' => $reqTxnId, 'http' => $response->status(), 'body' => $body]);
+
+        return [
+            'success'    => $response->successful() && ($body['error_no'] ?? null) !== 'VC03',
+            'uncertain'  => false,
+            'req_txn_id' => $reqTxnId,
+            'message'    => $body['desc'] ?? $body['mesg'] ?? ('Valor said HTTP ' . $response->status()),
+            'raw'        => $body,
+        ];
 
         $body = $response->json() ?? [];
         return [
