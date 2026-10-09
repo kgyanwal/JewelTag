@@ -250,7 +250,7 @@ class ZebraPrinterService
             'barcode'  => ['x_pos' => 550, 'y_pos' => 150, 'font_size' => 1,  'is_bold' => false, 'height' => 20, 'width' => 1],
             // BOTTOM: price, description, category, RFID
             'price'    => ['x_pos' => 550, 'y_pos' => 220, 'font_size' => 30, 'is_bold' => true,  'height' => 0,  'width' => 0],
-            'desc'     => ['x_pos' => 550, 'y_pos' => 260, 'font_size' => 16, 'is_bold' => false, 'height' => 0, 'width' => 30],
+            'desc'     => ['x_pos' => 550, 'y_pos' => 270, 'font_size' => 20, 'is_bold' => false, 'height' => 0, 'width' => 30],
             'deptcat'  => ['x_pos' => 550, 'y_pos' => 290, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
             'rfid'     => ['x_pos' => 560, 'y_pos' => 310, 'font_size' => 17, 'is_bold' => false, 'height' => 0,  'width' => 0],
         ];
