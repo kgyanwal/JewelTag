@@ -32,6 +32,15 @@ class ZebraPrinterService
         });
     }
 
+    private function maxChars($layout, int $fontHeight, bool $bold): int
+    {
+        $w = (int) ($layout->width ?? 0);
+        if ($w > 0) return min($w, 60);
+
+        $fW = max(2, (int) ($fontHeight * ($bold ? 0.9 : 0.7)));
+        return max(8, (int) floor((880 - (int) $layout->x_pos) / $fW));
+    }
+
     /**
      * Returns the currently active IP for UI notifications.
      */
@@ -77,7 +86,7 @@ class ZebraPrinterService
                 if (!empty($record->diamond_weight) && $record->diamond_weight !== "0") $parts[] = $record->diamond_weight;
                 if (!empty($record->metal_weight) && $record->metal_weight !== "0") $parts[] = $record->metal_weight . "g";
 
-                $dwValue = substr(implode(' ', $parts), 0, 20); 
+                $dwValue = mb_substr(implode(' ', $parts), 0, $this->maxChars($lDwmtmk, (int) $lDwmtmk->font_size, (bool) $lDwmtmk->is_bold));
                 if (!empty($dwValue)) {
                     $fH = $lDwmtmk->font_size;
                     $fW = max(2, (int)($fH * ($lDwmtmk->is_bold ? 0.9 : 0.7)));
@@ -105,34 +114,27 @@ class ZebraPrinterService
             // --- LINE 5 & 6: DESCRIPTION (20 Chars Each) ---
             $lDesc = $getL('desc');
             if ($lDesc && !empty($record->custom_description)) {
-                $fullDesc = trim($record->custom_description);
-                
-                $wrapped = wordwrap($fullDesc, 20, "\n", true);
-                $lines = array_filter(explode("\n", $wrapped), fn($value) => !is_null($value) && $value !== '');
-                $lines = array_values($lines);
-
-                // ✅ FIX: Use same font width formula (0.7/0.9 ratio) as all other fields
                 $fH = $lDesc->font_size;
                 $fW = max(2, (int)($fH * ($lDesc->is_bold ? 0.9 : 0.7)));
+                $maxChars = $this->maxChars($lDesc, $fH, (bool) $lDesc->is_bold);
 
-                $yOffset = 0;
-                foreach ($lines as $line) {
-                    $currentY = $lDesc->y_pos + $yOffset;
+                $wrapped = wordwrap(trim($record->custom_description), $maxChars, "\n", true);
+                $lines = array_values(array_filter(explode("\n", $wrapped), fn($v) => $v !== ''));
+
+                foreach ($lines as $i => $line) {
+                    $currentY = $lDesc->y_pos + ($i * $fH);
                     $zpl .= "\n^FT{$lDesc->x_pos},{$currentY}^A0N,{$fH},{$fW}^FD{$line}^FS";
-                    $yOffset += $lDesc->font_size;
                 }
             }
 
             /* --- FUTURE USE: LINE 7 (DEPT/CAT) ---
             $lDeptcat = $getL('deptcat');
             if ($lDeptcat) {
-                $catParts = [];
-                $c1 = trim((string)($record->category ?? ''));
-                if ($c1 !== "" && $c1 !== "0") $catParts[] = $c1;
-                $catValue = substr(implode(' ', $catParts), 0, 20);
-                if (!empty($catValue)) {
+                $c1 = trim((string) ($record->category ?? ''));
+                if ($c1 !== '' && $c1 !== '0') {
                     $fH = $lDeptcat->font_size;
                     $fW = max(2, (int)($fH * ($lDeptcat->is_bold ? 0.9 : 0.7)));
+                    $catValue = mb_substr($c1, 0, $this->maxChars($lDeptcat, (int) $fH, (bool) $lDeptcat->is_bold));
                     $zpl .= "\n^FO{$lDeptcat->x_pos},{$lDeptcat->y_pos}^A0N,{$fH},{$fW}^FD{$catValue}^FS";
                 }
             }
@@ -248,7 +250,7 @@ class ZebraPrinterService
             'barcode'  => ['x_pos' => 550, 'y_pos' => 150, 'font_size' => 1,  'is_bold' => false, 'height' => 20, 'width' => 1],
             // BOTTOM: price, description, category, RFID
             'price'    => ['x_pos' => 550, 'y_pos' => 220, 'font_size' => 30, 'is_bold' => true,  'height' => 0,  'width' => 0],
-            'desc'     => ['x_pos' => 550, 'y_pos' => 260, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
+            'desc'     => ['x_pos' => 550, 'y_pos' => 260, 'font_size' => 16, 'is_bold' => false, 'height' => 0, 'width' => 30],
             'deptcat'  => ['x_pos' => 550, 'y_pos' => 290, 'font_size' => 20, 'is_bold' => false, 'height' => 0,  'width' => 0],
             'rfid'     => ['x_pos' => 560, 'y_pos' => 310, 'font_size' => 17, 'is_bold' => false, 'height' => 0,  'width' => 0],
         ];

@@ -29,16 +29,47 @@
         deptcat: 'Category',
         rfid: 'RFID Hex'
     },
+    autoChars(id) {
+        const f = parseInt(this.fields[id+'_font']) || 10;
+        const fw = Math.max(2, Math.round(f * (this.fields[id+'_is_bold'] ? 0.9 : 0.7)));
+        return Math.max(8, Math.floor((880 - (parseInt(this.fields[id+'_x']) || 0)) / fw));
+    },
+    maxChars(id) {
+        const n = parseInt(this.fields[id+'_chars']) || 0;
+        return n > 0 ? Math.min(n, 60) : this.autoChars(id);
+    },
+    wrapText(text, n) {
+        const lines = []; let cur = '';
+        String(text || '').split(' ').forEach(w => {
+            while (w.length > n) { if (cur) { lines.push(cur); cur = ''; } lines.push(w.slice(0, n)); w = w.slice(n); }
+            if ((cur + ' ' + w).trim().length <= n) cur = (cur + ' ' + w).trim();
+            else { if (cur) lines.push(cur); cur = w; }
+        });
+        if (cur) lines.push(cur);
+        return lines;
+    },
+    shownText(id) {
+        const v = this.fields[id+'_val'];
+        if (id === 'desc') return this.wrapText(v, this.maxChars('desc')).join('\n');
+        if (id === 'dwmtmk' || id === 'deptcat') return String(v || '').slice(0, this.maxChars(id));
+        return v;
+    },
     get labelPreview() {
-        {{-- Same coordinates the printer receives. Preview is 40 dots taller than the
-             real 300-dot label so nothing below y=300 gets chopped in the picture. --}}
+        {{-- Same coordinates and wrapping the printer uses. Preview is 40 dots taller than the
+             real label so nothing near the bottom gets chopped in the picture. --}}
         let zpl = '^XA^CI28^MD30^PW900^LL340^LS0^PR2';
-        const txt = ['stock_no','desc','price','dwmtmk','deptcat','rfid'];
-        txt.forEach(id => {
+        ['stock_no','dwmtmk','price','deptcat','rfid'].forEach(id => {
             let h = parseInt(this.fields[id+'_font']) || 10;
             let w = this.fields[id+'_is_bold'] ? Math.max(2, Math.round(h * 0.9)) : Math.max(2, Math.round(h * 0.7));
-            zpl += `^FO${this.fields[id+'_x']},${this.fields[id+'_y']}^A0N,${h},${w}^FD${this.fields[id+'_val']}^FS`;
+            zpl += `^FO${this.fields[id+'_x']},${this.fields[id+'_y']}^A0N,${h},${w}^FD${this.shownText(id)}^FS`;
         });
+        {
+            const h = parseInt(this.fields.desc_font) || 10;
+            const w = this.fields.desc_is_bold ? Math.max(2, Math.round(h * 0.9)) : Math.max(2, Math.round(h * 0.7));
+            this.wrapText(this.fields.desc_val, this.maxChars('desc')).forEach((line, i) => {
+                zpl += `^FT${this.fields.desc_x},${(parseInt(this.fields.desc_y) || 0) + i * h}^A0N,${h},${w}^FD${line}^FS`;
+            });
+        }
         let bw = parseFloat(this.fields.barcode_width) || 1;
         let bW = bw > 1 ? 2 : Math.max(1, bw);
         zpl += `^FO${this.fields.barcode_x},${this.fields.barcode_y}^BY${bW},2.0^BCN,${parseInt(this.fields.barcode_height) || 40},N,N,N,N^FD${this.fields.barcode_val}^FS^XZ`;
@@ -105,9 +136,9 @@ $nextTick(() => {
                          :data-type="id">
                         <div :class="active === id ? 'ring-2 ring-blue-500 bg-blue-50/80 rounded' : ''" class="transition-all duration-100">
                             <template x-if="id !== 'barcode'">
-                                <span class="block text-slate-900 whitespace-nowrap leading-none"
+                                <span class="block text-slate-900 leading-none" style="white-space:pre;"
                                       :style="`font-size: ${parseInt(fields[id+'_font']) || 10}px; font-weight: ${fields[id+'_is_bold'] ? 800 : 500};`"
-                                      x-text="fields[id+'_val']"></span>
+                                      x-text="shownText(id)"></span>
                             </template>
                             <template x-if="id === 'barcode'">
                                 <div class="rounded-sm"
@@ -126,11 +157,12 @@ $nextTick(() => {
             <table class="jt-table">
                 <thead>
                     <tr>
-                        <th style="width:26%">Field</th>
-                        <th style="width:18%">Size / Bar Height</th>
-                        <th style="width:18%">Bold / Bar Width</th>
-                        <th style="width:19%">X</th>
-                        <th style="width:19%">Y</th>
+                        <th style="width:22%">Field</th>
+                        <th style="width:15%">Size / Bar Height</th>
+                        <th style="width:15%">Bold / Bar Width</th>
+                        <th style="width:15%" title="Max characters per line. 0 = automatic">Max Chars</th>
+                        <th style="width:16%">X</th>
+                        <th style="width:17%">Y</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -144,6 +176,10 @@ $nextTick(() => {
                             <td>
                                 <template x-if="id !== 'barcode'"><input type="checkbox" x-model="fields[id+'_is_bold']" class="jt-chk"></template>
                                 <template x-if="id === 'barcode'"><input type="number" min="1" max="3" step="1" x-model.number="fields.barcode_width" class="jt-in"></template>
+                            </td>
+                            <td>
+                                <template x-if="['desc','dwmtmk','deptcat'].includes(id)"><input type="number" min="0" max="60" x-model.number="fields[id+'_chars']" class="jt-in" :title="'0 = automatic (' + autoChars(id) + ')'"></template>
+                                <template x-if="!['desc','dwmtmk','deptcat'].includes(id)"><span style="opacity:.4">&mdash;</span></template>
                             </td>
                             <td><input type="number" x-model.number="fields[id+'_x']" class="jt-in"></td>
                             <td><input type="number" x-model.number="fields[id+'_y']" class="jt-in"></td>

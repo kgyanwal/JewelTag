@@ -33,10 +33,13 @@ class LabelDesigner extends Page implements HasForms
         'dwmtmk'   => [550, 110, 20, false, '1.38g 14K'],
         'barcode'  => [550, 150,  1, false, 'D1001'],
         'price'    => [550, 220, 30, true,  '$1,299.00'],
-        'desc'     => [550, 260, 20, false, 'Gold Rope Chain'],
+        'desc'     => [550, 260, 20, false, 'ST SILVER MOISSANITE LION RING'],
         'deptcat'  => [550, 290, 20, false, 'GOLD/CHAIN'],
         'rfid'     => [560, 310, 17, false, '303405C0'],
     ];
+
+    /** Fields whose `width` column stores max characters per line */
+    private const TEXT_LIMIT = ['desc', 'dwmtmk', 'deptcat'];
 
     public function mount(): void { $this->loadLayout(); }
 
@@ -58,6 +61,8 @@ class LabelDesigner extends Page implements HasForms
             } else {
                 $data[$id . '_font']    = (int) ($row->font_size ?? $font);
                 $data[$id . '_is_bold'] = (bool) ($row->is_bold ?? $bold);
+                // max characters per line (0 = automatic) - only used by wrapping/truncating fields
+                $data[$id . '_chars']   = in_array($id, self::TEXT_LIMIT, true) ? max(0, min(60, (int) ($row->width ?? 0))) : 0;
             }
         }
 
@@ -83,7 +88,9 @@ class LabelDesigner extends Page implements HasForms
                 'font_size' => $isBarcode ? 1 : max(1, (int) ($this->data[$f . '_font'] ?? self::FIELDS[$f][2])),
                 'is_bold'   => $isBarcode ? false : (bool) ($this->data[$f . '_is_bold'] ?? false),
                 'height'    => $isBarcode ? max(1, (int) ($this->data['barcode_height'] ?? 20)) : 0,
-                'width'     => $isBarcode ? min(3, max(1, (int) round((float) ($this->data['barcode_width'] ?? 1)))) : 0,
+                'width'     => $isBarcode
+                    ? min(3, max(1, (int) round((float) ($this->data['barcode_width'] ?? 1))))
+                    : (in_array($f, self::TEXT_LIMIT, true) ? max(0, min(60, (int) ($this->data[$f . '_chars'] ?? 0))) : 0),
             ]);
         }
 
