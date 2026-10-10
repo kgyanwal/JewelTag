@@ -272,9 +272,9 @@ class TwoFactorService
             return $this->verifyBackupCode($user, $code);
         }
 
-        if ($user->two_factor_method === 'totp') {
-            return $this->verifyTotp($user, $code);
-        }
+       if ($user->two_factor_method === 'totp') {
+    return $this->verifyTotp($user, $code) || $this->verifySmsOtp($user, $code);
+}
 
         if ($user->two_factor_method === 'sms') {
             return $this->verifySmsOtp($user, $code);

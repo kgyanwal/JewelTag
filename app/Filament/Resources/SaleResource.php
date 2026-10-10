@@ -2125,7 +2125,7 @@ Textarea::make('job_description')
 
                                     \Filament\Forms\Components\Actions::make([
                                         FormAction::make('apply_loyalty_points')
-                                            ->label('⭐ APPLY LOYALTY POINTS')
+                                            ->label('⭐ APPLY LOYALTY POINTS AS DISCOUNT')
                                             ->color('warning')
                                             ->button()
                                             ->extraAttributes(['style' => 'width:100%;font-weight:900;'])
@@ -2478,10 +2478,11 @@ Textarea::make('job_description')
                                 // ── VALOR TERMINAL PANEL (collapsed until staff opens it) ──
                                 Section::make('💳 Pay with card terminal')
                                     ->description('Click to open. Leave closed for cash / manual payments.')
-                                    // ->collapsible()
-                                    // ->collapsed(fn(Get $get) => empty($get('pending_device_request_id')))
+                                    ->collapsible()
+                                    ->collapsed(fn(Get $get) => empty($get('pending_device_request_id')))
                                     ->visible(fn() => self::valorEnabled())
                                     ->columnSpanFull()
+                                    ->extraAttributes(['style' => 'background:linear-gradient(135deg,rgba(14,165,233,.10),rgba(99,102,241,.08));border:1.5px solid rgba(14,165,233,.45);border-radius:14px;'])
                                     ->schema([
                                         Placeholder::make('terminal_summary')
                                             ->hiddenLabel()
@@ -2675,6 +2676,12 @@ Textarea::make('job_description')
                                 Hidden::make('pending_device_amount')->dehydrated(false),
                                 Hidden::make('pending_device_started_at')->dehydrated(false),
 
+                                // ── MANUAL PAYMENT (cash / other cards entered by hand) ──
+                                Section::make('💵 Manual payment')
+                                    ->description('Cash or cards NOT taken through the terminal. Terminal card payments are locked and shown below once approved.')
+                                    ->columnSpanFull()
+                                    ->extraAttributes(['style' => 'background:linear-gradient(135deg,rgba(245,158,11,.10),rgba(16,185,129,.07));border:1.5px solid rgba(245,158,11,.45);border-radius:14px;'])
+                                    ->schema([
                                 // ── SPLIT TOGGLE ─────────────────────────────────────────────
                                 Toggle::make('is_split_payment')
                                     ->label('Enable Split Payment')
@@ -2944,11 +2951,33 @@ Textarea::make('job_description')
                                 Repeater::make('split_payments')
                                     ->label('Payment Breakdown')
                                     ->schema([
+                                        Placeholder::make('terminal_lock_banner')
+                                            ->hiddenLabel()
+                                            ->visible(fn(Get $get) => ($get('gateway') ?? null) === 'valor')
+                                            ->content(function (Get $get) {
+                                                $brand = e(strtoupper($get('card_brand') ?? 'CARD'));
+                                                $last4 = e($get('card_last4') ?? '----');
+                                                $auth  = e($get('auth_code') ?? '-');
+                                                return new HtmlString("
+                                                    <div style='display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(14,165,233,.12);border:1px solid rgba(14,165,233,.45);'>
+                                                        <span style='font-size:15px;'>🔒</span>
+                                                        <div style='flex:1;font-size:12px;font-weight:800;'>Card terminal payment — {$brand} •••• {$last4}
+                                                            <span style='font-weight:600;opacity:.65;'> · Auth {$auth} · locked (cannot be edited)</span>
+                                                        </div>
+                                                    </div>");
+                                            })
+                                            ->columnSpanFull(),
                                         Grid::make(6)->schema([
                                             Select::make('method')
                                                 ->label('Method')
-                                                ->options(function (?Sale $record) {
+                                                ->disabled(fn(Get $get) => ($get('gateway') ?? null) === 'valor')
+                                                ->dehydrated()
+                                                ->options(function (?Sale $record, Get $get) {
                                                     $options = SaleResource::getPaymentOptions();
+                                                    $current = strtoupper(trim((string) $get('method')));
+                                                    if ($current !== '' && !array_key_exists($current, $options)) {
+                                                        $options[$current] = $current;
+                                                    }
                                                     if ($record) {
                                                         $record->payments()->pluck('method')
                                                             ->merge($record->salePayments()->pluck('payment_method'))
@@ -2990,6 +3019,8 @@ Textarea::make('job_description')
                                                 ->columnSpan(2),
 
                                             TextInput::make('amount')
+                                                ->disabled(fn(Get $get) => ($get('gateway') ?? null) === 'valor')
+                                                ->dehydrated()
                                                 ->numeric()
                                                 ->prefix('$')
                                                 ->required()
@@ -3062,6 +3093,11 @@ Textarea::make('job_description')
                                     // here removes the phantom blank row entirely.
                                     ->defaultItems(0)
                                     ->maxItems(100)
+                                    // Card-terminal rows are real charges: staff cannot delete them here.
+                                    ->deleteAction(fn(\Filament\Forms\Components\Actions\Action $action) => $action->hidden(
+                                        fn(array $arguments, Repeater $component): bool =>
+                                            (($component->getRawItemState($arguments['item'])['gateway'] ?? null) === 'valor')
+                                    ))
                                     ->addActionLabel('Add Another Payment Method')
                                     ->reorderable(false)
                                     ->live()
@@ -3247,6 +3283,7 @@ Textarea::make('job_description')
                                         return new HtmlString("<span class='{$color} font-bold text-xl'>$" . number_format($remaining, 2) . "</span>");
                                     })
                                     ->visible(fn(Get $get) => $get('is_split_payment')),
+                                    ]),
 
                                 // ── STATUS ───────────────────────────────────────────────────
                                 Select::make('status')
@@ -3272,7 +3309,7 @@ Textarea::make('job_description')
                                     ->extraInputAttributes(['class' => 'text-right text-orange-600 font-bold']),
                                                                 self::totalRow('SUBTOTAL', 'subtotal'),
                                 Placeholder::make('loyalty_discount_line')
-                                    ->label('LOYALTY POINTS REDEEMED')
+                                    ->label('LOYALTY DISCOUNT')
                                     ->visible(fn(Get $get) => floatval($get('loyalty_discount') ?? 0) > 0)
                                     ->content(fn(Get $get) => new HtmlString("<span style='font-weight:800;color:#047857;'>-\$" . number_format((float) $get('loyalty_discount'), 2) . " (" . number_format((int) $get('loyalty_points_redeemed')) . " pts)</span>"))
                                     ->live(),

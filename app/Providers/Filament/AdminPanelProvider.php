@@ -863,6 +863,7 @@ HTML;
                 \App\Filament\Pages\TestValorTerminal::class,
                 \App\Filament\Pages\VendorReturns::class,
                 \App\Filament\Pages\LoyaltyCenter::class,
+                \App\Filament\Pages\CardPayments::class,
             ])
             ->widgets([
                 \App\Filament\Widgets\AdminAttentionWidget::class,

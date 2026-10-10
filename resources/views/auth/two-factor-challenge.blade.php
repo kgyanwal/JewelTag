@@ -457,15 +457,44 @@
                 <button type="submit" class="btn-verify">🔐 Verify &amp; Continue</button>
             </form>
 
-            @if($method === 'sms')
-            <form action="{{ route('two-factor.resend') }}" method="POST">
-                @csrf
-                <button type="submit" class="btn-secondary">📨 Resend SMS Code</button>
-            </form>
-            <div class="timer-wrap">Code expires in <span id="countdown">10:00</span></div>
-            @else
-            <div class="timer-wrap">Codes refresh every <span id="countdown">30</span>s in your app</div>
-            @endif
+           @if($method === 'sms')
+<form action="{{ route('two-factor.resend') }}" method="POST">
+    @csrf
+    <button type="submit" class="btn-secondary">📨 Resend SMS Code</button>
+</form>
+<div class="timer-wrap">Code expires in <span id="countdown">10:00</span></div>
+@else
+<div class="timer-wrap">Codes refresh every <span id="countdown">30</span>s in your app</div>
+
+@if($maskedPhone)
+<div class="divider"><span>or</span></div>
+
+<form action="{{ route('two-factor.resend') }}" method="POST">
+    @csrf
+    <button type="submit" class="btn-secondary">💬 Send code by SMS to {{ $maskedPhone }}</button>
+</form>
+
+@if(session('two_factor_sms_sent'))
+<form action="{{ route('two-factor.verify') }}" method="POST" style="margin-top:12px;">
+    @csrf
+    <input type="hidden" name="is_backup_code" value="0">
+    <input type="hidden" name="trust_hours" value="720">
+
+    <div class="otp-label">Enter SMS code</div>
+    <input type="text" name="code" class="backup-input"
+           inputmode="numeric" maxlength="6" pattern="[0-9]*"
+           autocomplete="one-time-code" placeholder="6-digit SMS code" required>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:16px;cursor:pointer;">
+        <input type="checkbox" name="trust_device" value="1" style="width:18px;height:18px;accent-color:#0B3D3C;">
+        Remember this device for 30 days
+    </label>
+
+    <button type="submit" class="btn-verify">✅ Verify SMS Code</button>
+</form>
+@endif
+@endif
+@endif
 
             {{-- Backup code option --}}
             @if($backupCodesEnabled && $backupCodesRemaining > 0)
